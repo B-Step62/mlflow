@@ -141,6 +141,7 @@ def _serve_pyfunc(model, env_manager):
     enable_mlserver = os.getenv(ENABLE_MLSERVER, "false").lower() == "true"
     disable_env_creation = MLFLOW_DISABLE_ENV_CREATION.get()
 
+    bash_cmds = []
     if env_manager:
         conf = model.flavors[pyfunc.FLAVOR_NAME]
         bash_cmds = []

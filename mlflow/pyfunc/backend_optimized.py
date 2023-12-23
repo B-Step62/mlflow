@@ -91,7 +91,7 @@ class PyFuncOptimizedBackend(FlavorBackend):
             model_path = _download_artifact_from_uri(model_uri, output_path=tmp)
             _logger.info(f"Downloaded model to {model_path}")
 
-            # Serve with no env manager
+            # Serve with no env
             pyfunc_entrypoint = (
                 'ENTRYPOINT ["python", "-c", "from mlflow.models import container as C;'
                 'C._serve(env_manager=None)"]'

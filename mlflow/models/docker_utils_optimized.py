@@ -43,7 +43,7 @@ WORKDIR /opt/ml/model
 {install_server_deps}
 ENV GUNICORN_CMD_ARGS="--timeout 60 -k gevent"
 
-# Install MLflow from source
+# Install MLflow from the source or latest version
 WORKDIR /opt/mlflow
 {install_mlflow}
 
@@ -76,6 +76,26 @@ def _get_python_env_from_config(model_path):
     conf = model.flavors[pyfunc.FLAVOR_NAME]
     env_conf = conf[pyfunc.ENV]
     python_env_config_path = os.path.join(model_path, env_conf[em.VIRTUALENV])
+
+    # Hack: Remove mlflow dependency as we will install later anyway
+    requirement_txt_path = None
+    with open(python_env_config_path, "r") as f:
+        lines = f.readlines()
+    content = "".join([line for line in lines if "mlflow" not in line])
+
+    if "requirements.txt" in content:
+        requirement_txt_path = os.path.join(model_path, "requirements.txt")
+
+    with open(python_env_config_path, "w") as f:
+        f.write(content)
+
+    if requirement_txt_path:
+        with open(requirement_txt_path, "r") as f:
+            lines = f.readlines()
+        content = "".join([line for line in lines if "mlflow" not in line])
+        with open(requirement_txt_path, "w") as f:
+            f.write(content)
+
     return _PythonEnv.from_yaml(python_env_config_path)
 
 
@@ -103,7 +123,9 @@ def _generate_dockerfile_content(
     if enable_mlserver:
         server_deps = ["'mlserver>=1.2.0,!=1.3.1'", "'mlserver-mlflow>=1.2.0,!=1.3.1'"]
     else:
-        server_deps = ["gunicorn[gevent]"]
+        server_deps = ["flask==3.0.0", "gunicorn[gevent]"]
+    # pandas is requrired for pyfunc model
+    server_deps += ["pandas==2.0.3"]
 
     def _pip_install_cmd(pip_deps):
         return "RUN python -m pip install --upgrade {}".format(" ".join(pip_deps))
@@ -131,10 +153,11 @@ def _get_mlflow_install_step(dockerfile_context_dir, mlflow_home):
         mlflow_dir = _copy_project(src_path=os.path.abspath(mlflow_home), dst_path=dockerfile_context_dir)
         return (
             f"COPY {mlflow_dir} /opt/mlflow\n"
+            "ENV MLFLOW_SKINNY=1\n" # Install skinny version
             "RUN pip install /opt/mlflow\n"
         )
     else:
-        return "RUN pip install mlflow==2.9.2\n"
+        return "RUN pip install mlflow-skinny==2.9.2\n"
 
 def _build_image(
     model_path: str,

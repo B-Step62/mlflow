@@ -280,7 +280,6 @@ def build_docker(model_uri, name, env_manager, mlflow_home, install_mlflow, enab
 @click.option("--input-data", "-i", help="Sample input data for the endpoint. Either a path to a JSON file or a serialized string")
 @click.option("--header", help="Additional headers to add to the request, in a serialized JSON format")
 @cli_args.PORT
-@cli_args.ENV_MANAGER
 @cli_args.ENABLE_MLSERVER
 @click.option("--env", "-e", default=None, multiple=True,
               help="A list of environment variables to be set in the container.")
@@ -291,7 +290,6 @@ def validate_local(
     input_data,
     header,
     port,
-    env_manager,
     enable_mlserver,
     env,
     retain_image,
@@ -300,10 +298,12 @@ def validate_local(
     Validates a model locally by starting a docker container and sending a request to the model
     server. The input data can either be a path to a CSV/JSON file or a serialized string.
     """
-    env_manager = env_manager or _EnvManager.VIRTUALENV
     env_vars = {e.split("=")[0]: e.split("=")[1] for e in env}
     headers = json.loads(header) if header else {}
-    backend = get_flavor_backend(model_uri, env_manager=env_manager, optimized=optimized)
+    backend = get_flavor_backend(
+        model_uri,
+        install_mlflow=True, # Dev purpose
+        optimized=optimized)
 
     try:
         backend.validate_local(
