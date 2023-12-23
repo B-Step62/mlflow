@@ -17,9 +17,13 @@ from mlflow.utils.uri import append_to_uri_path
 _logger = logging.getLogger(__name__)
 
 
-def _get_flavor_backend_for_local_model(model=None, build_docker=True, **kwargs):
+def _get_flavor_backend_for_local_model(model=None, build_docker=True, optimized=False, **kwargs):
     from mlflow import pyfunc
-    from mlflow.pyfunc.backend import PyFuncBackend
+    if optimized:
+        _logger.info("Using optimized backend for pyfunc model.")
+        from mlflow.pyfunc.backend_optimized import PyFuncOptimizedBackend as PyFuncBackend
+    else:
+        from mlflow.pyfunc.backend import PyFuncBackend
     from mlflow.rfunc.backend import RFuncBackend
 
     if not model:

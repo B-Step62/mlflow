@@ -405,7 +405,7 @@ class PyFuncBackend(FlavorBackend):
         port: int = 5000,
         enable_mlserver: bool = False,
         env_vars: dict = None,
-        remove_image_on_success: bool = True,
+        retain_image: bool = True,
     ):
         input_data = self._get_input_data(input_data_or_path)
         # Build image
@@ -450,7 +450,7 @@ class PyFuncBackend(FlavorBackend):
 
         # Vlidation passed
         stop_container(container.name, remove=True)
-        if remove_image_on_success:
+        if not retain_image:
             remove_image(image_name)
 
     def _get_input_data(self, input_data_or_path: str) -> dict:
