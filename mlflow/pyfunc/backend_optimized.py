@@ -8,8 +8,10 @@ import requests
 from mlflow.environment_variables import MLFLOW_DISABLE_ENV_CREATION
 from mlflow.models import FlavorBackend
 from mlflow.models.container import ENABLE_MLSERVER
-from mlflow.models.docker_utils import (
+from mlflow.models.docker_utils_optimized import (
     _build_image,
+)
+from mlflow.models.docker_utils import (
     remove_image,
     run_container,
     stop_container,
