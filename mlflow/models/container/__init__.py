@@ -78,7 +78,6 @@ def _serve(env_manager):
     else:
         raise Exception("This container only supports models with the MLeap or PyFunc flavors.")
 
-
 def _install_pyfunc_deps(
     model_path=None, install_mlflow=False, enable_mlserver=False, env_manager=em.VIRTUALENV
 ):
@@ -142,20 +141,21 @@ def _serve_pyfunc(model, env_manager):
     enable_mlserver = os.getenv(ENABLE_MLSERVER, "false").lower() == "true"
     disable_env_creation = MLFLOW_DISABLE_ENV_CREATION.get()
 
-    conf = model.flavors[pyfunc.FLAVOR_NAME]
-    bash_cmds = []
-    if pyfunc.ENV in conf:
-        if not disable_env_creation:
-            _install_pyfunc_deps(
-                MODEL_PATH,
-                install_mlflow=True,
-                enable_mlserver=enable_mlserver,
-                env_manager=env_manager,
-            )
-        if env_manager == em.CONDA:
-            bash_cmds.append("source /miniconda/bin/activate custom_env")
-        elif env_manager == em.VIRTUALENV:
-            bash_cmds.append("source /opt/activate")
+    if env_manager:
+        conf = model.flavors[pyfunc.FLAVOR_NAME]
+        bash_cmds = []
+        if pyfunc.ENV in conf:
+            if not disable_env_creation:
+                _install_pyfunc_deps(
+                    MODEL_PATH,
+                    install_mlflow=True,
+                    enable_mlserver=enable_mlserver,
+                    env_manager=env_manager,
+                )
+            if env_manager == em.CONDA:
+                bash_cmds.append("source /miniconda/bin/activate custom_env")
+            elif env_manager == em.VIRTUALENV:
+                bash_cmds.append("source /opt/activate")
     procs = []
 
     start_nginx = True

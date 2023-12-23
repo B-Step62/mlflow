@@ -190,6 +190,9 @@ class _PythonEnv:
     def from_conda_yaml(cls, path):
         return cls.from_dict(cls.get_dependencies_from_conda_yaml(path))
 
+    def add_pip_deps(self, deps: list):
+        self.dependencies += deps
+
 
 def _mlflow_conda_env(
     path=None,

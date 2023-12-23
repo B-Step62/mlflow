@@ -1,40 +1,19 @@
 import docker
 import logging
 import os
+import shutil
 from subprocess import PIPE, STDOUT, Popen
 
+from mlflow import pyfunc
+from mlflow.models import Model
+from mlflow.models.model import MLMODEL_FILE_NAME
 from mlflow.utils import env_manager as em
+from mlflow.utils.environment import _PythonEnv
 from mlflow.utils.file_utils import TempDir, _copy_project
 from mlflow.utils.logging_utils import eprint
 
+
 _logger = logging.getLogger(__name__)
-
-SETUP_MINICONDA = """
-# Setup miniconda
-RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh >> miniconda.sh
-RUN bash ./miniconda.sh -b -p /miniconda && rm ./miniconda.sh
-ENV PATH="/miniconda/bin:$PATH"
-"""
-
-SETUP_PYENV_AND_VIRTUALENV = r"""
-# Setup pyenv
-RUN apt -y update
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
-RUN apt-get install -y \
-    libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
-    libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
-RUN git clone \
-    --depth 1 \
-    --branch $(git ls-remote --tags --sort=v:refname https://github.com/pyenv/pyenv.git | grep -o -E 'v[1-9]+(\.[1-9]+)+$' | tail -1) \
-    https://github.com/pyenv/pyenv.git /root/.pyenv
-ENV PYENV_ROOT="/root/.pyenv"
-ENV PATH="$PYENV_ROOT/bin:$PATH"
-RUN apt install -y python3.8 python3.8-distutils
-RUN ln -s -f $(which python3.8) /usr/bin/python
-RUN wget https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py
-RUN python /tmp/get-pip.py
-RUN pip install virtualenv
-"""
 
 
 _DOCKERFILE_TEMPLATE = """
@@ -42,27 +21,31 @@ _DOCKERFILE_TEMPLATE = """
 FROM ubuntu:20.04
 
 RUN apt-get -y update
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
-         wget \
-         curl \
-         nginx \
-         ca-certificates \
-         bzip2 \
-         build-essential \
-         cmake \
-         git-core \
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt install -y --no-install-recommends \
+        wget build-essential checkinstall \
+        nginx ca-certificates bzip2 \
+        libreadline-gplv2-dev  libncursesw5-dev  libssl-dev \
+        libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-{setup_miniconda}
-{setup_pyenv_and_virtualenv}
+# Install Python
+{install_python}
 
+# Install build tools
+{install_build_tools}
+
+# Install model dependencies
+COPY model /opt/ml/model
+WORKDIR /opt/ml/model
+{install_model_deps}
+
+# Install serving dependencies
+{install_server_deps}
 ENV GUNICORN_CMD_ARGS="--timeout 60 -k gevent"
-# Set up the program in the image
+
+# Install MLflow from source
 WORKDIR /opt/mlflow
-
 {install_mlflow}
-
-{custom_setup_steps}
 
 # granting read/write access and conditional execution authority to all child directories
 # and files to allow for deployment to AWS Sagemaker Serverless Endpoints
@@ -72,6 +55,72 @@ RUN chmod o+rwX /opt/mlflow/
 {entrypoint}
 """
 
+# Commnad to install Python from source
+_INSTALL_PYTHON_TEMPLATE = """
+RUN cd /usr/src && \
+    wget https://www.python.org/ftp/python/{python_version}/Python-{python_version}.tgz && \
+    tar xzf Python-{python_version}.tgz && \
+    cd Python-{python_version} && \
+    ./configure --enable-optimizations && \
+    make install && \
+    ln -s /usr/local/bin/python3 /usr/local/bin/python
+"""
+
+def _get_python_env_from_config(model_path):
+    """
+    Returns the python environment config from the model path.
+    """
+    model_config_path = os.path.join(model_path, MLMODEL_FILE_NAME)
+    model = Model.load(model_config_path)
+
+    conf = model.flavors[pyfunc.FLAVOR_NAME]
+    env_conf = conf[pyfunc.ENV]
+    python_env_config_path = os.path.join(model_path, env_conf[em.VIRTUALENV])
+    return _PythonEnv.from_yaml(python_env_config_path)
+
+
+def _generate_dockerfile_content(
+    model_path: str,
+    install_mlflow: bool,
+    entrypoint: str,
+    enable_mlserver=False,
+):
+    """
+    Generates a Dockerfile that can be used to build a docker image, that serves ML model
+    stored and tracked in MLflow
+    """
+    # Model dependencies
+    try:
+        python_env = _get_python_env_from_config(model_path)
+    except:
+        raise Exception("Failed to extract python environment from the model.")
+
+    if not python_env.python.startswith("3"):
+        raise Exception("Python version 3 is required for optimized image build."
+                        "Please run the command without --optimized flag for using Python 2")
+
+    # Server dependencies
+    if enable_mlserver:
+        server_deps = ["'mlserver>=1.2.0,!=1.3.1'", "'mlserver-mlflow>=1.2.0,!=1.3.1'"]
+    else:
+        server_deps = ["gunicorn[gevent]"]
+
+    def _pip_install_cmd(pip_deps):
+        return "RUN python -m pip install --upgrade {}".format(" ".join(pip_deps))
+
+    dockerfile = _DOCKERFILE_TEMPLATE.format(
+        model_path=model_path,
+        install_python=_INSTALL_PYTHON_TEMPLATE.format(python_version=python_env.python),
+        install_build_tools=_pip_install_cmd(python_env.build_dependencies),
+        install_model_deps=_pip_install_cmd(python_env.dependencies),
+        install_server_deps=_pip_install_cmd(server_deps),
+        install_mlflow=install_mlflow,
+        entrypoint=entrypoint,
+    )
+    _logger.info("Dockerfile content is: \n%s", dockerfile)
+
+    return dockerfile
+
 
 def _get_mlflow_install_step(dockerfile_context_dir, mlflow_home):
     """
@@ -79,7 +128,7 @@ def _get_mlflow_install_step(dockerfile_context_dir, mlflow_home):
     directory
     """
     if mlflow_home:
-        mlflow_dir = _copy_project(src_path=mlflow_home, dst_path=dockerfile_context_dir)
+        mlflow_dir = _copy_project(src_path=os.path.abspath(mlflow_home), dst_path=dockerfile_context_dir)
         return (
             f"COPY {mlflow_dir} /opt/mlflow\n"
             "RUN pip install /opt/mlflow\n"
@@ -87,40 +136,12 @@ def _get_mlflow_install_step(dockerfile_context_dir, mlflow_home):
     else:
         return "RUN pip install mlflow==2.9.2\n"
 
-
-def _generate_dockerfile_content(
-    setup_miniconda, setup_pyenv_and_virtualenv, install_mlflow, custom_setup_steps, entrypoint
-):
-    """
-    Generates a Dockerfile that can be used to build a docker image, that serves ML model
-    stored and tracked in MLflow.
-
-    It just takes string parameters containing docker imperatives and has no logic
-    whatsoever. It will be more convenient if a more sophisticated function
-    with some boolean flags would be called `generate_dockerfile`
-    while this function being a backend of sorts for such function.
-
-    :param setup_miniconda: Docker instructions related to set up miniconda. If used at all,
-    variable `SETUP_MINICONDA` provides a working template for instructions. Should be either an
-    empty string or `SETUP_MINICONDA`-based instructions :param setup_pyenv_and_virtualenv:
-    Docker instructions related to set up pyenv and virtualenv. If used at all, variable
-    `SETUP_PYENV_AND_VIRTUALENV` provides a working template for instructions. Should be either
-    an empty string or `SETUP_PYENV_AND_VIRTUALENV`-based :param install_mlflow: Docker
-    instruction for installing MLflow in given Docker context dir and optional source directory
-    :param custom_setup_steps: Docker instructions for any customizations in the resulting
-    Dockerfile :param entrypoint: String containing ENTRYPOINT directive for docker image
-    """
-    return _DOCKERFILE_TEMPLATE.format(
-        setup_miniconda=setup_miniconda,
-        setup_pyenv_and_virtualenv=setup_pyenv_and_virtualenv,
-        install_mlflow=install_mlflow,
-        custom_setup_steps=custom_setup_steps,
-        entrypoint=entrypoint,
-    )
-
-
 def _build_image(
-    image_name, entrypoint, env_manager, mlflow_home=None, custom_setup_steps_hook=None
+    model_path: str,
+    image_name: str,
+    entrypoint: str,
+    mlflow_home=None,
+    enable_mlserver=False,
 ):
     """
     Build an MLflow Docker image that can be used to serve a
@@ -128,34 +149,28 @@ def _build_image(
 
     :param image_name: Docker image name.
     :param entry_point: String containing ENTRYPOINT directive for docker image
-    :param env_manager: Environment manager to create a model environment for serving.
     :param mlflow_home: (Optional) Path to a local copy of the MLflow GitHub repository.
                         If specified, the image will install MLflow from this directory.
-                        If None, it will install MLflow from pip.
-    :param custom_setup_steps_hook: (Optional) Single-argument function that takes the string path
-           of a dockerfile context directory and returns a string containing Dockerfile commands to
-           run during the image build step.
+                        If None, it will install MLflow from pip..
     """
-    mlflow_home = os.path.abspath(mlflow_home) if mlflow_home else None
-
-    is_conda = env_manager == em.CONDA
-    setup_miniconda = SETUP_MINICONDA if is_conda else ""
-    setup_pyenv_and_virtualenv = "" if is_conda else SETUP_PYENV_AND_VIRTUALENV
-
     with TempDir() as tmp:
         cwd = tmp.path()
         install_mlflow = _get_mlflow_install_step(cwd, mlflow_home)
-        custom_setup_steps = custom_setup_steps_hook(cwd) if custom_setup_steps_hook else ""
+
+        # copy model to context dir
+        model_path_in_context = os.path.join(cwd, "model")
+        shutil.copytree(model_path, model_path_in_context)
+
+        docker_file_content = _generate_dockerfile_content(
+            model_path=model_path_in_context,
+            install_mlflow=install_mlflow,
+            entrypoint=entrypoint,
+            enable_mlserver=enable_mlserver,
+        )
+
         with open(os.path.join(cwd, "Dockerfile"), "w") as f:
-            f.write(
-                _generate_dockerfile_content(
-                    setup_miniconda=setup_miniconda,
-                    setup_pyenv_and_virtualenv=setup_pyenv_and_virtualenv,
-                    install_mlflow=install_mlflow,
-                    custom_setup_steps=custom_setup_steps,
-                    entrypoint=entrypoint,
-                )
-            )
+            f.write(docker_file_content)
+
         _logger.info("Building docker image with name %s", image_name)
         _build_image_from_context(context_dir=cwd, image_name=image_name)
 

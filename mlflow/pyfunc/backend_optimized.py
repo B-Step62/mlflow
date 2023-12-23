@@ -1,13 +1,10 @@
 import json
 import logging
 import os
-import pathlib
-import posixpath
 import requests
+from tempfile import TemporaryDirectory
 
-from mlflow.environment_variables import MLFLOW_DISABLE_ENV_CREATION
 from mlflow.models import FlavorBackend
-from mlflow.models.container import ENABLE_MLSERVER
 from mlflow.models.docker_utils_optimized import (
     _build_image,
 )
@@ -16,10 +13,9 @@ from mlflow.models.docker_utils import (
     run_container,
     stop_container,
 )
-from mlflow.pyfunc import ENV
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
-from mlflow.utils import env_manager as _EnvManager
 from mlflow.version import VERSION
+
 
 _logger = logging.getLogger(__name__)
 
@@ -32,7 +28,6 @@ class PyFuncOptimizedBackend(FlavorBackend):
     def __init__(
         self,
         config,
-        env_manager=_EnvManager.VIRTUALENV,
         install_mlflow=False,
         **kwargs,
     ):
@@ -45,9 +40,6 @@ class PyFuncOptimizedBackend(FlavorBackend):
                              path.
         """
         super().__init__(config=config, **kwargs)
-        if env_manager == _EnvManager.CONDA and ENV not in config:
-            env_manager = _EnvManager.LOCAL
-        self._env_manager = env_manager
         self._install_mlflow = install_mlflow
         self._env_id = os.environ.get("MLFLOW_HOME", VERSION) if install_mlflow else None
 
@@ -86,65 +78,33 @@ class PyFuncOptimizedBackend(FlavorBackend):
                                   "Please run the command without --optimized flag.")
 
 
+
     def build_image(
         self,
         model_uri,
         image_name,
-        install_mlflow=False,
         mlflow_home=None,
         enable_mlserver=False,
     ):
-        copy_model_into_container = self.copy_model_into_container_wrapper(
-            model_uri, install_mlflow, enable_mlserver
-        )
-        pyfunc_entrypoint = _pyfunc_entrypoint(
-            self._env_manager, model_uri, install_mlflow, enable_mlserver
-        )
+        # Download model to a temporary directory
+        with TemporaryDirectory() as tmp:
+            model_path = _download_artifact_from_uri(model_uri, output_path=tmp)
+            _logger.info(f"Downloaded model to {model_path}")
 
-        _build_image(
-            image_name=image_name,
-            mlflow_home=mlflow_home,
-            env_manager=self._env_manager,
-            custom_setup_steps_hook=copy_model_into_container,
-            entrypoint=pyfunc_entrypoint,
-        )
+            # Serve with no env manager
+            pyfunc_entrypoint = (
+                'ENTRYPOINT ["python", "-c", "from mlflow.models import container as C;'
+                'C._serve(env_manager=None)"]'
+            )
 
-    def copy_model_into_container_wrapper(self, model_uri, install_mlflow, enable_mlserver):
+            _build_image(
+                model_path=model_path,
+                image_name=image_name,
+                mlflow_home=mlflow_home,
+                entrypoint=pyfunc_entrypoint,
+                enable_mlserver=enable_mlserver,
+            )
 
-        def copy_model_into_container(dockerfile_context_dir):
-            # This function have to be included in another,
-            # since `_build_image` function in `docker_utils` accepts only
-            # single-argument function like this
-            model_cwd = os.path.join(dockerfile_context_dir, "model_dir")
-            pathlib.Path(model_cwd).mkdir(parents=True, exist_ok=True)
-            if model_uri:
-                model_path = _download_artifact_from_uri(model_uri, output_path=model_cwd)
-                return """
-                    COPY {model_dir} /opt/ml/model
-                    RUN python -c \
-                    'from mlflow.models.container import _install_pyfunc_deps;\
-                    _install_pyfunc_deps(\
-                        "/opt/ml/model", \
-                        install_mlflow={install_mlflow}, \
-                        enable_mlserver={enable_mlserver}, \
-                        env_manager="{env_manager}")'
-                    ENV {disable_env}="true"
-                    ENV {ENABLE_MLSERVER}={enable_mlserver}
-                    """.format(
-                    disable_env=MLFLOW_DISABLE_ENV_CREATION.name,
-                    model_dir=str(posixpath.join("model_dir", os.path.basename(model_path))),
-                    install_mlflow=repr(install_mlflow),
-                    ENABLE_MLSERVER=ENABLE_MLSERVER,
-                    enable_mlserver=repr(enable_mlserver),
-                    env_manager=self._env_manager,
-                )
-            else:
-                return f"""
-                    ENV {MLFLOW_DISABLE_ENV_CREATION}="true"
-                    ENV {ENABLE_MLSERVER}={enable_mlserver!r}
-                    """
-
-        return copy_model_into_container
 
     def validate_local(
         self,
@@ -162,7 +122,6 @@ class PyFuncOptimizedBackend(FlavorBackend):
         self.build_image(
             model_uri=model_uri,
             image_name=image_name,
-            install_mlflow=self._install_mlflow,
             mlflow_home=self._env_id,
             enable_mlserver=enable_mlserver
         )
@@ -220,38 +179,3 @@ class PyFuncOptimizedBackend(FlavorBackend):
                 raise Exception(f"The sample request is not in peoper json format: {e}")
 
         return input_data
-
-
-def _pyfunc_entrypoint(
-        env_manager,
-        model_uri,
-        install_mlflow,
-        enable_mlserver,
-    ):
-    if model_uri:
-        # The pyfunc image runs the same server as the Sagemaker image
-        pyfunc_entrypoint = (
-            'ENTRYPOINT ["python", "-c", "from mlflow.models import container as C;'
-            f'C._serve({env_manager!r})"]'
-        )
-    else:
-        entrypoint_code = "; ".join(
-            [
-                "from mlflow.models import container as C",
-                "from mlflow.models.container import _install_pyfunc_deps",
-                (
-                    "_install_pyfunc_deps("
-                    + '"/opt/ml/model", '
-                    + f"install_mlflow={install_mlflow}, "
-                    + f"enable_mlserver={enable_mlserver}, "
-                    + f'env_manager="{env_manager}"'
-                    + ")"
-                ),
-                f'C._serve("{env_manager}")',
-            ]
-        )
-        pyfunc_entrypoint = 'ENTRYPOINT ["python", "-c", "{entrypoint_code}"]'.format(
-            entrypoint_code=entrypoint_code.replace('"', '\\"')
-        )
-
-    return pyfunc_entrypoint
