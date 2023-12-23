@@ -15,33 +15,26 @@ from mlflow.utils.logging_utils import eprint
 
 _logger = logging.getLogger(__name__)
 
-
+# TODO: Use -buster image for older versions of Python
+# TODO: Remove nginx install if DISABLE_NGINX = true
 _DOCKERFILE_TEMPLATE = """
 # Build an image that can serve mlflow models.
-FROM ubuntu:20.04
+FROM python:{python_version}-slim-bullseye
 
 RUN apt-get -y update
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt install -y --no-install-recommends \
-        wget build-essential checkinstall \
-        nginx ca-certificates bzip2 \
-        libreadline-gplv2-dev  libncursesw5-dev  libssl-dev \
-        libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python
-{install_python}
 
 # Install build tools
 {install_build_tools}
+
+# Install serving dependencies
+RUN apt install -y --no-install-recommends nginx && rm -rf /var/lib/apt/lists/*
+{install_server_deps}
+ENV GUNICORN_CMD_ARGS="--timeout 60 -k gevent"
 
 # Install model dependencies
 COPY model /opt/ml/model
 WORKDIR /opt/ml/model
 {install_model_deps}
-
-# Install serving dependencies
-{install_server_deps}
-ENV GUNICORN_CMD_ARGS="--timeout 60 -k gevent"
 
 # Install MLflow from the source or latest version
 WORKDIR /opt/mlflow
@@ -55,16 +48,6 @@ RUN chmod o+rwX /opt/mlflow/
 {entrypoint}
 """
 
-# Commnad to install Python from source
-_INSTALL_PYTHON_TEMPLATE = """
-RUN cd /usr/src && \
-    wget https://www.python.org/ftp/python/{python_version}/Python-{python_version}.tgz && \
-    tar xzf Python-{python_version}.tgz && \
-    cd Python-{python_version} && \
-    ./configure --enable-optimizations && \
-    make install && \
-    ln -s /usr/local/bin/python3 /usr/local/bin/python
-"""
 
 def _get_python_env_from_config(model_path):
     """
@@ -132,7 +115,7 @@ def _generate_dockerfile_content(
 
     dockerfile = _DOCKERFILE_TEMPLATE.format(
         model_path=model_path,
-        install_python=_INSTALL_PYTHON_TEMPLATE.format(python_version=python_env.python),
+        python_version=python_env.python,
         install_build_tools=_pip_install_cmd(python_env.build_dependencies),
         install_model_deps=_pip_install_cmd(python_env.dependencies),
         install_server_deps=_pip_install_cmd(server_deps),
