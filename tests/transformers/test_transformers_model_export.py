@@ -3924,3 +3924,74 @@ def test_text_generation_task_chat_serve(text_generation_pipeline):
         and output_dict["usage"]["completion_tokens"] < 10
     )
     assert output_dict["usage"]["prompt_tokens"] < 20
+
+
+def test_save_base_model_weight_false_pipeline(text_generation_pipeline, model_path):
+    MODEL_SHA = "38cc92ec43315abd5136313225e95acc5986876c" # Hard coded sha for distilgpt2
+
+    with mock.patch("huggingface_hub.HfApi") as hf_api_mock:
+        hf_api_mock().model_info.return_value.sha = MODEL_SHA
+
+        mlflow.transformers.save_model(
+            transformers_model=text_generation_pipeline,
+            path=model_path,
+            save_base_model_weight=False,
+            input_example="What is MLflow?",
+        )
+
+    # Validate the contents of MLModel file
+    mlmodel = yaml.safe_load(model_path.joinpath("MLmodel").read_bytes())
+    flavor_conf = mlmodel["flavors"]["transformers"]
+    assert "model_binary" not in flavor_conf
+    assert flavor_conf["source_model_name"] == "distilgpt2"
+    assert flavor_conf["source_model_revision"] == MODEL_SHA
+    assert flavor_conf["tokenizer_name"] == "distilgpt2"
+    assert flavor_conf["tokenizer_revision"] == MODEL_SHA
+
+    pyfunc_loaded = mlflow.pyfunc.load_model(model_path)
+
+    question = "What is the meaning of life?"
+    inference = pyfunc_loaded.predict(question)
+
+    assert isinstance(inference, list)
+
+def test_save_base_model_weight_false_components(text_generation_pipeline, text2text_generation_pipeline, model_path):
+    from huggingface_hub.hf_api import ModelInfo
+
+    _TEXT_GENERATION_PIPELINE_SHA = "38cc92ec43315abd5136313225e95acc5986876c" # the latest sha as of 2024 Feb
+    _TEXT2TEXT_GENERATION_PIPELINE_SHA = "ac76a88701e5b6b8af75be9603ee26f4b361fe2f" # the latest sha as of 2024 Feb
+
+    def _mock_hf_api(repo_name: str):
+        if repo_name == text_generation_pipeline.model.name_or_path:
+            sha = _TEXT_GENERATION_PIPELINE_SHA
+        elif repo_name == text2text_generation_pipeline.model.name_or_path:
+            sha = _TEXT2TEXT_GENERATION_PIPELINE_SHA
+        return ModelInfo(modelId=repo_name, sha=sha)
+
+    with mock.patch("huggingface_hub.HfApi") as hf_api_mock:
+        hf_api_mock().model_info.side_effect = _mock_hf_api
+
+        mlflow.transformers.save_model(
+            transformers_model={
+                "model": text_generation_pipeline.model,
+                "tokenizer": text2text_generation_pipeline.tokenizer
+            },
+            path=model_path,
+            save_base_model_weight=False,
+        )
+
+    # Validate the contents of MLModel file
+    mlmodel = yaml.safe_load(model_path.joinpath("MLmodel").read_bytes())
+    flavor_conf = mlmodel["flavors"]["transformers"]
+    assert "model_binary" not in flavor_conf
+    assert flavor_conf["source_model_name"] == "distilgpt2"
+    assert flavor_conf["source_model_revision"] == _TEXT_GENERATION_PIPELINE_SHA
+    assert flavor_conf["tokenizer_name"] == "google/mobilenet_v2_1.0_224"
+    assert flavor_conf["tokenizer_revision"] == _TEXT2TEXT_GENERATION_PIPELINE_SHA
+
+    pyfunc_loaded = mlflow.pyfunc.load_model(model_path)
+
+    question = "What is the meaning of life?"
+    inference = pyfunc_loaded.predict(question)
+
+    assert isinstance(inference, list)

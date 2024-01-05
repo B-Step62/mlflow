@@ -126,6 +126,9 @@ _MODEL_KEY = "model"
 _MODEL_BINARY_KEY = "model_binary"
 _MODEL_BINARY_FILE_NAME = "model"
 _MODEL_PATH_OR_NAME_KEY = "source_model_name"
+_MODEL_REVISION_KEY = "source_model_revision"
+_COMPONENT_NAME_KEY = "{component}_name"
+_COMPONENT_REVISION_KEY = "{component}_revision"
 _PIPELINE_MODEL_TYPE_KEY = "pipeline_model_type"
 _PROCESSOR_KEY = "processor"
 _PROCESSOR_TYPE_KEY = "processor_type"
@@ -270,6 +273,55 @@ def get_default_conda_env(model):
     return _mlflow_conda_env(additional_pip_deps=get_default_pip_requirements(model))
 
 
+@functools.lru_cache(maxsize=1)
+def _get_latest_revision_for_repo(repo_name: str) -> str:
+    """
+    Fetches the latest commit hash for a repository from the HuggingFace model hub.
+
+    Args:
+        repo_name: The name of the repository to fetch the latest commit hash for.
+
+    Returns:
+        The latest commit hash for the repository.
+    """
+    try:
+        import huggingface_hub as hub
+    except ImportError:
+        raise MlflowException(
+            "Unable to fetch model commit hash from the HuggingFace model hub. "
+            "This is required for saving Transformer model without base model "
+            "weights, while ensuring the version consistency of the model. "
+            "Please install the `huggingface-hub` package and retry.",
+            error_code=RESOURCE_DOES_NOT_EXIST,
+        )
+    api = hub.HfApi()
+    model_info = api.model_info(repo_name)
+    return model_info.sha
+
+
+def _update_flavor_conf_with_additional_base_model_info(
+        pipeline: transformers.Pipeline,
+        component_config: Dict[str, str],
+        flavor_conf: Dict[str, Any],
+    ) -> Dict[str, Any]:
+    # Get commit sha for model
+    model_repo_name = flavor_conf[_MODEL_PATH_OR_NAME_KEY]
+    model_revision = _get_latest_revision_for_repo(model_repo_name)
+    flavor_conf[_MODEL_REVISION_KEY] = model_revision
+
+    # Get source repo name and commit sha for each component
+    component_types = component_config.get(_COMPONENTS_BINARY_KEY, [])
+    for component_name in component_types:
+        component = getattr(pipeline, component_name)
+        if hasattr(component, "name_or_path"):
+            repo_name = component.name_or_path
+            revision = _get_latest_revision_for_repo(repo_name)
+            flavor_conf[_COMPONENT_NAME_KEY.format(component=component_name)] = repo_name
+            flavor_conf[_COMPONENT_REVISION_KEY.format(component=component_name)] = revision
+
+    return flavor_conf
+
+
 @experimental
 @docstring_version_compatibility_warning(integration_name=FLAVOR_NAME)
 @format_docstring(LOG_MODEL_PARAM_DOCS.format(package_name=FLAVOR_NAME))
@@ -291,6 +343,7 @@ def save_model(
     model_config: Optional[Dict[str, Any]] = None,
     example_no_conversion: bool = False,
     prompt_template: Optional[str] = None,
+    save_base_model_weight: bool = True,
     **kwargs,  # pylint: disable=unused-argument
 ) -> None:
     """
@@ -474,6 +527,12 @@ def save_model(
     """
     import transformers
 
+    if model_config and inference_config:
+        raise MlflowException(
+            "Using both `model_config` and `inference_config` is not allowed. Use `model_config` "
+            "to indicate any model configuration you need to use for inference."
+        )
+
     _validate_transformers_model_dict(transformers_model)
 
     if isinstance(transformers_model, dict):
@@ -556,27 +615,36 @@ def save_model(
         else:
             mlflow_model.metadata = {_METADATA_LLM_INFERENCE_TASK_KEY: task}
 
-    # Save the model object
-    built_pipeline.model.save_pretrained(
-        save_directory=path.joinpath(_MODEL_BINARY_FILE_NAME),
-        max_shard_size=MLFLOW_HUGGINGFACE_MODEL_MAX_SHARD_SIZE.get(),
-    )
-
-    if model_config and inference_config:
-        raise MlflowException(
-            "Using both `model_config` and `inference_config` is not allowed. Use `model_config` "
-            "to indicate any model configuration you need to use for inference."
-        )
-
-    # Save the components explicitly to the components directory
-    if components:
-        _save_components(
-            root_path=path.joinpath(_COMPONENTS_BINARY_KEY),
-            component_config=components,
+    # Model binary is not logged when save_model_weight is False
+    model_bin_kwargs = {_MODEL_BINARY_KEY: _MODEL_BINARY_FILE_NAME} if save_base_model_weight else {}
+    flavor_conf = {**flavor_conf, **model_bin_kwargs}
+    if not save_base_model_weight:
+        flavor_conf = _update_flavor_conf_with_additional_base_model_info(
             pipeline=built_pipeline,
-            processor=processor,
-            inference_config=inference_config,
+            component_config=components,
+            flavor_conf=flavor_conf
         )
+
+    # Save the model object
+    if save_base_model_weight:
+        built_pipeline.model.save_pretrained(
+            save_directory=path.joinpath(_MODEL_BINARY_FILE_NAME),
+            max_shard_size=MLFLOW_HUGGINGFACE_MODEL_MAX_SHARD_SIZE.get(),
+        )
+
+        # Save the components explicitly to the components directory
+        if components:
+            _save_components(
+                root_path=path.joinpath(_COMPONENTS_BINARY_KEY),
+                component_config=components,
+                pipeline=built_pipeline,
+                processor=processor,
+                inference_config=inference_config,
+            )
+    else:
+        _logger.info("Skipping saving model and component weights as `save_model_weight` is "
+                     "set to False. Only the reference to the pretrained models will be saved.")
+
 
     model_name = transformers_model.model.name_or_path
 
@@ -585,11 +653,6 @@ def save_model(
 
     # If the card data can be acquired, save the text and the data separately
     _write_card_data(card_data, path)
-
-    # Write the license information (or guidance) along with the model
-    _write_license_information(model_name, card_data, path)
-
-    model_bin_kwargs = {_MODEL_BINARY_KEY: _MODEL_BINARY_FILE_NAME}
 
     # Only allow a subset of task types to have a pyfunc definition.
     # Currently supported types are NLP-based language tasks which have a pipeline definition
@@ -634,14 +697,13 @@ def save_model(
             f"This model is unable to be used for pyfunc prediction because {reason} "
             f"The pyfunc flavor will not be added to the Model."
         )
-    flavor_conf.update(**model_bin_kwargs)
     mlflow_model.add_flavor(
         FLAVOR_NAME,
         transformers_version=transformers.__version__,
         code=code_dir_subpath,
         **flavor_conf,
     )
-    if size := get_total_file_size(path):
+    if save_base_model_weight and (size := get_total_file_size(path)):
         mlflow_model.model_size_bytes = size
     mlflow_model.save(str(path.joinpath(MLMODEL_FILE_NAME)))
 
@@ -694,6 +756,7 @@ def log_model(
     model_config: Optional[Dict[str, Any]] = None,
     example_no_conversion: bool = False,
     prompt_template: Optional[str] = None,
+    save_base_model_weight: bool = True,
     **kwargs,
 ):
     """
@@ -900,6 +963,7 @@ def log_model(
         model_config=model_config,
         example_no_conversion=example_no_conversion,
         prompt_template=prompt_template,
+        save_base_model_weight=save_base_model_weight,
         **kwargs,
     )
 
@@ -1018,21 +1082,118 @@ def is_gpu_available():
     return is_gpu
 
 
-def _try_load_model_with_device(model_instance, model_path, device, conf):
-    load_model_conf = {}
-    # Assume if torch_dtype was specified in the conf, then it must be with a
-    # pipeline for which it's compatible.
-    if _TORCH_DTYPE_KEY in conf:
-        load_model_conf[_TORCH_DTYPE_KEY] = conf[_TORCH_DTYPE_KEY]
+def _get_component_keys(flavor_config):
+    component_keys_to_load = flavor_config.get(_COMPONENTS_BINARY_KEY, [])
+    if _PROCESSOR_TYPE_KEY in flavor_config:
+        component_keys_to_load.append(_PROCESSOR_KEY)
+    return component_keys_to_load
 
+
+def _try_load_model_with_device(model_name_or_path, flavor_config, accelerate_model_conf, device, revision=None):
+    """
+    Try to load a model with the specified device and fallback to loading without the device
+
+    Args:
+        model_name_or_path: The model name or path to load the model from
+        flavor_config: The flavor configuration for the model
+        accelerate_model_conf: The configuration for the accelerate library
+        device: The device to load the model on
+        revision: The commit hash for the model in the HuggingFace Hub
+    """
+    import transformers
+
+    model_instance = getattr(transformers, flavor_config[_PIPELINE_MODEL_TYPE_KEY])
+
+    if not MLFLOW_HUGGINGFACE_DISABLE_ACCELERATE_FEATURES.get():
+        try:
+            return model_instance.from_pretrained(model_name_or_path, **accelerate_model_conf, revision=revision)
+        except (ValueError, TypeError, NotImplementedError, ImportError):
+            # NB: ImportError is caught here in the event that `accelerate` is not installed
+            # on the system, which will raise if `low_cpu_mem_usage` is set or the argument
+            # `device_map` is set and accelerate is not installed.
+            pass
+
+    torch_dtype = accelerate_model_conf.get(_TORCH_DTYPE_KEY, None)
     try:
-        load_model_conf["device"] = device
-        model = model_instance.from_pretrained(model_path, **load_model_conf)
+        return model_instance.from_pretrained(
+            model_name_or_path, torch_dtype=torch_dtype, device=device, revision=revision
+        )
+    except OSError as e:
+        if f"{revision} is not a valid git identifier" in str(e):
+            raise MlflowException(
+                f"The model was saved with a HuggingFace Hub repository name '{model_name_or_path}'"
+                f"and a commit hash '{revision}', but the commit is not found in the repository. "
+            )
+        else:
+            raise e
     except (ValueError, TypeError, NotImplementedError):
         _logger.warning("Could not specify device parameter for this pipeline type")
-        load_model_conf.pop("device", None)
-        model = model_instance.from_pretrained(model_path, **load_model_conf)
-    return model
+        return model_instance.from_pretrained(
+            model_name_or_path, torch_dtype=torch_dtype, revision=revision
+        )
+
+
+def _load_component(flavor_config,
+                    component_key,
+                    local_path: Optional[pathlib.Path] = None):
+    import transformers
+
+    component_type_key = f"{component_key}_type"
+    component_type = flavor_config[component_type_key]
+    component_cls = getattr(transformers, component_type)
+
+    if local_path is not None:
+        components_dir = local_path.joinpath(_COMPONENTS_BINARY_KEY)
+        component_path = components_dir.joinpath(component_key)
+        return component_cls.from_pretrained(component_path)
+    else:
+        # Load component from HuggingFace Hub
+        component_name = flavor_config[_COMPONENT_NAME_KEY.format(component=component_key)]
+        component_revision = flavor_config.get(_COMPONENT_REVISION_KEY.format(component=component_key), None)
+        return component_cls.from_pretrained(component_name, revision=component_revision)
+
+
+def _load_model_and_components_from_huggingface_hub(flavor_config, device, accelerate_model_conf) -> Dict[str, Any]:
+    loaded = {}
+
+    if not _MODEL_PATH_OR_NAME_KEY in flavor_config:
+        raise MlflowException(
+            "The saved model doesn't contain either a model name in HuggingFace Hub or a local path to a model weight.",
+            error_code=INVALID_PARAMETER_VALUE,
+        )
+    model_repo_name = flavor_config[_MODEL_PATH_OR_NAME_KEY]
+    model_revision = flavor_config.get(_MODEL_REVISION_KEY, None)
+
+    if not model_revision:
+        _logger.warn(
+            "It seems the specified model is saved with 'save_base_model_weight' set to False, but the model commit hash "
+            "is not found in the saved configuration. MLflow will fallback to loading the latest available model from "
+            "HuggingFace Hub, but it may cause inconsistency issue if the model is updated in HuggingFace Hub."
+        )
+
+    loaded["model"] = _try_load_model_with_device(model_repo_name, flavor_config, accelerate_model_conf, device, revision=model_revision)
+
+    for component_key in _get_component_keys(flavor_config):
+        loaded[component_key] = _load_component(flavor_config, component_key)
+
+    return loaded
+
+
+def _load_model_and_components_from_local(local_path, flavor_config, device, accelerate_model_conf) -> Dict[str, Any]:
+    loaded = {}
+
+    # NB: Path resolution for models that were saved prior to 2.4.1 release when the pathing for
+    #     the saved pipeline or component artifacts was handled by duplicate entries for components
+    #     (artifacts/pipeline/* and artifacts/components/*) and pipelines were saved via the
+    #     "artifacts/pipeline/*" path. In order to load the older formats after the change, the
+    #     presence of the new path key is checked.
+    model_path = local_path.joinpath(flavor_config.get(_MODEL_BINARY_KEY, "pipeline"))
+    loaded["model"] = _try_load_model_with_device(flavor_config, accelerate_model_conf, device)
+
+    for component_key in _get_component_keys(flavor_config):
+        loaded[component_key] = _load_component(model_path, flavor_config, component_key)
+
+    return loaded
 
 
 def _load_model(path: str, flavor_config, return_type: str, device=None, **kwargs):
@@ -1040,15 +1201,6 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
     Loads components from a locally serialized ``Pipeline`` object.
     """
     import transformers
-
-    model_instance = getattr(transformers, flavor_config[_PIPELINE_MODEL_TYPE_KEY])
-    local_path = pathlib.Path(path)
-    # NB: Path resolution for models that were saved prior to 2.4.1 release when the pathing for
-    #     the saved pipeline or component artifacts was handled by duplicate entries for components
-    #     (artifacts/pipeline/* and artifacts/components/*) and pipelines were saved via the
-    #     "artifacts/pipeline/*" path. In order to load the older formats after the change, the
-    #     presence of the new path key is checked.
-    model_path = local_path.joinpath(flavor_config.get(_MODEL_BINARY_KEY, "pipeline"))
 
     conf = {
         "task": flavor_config[_TASK_KEY],
@@ -1086,28 +1238,23 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
 
     accelerate_model_conf["low_cpu_mem_usage"] = MLFLOW_HUGGINGFACE_USE_LOW_CPU_MEM_USAGE.get()
 
-    if not MLFLOW_HUGGINGFACE_DISABLE_ACCELERATE_FEATURES.get():
-        try:
-            model = model_instance.from_pretrained(model_path, **accelerate_model_conf)
-        except (ValueError, TypeError, NotImplementedError, ImportError):
-            # NB: ImportError is caught here in the event that `accelerate` is not installed
-            # on the system, which will raise if `low_cpu_mem_usage` is set or the argument
-            # `device_map` is set and accelerate is not installed.
-            model = _try_load_model_with_device(model_instance, model_path, device, conf)
+    # Load model and components either from local or from HuggingFace Hub
+    # NB: Before mlflow 2.4.1, binary key was "pipeline" so we need to check both
+    if _MODEL_BINARY_KEY in flavor_config or "pipeline" in flavor_config:
+        model_and_components = _load_model_and_components_from_local(
+            local_path=pathlib.Path(path),
+            flavor_config=flavor_config,
+            device=device,
+            accelerate_model_conf=accelerate_model_conf
+        )
     else:
-        model = _try_load_model_with_device(model_instance, model_path, device, conf)
-
-    conf["model"] = model
-
-    if _PROCESSOR_TYPE_KEY in flavor_config:
-        conf[_PROCESSOR_KEY] = _load_component(
-            local_path, _PROCESSOR_KEY, flavor_config[_PROCESSOR_TYPE_KEY]
+        model_and_components = _load_model_and_components_from_huggingface_hub(
+            flavor_config=flavor_config,
+            device=device,
+            accelerate_model_conf=accelerate_model_conf
         )
 
-    for component_key in flavor_config[_COMPONENTS_BINARY_KEY]:
-        component_type_key = f"{component_key}_type"
-        component_type = flavor_config[component_type_key]
-        conf[component_key] = _load_component(local_path, component_key, component_type)
+    conf = {**conf, **model_and_components}
 
     for key in _METADATA_PIPELINE_SCALAR_CONFIG_KEYS:
         if key in flavor_config:
@@ -1312,18 +1459,6 @@ def _save_components(
             "of MLflow. Use `model_config` instead."
         )
         root_path.joinpath(_INFERENCE_CONFIG_BINARY_KEY).write_text(json.dumps(inference_config))
-
-
-def _load_component(root_path: pathlib.Path, component_key: str, component_type):
-    """
-    Loads an individual component object from local disk.
-    """
-    import transformers
-
-    components_dir = root_path.joinpath(_COMPONENTS_BINARY_KEY)
-    component_path = components_dir.joinpath(component_key)
-    component_instance = getattr(transformers, component_type)
-    return component_instance.from_pretrained(component_path)
 
 
 def _generate_base_flavor_configuration(
