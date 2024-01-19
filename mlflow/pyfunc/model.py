@@ -32,7 +32,7 @@ from mlflow.utils.environment import (
     _process_pip_requirements,
     _PythonEnv,
 )
-from mlflow.utils.file_utils import TempDir, _copy_file_or_tree, get_total_file_size, write_to
+from mlflow.utils.file_utils import TempDir, _validate_and_copy_code_paths, get_total_file_size, write_to
 from mlflow.utils.model_utils import _get_flavor_configuration
 from mlflow.utils.requirements_utils import _get_pinned_requirement
 
@@ -302,11 +302,7 @@ def _save_model_with_class_artifacts_params(
             shutil.move(tmp_artifacts_dir.path(), os.path.join(path, saved_artifacts_dir_subpath))
         custom_model_config_kwargs[CONFIG_KEY_ARTIFACTS] = saved_artifacts_config
 
-    saved_code_subpath = None
-    if code_paths is not None:
-        saved_code_subpath = "code"
-        for code_path in code_paths:
-            _copy_file_or_tree(src=code_path, dst=path, dst_dir=saved_code_subpath)
+    saved_code_subpath = _validate_and_copy_code_paths(src=code_paths, dst=path)
 
     mlflow.pyfunc.add_to_model(
         model=mlflow_model,
