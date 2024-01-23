@@ -562,6 +562,7 @@ def save_model(
         # For pyfunc supported models, if a signature is not supplied, infer the signature
         # from the input_example if provided, otherwise, apply a generic signature.
         if mlflow_model.signature is None:
+            _logger.info(f"[{datetime.now()}] Attempting to infer signature")
             mlflow_model.signature = _get_default_pipeline_signature(
                 built_pipeline, input_example, model_config or inference_config
             )
@@ -1479,9 +1480,14 @@ def _get_default_pipeline_signature(pipeline, example=None, model_config=None) -
             params = None
             if _contains_params(example):
                 example, params = example
+            _logger.info(f"Attempting to generate a signature for the input example: {example}")
             example = _format_input_example_for_special_cases(example, pipeline)
+            _logger.info(f"Formatted input example: {example}")
             prediction = generate_signature_output(pipeline, example, model_config, params)
-            return infer_signature(example, prediction, params)
+            _logger.info(f"Generated prediction: {prediction}")
+            signature = infer_signature(example, prediction, params)
+            _logger.info(f"Generated signature: {signature}")
+            return signature
         except Exception as e:
             _logger.warning(
                 "Attempted to generate a signature for the saved model or pipeline "
@@ -1742,6 +1748,8 @@ def generate_signature_output(pipeline, data, model_config=None, params=None):
             error_code=INVALID_PARAMETER_VALUE,
         )
 
+    _logger.info(f"Attempting to generate a signature for the input example: {data}")
+
     return _TransformersWrapper(pipeline=pipeline, model_config=model_config).predict(
         data, params=params
     )
@@ -1804,6 +1812,7 @@ class _TransformersWrapper:
         import transformers
 
         try:
+            _logger.info(f"Let's make prediction with data: {data}")
             if isinstance(data, dict):
                 return self.pipeline(**data, **self.model_config)
             return self.pipeline(data, **self.model_config)
@@ -1847,6 +1856,7 @@ class _TransformersWrapper:
         """
         self._override_model_config(params)
 
+        _logger.info(f"_TrannsformersWrapper.predict() called with data: {data}")
         if isinstance(data, pd.DataFrame):
             input_data = self._convert_pandas_to_dict(data)
         elif isinstance(data, (dict, str, bytes, np.ndarray)):
@@ -1868,6 +1878,7 @@ class _TransformersWrapper:
                 error_code=INVALID_PARAMETER_VALUE,
             )
         input_data = self._parse_raw_pipeline_input(input_data)
+        _logger.info(f"Input data parsed to: {input_data}")
         # Validate resolved or input dict types
         if isinstance(input_data, dict):
             _validate_input_dictionary_contains_only_strings_and_lists_of_strings(input_data)
@@ -1965,6 +1976,7 @@ class _TransformersWrapper:
             return conversation_output.generated_responses[-1]
         else:
             raw_output = self._validate_model_config_and_return_output(data)
+            _logger.info(f"Raw output from pipeline: {raw_output}")
 
         # Handle the pipeline outputs
         if type(self.pipeline).__name__ in self._supported_custom_generator_types or isinstance(
@@ -2003,6 +2015,7 @@ class _TransformersWrapper:
             output = self._parse_lists_of_dict_to_list_of_str(raw_output, output_key)
 
         sanitized = self._sanitize_output(output, data)
+        _logger.info(f"Sanitized output: {sanitized}")
         return self._wrap_strings_as_list_if_scalar(sanitized)
 
     def _parse_raw_pipeline_input(self, data):
