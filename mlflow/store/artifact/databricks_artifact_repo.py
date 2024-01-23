@@ -508,8 +508,9 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
 
         import time
         completed = set()
+        futures_set = set(futures.keys())
         while len(completed) < len(futures):
-            for future in futures - completed:
+            for future in futures_set - completed:
                 if future.done():
                     completed.add(future)
                     _logger.info(f"[{datetime.now()}] Part {futures[future]} completed")
