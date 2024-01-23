@@ -1,5 +1,6 @@
 import atexit
 import codecs
+from datetime import datetime
 import errno
 import fnmatch
 import gzip
@@ -1060,6 +1061,8 @@ def get_total_file_size(path: Union[str, pathlib.Path]) -> Optional[int]:
         size in bytes.
 
     """
+    _logger.info(f"[{datetime.now()}] Getting the total size of {path}")
+
     try:
         if isinstance(path, pathlib.Path):
             path = str(path)
@@ -1074,8 +1077,11 @@ def get_total_file_size(path: Union[str, pathlib.Path]) -> Optional[int]:
 
         total_size = 0
         for cur_path, dirs, files in os.walk(path):
+            _logger.info(f"[{datetime.now()}] Getting the total size of {cur_path}")
             full_paths = [os.path.join(cur_path, file) for file in files]
-            total_size += sum([os.path.getsize(file) for file in full_paths])
+            for file in full_paths:
+                _logger.info(f"[{datetime.now()}] Getting the size of {file}")
+                total_size += os.path.getsize(file)
         return total_size
     except Exception as e:
         _logger.info(f"Failed to get the total size of {path} because of error :{e}")

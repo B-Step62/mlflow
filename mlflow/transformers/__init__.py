@@ -524,7 +524,7 @@ def save_model(
         max_shard_size=MLFLOW_HUGGINGFACE_MODEL_MAX_SHARD_SIZE.get(),
     )
 
-    _logger.info(f"[{datetime.now()}] Saved pretrained model")
+    _logger.info(f"[{datetime.now()}] Saved pretrained model to path {path}")
 
     if model_config and inference_config:
         raise MlflowException(
@@ -551,6 +551,7 @@ def save_model(
 
     # If the card data can be acquired, save the text and the data separately
     _write_card_data(card_data, path)
+    _logger.info(f"[{datetime.now()}] Wrote card data")
 
     model_bin_kwargs = {_MODEL_BINARY_KEY: _MODEL_BINARY_FILE_NAME}
 
@@ -564,6 +565,7 @@ def save_model(
             mlflow_model.signature = _get_default_pipeline_signature(
                 built_pipeline, input_example, model_config or inference_config
             )
+            _logger.info(f"[{datetime.now()}] Inferred signature")
 
         # if pipeline is text-generation and a prompt template is specified,
         # provide the return_full_text=False config by default to avoid confusing
@@ -584,6 +586,7 @@ def save_model(
             model_config=model_config,
             **model_bin_kwargs,
         )
+        _logger.info(f"[{datetime.now()}] Added pyfunc to model")
     else:
         if processor:
             reason = "the model has been saved with a 'processor' argument supplied."
@@ -603,6 +606,7 @@ def save_model(
         code=code_dir_subpath,
         **flavor_conf,
     )
+    _logger.info(f"[{datetime.now()}] Added flavor to model")
     if size := get_total_file_size(path):
         mlflow_model.model_size_bytes = size
 
