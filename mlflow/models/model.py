@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import logging
 import os
@@ -619,10 +620,14 @@ class Model:
                 and kwargs.get("input_example") is None
             ):
                 _logger.warning(_LOG_MODEL_MISSING_SIGNATURE_WARNING)
+            _logger.info(f"[{datetime.now()}] Start saving model")
             flavor.save_model(path=local_path, mlflow_model=mlflow_model, **kwargs)
+            _logger.info(f"[{datetime.now()}] Saved model locally at {local_path}")
             mlflow.tracking.fluent.log_artifacts(local_path, mlflow_model.artifact_path, run_id)
+            _logger.info(f"[{datetime.now()}] Logged model to artifact at {mlflow_model.artifact_path}")
             try:
                 mlflow.tracking.fluent._record_logged_model(mlflow_model, run_id)
+                _logger.info(f"[{datetime.now()}] Recorded model")
             except MlflowException:
                 # We need to swallow all mlflow exceptions to maintain backwards compatibility with
                 # older tracking servers. Only print out a warning for now.

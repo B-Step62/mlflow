@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 import logging
 import os
 import posixpath
@@ -388,17 +389,21 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
         :return:
         """
         if cloud_credential_info.type == ArtifactCredentialType.AZURE_SAS_URI:
+            _logger.debug("Uploading to Azure Blob Storage")
             self._azure_upload_file(cloud_credential_info, src_file_path, artifact_file_path)
         elif cloud_credential_info.type == ArtifactCredentialType.AZURE_ADLS_GEN2_SAS_URI:
+            _logger.debug("Uploading to Azure Data Lake Storage Gen2")
             self._azure_adls_gen2_upload_file(
                 cloud_credential_info, src_file_path, artifact_file_path
             )
         elif cloud_credential_info.type == ArtifactCredentialType.AWS_PRESIGNED_URL:
+            _logger.debug("Uploading to AWS S3")
             if os.path.getsize(src_file_path) > MLFLOW_MULTIPART_UPLOAD_CHUNK_SIZE.get():
                 self._multipart_upload(src_file_path, artifact_file_path)
             else:
                 self._signed_url_upload_file(cloud_credential_info, src_file_path)
         elif cloud_credential_info.type == ArtifactCredentialType.GCP_SIGNED_URL:
+            _logger.debug("Uploading to GCP")
             self._signed_url_upload_file(cloud_credential_info, src_file_path)
         else:
             raise MlflowException(
@@ -498,7 +503,17 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
                 start_byte=start_byte,
                 size=MLFLOW_MULTIPART_UPLOAD_CHUNK_SIZE.get(),
             )
+            _logger.info(f"[{datetime.now()}] Submitting part {part_number} for upload")
             futures[future] = part_number
+
+        import time
+        completed = set()
+        while len(completed) < len(futures):
+            for future in futures - completed:
+                if future.done():
+                    completed.add(future)
+                    _logger.info(f"[{datetime.now()}] Part {futures[future]} completed")
+            time.sleep(0.1)
 
         results, errors = _complete_futures(futures, local_file)
         if errors:
@@ -538,17 +553,21 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
             self.run_relative_artifact_repo_root_path, artifact_file_path or ""
         )
         num_parts = _compute_num_chunks(local_file, MLFLOW_MULTIPART_UPLOAD_CHUNK_SIZE.get())
+        _logger.info(f"[{datetime.now()}] Number of parts: {num_parts}")
         create_mpu_resp = self._create_multipart_upload(
             self.run_id, run_relative_artifact_path, num_parts
         )
+        _logger.info(f"[{datetime.now()}] Created multipart upload")
         try:
             part_etags = self._upload_parts(local_file, create_mpu_resp)
+            _logger.info(f"[{datetime.now()}] Uploaded all parts")
             self._complete_multipart_upload(
                 self.run_id,
                 run_relative_artifact_path,
                 create_mpu_resp.upload_id,
                 part_etags,
             )
+            _logger.info(f"[{datetime.now()}] Completed multipart upload")
         except Exception as e:
             _logger.warning(
                 "Encountered an unexpected error during multipart upload: %s, aborting", e
@@ -557,6 +576,7 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
             raise e
 
     def log_artifact(self, local_file, artifact_path=None):
+        _logger.info(f"[{datetime.now()}] Logging artifact with Databricks Artifact Repository")
         src_file_name = os.path.basename(local_file)
         artifact_file_path = posixpath.join(artifact_path or "", src_file_name)
         write_credential_info = self._get_write_credential_infos([artifact_file_path])[0]

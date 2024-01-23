@@ -1,4 +1,6 @@
+from datetime import datetime
 import json
+import logging
 import os
 import posixpath
 
@@ -29,6 +31,7 @@ LIST_API_ENDPOINT = "/api/2.0/dbfs/list"
 GET_STATUS_ENDPOINT = "/api/2.0/dbfs/get-status"
 DOWNLOAD_CHUNK_SIZE = 1024
 
+_logger = logging.getLogger(__name__)
 
 class DbfsRestArtifactRepository(ArtifactRepository):
     """
@@ -109,16 +112,19 @@ class DbfsRestArtifactRepository(ArtifactRepository):
             # The API frontend doesn't like it when we post empty files to it using
             # `requests.request`, potentially due to the bug described in
             # https://github.com/requests/requests/issues/4215
+            _logger.info(f"[{datetime.now()}] Making empty POST request to {http_endpoint}")
             self._databricks_api_request(
                 endpoint=http_endpoint, method="POST", data="", allow_redirects=False
             )
         else:
+            _logger.info(f"[{datetime.now()}] Making POST request to {http_endpoint}")
             with open(local_file, "rb") as f:
                 self._databricks_api_request(
                     endpoint=http_endpoint, method="POST", data=f, allow_redirects=False
                 )
 
     def log_artifacts(self, local_dir, artifact_path=None):
+        _logger.info(f"[{datetime.now()}] Start logging artifacts from {local_dir} to DBFS")
         artifact_path = artifact_path or ""
         for dirpath, _, filenames in os.walk(local_dir):
             artifact_subdir = artifact_path
@@ -128,6 +134,7 @@ class DbfsRestArtifactRepository(ArtifactRepository):
                 artifact_subdir = posixpath.join(artifact_path, rel_path)
             for name in filenames:
                 file_path = os.path.join(dirpath, name)
+                _logger.info(f"[{datetime.now()}] Start logging artifact {file_path} to DBFS")
                 self.log_artifact(file_path, artifact_subdir)
 
     def list_artifacts(self, path=None):

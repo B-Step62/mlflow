@@ -12,6 +12,7 @@ import pathlib
 import re
 import string
 import sys
+from datetime import datetime
 from functools import lru_cache
 from typing import Any, Dict, List, NamedTuple, Optional, Union
 from urllib.parse import urlparse
@@ -445,6 +446,7 @@ def save_model(
 
     _validate_transformers_model_dict(transformers_model)
 
+    _logger.info(f"[{datetime.now()}] Validated model dictionary")
     if isinstance(transformers_model, dict):
         transformers_model = _TransformersModel.from_dict(**transformers_model)
 
@@ -457,9 +459,11 @@ def save_model(
     code_dir_subpath = _validate_and_copy_code_paths(code_paths, str(path))
 
     resolved_task = _get_or_infer_task_type(transformers_model, task)
+    _logger.info(f"[{datetime.now()}] Resolved task type")
 
     if not isinstance(transformers_model, transformers.Pipeline):
         built_pipeline = _build_pipeline_from_model_input(transformers_model, resolved_task)
+        _logger.info(f"[{datetime.now()}] Build pipeline from model input")
     else:
         built_pipeline = transformers_model
 
@@ -502,7 +506,11 @@ def save_model(
 
     flavor_conf = _generate_base_flavor_configuration(built_pipeline, resolved_task)
 
+    _logger.info(f"[{datetime.now()}] Generated base flavor configuration")
+
     components = _record_pipeline_components(built_pipeline)
+
+    _logger.info(f"[{datetime.now()}] Recorded pipeline components")
 
     if components:
         flavor_conf.update(**components)
@@ -515,6 +523,8 @@ def save_model(
         save_directory=path.joinpath(_MODEL_BINARY_FILE_NAME),
         max_shard_size=MLFLOW_HUGGINGFACE_MODEL_MAX_SHARD_SIZE.get(),
     )
+
+    _logger.info(f"[{datetime.now()}] Saved pretrained model")
 
     if model_config and inference_config:
         raise MlflowException(
@@ -532,8 +542,12 @@ def save_model(
             inference_config=inference_config,
         )
 
+    _logger.info(f"[{datetime.now()}] Saved components")
+
     # Get the model card from either the argument or the HuggingFace marketplace
     card_data = model_card if model_card is not None else _fetch_model_card(transformers_model)
+
+    _logger.info(f"[{datetime.now()}] Fetched model card")
 
     # If the card data can be acquired, save the text and the data separately
     _write_card_data(card_data, path)
@@ -591,12 +605,16 @@ def save_model(
     )
     if size := get_total_file_size(path):
         mlflow_model.model_size_bytes = size
+
+    _logger.info(f"[{datetime.now()}] Retrieved model size: {size}")
     mlflow_model.save(str(path.joinpath(MLMODEL_FILE_NAME)))
 
     if conda_env is None:
         if pip_requirements is None:
             default_reqs = get_default_pip_requirements(transformers_model.model)
+            _logger.info(f"[{datetime.now()}] Start infer pip requirements")
             inferred_reqs = infer_pip_requirements(str(path), FLAVOR_NAME, fallback=default_reqs)
+            _logger.info(f"[{datetime.now()}] Inferred pip requirements")
             default_reqs = sorted(set(inferred_reqs).union(default_reqs))
         else:
             default_reqs = None
@@ -605,6 +623,8 @@ def save_model(
         )
     else:
         conda_env, pip_requirements, pip_constraints = _process_conda_env(conda_env)
+
+    _logger.info(f"[{datetime.now()}] Processed environment")
 
     with path.joinpath(_CONDA_ENV_FILE_NAME).open("w") as f:
         yaml.safe_dump(conda_env, stream=f, default_flow_style=False)
@@ -825,6 +845,7 @@ def log_model(
         prompt_template: {{ prompt_template }}
         kwargs: Additional arguments for :py:class:`mlflow.models.model.Model`
     """
+    _logger.info(f"[{datetime.now()}] Started logging model")
     return Model.log(
         artifact_path=artifact_path,
         flavor=sys.modules[__name__],  # Get the current module.

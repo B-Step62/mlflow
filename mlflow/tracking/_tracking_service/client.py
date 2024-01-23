@@ -4,6 +4,8 @@ This is a lower level API than the :py:mod:`mlflow.tracking.fluent` module, and 
 exposed in the :py:mod:`mlflow.tracking` module.
 """
 
+from datetime import datetime
+import logging
 import os
 from collections import OrderedDict
 from itertools import zip_longest
@@ -32,6 +34,7 @@ from mlflow.utils.validation import (
     _validate_run_id,
 )
 
+_logger = logging.getLogger(__name__)
 
 class TrackingServiceClient:
     """
@@ -535,7 +538,9 @@ class TrackingServiceClient:
         :param local_dir: Path to the directory of files to write.
         :param artifact_path: If provided, the directory in ``artifact_uri`` to write to.
         """
-        self._get_artifact_repo(run_id).log_artifacts(local_dir, artifact_path)
+        repo = self._get_artifact_repo(run_id)
+        _logger.info(f"[{datetime.now()}] Uploading local path {local_dir} to {repo.artifact_uri} with {repo.__class__.__name__}")
+        repo.log_artifacts(local_dir, artifact_path)
 
     def list_artifacts(self, run_id, path=None):
         """

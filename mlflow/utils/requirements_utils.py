@@ -3,6 +3,7 @@ This module provides a set of utilities for interpreting and creating requiremen
 (e.g. pip's `requirements.txt`), which is useful for managing ML software environments.
 """
 
+from datetime import datetime
 import json
 import logging
 import os
@@ -261,9 +262,12 @@ def _capture_imported_modules(model_uri, flavor):
         A list of captured modules.
 
     """
+    _logger.info(f"[{datetime.now()}] Start capturing imported modules")
     local_model_path = _download_artifact_from_uri(model_uri)
+    _logger.info(f"[{datetime.now()}] Downloaded model to {local_model_path}")
 
     process_timeout = MLFLOW_REQUIREMENTS_INFERENCE_TIMEOUT.get()
+    _logger.info(f"[{datetime.now()}] Timeout set to {process_timeout} seconds")
 
     # Run `_capture_modules.py` to capture modules imported during the loading procedure
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -281,6 +285,7 @@ def _capture_imported_modules(model_uri, flavor):
             from mlflow.utils import _capture_transformers_modules
 
             for module_to_throw in ["tensorflow", "torch"]:
+                _logger.info(f"[{datetime.now()}] Attempting to capture for {module_to_throw}")
                 try:
                     _run_command(
                         [
@@ -309,6 +314,7 @@ def _capture_imported_modules(model_uri, flavor):
         # Lazily import `_capture_module` here to avoid circular imports.
         from mlflow.utils import _capture_modules
 
+        _logger.info(f"[{datetime.now()}] Attempting to capture without module_to_throw")
         _run_command(
             [
                 sys.executable,
@@ -414,6 +420,8 @@ def _infer_requirements(model_uri, flavor):
     global _PYPI_PACKAGE_INDEX
     if _PYPI_PACKAGE_INDEX is None:
         _PYPI_PACKAGE_INDEX = _load_pypi_package_index()
+
+    _logger.info(f"[{datetime.now()}] Set up pypi index")
 
     modules = _capture_imported_modules(model_uri, flavor)
     packages = _flatten([_MODULES_TO_PACKAGES.get(module, []) for module in modules])
