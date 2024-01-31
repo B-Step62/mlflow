@@ -465,6 +465,7 @@ class PyFuncModel:
 
         :return: Model predictions as one of pandas.DataFrame, pandas.Series, numpy.ndarray or list.
         """
+        _logger.warning(f"PythonModel input is {data}")
         input_schema = self.metadata.get_input_schema()
         if input_schema is not None:
             try:
@@ -476,7 +477,7 @@ class PyFuncModel:
                     f"with schema '{input_schema}'. "
                     f"Error: {e}",
                 )
-
+        _logger.warning(f"Data after scheme enforcement: {data}")
         params = _validate_params(params, self.metadata)
 
         def _predict():

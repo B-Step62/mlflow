@@ -1883,6 +1883,7 @@ class _TransformersWrapper:
             Model predictions.
         """
         self._override_model_config(params)
+        _logger.warning(f"Received raw data: {data}.")
 
         if isinstance(data, pd.DataFrame):
             input_data = self._convert_pandas_to_dict(data)
@@ -1904,7 +1905,9 @@ class _TransformersWrapper:
                 "or Dict[str, Union[str, List[str]]].",
                 error_code=INVALID_PARAMETER_VALUE,
             )
+        _logger.warning(f"Raw data converted to {input_data}.")
         input_data = self._parse_raw_pipeline_input(input_data)
+        _logger.warning(f"Parsed raw pipelien input to {input_data}.")
         # Validate resolved or input dict types
         if isinstance(input_data, dict):
             _validate_input_dictionary_contains_only_strings_and_lists_of_strings(input_data)
@@ -1931,7 +1934,9 @@ class _TransformersWrapper:
             data = self._format_prompt_template(data)
             output_key = "summary_text"
         elif isinstance(self.pipeline, transformers.Text2TextGenerationPipeline):
+            _logger.warning(f"Received input data {data} for Text2TextGenerationPipeline.")
             data = self._parse_text2text_input(data)
+            _logger.warning(f"Parsed input data to {data}.")
             data = self._format_prompt_template(data)
             output_key = "generated_text"
         elif isinstance(self.pipeline, transformers.TextGenerationPipeline):
@@ -2925,7 +2930,8 @@ class _TransformersWrapper:
 
         # throw for unsupported types
         raise MlflowException.invalid_parameter_value(
-            "Prompt templating is only supported for data of type str or List[str]. "
+            "Prompt templating is only supported for data of type str or List[str], ",
+            f"but received data of type {type(input_data)}",
         )
 
 

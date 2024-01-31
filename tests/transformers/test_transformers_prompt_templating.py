@@ -59,6 +59,7 @@ def saved_transformers_model_path(tmp_path_factory, small_text_generation_model)
         transformers_model=small_text_generation_model,
         path=tmp_path,
         prompt_template=TEST_PROMPT_TEMPLATE,
+        input_example="What is MLflow?",
     )
     return tmp_path
 
