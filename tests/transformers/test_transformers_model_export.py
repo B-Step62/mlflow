@@ -3869,7 +3869,7 @@ def test_model_config_is_not_mutated_after_prediction(text2text_generation_pipel
 
 
 def test_save_base_model_weight_false_pipeline(text_generation_pipeline, model_path):
-    MODEL_SHA = "38cc92ec43315abd5136313225e95acc5986876c" # Hard coded sha for distilgpt2
+    MODEL_SHA = "38cc92ec43315abd5136313225e95acc5986876c"  # Hard coded sha for distilgpt2
 
     with mock.patch("huggingface_hub.HfApi") as hf_api_mock:
         hf_api_mock().model_info.return_value.sha = MODEL_SHA
@@ -3897,11 +3897,18 @@ def test_save_base_model_weight_false_pipeline(text_generation_pipeline, model_p
 
     assert isinstance(inference, list)
 
-def test_save_base_model_weight_false_components(text_generation_pipeline, text2text_generation_pipeline, model_path):
+
+def test_save_base_model_weight_false_components(
+    text_generation_pipeline, text2text_generation_pipeline, model_path
+):
     from huggingface_hub.hf_api import ModelInfo
 
-    _TEXT_GENERATION_PIPELINE_SHA = "38cc92ec43315abd5136313225e95acc5986876c" # the latest sha as of 2024 Feb
-    _TEXT2TEXT_GENERATION_PIPELINE_SHA = "ac76a88701e5b6b8af75be9603ee26f4b361fe2f" # the latest sha as of 2024 Feb
+    _TEXT_GENERATION_PIPELINE_SHA = (
+        "38cc92ec43315abd5136313225e95acc5986876c"  # the latest sha as of 2024 Feb
+    )
+    _TEXT2TEXT_GENERATION_PIPELINE_SHA = (
+        "ac76a88701e5b6b8af75be9603ee26f4b361fe2f"  # the latest sha as of 2024 Feb
+    )
 
     def _mock_hf_api(repo_name: str):
         if repo_name == text_generation_pipeline.model.name_or_path:
@@ -3916,7 +3923,7 @@ def test_save_base_model_weight_false_components(text_generation_pipeline, text2
         mlflow.transformers.save_model(
             transformers_model={
                 "model": text_generation_pipeline.model,
-                "tokenizer": text2text_generation_pipeline.tokenizer
+                "tokenizer": text2text_generation_pipeline.tokenizer,
             },
             path=model_path,
             save_base_model_weight=False,
