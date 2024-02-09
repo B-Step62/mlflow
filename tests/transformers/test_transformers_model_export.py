@@ -3567,11 +3567,19 @@ def test_model_config_is_not_mutated_after_prediction(text2text_generation_pipel
     [
         ("text2text_generation_pipeline", "What is MLflow?", {"tokenizer"}),
         ("text_generation_pipeline", "What is MLflow?", {"tokenizer"}),
-        ("small_vision_model", image_url, {"feature_extractor", "image_processor"}),
+        (
+            "small_vision_model",
+            image_url,
+            {"feature_extractor", "image_processor"}
+            if IS_NEW_FEATURE_EXTRACTION_API
+            else {"feature_extractor"},
+        ),
         (
             "component_multi_modal",
             {"text": "What is MLflow?", "image": image_url},
-            {"image_processor", "tokenizer"},
+            {"image_processor", "tokenizer"}
+            if IS_NEW_FEATURE_EXTRACTION_API
+            else {"feature_extractor", "tokenizer"},
         ),
         ("fill_mask_pipeline", "The quick brown <mask> jumps over the lazy dog.", {"tokenizer"}),
         ("whisper_pipeline", raw_audio_file, {"feature_extractor", "tokenizer"}),
