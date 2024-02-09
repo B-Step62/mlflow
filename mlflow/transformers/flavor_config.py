@@ -1,61 +1,43 @@
 from __future__ import annotations
 
-import functools
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict
 
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+from mlflow.transformers.hub_utis import get_latest_commit_for_repo
 from mlflow.transformers.torch_utils import _extract_torch_dtype_if_set
 
 if TYPE_CHECKING:
     import transformers
 
+
 # Flavor configuration keys
-_TASK_KEY = "task"
-_INSTANCE_TYPE_KEY = "instance_type"
-_TORCH_DTYPE_KEY = "torch_dtype"
-_FRAMEWORK_KEY = "framework"
+class FlavorKey:
+    TASK = "task"
+    INSTANCE_TYPE = "instance_type"
+    TORCH_DTYPE = "torch_dtype"
+    FRAMEWORK = "framework"
 
-_MODEL_KEY = "model"
-_MODEL_TYPE_KEY = "pipeline_model_type"
-_MODEL_BINARY_KEY = "model_binary"
-_MODEL_PATH_OR_NAME_KEY = "source_model_name"
-_MODEL_REVISION_KEY = "source_model_revision"
+    MODEL = "model"
+    MODEL_TYPE = "pipeline_model_type"
+    MODEL_BINARY = "model_binary"
+    MODEL_NAME = "source_model_name"
+    MODEL_REVISION = "source_model_revision"
 
-_COMPONENTS_KEY = "components"
-_COMPONENT_NAME_KEY = "{component}_name"
-_COMPONENT_REVISION_KEY = "{component}_revision"
-_COMPONENT_TYPE_KEY = "{component}_type"
-_TOKENIZER_KEY = "tokenizer"
-_FEATURE_EXTRACTOR_KEY = "feature_extractor"
-_IMAGE_PROCESSOR_KEY = "image_processor"
-_PROCESSOR_KEY = "processor"
-_PROCESSOR_TYPE_KEY = "processor_type"
+    COMPONENTS = "components"
+    COMPONENT_NAME = "%s_name"
+    COMPONENT_REVISION = "%s_revision"
+    COMPONENT_TYPE = "%s_type"
+    TOKENIZER = "tokenizer"
+    FEATURE_EXTRACTOR = "feature_extractor"
+    IMAGE_PROCESSOR = "image_processor"
+    PROCESSOR = "processor"
+    PROCESSOR_TYPE = "processor_type"
 
-_PROMPT_TEMPLATE_KEY = "prompt_template"
+    PROMPT_TEMPLATE = "prompt_template"
 
 
 def build_flavor_config(
-    pipeline: transformers.Pipeline,
-    task: str,
-    processor: Optional[transformers.PreTrainedModel] = None,
-    save_locally=True,
+    pipeline: transformers.Pipeline, task: str, processor=None, save_pretrained=True
 ) -> Dict[str, Any]:
-    """
-    Generate the flavor configuration for a given pipeline.
-
-    Args:
-        pipeline: The pipeline to generate the flavor configuration for.
-        task: The task the pipeline is designed to perform.
-    """
-    flavor_conf = _generate_base_flavor_configuration(pipeline, task)
-    _add_model_to_flavor_configuration(flavor_conf, pipeline, save_locally)
-    components = _get_components_from_pipeline(pipeline)
-    _add_component_to_flavor_configuration(flavor_conf, components, processor, save_locally)
-    return flavor_conf
-
-
-def _generate_base_flavor_configuration(pipeline, task: str) -> Dict[str, str]:
     """
     Generates the base flavor metadata needed for reconstructing a pipeline from saved
     components. This is important because the ``Pipeline`` class does not have a loader
@@ -63,61 +45,96 @@ def _generate_base_flavor_configuration(pipeline, task: str) -> Dict[str, str]:
     metadata for ``FeatureExtractor``s, ``Processor``s, and ``Tokenizer``s exclusively.
     This function extracts key information from the submitted model object so that the precise
     instance types can be loaded correctly.
+
+    Args:
+        pipeline: Transformer pipeline to generate the flavor configuration for.
+        task: The task the pipeline is designed to perform.
+        processor: Optional processor instance to save alongside the pipeline.
+        save_pretrained: Whether to save the pipeline and components weights to local disk.
     """
+    flavor_conf = _generate_base_config(pipeline, task)
+    flavor_conf.update(_get_model_config(pipeline.model, save_pretrained))
 
-    flavor_conf = {
-        _TASK_KEY: task,
-        _INSTANCE_TYPE_KEY: _get_instance_type(pipeline),
-        _MODEL_TYPE_KEY: _get_instance_type(pipeline.model),
-    }
+    components = _get_components_from_pipeline(pipeline, processor)
+    for key, instance in components.items():
+        # Some components don't have name_or_path, then we fallback to the one from the model.
+        flavor_conf.update(
+            _get_component_config(
+                instance, key, save_pretrained, default_repo=pipeline.model.name_or_path
+            )
+        )
 
-    if framework := getattr(pipeline, _FRAMEWORK_KEY, None):
-        flavor_conf[_FRAMEWORK_KEY] = framework
-
-    # Extract a serialized representation of torch_dtype if provided
-    if torch_dtype := _extract_torch_dtype_if_set(pipeline):
-        # Convert the torch dtype and back to standardize the string representation
-        flavor_conf[_TORCH_DTYPE_KEY] = str(torch_dtype)
+    # "components" field doesn't include processor
+    components.pop(FlavorKey.PROCESSOR, None)
+    flavor_conf[FlavorKey.COMPONENTS] = list(components.keys())
 
     return flavor_conf
 
 
-def _add_model_to_flavor_configuration(flavor_conf, pipeline, save_locally: bool = True):
-    """
-    Record Model information
-    """
-    flavor_conf[_MODEL_PATH_OR_NAME_KEY] = _get_base_model_architecture(pipeline)
+def _generate_base_config(pipeline, task):
+    flavor_conf = {
+        FlavorKey.TASK: task,
+        FlavorKey.INSTANCE_TYPE: _get_instance_type(pipeline),
+    }
 
-    if save_locally:
-        # log model path
-        from mlflow.transformers.io import _MODEL_BINARY_FILE_NAME
+    if framework := getattr(pipeline, "framework", None):
+        flavor_conf[FlavorKey.FRAMEWORK] = framework
 
-        flavor_conf[_MODEL_BINARY_KEY] = _MODEL_BINARY_FILE_NAME
+    # Extract a serialized representation of torch_dtype if provided
+    if torch_dtype := _extract_torch_dtype_if_set(pipeline):
+        # Convert the torch dtype and back to standardize the string representation
+        flavor_conf[FlavorKey.TORCH_DTYPE] = str(torch_dtype)
+
+    return flavor_conf
+
+
+def _get_model_config(model, save_pretrained=True):
+    conf = {
+        FlavorKey.MODEL_TYPE: _get_instance_type(model),
+        FlavorKey.MODEL_NAME: model.name_or_path,
+    }
+
+    if save_pretrained:
+        # log local path to model binary file
+        from mlflow.transformers.model_io import _MODEL_BINARY_FILE_NAME
+
+        conf[FlavorKey.MODEL_BINARY] = _MODEL_BINARY_FILE_NAME
     else:
-        # log commit hash in HuggingFace Hub instead
-        flavor_conf[_MODEL_REVISION_KEY] = _get_latest_revision_for_repo(
-            flavor_conf[_MODEL_PATH_OR_NAME_KEY]
-        )
+        # log HuggingFace repo name and commit hash
+        conf[FlavorKey.MODEL_REVISION] = get_latest_commit_for_repo(model.name_or_path)
+
+    return conf
 
 
-def _add_component_to_flavor_configuration(
-    flavor_conf, components, processor=None, save_locally: bool = True
-):
-    # Record auxiliary components information
-    for name, instance in components.items():
-        flavor_conf[_COMPONENT_TYPE_KEY.format(component=name)] = _get_instance_type(instance)
+def _get_component_config(component, key, save_pretrained=True, default_repo=None):
+    conf = {FlavorKey.COMPONENT_TYPE % key: _get_instance_type(component)}
 
-        # Log source repo name and commit sha for the component
-        if not save_locally and (repo_name := getattr(instance, "name_or_path", None)):
-            revision = _get_latest_revision_for_repo(repo_name)
-            flavor_conf[_COMPONENT_NAME_KEY.format(component=name)] = repo_name
-            flavor_conf[_COMPONENT_REVISION_KEY.format(component=name)] = revision
+    # Log source repo name and commit sha for the component
+    if not save_pretrained:
+        repo = getattr(component, "name_or_path", default_repo)
+        revision = get_latest_commit_for_repo(repo)
+        conf[FlavorKey.COMPONENT_NAME % key] = repo
+        conf[FlavorKey.COMPONENT_REVISION % key] = revision
 
-    if components:
-        flavor_conf[_COMPONENTS_KEY] = list(components.keys())
+    return conf
+
+
+def _get_components_from_pipeline(pipeline, processor=None):
+    supported_component_names = [
+        FlavorKey.FEATURE_EXTRACTOR,
+        FlavorKey.TOKENIZER,
+        FlavorKey.IMAGE_PROCESSOR,
+    ]
+
+    components = {}
+    for name in supported_component_names:
+        if instance := getattr(pipeline, name, None):
+            components[name] = instance
 
     if processor:
-        flavor_conf[_PROCESSOR_TYPE_KEY] = _get_instance_type(processor)
+        components[FlavorKey.PROCESSOR] = processor
+
+    return components
 
 
 def _get_instance_type(obj):
@@ -126,48 +143,3 @@ def _get_instance_type(obj):
     the base ABC type of the model.
     """
     return obj.__class__.__name__
-
-
-def _get_components_from_pipeline(pipeline) -> Dict[str, Any]:
-    supported_components = [_FEATURE_EXTRACTOR_KEY, _TOKENIZER_KEY, _IMAGE_PROCESSOR_KEY]
-    return {
-        name: getattr(pipeline, name) for name in supported_components if hasattr(pipeline, name)
-    }
-
-
-@functools.lru_cache(maxsize=1)
-def _get_latest_revision_for_repo(repo_name: str) -> str:
-    """
-    Fetches the latest commit hash for a repository from the HuggingFace model hub.
-
-    Args:
-        repo_name: The name of the repository to fetch the latest commit hash for.
-
-    Returns:
-        The latest commit hash for the repository.
-    """
-    try:
-        import huggingface_hub as hub
-    except ImportError:
-        raise MlflowException(
-            "Unable to fetch model commit hash from the HuggingFace model hub. "
-            "This is required for saving Transformer model without base model "
-            "weights, while ensuring the version consistency of the model. "
-            "Please install the `huggingface-hub` package and retry.",
-            error_code=RESOURCE_DOES_NOT_EXIST,
-        )
-    api = hub.HfApi()
-    model_info = api.model_info(repo_name)
-    return model_info.sha
-
-
-def _get_base_model_architecture(model_or_pipeline):
-    """
-    Extracts the base model architecture type from a submitted model.
-    """
-    from transformers import Pipeline
-
-    if isinstance(model_or_pipeline, Pipeline):
-        return model_or_pipeline.model.name_or_path
-    else:
-        return model_or_pipeline[_MODEL_KEY].name_or_path
