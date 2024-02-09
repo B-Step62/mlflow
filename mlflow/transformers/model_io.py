@@ -103,7 +103,7 @@ def load_model_and_components_from_huggingface_hub(flavor_conf, accelerate_conf,
 def _load_component(flavor_conf, name, local_path=None):
     import transformers
 
-    cls = getattr(transformers, flavor_conf[FlavorKey.COMPONENT_TYPE % name])
+    cls = getattr(transformers, flavor_conf[FlavorKey.COMPONENT_TYPE.format(name)])
 
     if local_path is not None:
         # Load component from local file
@@ -111,8 +111,8 @@ def _load_component(flavor_conf, name, local_path=None):
         return cls.from_pretrained(str(path))
     else:
         # Load component from HuggingFace Hub
-        repo = flavor_conf[FlavorKey.COMPONENT_NAME % name]
-        revision = flavor_conf.get(FlavorKey.COMPONENT_REVISION % name, None)
+        repo = flavor_conf[FlavorKey.COMPONENT_NAME.format(name)]
+        revision = flavor_conf.get(FlavorKey.COMPONENT_REVISION.format(name), None)
         return cls.from_pretrained(repo, revision=revision)
 
 

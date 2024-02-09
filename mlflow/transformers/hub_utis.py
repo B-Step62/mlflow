@@ -48,4 +48,4 @@ def is_valid_hf_repo_id(maybe_repo_id: str) -> bool:
         return True
     except HFValidationError as e:
         _logger.warning(f"The repository identified {maybe_repo_id} is invalid: {e}")
-        return
+        return False
