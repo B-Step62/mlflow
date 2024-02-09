@@ -23,9 +23,9 @@ class FlavorKey:
     MODEL_REVISION = "source_model_revision"
 
     COMPONENTS = "components"
-    COMPONENT_NAME = "%s_name"
-    COMPONENT_REVISION = "%s_revision"
-    COMPONENT_TYPE = "%s_type"
+    COMPONENT_NAME = "{}_name"  # e.g. tokenizer_name
+    COMPONENT_REVISION = "{}_revision"
+    COMPONENT_TYPE = "{}_type"
     TOKENIZER = "tokenizer"
     FEATURE_EXTRACTOR = "feature_extractor"
     IMAGE_PROCESSOR = "image_processor"
@@ -51,6 +51,10 @@ def build_flavor_config(
         task: The task the pipeline is designed to perform.
         processor: Optional processor instance to save alongside the pipeline.
         save_pretrained: Whether to save the pipeline and components weights to local disk.
+
+    Returns:
+        A dictionary containing the flavor configuration for the pipeline and its components,
+        i.e. the configurations stored in "transformers" key in the MLModel YAML file.
     """
     flavor_conf = _generate_base_config(pipeline, task)
     flavor_conf.update(_get_model_config(pipeline.model, save_pretrained))
@@ -107,14 +111,14 @@ def _get_model_config(model, save_pretrained=True):
 
 
 def _get_component_config(component, key, save_pretrained=True, default_repo=None):
-    conf = {FlavorKey.COMPONENT_TYPE % key: _get_instance_type(component)}
+    conf = {FlavorKey.COMPONENT_TYPE.format(key): _get_instance_type(component)}
 
     # Log source repo name and commit sha for the component
     if not save_pretrained:
         repo = getattr(component, "name_or_path", default_repo)
         revision = get_latest_commit_for_repo(repo)
-        conf[FlavorKey.COMPONENT_NAME % key] = repo
-        conf[FlavorKey.COMPONENT_REVISION % key] = revision
+        conf[FlavorKey.COMPONENT_NAME.format(key)] = repo
+        conf[FlavorKey.COMPONENT_REVISION.format(key)] = revision
 
     return conf
 

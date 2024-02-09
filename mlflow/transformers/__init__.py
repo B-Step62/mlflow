@@ -141,6 +141,9 @@ _PROMPT_TEMPLATE_RETURN_FULL_TEXT_INFO = (
     "`model_config` dict with `return_full_text` set to `True` when saving the model."
 )
 
+#
+_MLFLOW_VERSION_SAVE_PRETRAINED_PARAM_ADDED = Version("2.11.0")
+
 _logger = logging.getLogger(__name__)
 
 
@@ -531,6 +534,14 @@ def save_model(
 
     # Create the flavor configuration
     flavor_conf = build_flavor_config(built_pipeline, transformers_task, processor, save_pretrained)
+
+    if llm_inference_task:
+        flavor_conf.update({_LLM_INFERENCE_TASK_KEY: llm_inference_task})
+        if mlflow_model.metadata:
+            mlflow_model.metadata[_METADATA_LLM_INFERENCE_TASK_KEY] = llm_inference_task
+        else:
+            mlflow_model.metadata = {_METADATA_LLM_INFERENCE_TASK_KEY: llm_inference_task}
+
     mlflow_model.add_flavor(
         FLAVOR_NAME,
         transformers_version=transformers.__version__,
@@ -538,12 +549,8 @@ def save_model(
         **flavor_conf,
     )
 
-    if llm_inference_task:
-        flavor_conf.update({_LLM_INFERENCE_TASK_KEY: task})
-        if mlflow_model.metadata:
-            mlflow_model.metadata[_METADATA_LLM_INFERENCE_TASK_KEY] = task
-        else:
-            mlflow_model.metadata = {_METADATA_LLM_INFERENCE_TASK_KEY: task}
+    # Flavor config should not be mutated after being added to MLModel
+    flavor_conf = MappingProxyType(flavor_conf)
 
     # Save pipeline model and components weights
     if save_pretrained:
@@ -1041,9 +1048,10 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
 
     accelerate_model_conf["low_cpu_mem_usage"] = MLFLOW_HUGGINGFACE_USE_LOW_CPU_MEM_USAGE.get()
 
-    # Load model and components either from local or from HuggingFace Hub.
-    # NB: Before mlflow 2.4.1, binary key was "pipeline" so we need to check both
-    if FlavorKey.MODEL_BINARY in flavor_config or "pipeline" in flavor_config:
+    # Load model and components either from local or from HuggingFace Hub. We check for the
+    # presence of the model revision (a commit hash of the hub repository) that is only present
+    # in the model logged with `save_pretrained=False
+    if FlavorKey.MODEL_REVISION not in flavor_config:
         model_and_components = load_model_and_components_from_local(
             path=pathlib.Path(path),
             flavor_conf=flavor_config,
