@@ -459,6 +459,7 @@ def save_model(
                                     release without warning.
         example_no_conversion: {{ example_no_conversion }}
         prompt_template: {{ prompt_template }}
+        save_pretrained: {{ save_pretrained }}
         kwargs: Optional additional configurations for transformers serialization.
 
     """
@@ -870,6 +871,7 @@ def log_model(
                                     release without warning.
         example_no_conversion: {{ example_no_conversion }}
         prompt_template: {{ prompt_template }}
+        save_pretrained: {{ save_pretrained }}
         kwargs: Additional arguments for :py:class:`mlflow.models.model.Model`
     """
     return Model.log(
