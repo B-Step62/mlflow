@@ -58,7 +58,11 @@ def load_model_and_components_from_local(path, flavor_conf, accelerate_conf, dev
     model_path = path.joinpath(flavor_conf.get(FlavorKey.MODEL_BINARY, "pipeline"))
     loaded[FlavorKey.MODEL] = _load_model(model_path, flavor_conf, accelerate_conf, device)
 
-    for component_key in flavor_conf.get(FlavorKey.COMPONENTS, []):
+    components = flavor_conf.get(FlavorKey.COMPONENTS, [])
+    if FlavorKey.PROCESSOR_TYPE in flavor_conf:
+        components.append("processor")
+
+    for component_key in components:
         loaded[component_key] = _load_component(flavor_conf, component_key, local_path=path)
 
     return loaded
