@@ -17,7 +17,7 @@ import shutil
 import string
 import sys
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import numpy as np
@@ -46,34 +46,21 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_DOES_NOT_EXIST,
 )
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
-from mlflow.transformers.flavor_config import (
-    _FEATURE_EXTRACTOR_KEY,
-    _FRAMEWORK_KEY,
-    _IMAGE_PROCESSOR_KEY,
-    _INSTANCE_TYPE_KEY,
-    _MODEL_BINARY_KEY,
-    _MODEL_KEY,
-    _PROCESSOR_TYPE_KEY,
-    _PROMPT_TEMPLATE_KEY,
-    _TASK_KEY,
-    _TOKENIZER_KEY,
-    _TORCH_DTYPE_KEY,
-    build_flavor_config,
-)
-from mlflow.transformers.io import (
-    _COMPONENTS_BINARY_DIR_NAME,
-    _MODEL_BINARY_FILE_NAME,
-    _load_model_and_components_from_huggingface_hub,
-    _load_model_and_components_from_local,
-    save_pipeline_local,
-)
+from mlflow.transformers.flavor_config import FlavorKey, build_flavor_config
+from mlflow.transformers.hub_utis import is_valid_hf_repo_id
 from mlflow.transformers.llm_inference_utils import (
     _LLM_INFERENCE_TASK_KEY,
     _METADATA_LLM_INFERENCE_TASK_KEY,
     _SUPPORTED_LLM_INFERENCE_TASK_TYPES_BY_PIPELINE_TASK,
     postprocess_output_for_llm_inference_task,
 )
-from mlflow.transformers.torch_utils import _deserialize_torch_dtype
+from mlflow.transformers.model_io import (
+    _COMPONENTS_BINARY_DIR_NAME,
+    load_model_and_components_from_huggingface_hub,
+    load_model_and_components_from_local,
+    save_pipeline_pretrained_weights,
+)
+from mlflow.transformers.torch_utils import _TORCH_DTYPE_KEY, _deserialize_torch_dtype
 from mlflow.types.utils import _validate_input_dictionary_contains_only_strings_and_lists_of_strings
 from mlflow.utils.annotations import experimental
 from mlflow.utils.autologging_utils import (
@@ -129,11 +116,6 @@ if IS_TRANSFORMERS_AVAILABLE:
         infer_or_get_default_signature,
     )
 
-# The following import is only used for type hinting
-if TYPE_CHECKING:
-    pass
-
-
 FLAVOR_NAME = "transformers"
 
 _CARD_TEXT_FILE_NAME = "model_card.md"
@@ -148,11 +130,11 @@ _SUPPORTED_RETURN_TYPES = {"pipeline", "components"}
 _TRANSFORMERS_DEFAULT_CPU_DEVICE_ID = -1
 _TRANSFORMERS_DEFAULT_GPU_DEVICE_ID = 0
 _SUPPORTED_SAVE_KEYS = {
-    _MODEL_KEY,
-    _TOKENIZER_KEY,
-    _FEATURE_EXTRACTOR_KEY,
-    _IMAGE_PROCESSOR_KEY,
-    _TORCH_DTYPE_KEY,
+    FlavorKey.MODEL,
+    FlavorKey.TOKENIZER,
+    FlavorKey.FEATURE_EXTRACTOR,
+    FlavorKey.IMAGE_PROCESSOR,
+    FlavorKey.TORCH_DTYPE,
 }
 
 _SUPPORTED_PROMPT_TEMPLATING_TASK_TYPES = {
@@ -249,12 +231,12 @@ def _validate_transformers_model_dict(transformers_model):
                 f"{_SUPPORTED_SAVE_KEYS}",
                 error_code=INVALID_PARAMETER_VALUE,
             )
-        if _MODEL_KEY not in transformers_model:
+        if FlavorKey.MODEL not in transformers_model:
             raise MlflowException(
-                f"The 'transformers_model' dictionary must have an entry for {_MODEL_KEY}",
+                f"The 'transformers_model' dictionary must have an entry for {FlavorKey.MODEL}",
                 error_code=INVALID_PARAMETER_VALUE,
             )
-        model = transformers_model[_MODEL_KEY]
+        model = transformers_model[FlavorKey.MODEL]
     else:
         model = transformers_model.model
     if not hasattr(model, "name_or_path"):
@@ -298,7 +280,7 @@ def save_model(
     model_config: Optional[Dict[str, Any]] = None,
     example_no_conversion: bool = False,
     prompt_template: Optional[str] = None,
-    save_base_model_weight: bool = True,
+    save_pretrained: bool = True,
     **kwargs,  # pylint: disable=unused-argument
 ) -> None:
     """
@@ -488,12 +470,12 @@ def save_model(
             "to indicate any model configuration you need to use for inference."
         )
 
-    _validate_transformers_task_type(task)
     _validate_transformers_model_dict(transformers_model)
-    _validate_env_arguments(conda_env, pip_requirements, extra_pip_requirements)
 
     if isinstance(transformers_model, dict):
         transformers_model = _TransformersModel.from_dict(**transformers_model)
+
+    _validate_env_arguments(conda_env, pip_requirements, extra_pip_requirements)
 
     path = pathlib.Path(path).absolute()
 
@@ -502,6 +484,7 @@ def save_model(
     code_dir_subpath = _validate_and_copy_code_paths(code_paths, str(path))
 
     transformers_task, llm_inference_task = _get_or_infer_task_type(transformers_model, task)
+    _validate_transformers_task_type(transformers_task)
 
     if not isinstance(transformers_model, transformers.Pipeline):
         built_pipeline = _build_pipeline_from_model_input(transformers_model, transformers_task)
@@ -549,14 +532,20 @@ def save_model(
 
         _validate_prompt_template(prompt_template)
         if mlflow_model.metadata:
-            mlflow_model.metadata[_PROMPT_TEMPLATE_KEY] = prompt_template
+            mlflow_model.metadata[FlavorKey.PROMPT_TEMPLATE] = prompt_template
         else:
-            mlflow_model.metadata = {_PROMPT_TEMPLATE_KEY: prompt_template}
+            mlflow_model.metadata = {FlavorKey.PROMPT_TEMPLATE: prompt_template}
+
+    if not save_pretrained and not is_valid_hf_repo_id(built_pipeline.model.name_or_path):
+        _logger.warning(
+            "The save_pretrained parameter is set to False, but the specified model does not "
+            "have a valid HuggingFace Hub repository identifier. Therefore, the weights will "
+            "be saved to disk anyway."
+        )
+        save_pretrained = True
 
     # Create the flavor configuration
-    flavor_conf = build_flavor_config(
-        built_pipeline, transformers_task, processor, save_locally=save_base_model_weight
-    )
+    flavor_conf = build_flavor_config(built_pipeline, transformers_task, processor, save_pretrained)
     mlflow_model.add_flavor(
         FLAVOR_NAME,
         transformers_version=transformers.__version__,
@@ -571,15 +560,14 @@ def save_model(
         else:
             mlflow_model.metadata = {_METADATA_LLM_INFERENCE_TASK_KEY: task}
 
-    # Save the model and components locally
-    if save_base_model_weight:
-        save_pipeline_local(path, built_pipeline, flavor_conf, processor)
-        if size := get_total_file_size(path):
-            mlflow_model.model_size_bytes = size
+    # Save pipeline model and components weights
+    if save_pretrained:
+        save_pipeline_pretrained_weights(path, built_pipeline, flavor_conf, processor)
     else:
+        repo = built_pipeline.model.name_or_path
         _logger.info(
-            "Skipping saving model and component weights as `save_model_weight` is "
-            "set to False. Only the reference to the pretrained models will be saved."
+            "Skipping saving pretrained model weights to disk as the save_pretrained is set to "
+            f"False. The reference to HuggingFace Hub repository {repo} will be logged instead."
         )
 
     if inference_config:
@@ -596,6 +584,9 @@ def save_model(
 
     # If the card data can be acquired, save the text and the data separately
     _write_card_data(card_data, path)
+
+    # Write the license information (or guidance) along with the model
+    _write_license_information(model_name, card_data, path)
 
     # Only allow a subset of task types to have a pyfunc definition.
     # Currently supported types are NLP-based language tasks which have a pipeline definition
@@ -619,16 +610,13 @@ def save_model(
                 model_config[return_full_text_key] = False
                 _logger.info(_PROMPT_TEMPLATE_RETURN_FULL_TEXT_INFO)
 
-        model_bin_kwargs = (
-            {_MODEL_BINARY_KEY: _MODEL_BINARY_FILE_NAME} if save_base_model_weight else {}
-        )
         pyfunc.add_to_model(
             mlflow_model,
             loader_module="mlflow.transformers",
             conda_env=_CONDA_ENV_FILE_NAME,
             python_env=_PYTHON_ENV_FILE_NAME,
             code=code_dir_subpath,
-            **model_bin_kwargs,
+            model_config=model_config,
         )
     else:
         if processor:
@@ -642,6 +630,9 @@ def save_model(
             f"This model is unable to be used for pyfunc prediction because {reason} "
             f"The pyfunc flavor will not be added to the Model."
         )
+
+    if size := get_total_file_size(path):
+        mlflow_model.model_size_bytes = size
 
     mlflow_model.save(str(path.joinpath(MLMODEL_FILE_NAME)))
 
@@ -694,7 +685,7 @@ def log_model(
     model_config: Optional[Dict[str, Any]] = None,
     example_no_conversion: bool = False,
     prompt_template: Optional[str] = None,
-    save_base_model_weight: bool = True,
+    save_pretrained: bool = True,
     **kwargs,
 ):
     """
@@ -901,7 +892,7 @@ def log_model(
         model_config=model_config,
         example_no_conversion=example_no_conversion,
         prompt_template=prompt_template,
-        save_base_model_weight=save_base_model_weight,
+        save_pretrained=save_pretrained,
         **kwargs,
     )
 
@@ -973,7 +964,7 @@ def load_model(
 
     flavor_config = _get_flavor_configuration_from_uri(model_uri, FLAVOR_NAME, _logger)
 
-    if return_type == "pipeline" and _PROCESSOR_TYPE_KEY in flavor_config:
+    if return_type == "pipeline" and FlavorKey.PROCESSOR_TYPE in flavor_config:
         raise MlflowException(
             "This model has been saved with a processor. Processor objects are "
             "not compatible with Pipelines. Please load this model by specifying "
@@ -1027,9 +1018,9 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
     import transformers
 
     conf = {
-        "task": flavor_config[_TASK_KEY],
+        "task": flavor_config[FlavorKey.TASK],
     }
-    if framework := flavor_config.get(_FRAMEWORK_KEY, None):
+    if framework := flavor_config.get(FlavorKey.FRAMEWORK, None):
         conf["framework"] = framework
 
     if device is None:
@@ -1054,28 +1045,28 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
         conf["device"] = device
         accelerate_model_conf["device"] = device
 
-    if _TORCH_DTYPE_KEY in flavor_config or _TORCH_DTYPE_KEY in kwargs:
-        if _TORCH_DTYPE_KEY in kwargs:
-            dtype_val = kwargs[_TORCH_DTYPE_KEY]
-        else:
-            dtype_val = _deserialize_torch_dtype(flavor_config[_TORCH_DTYPE_KEY])
+    if dtype_val := kwargs.get(_TORCH_DTYPE_KEY, None) or flavor_config.get(
+        FlavorKey.TORCH_DTYPE, None
+    ):
+        if isinstance(dtype_val, str):
+            dtype_val = _deserialize_torch_dtype(dtype_val)
         conf[_TORCH_DTYPE_KEY] = dtype_val
         accelerate_model_conf[_TORCH_DTYPE_KEY] = dtype_val
 
     accelerate_model_conf["low_cpu_mem_usage"] = MLFLOW_HUGGINGFACE_USE_LOW_CPU_MEM_USAGE.get()
 
-    # Load model and components either from local or from HuggingFace Hub
+    # Load model and components either from local or from HuggingFace Hub.
     # NB: Before mlflow 2.4.1, binary key was "pipeline" so we need to check both
-    if _MODEL_BINARY_KEY in flavor_config or "pipeline" in flavor_config:
-        model_and_components = _load_model_and_components_from_local(
-            local_path=pathlib.Path(path),
-            flavor_config=flavor_config,
+    if FlavorKey.MODEL_BINARY in flavor_config or "pipeline" in flavor_config:
+        model_and_components = load_model_and_components_from_local(
+            path=pathlib.Path(path),
+            flavor_conf=flavor_config,
+            accelerate_conf=accelerate_model_conf,
             device=device,
-            accelerate_model_conf=accelerate_model_conf,
         )
     else:
-        model_and_components = _load_model_and_components_from_huggingface_hub(
-            flavor_config=flavor_config, device=device, accelerate_model_conf=accelerate_model_conf
+        model_and_components = load_model_and_components_from_huggingface_hub(
+            flavor_conf=flavor_config, accelerate_conf=accelerate_model_conf, device=device
         )
 
     conf = {**conf, **model_and_components}
@@ -2174,7 +2165,7 @@ class _TransformersWrapper:
             # that can be set for these generator pipelines. It is off by default (False).
             if (
                 not include_prompt
-                and flavor_config[_INSTANCE_TYPE_KEY] in self._supported_custom_generator_types
+                and flavor_config[FlavorKey.INSTANCE_TYPE] in self._supported_custom_generator_types
                 and data_out.startswith(data_in + "\n\n")
             ):
                 # If the user has indicated to not preserve the prompt input in the response,
@@ -2827,7 +2818,7 @@ def _get_prompt_template(model_path):
 
     model_conf = Model.load(model_path)
     if model_conf.metadata:
-        return model_conf.metadata.get(_PROMPT_TEMPLATE_KEY)
+        return model_conf.metadata.get(FlavorKey.PROMPT_TEMPLATE)
 
     return None
 
