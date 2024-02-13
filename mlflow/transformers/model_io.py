@@ -5,6 +5,7 @@ from mlflow.environment_variables import (
     MLFLOW_HUGGINGFACE_MODEL_MAX_SHARD_SIZE,
 )
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import INVALID_STATE
 from mlflow.transformers.flavor_config import FlavorKey
 
 _logger = logging.getLogger(__name__)
@@ -80,14 +81,14 @@ def load_model_and_components_from_huggingface_hub(flavor_conf, accelerate_conf,
     loaded = {}
 
     model_repo = flavor_conf[FlavorKey.MODEL_NAME]
-    model_revision = flavor_conf.get(FlavorKey.MODEL_REVISION, None)
+    model_revision = flavor_conf.get(FlavorKey.MODEL_REVISION)
 
     if not model_revision:
-        _logger.warn(
-            "It seems the specified model is saved with 'save_pretrained' set to False, "
-            "but the model commit hash is not found in the saved configuration. MLflow will "
-            "fallback to loading the latest available model from HuggingFace Hub, but it may "
-            "cause inconsistency issue if the model is updated in HuggingFace Hub."
+        raise MlflowException(
+            "The model was saved with 'save_pretrained' set to False, but the commit hash is not "
+            "found in the saved metadata. Loading the model with the different version may cause "
+            "inconsistency issue and security risk.",
+            error_code=INVALID_STATE,
         )
 
     loaded[FlavorKey.MODEL] = _load_model(
@@ -116,7 +117,7 @@ def _load_component(flavor_conf, name, local_path=None):
     else:
         # Load component from HuggingFace Hub
         repo = flavor_conf[FlavorKey.COMPONENT_NAME.format(name)]
-        revision = flavor_conf.get(FlavorKey.COMPONENT_REVISION.format(name), None)
+        revision = flavor_conf.get(FlavorKey.COMPONENT_REVISION.format(name))
         return cls.from_pretrained(repo, revision=revision)
 
 
@@ -139,7 +140,7 @@ def _load_model(model_name_or_path, flavor_conf, accelerate_conf, device, revisi
         return model
 
     load_kwargs["device"] = device
-    if torch_dtype := flavor_conf.get(FlavorKey.TORCH_DTYPE, None):
+    if torch_dtype := flavor_conf.get(FlavorKey.TORCH_DTYPE):
         load_kwargs[FlavorKey.TORCH_DTYPE] = torch_dtype
 
     if model := _try_load_model_with_device(cls, model_name_or_path, load_kwargs):
@@ -170,7 +171,7 @@ def _try_load_model_with_device(model_class, model_name_or_path, load_kwargs):
     try:
         return model_class.from_pretrained(model_name_or_path, **load_kwargs)
     except OSError as e:
-        revision = load_kwargs.get("revision", None)
+        revision = load_kwargs.get("revision")
         if f"{revision} is not a valid git identifier" in str(e):
             raise MlflowException(
                 f"The model was saved with a HuggingFace Hub repository name '{model_name_or_path}'"

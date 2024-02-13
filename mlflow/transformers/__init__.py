@@ -577,7 +577,9 @@ def save_model(
             "Indicating `inference_config` is deprecated and will be removed in a future version "
             "of MLflow. Use `model_config` instead."
         )
-        path.joinpath(_INFERENCE_CONFIG_BINARY_KEY).write_text(json.dumps(inference_config))
+        path.joinpath(_INFERENCE_CONFIG_BINARY_KEY).write_text(
+            json.dumps(inference_config, indent=2)
+        )
 
     model_name = transformers_model.model.name_or_path
 
@@ -1023,7 +1025,7 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
     conf = {
         "task": flavor_config[FlavorKey.TASK],
     }
-    if framework := flavor_config.get(FlavorKey.FRAMEWORK, None):
+    if framework := flavor_config.get(FlavorKey.FRAMEWORK):
         conf["framework"] = framework
 
     if device is None:
@@ -1048,9 +1050,7 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
         conf["device"] = device
         accelerate_model_conf["device"] = device
 
-    if dtype_val := kwargs.get(_TORCH_DTYPE_KEY, None) or flavor_config.get(
-        FlavorKey.TORCH_DTYPE, None
-    ):
+    if dtype_val := kwargs.get(_TORCH_DTYPE_KEY) or flavor_config.get(FlavorKey.TORCH_DTYPE):
         if isinstance(dtype_val, str):
             dtype_val = _deserialize_torch_dtype(dtype_val)
         conf[_TORCH_DTYPE_KEY] = dtype_val

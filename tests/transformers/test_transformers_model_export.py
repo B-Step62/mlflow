@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import textwrap
 from unittest import mock
 
@@ -122,6 +123,10 @@ def sound_file_for_test():
 
 @pytest.fixture
 def raw_audio_file():
+    read_raw_audio_file()
+
+
+def read_raw_audio_file():
     datasets_path = pathlib.Path(__file__).resolve().parent.parent.joinpath("datasets")
 
     return datasets_path.joinpath("apollo11_launch.wav").read_bytes()
@@ -3629,34 +3634,7 @@ def test_text_generation_task_chat_serve(text_generation_pipeline):
     assert output_dict["usage"]["prompt_tokens"] < 20
 
 
-def test_save_base_model_weight_false_pipeline(text_generation_pipeline, model_path):
-    MODEL_SHA = "38cc92ec43315abd5136313225e95acc5986876c"  # Hard coded sha for distilgpt2
-
-    with mock.patch("huggingface_hub.HfApi") as hf_api_mock:
-        hf_api_mock().model_info.return_value.sha = MODEL_SHA
-
-        mlflow.transformers.save_model(
-            transformers_model=text_generation_pipeline,
-            path=model_path,
-            save_base_model_weight=False,
-            input_example="What is MLflow?",
-        )
-
-    # Validate the contents of MLModel file
-    mlmodel = yaml.safe_load(model_path.joinpath("MLmodel").read_bytes())
-    flavor_conf = mlmodel["flavors"]["transformers"]
-    assert "model_binary" not in flavor_conf
-    assert flavor_conf["source_model_name"] == "distilgpt2"
-    assert flavor_conf["source_model_revision"] == MODEL_SHA
-    assert flavor_conf["tokenizer_name"] == "distilgpt2"
-    assert flavor_conf["tokenizer_revision"] == MODEL_SHA
-
-    pyfunc_loaded = mlflow.pyfunc.load_model(model_path)
-
-    question = "What is the meaning of life?"
-    inference = pyfunc_loaded.predict(question)
-
-    assert isinstance(inference, list)
+HF_COMMIT_HASH_PATTERN = re.compile(r"[a-z0-9]{40}")
 
 
 @pytest.mark.parametrize(
@@ -3679,7 +3657,7 @@ def test_save_base_model_weight_false_pipeline(text_generation_pipeline, model_p
             else {"feature_extractor", "tokenizer"},
         ),
         ("fill_mask_pipeline", "The quick brown <mask> jumps over the lazy dog.", {"tokenizer"}),
-        ("whisper_pipeline", raw_audio_file, {"feature_extractor", "tokenizer"}),
+        ("whisper_pipeline", read_raw_audio_file, {"feature_extractor", "tokenizer"}),
         ("feature_extraction_pipeline", "What is MLflow?", {"tokenizer"}),
     ],
 )
@@ -3696,23 +3674,23 @@ def test_save_and_load_pipeline_without_save_pretrained_false(
     )
 
     # No weights should be saved
-    assert not os.path.exists(model_path.joinpath("model"))
-    assert not os.path.exists(model_path.joinpath("components"))
+    assert not model_path.joinpath("model").exists()
+    assert not model_path.joinpath("components").exists()
 
     # Validate the contents of MLModel file
     mlmodel = yaml.safe_load(model_path.joinpath("MLmodel").read_bytes())
     flavor_conf = mlmodel["flavors"]["transformers"]
     assert "model_binary" not in flavor_conf
     assert flavor_conf["source_model_name"] == model.name_or_path
-    assert len(flavor_conf["source_model_revision"]) == 40
+    assert HF_COMMIT_HASH_PATTERN.match(flavor_conf["source_model_revision"])
     assert set(flavor_conf["components"]) == components
     for c in components:
         component = pipeline[c] if isinstance(pipeline, dict) else getattr(pipeline, c)
         assert flavor_conf[f"{c}_name"] == getattr(component, "name_or_path", model.name_or_path)
-        assert len(flavor_conf[f"{c}_revision"]) == 40
+        assert HF_COMMIT_HASH_PATTERN.match(flavor_conf[f"{c}_revision"])
 
     # Validate pyfunc load and prediction (if pyfunc supported)
     if "python_function" in mlmodel["flavors"]:
-        if hasattr(input_example, "_pytestfixturefunction"):
-            input_example = request.getfixturevalue(input_example.__name__)
+        if callable(input_example):
+            input_example = input_example()
         mlflow.pyfunc.load_model(model_path).predict(input_example)

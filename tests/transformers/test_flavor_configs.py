@@ -2,6 +2,7 @@ import pytest
 
 from mlflow.transformers import _build_pipeline_from_model_input, _TransformersModel
 from mlflow.transformers.flavor_config import build_flavor_config
+from mlflow.transformers.hub_utils import is_valid_hf_repo_id
 
 from tests.transformers.helper import IS_NEW_FEATURE_EXTRACTION_API
 
@@ -101,7 +102,7 @@ def test_flavor_config_component_multi_modal_save_pretrained_false(multi_modal_p
         assert len(conf[f"{component}_revision"]) == 40
 
 
-def is_valid_hf_repo_id(tmp_path):
+def test_is_valid_hf_repo_id(tmp_path):
     assert is_valid_hf_repo_id(None) is False
     assert is_valid_hf_repo_id(str(tmp_path)) is False
     assert is_valid_hf_repo_id("invalid/repo/name") is False
