@@ -111,7 +111,7 @@ def _load_component(flavor_conf, name, local_path=None):
 
     if local_path is not None:
         # Load component from local file
-        path = local_path.joinpath(_COMPONENTS_BINARY_DIR_NAME).joinpath(name)
+        path = local_path.joinpath(_COMPONENTS_BINARY_DIR_NAME, name)
         return cls.from_pretrained(str(path))
     else:
         # Load component from HuggingFace Hub

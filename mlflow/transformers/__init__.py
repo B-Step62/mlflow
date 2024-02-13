@@ -47,7 +47,7 @@ from mlflow.protos.databricks_pb2 import (
 )
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.transformers.flavor_config import FlavorKey, build_flavor_config
-from mlflow.transformers.hub_utis import is_valid_hf_repo_id
+from mlflow.transformers.hub_utils import is_valid_hf_repo_id
 from mlflow.transformers.llm_inference_utils import (
     _LLM_INFERENCE_TASK_KEY,
     _METADATA_LLM_INFERENCE_TASK_KEY,

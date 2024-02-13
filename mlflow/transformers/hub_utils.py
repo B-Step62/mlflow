@@ -1,6 +1,7 @@
 import functools
 import logging
 import os
+from typing import Optional
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
@@ -8,6 +9,9 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 _logger = logging.getLogger(__name__)
 
 
+# NB: The maxsize=1 is added for encouraging the cache refresh so the user doesn't get stale
+#    commit hash from the cache. This doesn't work perfectly because it only updates cache
+#    when the user calls it with a different repo name, but it's better than nothing.
 @functools.lru_cache(maxsize=1)
 def get_latest_commit_for_repo(repo: str) -> str:
     """
@@ -26,7 +30,7 @@ def get_latest_commit_for_repo(repo: str) -> str:
     return hub.HfApi().model_info(repo).sha
 
 
-def is_valid_hf_repo_id(maybe_repo_id: str) -> bool:
+def is_valid_hf_repo_id(maybe_repo_id: Optional[str]) -> bool:
     """
     Check if the given string is a valid HuggingFace repo identifier e.g. "username/repo_id".
     """
@@ -37,11 +41,11 @@ def is_valid_hf_repo_id(maybe_repo_id: str) -> bool:
     try:
         from huggingface_hub.utils import HFValidationError, validate_repo_id
     except ImportError:
-        _logger.warning(
-            "The huggingface_hub library is not installed. "
-            "Unable to validate the repository identifier."
+        raise MlflowException(
+            "Unable to validate the repository identifier for the HuggingFace model hub "
+            "because the `huggingface-hub` package is not installed. Please install the "
+            "package with `pip install huggingface-hub` command and retry."
         )
-        return False
 
     try:
         validate_repo_id(maybe_repo_id)

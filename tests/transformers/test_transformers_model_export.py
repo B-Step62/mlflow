@@ -2470,7 +2470,6 @@ def test_instructional_pipeline_with_prompt_in_output(model_path):
     assert "\n\n" in inference[0]
 
 
-@pytest.mark.skipcacheclean
 @pytest.mark.skipif(not _IS_PIPELINE_DTYPE_SUPPORTED_VERSION, reason="Feature does not exist")
 @flaky()
 def test_load_as_pipeline_preserves_framework_and_dtype(model_path):

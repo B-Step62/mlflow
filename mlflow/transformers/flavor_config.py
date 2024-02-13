@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
-from mlflow.transformers.hub_utis import get_latest_commit_for_repo
+from mlflow.transformers.hub_utils import get_latest_commit_for_repo
 from mlflow.transformers.torch_utils import _extract_torch_dtype_if_set
 
 if TYPE_CHECKING:
