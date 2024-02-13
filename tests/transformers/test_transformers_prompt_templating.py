@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock
 
 import pytest
+import transformers
 import yaml
-from transformers import pipeline
+from packaging.version import Version
 
 import mlflow
 from mlflow.exceptions import MlflowException
@@ -40,13 +41,15 @@ UNSUPPORTED_PIPELINES = [
     "depth-estimation",
     "video-classification",
     "mask-generation",
-    "image-to-image",
 ]
+
+if Version(transformers.__version__) >= Version("4.34.1"):
+    UNSUPPORTED_PIPELINES.append("image-to-image")
 
 
 @pytest.fixture(scope="session")
 def small_text_generation_model():
-    return pipeline("text-generation", model="distilgpt2")
+    return transformers.pipeline("text-generation", model="distilgpt2")
 
 
 @pytest.fixture(scope="session")
@@ -119,7 +122,7 @@ def test_model_save_override_return_full_text(tmp_path, small_text_generation_mo
 
 
 def test_saving_prompt_throws_on_unsupported_task():
-    model = pipeline("text-generation", model="distilgpt2")
+    model = transformers.pipeline("text-generation", model="distilgpt2")
 
     for pipeline_type in UNSUPPORTED_PIPELINES:
         # mock the task by setting it explicitly
