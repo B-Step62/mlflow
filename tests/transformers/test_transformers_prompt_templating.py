@@ -7,11 +7,8 @@ from transformers import pipeline
 import mlflow
 from mlflow.exceptions import MlflowException
 from mlflow.models.model import MLMODEL_FILE_NAME
-from mlflow.transformers import (
-    _PROMPT_TEMPLATE_KEY,
-    _SUPPORTED_PROMPT_TEMPLATING_TASK_TYPES,
-    _validate_prompt_template,
-)
+from mlflow.transformers import _SUPPORTED_PROMPT_TEMPLATING_TASK_TYPES, _validate_prompt_template
+from mlflow.transformers.flavor_config import FlavorKey
 
 # session fixtures to prevent saving and loading a ~400mb model every time
 TEST_PROMPT_TEMPLATE = "Answer the following question like a pirate:\nQ: {prompt}\nA: "
@@ -103,7 +100,7 @@ def test_prompt_save_and_load(saved_transformers_model_path):
     with open(mlmodel_path) as f:
         mlmodel_dict = yaml.safe_load(f)
 
-    assert mlmodel_dict["metadata"][_PROMPT_TEMPLATE_KEY] == TEST_PROMPT_TEMPLATE
+    assert mlmodel_dict["metadata"][FlavorKey.PROMPT_TEMPLATE] == TEST_PROMPT_TEMPLATE
 
     model = mlflow.pyfunc.load_model(saved_transformers_model_path)
     assert model._model_impl.prompt_template == TEST_PROMPT_TEMPLATE
