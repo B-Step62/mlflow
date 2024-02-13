@@ -123,7 +123,7 @@ def sound_file_for_test():
 
 @pytest.fixture
 def raw_audio_file():
-    read_raw_audio_file()
+    return read_raw_audio_file()
 
 
 def read_raw_audio_file():
