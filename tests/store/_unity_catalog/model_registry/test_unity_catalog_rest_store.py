@@ -233,15 +233,16 @@ def test_create_model_version_missing_python_deps(store, local_model_dir):
         store.create_model_version(name=model_name, source=str(local_model_dir))
 
 
+_TEST_SIGNATURE = ModelSignature(
+    inputs=Schema([ColSpec(DataType.double)]), outputs=Schema([ColSpec(DataType.double)])
+)
+
 @pytest.fixture
 def feature_store_local_model_dir(tmp_path):
-    fake_signature = ModelSignature(
-        inputs=Schema([ColSpec(DataType.double)]), outputs=Schema([ColSpec(DataType.double)])
-    )
     fake_mlmodel_contents = {
         "artifact_path": "some-artifact-path",
         "run_id": "abc123",
-        "signature": fake_signature.to_dict(),
+        "signature": _TEST_SIGNATURE.to_dict(),
         "flavors": {"python_function": {"loader_module": "databricks.feature_store.mlflow_model"}},
     }
     with open(tmp_path.joinpath(MLMODEL_FILE_NAME), "w") as handle:
@@ -286,6 +287,47 @@ def test_create_model_version_missing_output_signature(store, tmp_path):
         match="Model passed for registration contained a signature that includes only inputs",
     ):
         store.create_model_version(name="mymodel", source=str(tmp_path))
+
+
+@mock.patch("mlflow.transformers.persist_pretrained_model", return_value=None)
+def test_create_model_version_transformers_model_save_pretrained_false(persist_api_mock, store, tmp_path):
+    fake_mlmodel_contents = {
+        "flavors": {
+            "transformers": {
+                "source_model_name": "SOME_MODEL",
+                "source_model_revision": "SOME_COMMIT_HASH"
+            }
+        },
+        "signature": _TEST_SIGNATURE.to_dict(),
+    }
+    with open(tmp_path.joinpath(MLMODEL_FILE_NAME), "w") as handle:
+        yaml.dump(fake_mlmodel_contents, handle)
+    store.create_model_version(name="mymodel", source=str(tmp_path))
+
+    persist_api_mock.assert_called_once_with(str(tmp_path))
+
+
+@mock.patch("mlflow.transformers.persist_pretrained_model", side_effect=Exception)
+def test_create_model_version_transformers_model_save_pretrained_false_download_fail(persist_api_mock, store, tmp_path):
+    fake_mlmodel_contents = {
+        "flavors": {
+            "transformers": {
+                "source_model_name": "SOME_MODEL",
+                "source_model_revision": "SOME_COMMIT_HASH"
+            }
+        },
+        "signature": _TEST_SIGNATURE.to_dict(),
+    }
+    with open(tmp_path.joinpath(MLMODEL_FILE_NAME), "w") as handle:
+        yaml.dump(fake_mlmodel_contents, handle)
+
+    with pytest.raises(
+        MlflowException,
+        match="Failed to download the model weights from the HuggingFac",
+    ):
+        store.create_model_version(name="mymodel", source=str(tmp_path))
+
+    persist_api_mock.assert_called_once_with(str(tmp_path))
 
 
 @mock_http_200
