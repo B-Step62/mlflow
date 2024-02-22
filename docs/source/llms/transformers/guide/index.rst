@@ -726,8 +726,8 @@ source_model_revision: "d632f0c8b75b1ae5b26b250d25bfba4e99cb7c6f"
 
 .. _caveats-of-save-pretrained:
 
-Caveats
-^^^^^^^
+Caveats of Reference-Only Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 While the ``save_pretrained`` argument is useful for saving storage space and reducing logging latency, it has the following caveats to be aware of:
 
@@ -737,6 +737,7 @@ While the ``save_pretrained`` argument is useful for saving storage space and re
 
 * **Limited Databricks Integration**: If you are using Databricks, be aware that the model saved with `save_pretrained=False` cannot be registered to the legacy `Workspace Model Registry <https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/workspace-model-registry.html>`_. If you want to register the reference-only Transformer model, please use `Unity Catalog <https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/index.html>`_ instead, or download the model weight in advance using :py:func:`mlflow.transformers.presist_pretrained_model()` API as described in the next section.
 
+.. _persist-pretrained-guide:
 
 Persist the Model Weight to the Existing Reference-Only Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -771,3 +772,61 @@ If you want to update the reference-only model to the one contains the model wei
 PEFT Models in MLflow Transformers flavor
 -----------------------------------------
 
+.. warning::
+
+    The PEFT model is supported in MLflow 2.11.0 and above, and still in experimental stage. The API and behavior may change in future releases. Moreover, the `PEFT <https://huggingface.co/docs/peft/en/index>`_ library is under active development, so not all features
+    and adapter types might be supported in MLflow.
+
+`PEFT <https://huggingface.co/docs/peft/en/index>`_ is a library developed by HuggingFace🤗, that enables developers to easily integrate various optimization methods with pretrained models available on the HuggingFace Hub. With PEFT, you can easily apply various optimization techniques like LoRA, QLoRA, and more for reducing the cost of fine-tuning Transformers models significantly.
+
+In MLflow 2.11.0, we introduced support for PEFT models in the Transformers flavor. You can log and load PEFT models using the same APIs as for other Transformers models, such as :py:func:`mlflow.transformers.log_model()` and :py:func:`mlflow.transformers.load_model()`.
+
+.. code-block:: python
+
+    import mlflow
+    from peft import LoraConfig, get_peft_model
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    model_id = "databricks/dolly-v2-7b"
+    base_model = AutoModelForCausalLM.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+    peft_config = LoraConfig(...)
+    peft_model = get_peft_model(base_model, peft_config)
+
+    with mlflow.start_run():
+        # Your training code here
+        ...
+
+        # Log the PEFT model
+        model_info = mlflow.transformers.log_model(
+            transformers_model={
+                "model": peft_model,
+                "tokenizer": tokenizer,
+            },
+            artifact_path="peft_model",
+        )
+
+    # Load the PEFT model
+    loaded_model = mlflow.transformers.load_model(model_info.model_uri)
+
+PEFT Models in MLflow Tutorial
+^^^^^^^^^^^^^^^^^^^^^^^
+For a more in-depth guide on how to use PEFT models in MLflow, check out the tutorial: `Fine-Tuning Open-Source LLM using QLoRA with MLflow and PEFT <../tutorials/transformers_peft.ipynb>`_.
+
+Format of Saved PEFT Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+MLflow saves PEFT model using Transformer's `save_pretained() <https://huggingface.co/docs/transformers/v4.38.1/en/main_classes/model#transformers.PreTrainedModel.save_pretrained>`_ method under the hood. For PEFT models, this API only saves the PEFT adapter and the configuration, but not the base model (`HuggingFace reference <https://huggingface.co/docs/peft/en/quicktour#save-model>`_), so MLflow will follow the same behavior. As the PEFT adapter is much smaller than the base model, this is super efficient in terms of storage space and logging latency.
+
+Namely, this behaves similarly to when you save a normal Transformer model with `save_pretrained=False` as described in :ref:`Storage-Efficient Model Logging with save_pretrained Option <storage-efficient-model-logging-with-save-pretrained-option>`. The following artifacts are saved:
+
+* The PEFT adapter weight under ``/peft`` directory.
+* The PEFT configuration as a JSON file under ``/peft`` directory.
+* The HuggingFace Hub repository name and commit hash for the base model in the ``MLModel`` metadata file.
+
+
+Limitations of PEFT Models in MLflow
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Since the model saving/loading behavior for PEFT models is similar to the one with `save_pretrained=False`, the same caveats as described in :ref:`Caveats of Reference-Only Models <caveats-of-save-pretrained>` apply to PEFT models as well. For example, the base model weight may be deleted or become private in the HuggingFace Hub. Also, the PEFT model cannot be registered to the legacy Databricks Workspace Model Registry.
+
+In order to save the base model weight to MLflow, you can use :py:func:`mlflow.transformers.persist_pretrained_model()` API as described in :ref:`Persist the Model Weight to the Existing Reference-Only Model <persist-pretrained-guide>`. This will download the base model weight from the HuggingFace Hub and save it to the artifact location, and update the metadata of the given PEFT model.

@@ -242,9 +242,9 @@ To learn more about the nuances of the `transformers` flavor in MLflow, delve in
 
 - `Input Data Types for Audio Pipelines <guide/index.html#input-data-types-for-audio-pipelines>`_: Understand the specific requirements for handling audio data in transformers pipelines, including the handling of different input types like str, bytes, and np.ndarray.
 
-- `Storage-Efficient Model Logging with save_pretrained Option <guides/index.html>`_: Learn how to leverage the new ``save_pretrained`` option to speed up model saving and loading for large foundational models without consuming excessive storage space.
+- `Storage-Efficient Model Logging with save_pretrained Option <guide/index.html#peft-models-in-mlflow-transformers-flavorl>`_: Learn how to leverage the new ``save_pretrained`` option to speed up model saving and loading for large foundational models without consuming excessive storage space.
 
-- `PEFT Models in MLflow Transformers flavor <guides/index.html>`_: PEFT (Parameter-Efficient Fine-Tuning) is natively supported in MLflow, enabling various optimization techniques like LoRA, QLoRA, and more for reducing fine-tuning cost significantly. Check out the guide and tutorials to learn more about how to leverage PEFT with MLflow.
+- `PEFT Models in MLflow Transformers flavor <guide/index.html#peft-models-in-mlflow-transformers-flavor>`_: PEFT (Parameter-Efficient Fine-Tuning) is natively supported in MLflow, enabling various optimization techniques like LoRA, QLoRA, and more for reducing fine-tuning cost significantly. Check out the guide and tutorials to learn more about how to leverage PEFT with MLflow.
 
 .. toctree::
     :maxdepth: 1
