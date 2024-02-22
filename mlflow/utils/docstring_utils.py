@@ -282,7 +282,7 @@ it to MLflow without modifying the model weights. In such case, specifying this 
 
     If the model is saved with ``save_pretrained`` set to ``False``, the model cannot be
     registered to the MLflow Model Registry. In order to convert the model to the one that
-    can be registered, you can use mlflow.transformers.download_pretrained_model() to download
+    can be registered, you can use mlflow.transformers.persist_pretrained_model() to download
     the model weights from the HuggingFace Hub and save it in the existing model artifacts.
 
     .. code-block:: python
@@ -290,7 +290,7 @@ it to MLflow without modifying the model weights. In such case, specifying this 
         import mlflow.transformers
 
         model_uri = "YOUR_MODEL_URI_LOGGED_WITH_SAVE_PRETRAINED_FALSE"
-        model = mlflow.transformers.download_pretrained_model(model_uri)
+        model = mlflow.transformers.persist_pretrained_model(model_uri)
         mlflow.register_model(model_uri, "model_name")
 
 .. important::

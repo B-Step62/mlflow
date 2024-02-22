@@ -679,3 +679,95 @@ This input format requires that both the bitrate has been set prior to conversio
     must have the model saved with a signature configuration that reflects this schema. Failure to do so will result in type casting errors due to the default signature for
     audio transformers pipelines being set as expecting ``binary`` (``bytes``) data. The serving endpoint cannot accept a union of types, so a particular model instance must choose one
     or the other as an allowed input type.
+
+
+Storage-Efficient Model Logging with save_pretrained Option
+-----------------------------------------------------------
+
+.. warning::
+
+    The ``save_pretrained`` argument is only available in MLflow 2.11.0 and above, and still in experimental stage. The API and behavior may change in future releases. Moreover, this feature is intended for advanced users who are familiar with Transformers and MLflow, understanding :ref:`the potential risks <caveats-of-save-pretrained>` of using this feature.
+
+Avoiding Redundant Model Copy by Setting ``save_pretrained=False``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When MLflow logs an ML model, it always saves a copy of the model weight to the artifact store. 
+However, this is not optimal for one common Transformers use case: You use a pretrained model from HuggingFace Hub, without any modification to the model weight but just to other assets such as prompt and parameters. For such case, those copy of model weight is redundant and takes up unnecessary storage space.
+
+In MLflow 2.11.0, a new argument ``save_pretrained`` was introduced to the :py:func:`mlflow.transformers.save_model()` or :py:func:`mlflow.transformers.log_model()` APIs to address this issue. This parameter is set to ``True`` by default and doesn't change the model saving behavior. However, when set to ``False``, MLflow will not save the copy of the pretrained model weight, but only the reference to the HuggingFace Hub, namely, a repository name and a commit hash. When loading back such *refernce-only* model, MLflow will check the repository name and commit hash from the saved metadata, and download the model weight from the HuggingFace Hub, or use the cached model from HuggingFace local cache directory.
+
+
+A good analogy is file *copy* vs *symlink*. The default behavior is copy: MLflow creates a copy of the model weight, but with ``save_pretrained=False``, MLflow just logs a link to the HuggingFace Hub repository. This will save storage space and reduce the logging latency significantly, particularly for large models like LLMs.
+
+
+Example Usage
+^^^^^^^^^^^^^
+
+Here is the example of using ``save_pretrained`` argument for logging a model
+
+.. code-block:: python
+
+    import transformers
+
+    pipeline = transformers.pipeline(task="text-generation", model="databricks/dolly-v2-7b", torch_dtype="torch.float16")
+
+    with mlflow.start_run():
+        mlflow.transformers.log_model(
+            transformers_model=pipeline,
+            artifact_path="dolly",
+            save_pretrained=False,
+        )
+
+MLflow will not save the copy of Dolly-v2-7B model weight, instead logs the following metadata as a reference to the HuggingFace Hub model. This will save storage space about 15GB and reduce the logging latency significantly as well.
+```
+source_model_name: "databricks/dolly-v2-7b"
+source_model_revision: "d632f0c8b75b1ae5b26b250d25bfba4e99cb7c6f"
+```
+
+.. _caveats-of-save-pretrained:
+
+Caveats
+^^^^^^^
+
+While the ``save_pretrained`` argument is useful for saving storage space and reducing logging latency, it has the following caveats to be aware of:
+
+* **Change in Model Unavailability**: If you are using a model from other users' repository, themodel may be deleted or become private in the HuggingFace Hub. In such case, MLflow cannot load the model back. For production use cases, it is recommended to save the copy model weight to the artifact store once for your production model.
+
+* **HuggingFace Hub Access**: The model downloading from the HuggingFace Hub might be slow or unstable due to the network condition or the HuggingFace Hub service condition. MLflow doesn't provide any retry mechanism or robust error handling for the model downloading.
+
+* **Limited Databricks Integration**: If you are using Databricks, be aware that the model saved with `save_pretrained=False` cannot be registered to the legacy `Workspace Model Registry <https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/workspace-model-registry.html>`_. If you want to register the reference-only Transformer model, please use `Unity Catalog <https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/index.html>`_ instead, or download the model weight in advance using :py:func:`mlflow.transformers.presist_pretrained_model()` API as described in the next section.
+
+
+Persist the Model Weight to the Existing Reference-Only Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you want to update the reference-only model to the one contains the model weight, you can use :py:func:`mlflow.transformers.persist_pretrained_model()` API. This API will download the model weight from the HuggingFace Hub, save it to the artifact location, and update the metadata of the given reference-only model. After this operation, the model will be equivalent to the one saved with `save_pretrained=True` and be ready for the production use.
+
+.. code-block:: python
+
+    import mlflow
+    import transformers
+
+    pipeline = transformers.pipeline(task="text-generation", model="databricks/dolly-v2-7b", torch_dtype="torch.float16")
+
+    # Save the reference-only Transformer model
+    with mlflow.start_run():
+        model_info = mlflow.transformers.log_model(
+            transformers_model=pipeline,
+            artifact_path="dolly",
+            save_pretrained=False,
+        )
+
+    # Model weight is not saved to the artifact store
+    assert not os.path.exists(model_info.artifact_path + "/model")
+
+    # This will download the model weight from the HuggingFace Hub and save it
+    # to the artifact location
+    mlflow.transformers.persist_pretrained_model(model_info.model_uri)
+
+    assert os.path.exists(model_info.artifact_path + "/model")
+
+
+PEFT Models in MLflow Transformers flavor
+-----------------------------------------
+
