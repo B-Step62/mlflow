@@ -680,9 +680,10 @@ This input format requires that both the bitrate has been set prior to conversio
     audio transformers pipelines being set as expecting ``binary`` (``bytes``) data. The serving endpoint cannot accept a union of types, so a particular model instance must choose one
     or the other as an allowed input type.
 
+.. _transformers-save-pretrained-guide:
 
-Storage-Efficient Model Logging with save_pretrained Option
------------------------------------------------------------
+Storage-Efficient Model Logging with ``save_pretrained`` Option
+---------------------------------------------------------------
 
 .. warning::
 
@@ -692,7 +693,7 @@ Avoiding Redundant Model Copy by Setting ``save_pretrained=False``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When MLflow logs an ML model, it always saves a copy of the model weight to the artifact store. 
-However, this is not optimal for one common Transformers use case: You use a pretrained model from HuggingFace Hub, without any modification to the model weight but just to other assets such as prompt and parameters. For such case, those copy of model weight is redundant and takes up unnecessary storage space.
+However, this is not optimal for one common Transformers use case: using a pretrained model from HuggingFace Hub, without any modification to the model weight but just to other assets such as prompt and parameters. For such case, those copy of model weight is redundant and takes up unnecessary storage space.
 
 In MLflow 2.11.0, a new argument ``save_pretrained`` was introduced to the :py:func:`mlflow.transformers.save_model()` or :py:func:`mlflow.transformers.log_model()` APIs to address this issue. This parameter is set to ``True`` by default and doesn't change the model saving behavior. However, when set to ``False``, MLflow will not save the copy of the pretrained model weight, but only the reference to the HuggingFace Hub, namely, a repository name and a commit hash. When loading back such *refernce-only* model, MLflow will check the repository name and commit hash from the saved metadata, and download the model weight from the HuggingFace Hub, or use the cached model from HuggingFace local cache directory.
 
