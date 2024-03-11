@@ -1,14 +1,12 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List
+from mlflow.traces.client.base import TraceClient
 from mlflow.traces.types import Span, Trace
 
-class TraceClient(ABC):
-    @abstractmethod
-    def log_trace(self, trace: Trace):
-        pass
 
 
+# TODO: Move to unit test
 class DummyTraceClient(TraceClient):
 
 
