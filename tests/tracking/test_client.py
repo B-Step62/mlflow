@@ -13,7 +13,6 @@ from mlflow.entities import (
     RunStatus,
     RunTag,
     SourceType,
-    TraceAttribute,
     TraceStatus,
     ViewType,
 )
@@ -44,6 +43,8 @@ from mlflow.utils.mlflow_tags import (
     MLFLOW_SOURCE_TYPE,
     MLFLOW_USER,
 )
+
+from tests.tracing.conftest import mock_client as mock_trace_client  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -145,8 +146,8 @@ def test_client_create_trace(mock_store, mock_time):
         start_time=123,
         end_time=456,
         status=TraceStatus.from_string("OK"),
-        attributes=[TraceAttribute("key", "val")],
-        tags=[],
+        attributes={"key": "val"},
+        tags={},
     )
 
 
@@ -155,7 +156,7 @@ def test_client_get_trace_info(mock_store):
     mock_store.get_trace_info.assert_called_once_with("1234567")
 
 
-def test_start_and_end_trace():
+def test_start_and_end_trace(mock_trace_client):
     class TestModel:
         def __init__(self):
             self._client = MlflowClient()
@@ -246,7 +247,7 @@ def test_start_and_end_trace():
     assert child_span_2.start_time <= child_span_2.end_time - 0.1 * 1e9
 
 
-def test_start_and_end_trace_before_all_span_end():
+def test_start_and_end_trace_before_all_span_end(mock_trace_client):
     # This test is to verify that the trace is still exported even if some spans are not ended
     import mlflow
     from mlflow.tracing.types.model import StatusCode
