@@ -7,9 +7,7 @@ from typing import Dict, Optional
 
 from opentelemetry import trace as trace_api
 
-from mlflow.entities.trace_info import TraceInfo
-from mlflow.entities.trace_status import TraceStatus
-from mlflow.tracing.types.model import Trace, TraceData, TraceInfo
+from mlflow.entities import Trace, TraceData, TraceInfo, TraceStatus
 from mlflow.tracing.types.wrapper import MLflowSpanWrapper, NoOpMLflowSpanWrapper
 
 _logger = logging.getLogger(__name__)

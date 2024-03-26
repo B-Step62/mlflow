@@ -1,7 +1,7 @@
 import json
 
 import mlflow
-from mlflow.tracing.types.model import SpanType
+from mlflow.entities import SpanType
 
 
 def test_json_deserialization(mock_client):
@@ -32,7 +32,7 @@ def test_json_deserialization(mock_client):
             "experiment_id": "EXPERIMENT",
             "start_time": trace.trace_info.start_time,
             "end_time": trace.trace_info.end_time,
-            "status": {"status_code": "StatusCode.OK", "description": ""},
+            "status": 1,
             "attributes": {
                 "name": "predict",
                 "inputs": '{"x": 2, "y": 5}',
