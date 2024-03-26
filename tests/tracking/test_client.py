@@ -13,7 +13,8 @@ from mlflow.entities import (
     RunStatus,
     RunTag,
     SourceType,
-    TraceAttribute,
+    SpanStatus,
+    SpanType,
     TraceStatus,
     ViewType,
 )
@@ -28,7 +29,6 @@ from mlflow.store.model_registry.sqlalchemy_store import (
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore as SqlAlchemyTrackingStore
 from mlflow.tracing.types.constant import TraceAttributeKey
-from mlflow.tracing.types.model import SpanType, Status, StatusCode
 from mlflow.tracking import set_registry_uri
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking._model_registry.utils import (
@@ -44,6 +44,8 @@ from mlflow.utils.mlflow_tags import (
     MLFLOW_SOURCE_TYPE,
     MLFLOW_USER,
 )
+
+from tests.tracing.conftest import mock_client as mock_trace_client  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -145,8 +147,8 @@ def test_client_create_trace(mock_store, mock_time):
         start_time=123,
         end_time=456,
         status=TraceStatus.from_string("OK"),
-        attributes=[TraceAttribute("key", "val")],
-        tags=[],
+        attributes={"key": "val"},
+        tags={},
     )
 
 
@@ -155,7 +157,7 @@ def test_client_get_trace_info(mock_store):
     mock_store.get_trace_info.assert_called_once_with("1234567")
 
 
-def test_start_and_end_trace():
+def test_start_and_end_trace(mock_trace_client):
     class TestModel:
         def __init__(self):
             self._client = MlflowClient()
@@ -186,7 +188,9 @@ def test_start_and_end_trace():
             )
 
             res = self.square(z, trace_id, root_span.span_id)
-            self._client.end_trace(trace_id, outputs={"output": res}, status=Status(StatusCode.OK))
+            self._client.end_trace(
+                trace_id, outputs={"output": res}, status=SpanStatus(SpanStatus.StatusCode.OK)
+            )
             return res
 
         def square(self, t, trace_id, parent_span_id):
@@ -215,7 +219,7 @@ def test_start_and_end_trace():
     trace_info = traces[0].trace_info
     assert trace_info.trace_id is not None
     assert trace_info.start_time <= trace_info.end_time - 0.1 * 1e9  # at least 0.1 sec
-    assert trace_info.status.status_code == StatusCode.OK
+    assert trace_info.status == TraceStatus.OK
     assert trace_info.attributes[TraceAttributeKey.INPUTS] == '{"x": 1, "y": 2}'
     assert trace_info.attributes[TraceAttributeKey.OUTPUTS] == '{"output": 25}'
 
@@ -246,14 +250,11 @@ def test_start_and_end_trace():
     assert child_span_2.start_time <= child_span_2.end_time - 0.1 * 1e9
 
 
-def test_start_and_end_trace_before_all_span_end():
+def test_start_and_end_trace_before_all_span_end(mock_trace_client):
     # This test is to verify that the trace is still exported even if some spans are not ended
-    import mlflow
-    from mlflow.tracing.types.model import StatusCode
-
     class TestModel:
         def __init__(self):
-            self._client = mlflow.tracking.MlflowClient()
+            self._client = MlflowClient()
 
         def predict(self, x):
             root_span = self._client.start_trace(name="predict")
@@ -287,7 +288,7 @@ def test_start_and_end_trace_before_all_span_end():
     trace_info = traces[0].trace_info
     assert trace_info.trace_id is not None
     assert trace_info.start_time < trace_info.end_time
-    assert trace_info.status.status_code == StatusCode.OK
+    assert trace_info.status == TraceStatus.OK
 
     spans = traces[0].trace_data.spans
     assert len(spans) == 3  # The non-ended span should be also included in the trace
@@ -295,21 +296,21 @@ def test_start_and_end_trace_before_all_span_end():
     span_name_to_span = {span.name: span for span in spans}
     root_span = span_name_to_span["predict"]
     assert root_span.parent_span_id is None
-    assert root_span.status.status_code == StatusCode.OK
+    assert root_span.status.status_code == SpanStatus.StatusCode.OK
     assert root_span.start_time == trace_info.start_time
     assert root_span.end_time == trace_info.end_time
 
     ended_span = span_name_to_span["ended-span"]
     assert ended_span.parent_span_id == root_span.context.span_id
     assert ended_span.start_time < ended_span.end_time
-    assert ended_span.status.status_code == StatusCode.OK
+    assert ended_span.status.status_code == SpanStatus.StatusCode.OK
 
     # The non-ended span should have null end_time and UNSET status
     non_ended_span = span_name_to_span["non-ended-span"]
     assert non_ended_span.parent_span_id == root_span.context.span_id
     assert non_ended_span.start_time is not None
     assert non_ended_span.end_time is None
-    assert non_ended_span.status.status_code == StatusCode.UNSET
+    assert non_ended_span.status.status_code == SpanStatus.StatusCode.UNSET
 
 
 def test_client_create_experiment(mock_store):

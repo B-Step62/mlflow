@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 from opentelemetry import trace as trace_api
 
-from mlflow.tracing.types.model import Status, StatusCode, Trace, TraceData, TraceInfo
+from mlflow.entities import Trace, TraceData, TraceInfo, TraceStatus
 from mlflow.tracing.types.wrapper import MLflowSpanWrapper, NoOpMLflowSpanWrapper
 
 _logger = logging.getLogger(__name__)
@@ -113,11 +113,10 @@ class InMemoryTraceManager:
     ):
         trace_info = TraceInfo(
             trace_id=trace_id,
-            experiment_id=experiment_id
-            or "EXPERIMENT",  # TODO: Fetch this from global state or create a new one
+            experiment_id=experiment_id or "EXPERIMENT",  # TODO: Fetch this from global state
             start_time=None,
             end_time=None,
-            status=Status(StatusCode.UNSET),
+            status=TraceStatus.UNSPECIFIED,
             attributes=attributes or {},
             tags=tags or {},
         )

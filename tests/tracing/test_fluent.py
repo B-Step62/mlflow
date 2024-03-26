@@ -2,8 +2,9 @@ import time
 from unittest import mock
 
 import mlflow
+from mlflow.entities.span import SpanType
+from mlflow.entities.trace_status import TraceStatus
 from mlflow.tracing.types.constant import TraceAttributeKey
-from mlflow.tracing.types.model import SpanType, StatusCode
 
 
 def test_trace(mock_client):
@@ -33,7 +34,7 @@ def test_trace(mock_client):
     trace_info = trace.trace_info
     assert trace_info.trace_id is not None
     assert trace_info.start_time <= trace_info.end_time - 0.1 * 1e9  # at least 0.1 sec
-    assert trace_info.status.status_code == StatusCode.OK
+    assert trace_info.status == TraceStatus.OK
     assert trace_info.attributes[TraceAttributeKey.INPUTS] == '{"x": 2, "y": 5}'
     assert trace_info.attributes[TraceAttributeKey.OUTPUTS] == '{"output": 64}'
 
@@ -86,7 +87,7 @@ def test_trace_handle_exception_during_prediction(mock_client):
     trace = mlflow.get_traces()[0]
     trace_info = trace.trace_info
     assert trace_info.trace_id is not None
-    assert trace_info.status.status_code == StatusCode.ERROR
+    assert trace_info.status == TraceStatus.ERROR
     assert trace_info.attributes[TraceAttributeKey.INPUTS] == '{"x": 2, "y": 5}'
     assert trace_info.attributes[TraceAttributeKey.OUTPUTS] == ""
 
@@ -154,7 +155,7 @@ def test_start_span_context_manager(mock_client):
     trace_info = trace.trace_info
     assert trace_info.trace_id is not None
     assert trace_info.start_time <= trace_info.end_time - 0.1 * 1e9  # at least 0.1 sec
-    assert trace_info.status.status_code == StatusCode.OK
+    assert trace_info.status == TraceStatus.OK
     assert trace_info.attributes[TraceAttributeKey.INPUTS] == '{"x": 1, "y": 2}'
     assert trace_info.attributes[TraceAttributeKey.OUTPUTS] == '{"output": 25}'
 
@@ -224,7 +225,7 @@ def test_start_span_context_manager_with_imperative_apis(mock_client):
     trace_info = trace.trace_info
     assert trace_info.trace_id is not None
     assert trace_info.start_time <= trace_info.end_time - 0.1 * 1e9  # at least 0.1 sec
-    assert trace_info.status.status_code == StatusCode.OK
+    assert trace_info.status == TraceStatus.OK
     assert trace_info.attributes[TraceAttributeKey.INPUTS] == '{"x": 1, "y": 2}'
     assert trace_info.attributes[TraceAttributeKey.OUTPUTS] == '{"output": 5}'
 
