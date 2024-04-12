@@ -164,12 +164,10 @@ class TrackingServiceClient:
             run_name=run_name,
         )
 
-    def create_trace_info(
+    def start_trace(
         self,
         experiment_id,
         timestamp_ms,
-        execution_time_ms,
-        status,
         request_metadata=None,
         tags=None,
     ):
@@ -178,19 +176,15 @@ class TrackingServiceClient:
         Args:
             experiment_id: String id of the experiment for this run.
             timestamp_ms: int, start time of the trace, in milliseconds.
-            execution_time_ms: int, duration of the trace, in milliseconds.
-            status: string, status of the trace.
             request_metadata: dict, metadata of the trace.
             tags: dict, tags of the trace.
 
         Returns:
             The created TraceInfo object.
         """
-        return self.store.create_trace_info(
+        return self.store.start_trace(
             experiment_id=experiment_id,
             timestamp_ms=timestamp_ms,
-            execution_time_ms=execution_time_ms,
-            status=status,
             request_metadata=request_metadata or {},
             tags=tags or {},
         )

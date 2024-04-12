@@ -202,12 +202,10 @@ class RestStore(AbstractStore):
         response_proto = self._call_endpoint(CreateRun, req_body)
         return Run.from_proto(response_proto.run)
 
-    def create_trace_info(
+    def start_trace(
         self,
         experiment_id,
         timestamp_ms,
-        execution_time_ms,
-        status,
         request_metadata,
         tags,
     ):
@@ -240,11 +238,9 @@ class RestStore(AbstractStore):
             tags_proto.append(tag)
 
         req_body = message_to_json(
-            CreateTrace(
+            StartTrace(
                 experiment_id=str(experiment_id),
                 timestamp_ms=timestamp_ms,
-                execution_time_ms=execution_time_ms,
-                status=status,
                 request_metadata=request_metadata_proto,
                 tags=tags_proto,
             )

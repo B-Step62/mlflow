@@ -147,23 +147,17 @@ def test_client_create_run_with_name(mock_store, mock_time):
     )
 
 
-def test_client_create_trace_info(mock_store, mock_time):
-    experiment_id = mock.Mock()
-
-    MlflowClient()._create_trace_info(
-        experiment_id,
-        123,
-        456,
-        "OK",
+def test_client_start_trace(mock_store, mock_time):
+    MlflowClient()._start_trace(
+        timestamp_nanos=123000000,
+        experiment_id="test",
         request_metadata={"key": "val"},
         tags={},
     )
 
-    mock_store.create_trace_info.assert_called_once_with(
-        experiment_id=experiment_id,
+    mock_store.start_trace.assert_called_once_with(
+        experiment_id="test",
         timestamp_ms=123,
-        execution_time_ms=456,
-        status=TraceStatus.OK,
         request_metadata={"key": "val"},
         tags={},
     )
@@ -235,6 +229,7 @@ def test_client_delete_traces(mock_store):
 
 
 def test_start_and_end_trace(clear_singleton, mock_trace_client):
+    assert mlflow.get_current_active_span() is None
     class TestModel:
         def __init__(self):
             self._client = MlflowClient()

@@ -34,6 +34,7 @@ from mlflow.entities import (
 )
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
 from mlflow.entities.model_registry.model_version_stages import ALL_STAGES
+from mlflow.entities.trace_info import TraceInfo
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
     BAD_REQUEST,
@@ -53,6 +54,7 @@ from mlflow.store.model_registry import (
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT, SEARCH_TRACES_DEFAULT_MAX_RESULTS
 from mlflow.tracing.clients import get_trace_client
 from mlflow.tracing.display import get_display_handler
+from mlflow.tracing.provider import start_detached_otel_span
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.types.wrapper import MlflowSpanWrapper
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
@@ -380,37 +382,6 @@ class MlflowClient:
         """
         return self._tracking_client.create_run(experiment_id, start_time, tags, run_name)
 
-    def _create_trace_info(
-        self,
-        experiment_id,
-        timestamp_ms,
-        execution_time_ms,
-        status,
-        request_metadata=None,
-        tags=None,
-    ):
-        """Create a TraceInfo object and log in the backend store.
-
-        Args:
-            experiment_id: String id of the experiment for this run.
-            timestamp_ms: int, start time of the trace, in milliseconds.
-            execution_time_ms: int, duration of the trace, in milliseconds.
-            status: string, status of the trace.
-            request_metadata: dict, metadata of the trace.
-            tags: dict, tags of the trace.
-
-        Returns:
-            :py:class:`mlflow.entities.TraceInfo` that was created.
-        """
-        return self._tracking_client.create_trace_info(
-            experiment_id,
-            timestamp_ms,
-            execution_time_ms,
-            status,
-            request_metadata=request_metadata,
-            tags=tags,
-        )
-
     def delete_traces(
         self,
         experiment_id: str,
@@ -580,8 +551,16 @@ class MlflowClient:
                 error_code=BAD_REQUEST,
             )
 
+        otel_span = start_detached_otel_span(name, parent_span=None)
+        trace_info = self._start_trace(
+            experiment_id=experiment_id,
+            timestamp_ms=otel_span._start_time,
+            tags=tags,
+        )
+
         trace_manager = InMemoryTraceManager.get_instance()
-        root_span = trace_manager.start_detached_span(name, span_type=span_type)
+        trace_manager.add_trace(trace_id=otel_span.get_span_context().trace_id, trace_info=trace_info)
+        root_span = trace_manager.get_or_create_mlflow_span(otel_span, span_type)
 
         if inputs:
             root_span.set_inputs(inputs)
@@ -596,6 +575,36 @@ class MlflowClient:
             trace_info.experiment_id = experiment_id
 
         return root_span
+
+    def _start_trace(
+        self,
+        timestamp_nanos,
+        experiment_id=None,
+        request_metadata=None,
+        tags=None,
+    ) -> TraceInfo:
+        """Create a TraceInfo object and log in the backend store.
+
+        Args:
+            experiment_id: String id of the experiment for this run.
+            timestamp_ms: int, start time of the trace, in milliseconds.
+            request_metadata: dict, metadata of the trace.
+            tags: dict, tags of the trace.
+
+        Returns:
+            :py:class:`mlflow.entities.TraceInfo` that was created.
+        """
+        # TODO: request_id should be generated differently if the backend is different e.g. inference table.
+
+        from mlflow.tracking.fluent import _get_experiment_id
+
+        return self._tracking_client.start_trace(
+            experiment_id=experiment_id or _get_experiment_id(),
+            timestamp_ms=timestamp_nanos // 1_000_000,  # nanosecond to millisecond
+            request_metadata=request_metadata or {},
+            tags=tags or {},
+        )
+
 
     def end_trace(
         self,
@@ -765,12 +774,9 @@ class MlflowClient:
             )
 
         trace_manager = InMemoryTraceManager.get_instance()
-        span = trace_manager.start_detached_span(
-            name=name,
-            request_id=request_id,
-            parent_span_id=parent_span_id,
-            span_type=span_type,
-        )
+        parent_span = trace_manager.get_span_from_id(request_id, parent_span_id)
+        otel_span = start_detached_otel_span(name, parent_span=parent_span._span)
+        span = trace_manager.get_or_create_mlflow_span(otel_span, span_type)
 
         if attributes:
             span.set_attributes(attributes)

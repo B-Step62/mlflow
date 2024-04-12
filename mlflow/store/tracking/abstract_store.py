@@ -239,12 +239,10 @@ class AbstractStore:
         """
         pass
 
-    def create_trace_info(
+    def start_trace(
         self,
         experiment_id: str,
         timestamp_ms: int,
-        execution_time_ms: int,
-        status: TraceStatus,
         request_metadata: Dict[str, str],
         tags: Dict[str, str],
     ) -> TraceInfo:
@@ -254,8 +252,6 @@ class AbstractStore:
         Args:
             experiment_id: String id of the experiment for this run.
             timestamp_ms: int, start time of the trace, in milliseconds.
-            execution_time_ms: int, duration of the trace, in milliseconds.
-            status: `mlflow.entities.TraceStatus`, status of the trace.
             request_metadata: metadata of the trace.
             tags: tags of the trace.
 

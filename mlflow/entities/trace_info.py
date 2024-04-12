@@ -26,8 +26,8 @@ class TraceInfo(_MlflowObject):
     request_id: str
     experiment_id: str
     timestamp_ms: int
-    execution_time_ms: Optional[int]
-    status: TraceStatus
+    execution_time_ms: Optional[int] = None
+    status: TraceStatus = TraceStatus.UNSPECIFIED
     request_metadata: Dict[str, str] = field(default_factory=dict)
     tags: Dict[str, str] = field(default_factory=dict)
 

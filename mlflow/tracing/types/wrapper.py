@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Union
 from opentelemetry import trace as trace_api
 
 from mlflow.entities import Span, SpanContext, SpanEvent, SpanStatus, SpanType, TraceStatus
-from mlflow.tracing.types.constant import TRACE_REQUEST_ID_PREFIX
 
 _logger = logging.getLogger(__name__)
 
@@ -21,7 +20,8 @@ class MlflowSpanWrapper:
     the span is ended, before being sent to the logging client.
     """
 
-    def __init__(self, span: trace_api.Span, span_type: str = SpanType.UNKNOWN):
+    def __init__(self, request_id: str, span: trace_api.Span, span_type: str = SpanType.UNKNOWN):
+        self._request_id = request_id
         self._span = span
         self._span_type = span_type
         self._inputs = None
@@ -34,10 +34,10 @@ class MlflowSpanWrapper:
     def request_id(self) -> str:
         """
         The request ID of the span, a unique identifier for the trace it belongs to.
-        Request ID is equivalent to the trace ID in OpenTelemetry, but prefixed with
-        "tr-" for backend compatibility.
+        Request ID corresponds to the trace ID in OpenTelemetry, but the generation
+        logic varies depending on the storage backend.
         """
-        return TRACE_REQUEST_ID_PREFIX + str(self._span.get_span_context().trace_id)
+        return self._request_id
 
     @property
     def span_id(self) -> str:
@@ -61,8 +61,12 @@ class MlflowSpanWrapper:
         return self._span._end_time // 1_000 if self._span._end_time else None
 
     @property
-    def context(self) -> SpanContext:
-        """The :py:class:`SpanContext <mlflow.entities.SpanContext>` object attached to the span."""
+    def context(self) -> trace_api.SpanContext:
+        """
+        Private property used by OpenTelemetry.
+
+        :meta private:
+        """
         return self._span.get_span_context()
 
     @property

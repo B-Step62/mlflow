@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pandas as pd
+from mlflow.entities.trace_info import TraceInfo
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 from opentelemetry.sdk.trace import ReadableSpan
 
 from mlflow.entities import Span, SpanContext, SpanStatus, TraceStatus
@@ -24,6 +26,7 @@ class _MockSpanContext:
 
 def test_export():
     trace_id = "trace_id"
+    request_id = "request_id"
     otel_span_root = ReadableSpan(
         name="test_span",
         context=_MockSpanContext(trace_id, "span_id_1"),
@@ -57,16 +60,19 @@ def test_export():
     mock_client = MagicMock()
     exporter = MlflowSpanExporter(mock_client)
 
+    trace_manager = InMemoryTraceManager.get_instance()
+    trace_manager.add_trace(trace_id=trace_id, trace_info=TraceInfo(request_id, "test", 0))
+
     # Export the first child span -> no client call
-    exporter.export([MlflowSpanWrapper(otel_span_child_1)])
+    exporter.export([MlflowSpanWrapper(request_id, otel_span_child_1)])
     assert mock_client.log_trace.call_count == 0
 
     # Export the second child span -> no client call
-    exporter.export([MlflowSpanWrapper(otel_span_child_2)])
+    exporter.export([MlflowSpanWrapper(request_id, otel_span_child_2)])
     assert mock_client.log_trace.call_count == 0
 
     # Export the root span -> client call
-    root_span = MlflowSpanWrapper(otel_span_root)
+    root_span = MlflowSpanWrapper(request_id, otel_span_root)
     root_span.set_inputs({"input1": "very long input" * 100})
     root_span.set_outputs("very long output" * 100)
     exporter.export([root_span])
@@ -76,7 +82,6 @@ def test_export():
 
     # Trace info should inherit fields from the root span
     trace_info = client_call_args.info
-    assert trace_info.request_id == f"tr-{trace_id}"
     assert trace_info.timestamp_ms == 0
     assert trace_info.execution_time_ms == 4
     assert trace_info.tags[TraceTagKey.TRACE_NAME] == "test_span"

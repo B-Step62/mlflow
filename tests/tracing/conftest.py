@@ -1,5 +1,6 @@
 import pytest
 from opentelemetry.trace import _TRACER_PROVIDER_SET_ONCE
+from unittest import mock
 
 import mlflow
 from mlflow.entities import Trace, TraceData, TraceInfo, TraceStatus
@@ -43,6 +44,22 @@ def mock_client():
 
     # Clear traces collected in the buffer
     mock_client._flush()
+
+
+@pytest.fixture(autouse=True)
+def mock_store():
+    with mock.patch("mlflow.tracking._tracking_service.utils._get_store") as mock_get_store:
+        mock_store = mock_get_store.return_value
+        def _mock_start_trace(experiment_id, timestamp_ms, tags, request_metadata):
+            return TraceInfo(
+                request_id="test-request-id",
+                experiment_id=experiment_id,
+                timestamp_ms=timestamp_ms,
+                request_metadata=request_metadata,
+                tags=tags,
+            )
+        mock_store.start_trace.side_effect = _mock_start_trace
+        yield mock_store
 
 
 @pytest.fixture

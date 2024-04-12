@@ -55,7 +55,7 @@ class MlflowSpanExporter(SpanExporter):
                 )
                 continue
 
-            self._trace_manager.add_or_update_span(span)
+            self._trace_manager.update_span(span)
 
         # Exporting the trace when the root span is found. Note that we need to loop over
         # the input list again, because the root span might not be the last span in the list.

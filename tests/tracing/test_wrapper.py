@@ -20,7 +20,7 @@ def test_wrapper_property():
     mock_otel_span._end_time = end_time
     mock_otel_span.parent.span_id = "parent_span_id"
 
-    span = MlflowSpanWrapper(mock_otel_span)
+    span = MlflowSpanWrapper("tr-12345", mock_otel_span)
 
     assert span.request_id == "tr-12345"
     assert span.span_id == "span_id"
