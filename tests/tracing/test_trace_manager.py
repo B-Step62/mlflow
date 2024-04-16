@@ -7,9 +7,9 @@ import pytest
 
 import mlflow
 from mlflow.entities import Span, Trace
-from mlflow.entities.span import NoOpSpan
 from mlflow.exceptions import MlflowException
 from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.types.wrapper import NoOpSpan
 
 from tests.tracing.helper import create_mock_otel_span
 

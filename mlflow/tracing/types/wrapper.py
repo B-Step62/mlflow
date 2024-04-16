@@ -300,6 +300,11 @@ class Span:
             "events": [asdict(event) for event in self.events],
         }
 
+    @staticmethod
+    def from_dict(self, data: Dict[str, Any]):
+        # TODO: Implement this
+        raise NotImplementedError
+
 
 class SpanAttributesRegistry:
     def __init__(self, otel_span: OTelSpan):

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from mlflow.entities.span import Span
+from mlflow.tracing.types.wrapper import Span
 
 
 @dataclass
