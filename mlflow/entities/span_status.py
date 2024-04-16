@@ -79,4 +79,4 @@ class SpanStatus:
             )
 
         mlflow_status_code = cls._otel_status_code_to_mlflow[otel_status.status_code]
-        return cls(mlflow_status_code, otel_status.description)
+        return cls(mlflow_status_code, otel_status.description or "")

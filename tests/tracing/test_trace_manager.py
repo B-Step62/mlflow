@@ -6,10 +6,10 @@ from unittest import mock
 import pytest
 
 import mlflow
-from mlflow.entities import Trace
+from mlflow.entities import Span, Trace
+from mlflow.entities.span import NoOpSpan
 from mlflow.exceptions import MlflowException
 from mlflow.tracing.trace_manager import InMemoryTraceManager
-from mlflow.tracing.types.wrapper import MlflowSpanWrapper, NoOpMlflowSpanWrapper
 
 from tests.tracing.helper import create_mock_otel_span
 
@@ -98,7 +98,7 @@ def test_start_detached_span_show_warning_when_parent_not_found(caplog):
     with mock.patch("mlflow.tracing.trace_manager._logger") as mock_logger:
         span = trace_manager.start_detached_span(name="root_span", parent_id="not_found")
 
-    assert isinstance(span, NoOpMlflowSpanWrapper)
+    assert isinstance(span, NoOpSpan)
     warning_message = mock_logger.warning.call_args[0][0]
     assert "Parent span with ID 'not_found' not found." in warning_message
 
@@ -269,6 +269,6 @@ def _create_test_span(
         end_time=end_time,
     )
 
-    span = MlflowSpanWrapper(mock_otel_span, request_id=request_id)
+    span = Span(mock_otel_span, request_id=request_id)
     span.set_status("OK")
     return span
