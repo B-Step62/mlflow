@@ -233,7 +233,10 @@ class RestStore(AbstractStore):
             request_metadata_proto.append(attr)
 
         tags_proto = []
+        IMMUTABLE_TAGS = ["mlflow.user", "mlflow.artifactLocation", "mlflow.log-model.history", "mlflow.rootRunId"]
         for key, value in tags.items():
+            if key in IMMUTABLE_TAGS:
+                continue
             tag = TraceTag()
             tag.key = key
             tag.value = value
@@ -282,7 +285,10 @@ class RestStore(AbstractStore):
             request_metadata_proto.append(attr)
 
         tags_proto = []
+        IMMUTABLE_TAGS = ["mlflow.user", "mlflow.artifactLocation", "mlflow.log-model.history", "mlflow.rootRunId"]
         for key, value in tags.items():
+            if key in IMMUTABLE_TAGS:
+                continue
             tag = TraceTag()
             tag.key = key
             tag.value = value

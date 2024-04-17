@@ -356,7 +356,7 @@ def test_start_and_end_trace(clear_singleton, mock_trace_client, mock_store):
         timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
         status=TraceStatus.OK,
         request_metadata={TraceMetadataKey.INPUTS: '{"x": 1, "y": 2}', TraceMetadataKey.OUTPUTS: '{"output": 25}'},
-        tags={'mlflow.artifactLocation': 'dbfs:/path/to/artifacts', 'tag': 'tag_value', TraceTagKey.TRACE_NAME: "predict"},
+        tags={'tag': 'tag_value', TraceTagKey.TRACE_NAME: "predict"},
     )
 
 @pytest.mark.usefixtures("reset_active_experiment")
