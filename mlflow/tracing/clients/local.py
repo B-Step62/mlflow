@@ -30,10 +30,22 @@ class InMemoryTraceClient(TraceClient):
         self.queue = deque(maxlen=queue_size)
         self._lock = threading.Lock()  # Lock for accessing the queue
 
+        from mlflow.tracking.client import MlflowClient  # avoid circular import
+        self._client = MlflowClient()
+
     def log_trace(self, trace: Trace):
         with self._lock:
             self.queue.append(trace)
         get_display_handler().display_traces([trace])
+
+        created_info = self._client._tracking_client.end_trace(
+            request_id=trace.info.request_id,
+            timestamp_ms=trace.info.timestamp_ms + trace.info.execution_time_ms,
+            status=trace.info.status,
+            request_metadata=trace.info.request_metadata,
+            tags=trace.info.tags,
+        )
+        self._client._upload_trace_data(created_info, trace.data)
 
     def get_traces(self, n: Optional[int] = 10) -> List[Trace]:
         """

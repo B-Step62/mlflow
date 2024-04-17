@@ -16,7 +16,7 @@ from mlflow.tracing.provider import get_tracer
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.types.constant import SpanAttributeKey
 from mlflow.tracing.types.wrapper import MlflowSpanWrapper, NoOpMlflowSpanWrapper
-from mlflow.tracing.utils import capture_function_input_args, format_span_id
+from mlflow.tracing.utils import capture_function_input_args, format_span_id, format_trace_id
 from mlflow.utils import get_results_from_paginated_fn
 
 _logger = logging.getLogger(__name__)
@@ -175,7 +175,16 @@ def start_span(
     try:
         if span is not None:
             trace_manager = InMemoryTraceManager.get_instance()
-            request_id = trace_manager.get_or_create_request_id(span.context.trace_id)
+
+            trace_id = span.context.trace_id
+            if span.parent is None:
+                request_id = trace_manager.create_empty_trace(
+                    trace_id=trace_id,
+                    start_time_ns=span._start_time,
+                )
+            else:
+                request_id = trace_manager._trace_id_to_request_id.get(trace_id)
+
             # Setting end_on_exit = False to suppress the default span
             # export and instead invoke MlflowSpanWrapper.end()
             with trace_api.use_span(span, end_on_exit=False):

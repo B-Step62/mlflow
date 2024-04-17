@@ -29,7 +29,7 @@ from mlflow.store.model_registry.sqlalchemy_store import (
 )
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore as SqlAlchemyTrackingStore
-from mlflow.tracing.types.constant import TraceMetadataKey
+from mlflow.tracing.types.constant import TraceMetadataKey, TraceTagKey
 from mlflow.tracking import set_registry_uri
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking._model_registry.utils import (
@@ -213,7 +213,32 @@ def test_client_delete_traces(mock_store):
     )
 
 
-def test_start_and_end_trace(clear_singleton, mock_trace_client):
+def test_start_and_end_trace(clear_singleton, mock_trace_client, mock_store):
+    def _mock_start_trace(experiment_id, timestamp_ms, request_metadata, tags):
+        return TraceInfo(
+            request_id="tr-123",
+            experiment_id=experiment_id,
+            timestamp_ms=timestamp_ms,
+            execution_time_ms=None,
+            status=TraceStatus.IN_PROGRESS,
+            request_metadata=request_metadata,
+            tags={"mlflow.artifactLocation": "dbfs:/path/to/artifacts", **tags},
+        )
+
+    def _mock_end_trace(request_id, timestamp_ms, status, request_metadata, tags):
+        return TraceInfo(
+            request_id=request_id,
+            experiment_id="0",
+            timestamp_ms=timestamp_ms,
+            execution_time_ms=123,
+            status=status,
+            request_metadata=request_metadata,
+            tags={"mlflow.artifactLocation": "dbfs:/path/to/artifacts", **tags},
+        )
+
+    mock_store.start_trace.side_effect = _mock_start_trace
+    mock_store.end_trace.side_effect = _mock_end_trace
+
     class TestModel:
         def __init__(self):
             self._client = MlflowClient()
@@ -320,6 +345,19 @@ def test_start_and_end_trace(clear_singleton, mock_trace_client):
     }
     assert child_span_2.start_time <= child_span_2.end_time - 0.1 * 1e6
 
+    mock_store.start_trace.assert_called_once_with(
+        experiment_id="0",
+        timestamp_ms=trace_info.timestamp_ms,
+        request_metadata={TraceMetadataKey.INPUTS: '{"x": 1, "y": 2}', TraceMetadataKey.OUTPUTS: '{"output": 25}'},
+        tags={},
+    )
+    mock_store.end_trace.assert_called_once_with(
+        request_id=trace_info.request_id,
+        timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
+        status=TraceStatus.OK,
+        request_metadata={TraceMetadataKey.INPUTS: '{"x": 1, "y": 2}', TraceMetadataKey.OUTPUTS: '{"output": 25}'},
+        tags={'mlflow.artifactLocation': 'dbfs:/path/to/artifacts', 'tag': 'tag_value', TraceTagKey.TRACE_NAME: "predict"},
+    )
 
 @pytest.mark.usefixtures("reset_active_experiment")
 def test_start_and_end_trace_before_all_span_end(clear_singleton, mock_trace_client):
