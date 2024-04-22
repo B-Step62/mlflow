@@ -55,9 +55,9 @@ from mlflow.store.model_registry import (
     SEARCH_REGISTERED_MODEL_MAX_RESULTS_DEFAULT,
 )
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT, SEARCH_TRACES_DEFAULT_MAX_RESULTS
-from mlflow.tracing import provider
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.utils import get_request_id
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking._model_registry import utils as registry_utils
 from mlflow.tracking._model_registry.client import ModelRegistryClient
@@ -557,17 +557,21 @@ class MlflowClient:
 
         try:
             # Create new trace and a root span
-            otel_span = provider.start_detached_span(name)
-            trace_info = provider.create_trace_info(otel_span, experiment_id, tags=tags)
-            mlflow_span = LiveSpan(otel_span, trace_info.request_id, span_type)
+            otel_span = mlflow.tracing.provider.start_detached_span(
+                name, experiment_id=experiment_id
+            )
+            request_id = get_request_id(otel_span)
+
+            mlflow_span = LiveSpan(otel_span, request_id, span_type)
             if inputs:
                 mlflow_span.set_inputs(inputs)
             if attributes:
                 mlflow_span.set_attributes(attributes)
 
-            # Register new trace and span in the in-memory trace manager
             trace_manager = InMemoryTraceManager.get_instance()
-            trace_manager.register_trace(otel_span.get_span_context().trace_id, trace_info)
+            with trace_manager.get_trace(request_id) as trace:
+                trace.info.tags.update(tags or {})
+            # Register new span in the in-memory trace manager
             trace_manager.register_span(mlflow_span)
 
             return mlflow_span
@@ -755,7 +759,7 @@ class MlflowClient:
             )
 
         try:
-            otel_span = provider.start_detached_span(name, parent=parent_span._span)
+            otel_span = mlflow.tracing.provider.start_detached_span(name, parent=parent_span._span)
             span = LiveSpan(otel_span, request_id, span_type)
             if attributes:
                 span.set_attributes(attributes)

@@ -86,17 +86,17 @@ class InMemoryTraceManager:
         with self._lock:
             trace_data_dict = self._traces[span.request_id].span_dict
             trace_data_dict[span.span_id] = span
+            print(trace_data_dict)
 
     @contextlib.contextmanager
-    def get_trace_info(self, request_id: str) -> Generator[Optional[TraceInfo], None, None]:
+    def get_trace(self, request_id: str) -> Generator[Optional[Trace], None, None]:
         """
         Yield the trace info for the given request_id.
         This is designed to be used as a context manager to ensure the trace info is accessed
         with the lock held.
         """
         with self._lock:
-            trace = self._traces.get(request_id)
-            yield trace.info if trace else None
+            yield self._traces.get(request_id)
 
     def get_span_from_id(self, request_id: str, span_id: str) -> Optional[LiveSpan]:
         """

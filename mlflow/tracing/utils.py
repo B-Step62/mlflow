@@ -1,13 +1,21 @@
+from __future__ import annotations
+
 import inspect
 import json
 import logging
+from collections import Counter
 from functools import lru_cache
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from opentelemetry import trace as trace_api
 from packaging.version import Version
 
+from mlflow.tracing.constant import SpanAttributeKey
+
 _logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from mlflow.entities import LiveSpan
 
 
 def capture_function_input_args(func, args, kwargs) -> Dict[str, Any]:
@@ -101,3 +109,40 @@ def build_otel_context(trace_id: int, span_id: int) -> trace_api.SpanContext:
         # yet so always set it to False.
         is_remote=False,
     )
+
+
+def deduplicate_span_names_in_place(spans: List[LiveSpan]):
+    """
+    Deduplicate span names in the trace data by appending an index number to the span name.
+
+    This is only applied when there are multiple spans with the same name. The span names
+    are modified in place to avoid unnecessary copying.
+
+    E.g.
+        ["red", "red"] -> ["red_1", "red_2"]
+        ["red", "red", "blue"] -> ["red_1", "red_2", "blue"]
+
+    Args:
+        trace_data: The trace data object to deduplicate span names.
+    """
+    span_name_counter = Counter(span.name for span in spans)
+    # Apply renaming only for duplicated spans
+    span_name_counter = {name: 1 for name, count in span_name_counter.items() if count > 1}
+    # Add index to the duplicated span names
+    for span in spans:
+        if count := span_name_counter.get(span.name):
+            span_name_counter[span.name] += 1
+            span._span._name = f"{span.name}_{count}"
+
+
+def get_request_id(span: trace_api.Span) -> str:
+    """
+    Get the request ID from the OpenTelemetry span attributes.
+
+    Args:
+        span: The OpenTelemetry span object.
+
+    Returns:
+        The request ID as a string.
+    """
+    return json.loads(span.attributes.get(SpanAttributeKey.REQUEST_ID))

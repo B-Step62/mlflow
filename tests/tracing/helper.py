@@ -69,7 +69,7 @@ def create_mock_otel_span(
         def update_name(self, name):
             self.name = name
 
-        def end():
+        def end(self):
             pass
 
         def record_exception():
