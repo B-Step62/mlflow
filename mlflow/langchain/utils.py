@@ -101,11 +101,11 @@ def picklable_runnable_types():
     """
     Runnable types that can be pickled and unpickled by cloudpickle.
     """
-    from langchain.chat_models.base import SimpleChatModel
+    from langchain.chat_models.base import BaseChatModel
     from langchain.prompts import ChatPromptTemplate
 
     types = (
-        SimpleChatModel,
+        BaseChatModel,
         ChatPromptTemplate,
     )
 
@@ -354,7 +354,6 @@ def _save_base_lcs(model, path, loader_fn=None, persist_dir=None):
     from langchain.agents.agent import AgentExecutor
     from langchain.chains.base import Chain
     from langchain.chains.llm import LLMChain
-    from langchain.chat_models.base import BaseChatModel
 
     model_data_path = os.path.join(path, _MODEL_DATA_YAML_FILE_NAME)
     model_data_kwargs = {
@@ -362,7 +361,7 @@ def _save_base_lcs(model, path, loader_fn=None, persist_dir=None):
         _MODEL_LOAD_KEY: _BASE_LOAD_KEY,
     }
 
-    if isinstance(model, (LLMChain, BaseChatModel)):
+    if isinstance(model, LLMChain):
         model.save(model_data_path)
     elif isinstance(model, AgentExecutor):
         if model.agent and model.agent.llm_chain:
