@@ -28,7 +28,7 @@ from packaging.version import Version
 
 import mlflow
 from mlflow import pyfunc
-from mlflow.environment_variables import _MLFLOW_TESTING, MLFLOW_ENABLE_TRACE_IN_SERVING
+from mlflow.environment_variables import _MLFLOW_TESTING
 from mlflow.exceptions import MlflowException
 from mlflow.langchain._langchain_autolog import (
     _update_langchain_model_config,
@@ -632,14 +632,7 @@ class _LangChainModelWrapper:
         Returns:
             Model predictions.
         """
-        # TODO: We don't automatically turn tracing on in OSS model serving, because we haven't
-        # implemented storage option for traces in OSS model serving (counterpart to the
-        # Inference Table in Databricks model serving).
-        if is_in_databricks_model_serving_environment() and MLFLOW_ENABLE_TRACE_IN_SERVING.get():
-            from mlflow.langchain.langchain_tracer import MlflowLangchainTracer
-
-            callbacks = [MlflowLangchainTracer()]
-        elif (context := get_prediction_context()) and context.is_evaluate:
+        if (context := get_prediction_context()) and context.is_evaluate:
             # NB: We enable traces automatically for the model evaluation. Note that we have to
             #   manually pass the context instance to callback, because LangChain callback may be
             #   invoked asynchronously and it doesn't correctly propagate the thread-local context.
