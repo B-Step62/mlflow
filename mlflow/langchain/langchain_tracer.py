@@ -260,10 +260,13 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
             )
         )
 
-    def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any):
+    def on_llm_end(
+        self, response: LLMResult, *, run_id: UUID, tags: Optional[List[str]] = None, **kwargs: Any
+    ):
         """End the span for an LLM run."""
         llm_span = self._get_span_by_run_id(run_id)
         outputs = response.dict()
+        llm_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, llm_span, outputs=outputs)
 
     def on_llm_error(
@@ -271,11 +274,13 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         error: BaseException,
         *,
         run_id: UUID,
+        tags: Optional[List[str]] = None,
         **kwargs: Any,
     ):
         """Handle an error for an LLM run."""
         llm_span = self._get_span_by_run_id(run_id)
         llm_span.add_event(SpanEvent.from_exception(error))
+        llm_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, llm_span, status=SpanStatus(SpanStatusCode.ERROR, str(error)))
 
     def on_chain_start(
@@ -309,6 +314,7 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         outputs: Dict[str, Any],
         *,
         run_id: UUID,
+        tags: Optional[List[str]] = None,
         inputs: Optional[Union[Dict[str, Any], Any]] = None,
         **kwargs: Any,
     ):
@@ -316,6 +322,7 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         chain_span = self._get_span_by_run_id(run_id)
         if inputs:
             chain_span.set_inputs(inputs)
+        chain_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, chain_span, outputs=outputs)
 
     def on_chain_error(
@@ -324,12 +331,14 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         *,
         inputs: Optional[Union[Dict[str, Any], Any]] = None,
         run_id: UUID,
+        tags: Optional[List[str]] = None,
         **kwargs: Any,
     ):
         """Run when chain errors."""
         chain_span = self._get_span_by_run_id(run_id)
         if inputs:
             chain_span.set_inputs(inputs)
+        chain_span.set_attributes({"tags": tags} if tags else {})
         chain_span.add_event(SpanEvent.from_exception(error))
         self._end_span(run_id, chain_span, status=SpanStatus(SpanStatusCode.ERROR, str(error)))
 
@@ -358,9 +367,12 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
             attributes=kwargs,
         )
 
-    def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any):
+    def on_tool_end(
+        self, output: Any, *, run_id: UUID, tags: Optional[List[str]] = None, **kwargs: Any
+    ):
         """Run when tool ends running."""
         tool_span = self._get_span_by_run_id(run_id)
+        tool_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, tool_span, outputs=str(output))
 
     def on_tool_error(
@@ -368,11 +380,13 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         error: BaseException,
         *,
         run_id: UUID,
+        tags: Optional[List[str]] = None,
         **kwargs: Any,
     ):
         """Run when tool errors."""
         tool_span = self._get_span_by_run_id(run_id)
         tool_span.add_event(SpanEvent.from_exception(error))
+        tool_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, tool_span, status=SpanStatus(SpanStatusCode.ERROR, str(error)))
 
     def on_retriever_start(
@@ -399,9 +413,17 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
             attributes=kwargs,
         )
 
-    def on_retriever_end(self, documents: Sequence[Document], *, run_id: UUID, **kwargs: Any):
+    def on_retriever_end(
+        self,
+        documents: Sequence[Document],
+        *,
+        run_id: UUID,
+        tags: Optional[List[str]] = None,
+        **kwargs: Any,
+    ):
         """Run when Retriever ends running."""
         retriever_span = self._get_span_by_run_id(run_id)
+        retriever_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, retriever_span, outputs=documents)
 
     def on_retriever_error(
@@ -409,11 +431,13 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         error: BaseException,
         *,
         run_id: UUID,
+        tags: Optional[List[str]] = None,
         **kwargs: Any,
     ):
         """Run when Retriever errors."""
         retriever_span = self._get_span_by_run_id(run_id)
         retriever_span.add_event(SpanEvent.from_exception(error))
+        retriever_span.set_attributes({"tags": tags} if tags else {})
         self._end_span(run_id, retriever_span, status=SpanStatus(SpanStatusCode.ERROR, str(error)))
 
     def on_agent_action(

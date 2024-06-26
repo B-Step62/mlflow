@@ -125,7 +125,9 @@ def test_llm_success():
 
     callback.on_llm_new_token("test", run_id=run_id)
 
-    callback.on_llm_end(LLMResult(generations=[[{"text": "generated text"}]]), run_id=run_id)
+    callback.on_llm_end(
+        LLMResult(generations=[[{"text": "generated text"}]]), run_id=run_id, tags=["apple"]
+    )
     trace = mlflow.get_last_active_trace()
     assert len(trace.data.spans) == 1
     llm_span = trace.data.spans[0]
@@ -141,6 +143,7 @@ def test_llm_success():
         llm_span.attributes[SpanAttributeKey.OUTPUTS]["generations"][0][0]["text"]
         == "generated text"
     )
+    assert llm_span.attributes["tags"] == ["apple"]
     assert llm_span.events[0].name == "new_token"
 
     _validate_trace_json_serialization(trace)
@@ -156,7 +159,7 @@ def test_llm_error():
         name="test_llm",
     )
     mock_error = Exception("mock exception")
-    callback.on_llm_error(error=mock_error, run_id=run_id)
+    callback.on_llm_error(error=mock_error, run_id=run_id, tags=["apple"])
 
     trace = mlflow.get_last_active_trace()
     error_event = SpanEvent.from_exception(mock_error)
@@ -166,6 +169,7 @@ def test_llm_error():
     assert llm_span.status.description == str(mock_error)
     assert llm_span.attributes[SpanAttributeKey.INPUTS] == ["test prompt"]
     assert llm_span.attributes.get(SpanAttributeKey.OUTPUTS) is None
+    assert llm_span.attributes["tags"] == ["apple"]
     # timestamp is auto-generated when converting the error to event
     assert llm_span.events[0].name == error_event.name
     assert llm_span.events[0].attributes == error_event.attributes
@@ -210,7 +214,7 @@ def test_retriever_success():
             metadata={"chunk_id": "2", "doc_uri": "uri2"},
         ),
     ]
-    callback.on_retriever_end(documents, run_id=run_id)
+    callback.on_retriever_end(documents, run_id=run_id, tags=["apple"])
     trace = mlflow.get_last_active_trace()
     assert len(trace.data.spans) == 1
     retriever_span = trace.data.spans[0]
@@ -219,6 +223,7 @@ def test_retriever_success():
     assert retriever_span.attributes[SpanAttributeKey.SPAN_TYPE] == "RETRIEVER"
     assert retriever_span.attributes[SpanAttributeKey.INPUTS] == "test query"
     assert retriever_span.attributes[SpanAttributeKey.OUTPUTS] == [doc.dict() for doc in documents]
+    assert retriever_span.attributes["tags"] == ["apple"]
     assert retriever_span.start_time_ns is not None
     assert retriever_span.end_time_ns is not None
     assert retriever_span.status.status_code == SpanStatusCode.OK
@@ -236,12 +241,13 @@ def test_retriever_error():
         name="test_retriever",
     )
     mock_error = Exception("mock exception")
-    callback.on_retriever_error(error=mock_error, run_id=run_id)
+    callback.on_retriever_error(error=mock_error, run_id=run_id, tags=["apple"])
     trace = mlflow.get_last_active_trace()
     assert len(trace.data.spans) == 1
     retriever_span = trace.data.spans[0]
     assert retriever_span.attributes[SpanAttributeKey.INPUTS] == "test query"
     assert retriever_span.attributes.get(SpanAttributeKey.OUTPUTS) is None
+    assert retriever_span.attributes["tags"] == ["apple"]
     error_event = SpanEvent.from_exception(mock_error)
     assert retriever_span.status.status_code == SpanStatusCode.ERROR
     assert retriever_span.events[0].name == error_event.name
