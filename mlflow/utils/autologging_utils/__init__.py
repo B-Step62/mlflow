@@ -429,6 +429,21 @@ def autologging_integration(name):
             if name != "mlflow" and get_autologging_config(name, "disable", True):
                 return
 
+            # The `disable_for_unsupported_versions` is only effective when the flavor name is
+            # listed in `FLAVOR_TO_MODULE_NAME_AND_VERSION_INFO_KEY` mapping. The mapping should
+            # contain all the flavors support autologging, but may not be up-to-date. To avoid
+            # silent failure, we raise an exception here to capture the issue in CI or assist
+            # users to report the issue.
+            if name not in FLAVOR_TO_MODULE_NAME_AND_VERSION_INFO_KEY and get_autologging_config(
+                name, "disable_for_unsupported_versions"
+            ):
+                raise MlflowException(
+                    "The `disable_for_unsupported_versions` configuration is not supported for "
+                    f"the {name} flavor. Please contact the MLflow maintainers for "
+                    "assistance.",
+                    error_code=INTERNAL_ERROR,
+                )
+
             is_silent_mode = get_autologging_config(name, "silent", False)
             # Reroute non-MLflow warnings encountered during autologging enablement to an
             # MLflow event logger, and enforce silent mode if applicable (i.e. if the corresponding
@@ -498,22 +513,6 @@ def autologging_is_disabled(integration_name):
     explicit_disabled = get_autologging_config(integration_name, "disable", True)
     if explicit_disabled:
         return True
-
-    if (
-        integration_name not in FLAVOR_TO_MODULE_NAME_AND_VERSION_INFO_KEY
-        and get_autologging_config(integration_name, "disable_for_unsupported_versions")
-    ):
-        # The `disable_for_unsupported_versions` is only effective when the flavor name is
-        # listed in `FLAVOR_TO_MODULE_NAME_AND_VERSION_INFO_KEY` mapping. The mapping should
-        # contain all the flavors support autologging, but may not be up-to-date. To avoid
-        # silent failure, we raise an exception here to capture the issue in CI or assist
-        # users to report the issue.
-        raise MlflowException(
-            "The `disable_for_unsupported_versions` configuration is not supported for "
-            f"the {integration_name} flavor. Please contact the MLflow maintainers for "
-            "assistance.",
-            error_code=INTERNAL_ERROR,
-        )
 
     if (
         integration_name in FLAVOR_TO_MODULE_NAME_AND_VERSION_INFO_KEY

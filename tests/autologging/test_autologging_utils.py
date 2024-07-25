@@ -569,20 +569,6 @@ def test_autologging_is_disabled_returns_expected_values():
     assert autologging_is_disabled("test_integration_for_disable_check") is False
 
 
-def test_autologging_is_disabled_raises_for_missing_version_config():
-    # Dummy flavor with `disable_for_unsupported_versions` flag. This flag does not work
-    # because we don't have the supported version configuration for this flavor - so the
-    # function should raise an exception when it is set to True.
-    @autologging_integration("test_flavor")
-    def autolog(disable=False, silent=False, disable_for_unsupported_versions=False):
-        pass
-
-    autolog(disable_for_unsupported_versions=True)
-
-    with pytest.raises(MlflowException, match="The `disable_for_unsupported_versions`"):
-        autologging_is_disabled("test_flavor")
-
-
 def test_autologging_disable_restores_behavior():
     from sklearn.datasets import load_diabetes
     from sklearn.linear_model import LinearRegression
@@ -907,6 +893,18 @@ def test_disable_for_unsupported_versions_warning_sklearn_integration():
             mlflow.sklearn.autolog(disable_for_unsupported_versions=False)
             assert log_warn_fn.call_count == 1
             assert is_sklearn_warning_fired(log_warn_fn.call_args)
+
+
+def test_autolog_raises_when_disable_unsupported_version_is_not_working():
+    # Dummy flavor with `disable_for_unsupported_versions` flag. This flag does not work
+    # because we don't have the supported version configuration for this flavor - so the
+    # function should raise an exception when it is set to True.
+    @autologging_integration("test_flavor")
+    def autolog(disable=False, silent=False, disable_for_unsupported_versions=False):
+        pass
+
+    with pytest.raises(MlflowException, match="The `disable_for_unsupported_versions`"):
+        autolog(disable_for_unsupported_versions=True)
 
 
 def test_get_instance_method_first_arg_value():
