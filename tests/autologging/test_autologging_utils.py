@@ -8,6 +8,7 @@ import pytest
 
 import mlflow
 from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 from mlflow.utils import gorilla
 from mlflow.utils.autologging_utils import (
     AUTOLOGGING_INTEGRATIONS,
@@ -566,6 +567,20 @@ def test_autologging_is_disabled_returns_expected_values():
     autolog(disable=False)
 
     assert autologging_is_disabled("test_integration_for_disable_check") is False
+
+
+def test_autologging_is_disabled_raises_for_missing_version_config():
+    # Dummy flavor with `disable_for_unsupported_versions` flag. This flag does not work
+    # because we don't have the supported version configuration for this flavor - so the
+    # function should raise an exception when it is set to True.
+    @autologging_integration("test_flavor")
+    def autolog(disable=False, silent=False, disable_for_unsupported_versions=False):
+        pass
+
+    autolog(disable_for_unsupported_versions=True)
+
+    with pytest.raises(MlflowException, match="The `disable_for_unsupported_versions`"):
+        autologging_is_disabled("test_flavor")
 
 
 def test_autologging_disable_restores_behavior():
