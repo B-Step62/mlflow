@@ -24,7 +24,7 @@ FLAVOR_TO_MODULE_NAME_AND_VERSION_INFO_KEY = {
     "sentence_transformers": ("sentence_transformers", "sentence_transformers"),
     "langchain": ("langchain", "langchain"),
     "llama_index": ("llama_index", "llama_index"),
-    "openai": ("openai", "openai"),
+    # "openai": ("openai", "openai"),
 }
 
 
