@@ -56,7 +56,7 @@ from mlflow.transformers.flavor_config import (
     build_flavor_config_from_repo_id,
     update_flavor_conf_to_persist_pretrained_model,
 )
-from mlflow.transformers.hub_utils import is_valid_hf_repo_id
+from mlflow.transformers.hub_utils import download_model_weights_from_hub, is_valid_hf_repo_id
 from mlflow.transformers.llm_inference_utils import (
     _LLM_INFERENCE_TASK_CHAT,
     _LLM_INFERENCE_TASK_COMPLETIONS,
@@ -76,6 +76,8 @@ from mlflow.transformers.llm_inference_utils import (
 from mlflow.transformers.model_io import (
     _COMPONENTS_BINARY_DIR_NAME,
     _MODEL_BINARY_FILE_NAME,
+    _PROCESSOR_BINARY_DIR_NAME,
+    load_components,
     load_model_and_components_from_huggingface_hub,
     load_model_and_components_from_local,
     save_pipeline_pretrained_weights,
@@ -1118,7 +1120,6 @@ def persist_pretrained_model(model_uri: str) -> None:
         # Now the model can be registered to the Model Registry
         mlflow.register_model(f"runs:/{run.info.run_id}/pipeline", "qa_pipeline")
     """
-    ## TODO: Update this not to load model into memory
     # Check if the model weight already exists in the model artifact before downloading
     root_uri, artifact_path = _get_root_uri_and_artifact_path(model_uri)
     artifact_repo = get_artifact_repository(root_uri)
@@ -1133,25 +1134,35 @@ def persist_pretrained_model(model_uri: str) -> None:
 
     with TempDir() as tmp_dir:
         local_model_path = artifact_repo.download_artifacts(artifact_path, dst_path=tmp_dir.path())
-        pipeline = load_model(local_model_path, return_type="pipeline")
-
-        # Update MLModel flavor config
         mlmodel_path = os.path.join(local_model_path, MLMODEL_FILE_NAME)
         model_conf = Model.load(mlmodel_path)
-        updated_flavor_conf = update_flavor_conf_to_persist_pretrained_model(
-            model_conf.flavors[FLAVOR_NAME]
+        flavor_conf = model_conf.flavors.get(FLAVOR_NAME)
+
+        # Persisting model weight without loading the pipeline into memory.
+        # This is done by downloading the model weight files directly from the
+        # HuggingFace Hub and uploading them to the artifact location.
+        download_model_weights_from_hub(
+            flavor_conf, os.path.join(local_model_path, _MODEL_BINARY_FILE_NAME)
         )
+
+        # Load other components from the hub and persist them
+        for name, component in load_components(flavor_conf).items():
+            save_path = (
+                os.path.join(local_model_path, _PROCESSOR_BINARY_DIR_NAME)
+                if name == "processor"
+                else os.path.join(local_model_path, _COMPONENTS_BINARY_DIR_NAME, name)
+            )
+            component.save_pretrained(save_path)
+
+        # Update MLModel configs
+        updated_flavor_conf = update_flavor_conf_to_persist_pretrained_model(flavor_conf)
         model_conf.add_flavor(FLAVOR_NAME, **updated_flavor_conf)
+        if size := get_total_file_size(local_model_path):
+            model_conf.model_size_bytes = size
         model_conf.save(mlmodel_path)
 
-        # TODO: Update model size, too
-
-        # Save pretrained weights
-        save_pipeline_pretrained_weights(
-            pathlib.Path(local_model_path), pipeline, updated_flavor_conf
-        )
-
         # Upload updated local artifacts to MLflow
+        _logger.info("Uploading the pretrained model weights to the artifact location.")
         for dir_to_upload in (_MODEL_BINARY_FILE_NAME, _COMPONENTS_BINARY_DIR_NAME):
             local_dir = os.path.join(local_model_path, dir_to_upload)
             if not os.path.isdir(local_dir):
