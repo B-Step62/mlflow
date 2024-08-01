@@ -59,7 +59,6 @@ from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT, SEARCH_TRACES_DEFA
 from mlflow.tracing.constant import (
     TRACE_REQUEST_ID_PREFIX,
     SpanAttributeKey,
-    TraceTagKey,
 )
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.trace_manager import InMemoryTraceManager
@@ -688,29 +687,6 @@ class MlflowClient:
                 )
 
         self.end_span(request_id, root_span_id, outputs, attributes, status)
-
-    def _upload_trace_spans_as_tag(self, trace_info: TraceInfo, trace_data: TraceData):
-        # When a trace is logged, we set a mlflow.traceSpans tag via SetTraceTag API
-        # https://databricks.atlassian.net/browse/ML-40306
-        parsed_spans = []
-        for span in trace_data.spans:
-            parsed_span = {}
-
-            parsed_span["name"] = span.name
-            parsed_span["type"] = span.span_type
-            span_inputs = span.inputs
-            if span_inputs and isinstance(span_inputs, dict):
-                parsed_span["inputs"] = list(span_inputs.keys())
-            span_outputs = span.outputs
-            if span_outputs and isinstance(span_outputs, dict):
-                parsed_span["outputs"] = list(span_outputs.keys())
-
-            parsed_spans.append(parsed_span)
-
-        # Directly set the tag on the trace in the backend
-        self._tracking_client.set_trace_tag(
-            trace_info.request_id, TraceTagKey.TRACE_SPANS, json.dumps(parsed_spans)
-        )
 
     @experimental
     def start_span(

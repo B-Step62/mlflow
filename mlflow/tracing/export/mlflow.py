@@ -1,9 +1,11 @@
+import json
 import logging
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter
 
+from mlflow.entities.span import Span
 from mlflow.entities.trace import Trace
 from mlflow.tracing.constant import TraceTagKey
 from mlflow.tracing.display import get_display_handler
@@ -70,15 +72,36 @@ class MlflowSpanExporter(SpanExporter):
                 # an MLflow model evaluation context
                 self._display_handler.display_traces([trace])
 
+            # Set the mlflow.traceSpans tag for table UI display
+            try:
+                trace.info.tags[TraceTagKey.TRACE_SPANS] = self._create_span_tag(trace.data.spans)
+            except Exception as e:
+                _logger.debug(
+                    f"Failed to log trace spans as tag to MLflow backend: {e}", exc_info=True
+                )
+
             # Log the trace to MLflow
             self._log_trace(trace)
 
-    def _log_trace(self, trace: Trace):
-        try:
-            self._client._upload_trace_spans_as_tag(trace.info, trace.data)
-        except Exception as e:
-            _logger.debug(f"Failed to log trace spans as tag to MLflow backend: {e}", exc_info=True)
+    def _create_span_tag(spans: List[Span]) -> str:
+        # When a trace is logged, we set a mlflow.traceSpans tag via SetTraceTag API
+        parsed_spans = []
+        for span in spans:
+            parsed_span = {}
 
+            parsed_span["name"] = span.name
+            parsed_span["type"] = span.span_type
+            span_inputs = span.inputs
+            if span_inputs and isinstance(span_inputs, dict):
+                parsed_span["inputs"] = list(span_inputs.keys())
+            span_outputs = span.outputs
+            if span_outputs and isinstance(span_outputs, dict):
+                parsed_span["outputs"] = list(span_outputs.keys())
+
+            parsed_spans.append(parsed_span)
+        return json.dumps(parsed_spans)
+
+    def _log_trace(self, trace: Trace):
         # TODO: Make this async
         # The trace is already updated in processor.on_end method
         # so we just log to backend store here
