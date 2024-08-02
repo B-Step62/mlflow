@@ -395,6 +395,17 @@ def test_trace_ignore_exception_from_tracing_logic(monkeypatch):
     TRACE_BUFFER.clear()
 
 
+def test_trace_skip_resolving_unrelated_tags_to_traces():
+    with mock.patch("mlflow.tracking.context.registry.DatabricksRepoRunContext") as mock_context:
+        mock_context.in_context.return_value = ["unrelated tags"]
+
+        model = DefaultTestModel()
+        model.predict(2, 5)
+
+    trace = mlflow.get_last_active_trace()
+    assert "unrelated tags" not in trace.info.tags
+
+
 def test_start_span_context_manager():
     datetime_now = datetime.now()
 
