@@ -81,7 +81,15 @@ class MlflowSpanExporter(SpanExporter):
                 )
 
             # Log the trace to MLflow
-            self._log_trace(trace)
+            try:
+                self._client._log_trace(trace)
+            except Exception as e:
+                # avoid silent failures
+                _logger.warning(
+                    f"Failed to log trace to MLflow backend: {e}",
+                    exc_info=_logger.isEnabledFor(logging.DEBUG),
+                )
+
 
     def _create_span_tag(spans: List[Span]) -> str:
         # When a trace is logged, we set a mlflow.traceSpans tag via SetTraceTag API
@@ -100,17 +108,3 @@ class MlflowSpanExporter(SpanExporter):
 
             parsed_spans.append(parsed_span)
         return json.dumps(parsed_spans)
-
-    def _log_trace(self, trace: Trace):
-        # TODO: Make this async
-        # The trace is already updated in processor.on_end method
-        # so we just log to backend store here
-        try:
-            self._client._upload_trace_data(trace.info, trace.data)
-            self._client._upload_ended_trace_info(trace.info)
-        except Exception as e:
-            # avoid silent failures
-            _logger.warning(
-                f"Failed to log trace to MLflow backend: {e}",
-                exc_info=_logger.isEnabledFor(logging.DEBUG),
-            )

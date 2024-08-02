@@ -391,9 +391,6 @@ class MlflowClient:
         """
         return self._tracking_client.create_run(experiment_id, start_time, tags, run_name)
 
-    def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData) -> None:
-        return self._tracking_client._upload_trace_data(trace_info, trace_data)
-
     @experimental
     def delete_traces(
         self,
@@ -924,6 +921,12 @@ class MlflowClient:
             request_metadata=request_metadata or {},
             tags=tags or {},
         )
+
+    def _log_trace(self, trace: Trace, synchronous: bool = None) -> None:
+        synchronous = (
+            synchronous if synchronous is not None else not MLFLOW_ENABLE_ASYNC_LOGGING.get()
+        )
+        self._tracking_client.log_trace(trace, synchronous=synchronous)
 
     def _upload_ended_trace_info(
         self,
