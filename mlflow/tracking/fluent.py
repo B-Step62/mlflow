@@ -38,6 +38,7 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_DOES_NOT_EXIST,
 )
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
+from mlflow.tracing.provider import _get_trace_exporter
 from mlflow.tracking import _get_artifact_repo, _get_store, artifact_utils
 from mlflow.tracking.client import MlflowClient
 from mlflow.tracking.context import registry as context_registry
@@ -712,6 +713,18 @@ def flush_artifact_async_logging() -> None:
     _artifact_repo = _get_artifact_repo(run_id)
     if _artifact_repo:
         _artifact_repo.flush_async_logging()
+
+
+def flush_trace_async_logging(keep_running=True) -> None:
+    """
+    Flush all pending trace async logging.
+
+    Args:
+        keep_running: If True, keep the worker threads running after flushing for accepting new traces. Otherwise, shut
+        down the workers and new traces need to start a new
+        thread pool.
+    """
+    _get_trace_exporter().flush(keep_running=keep_running)
 
 
 def set_experiment_tag(key: str, value: Any) -> None:

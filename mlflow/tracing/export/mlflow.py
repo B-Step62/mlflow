@@ -7,6 +7,7 @@ from opentelemetry.sdk.trace.export import SpanExporter
 
 from mlflow.entities.span import Span
 from mlflow.entities.trace import Trace
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
 from mlflow.tracing.constant import TraceTagKey
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.display.display_handler import IPythonTraceDisplayHandler
@@ -14,6 +15,7 @@ from mlflow.tracing.fluent import TRACE_BUFFER
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import maybe_get_request_id
 from mlflow.tracking.client import MlflowClient
+from mlflow.utils.async_logging.async_trace_logging_queue import AsyncTraceLoggingQueue
 
 _logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ class MlflowSpanExporter(SpanExporter):
         self._client = client or MlflowClient()
         self._display_handler = display_handler or get_display_handler()
         self._trace_manager = InMemoryTraceManager.get_instance()
+        self._async_logging_queue = AsyncTraceLoggingQueue(self._client)
 
     def export(self, root_spans: Sequence[ReadableSpan]):
         """
@@ -82,14 +85,13 @@ class MlflowSpanExporter(SpanExporter):
 
             # Log the trace to MLflow
             try:
-                self._client._log_trace(trace)
+                self._log_trace(trace)
             except Exception as e:
                 # avoid silent failures
                 _logger.warning(
                     f"Failed to log trace to MLflow backend: {e}",
                     exc_info=_logger.isEnabledFor(logging.DEBUG),
                 )
-
 
     def _create_span_tag(spans: List[Span]) -> str:
         # When a trace is logged, we set a mlflow.traceSpans tag via SetTraceTag API
@@ -108,3 +110,18 @@ class MlflowSpanExporter(SpanExporter):
 
             parsed_spans.append(parsed_span)
         return json.dumps(parsed_spans)
+
+    def _log_trace(self, trace: Trace):
+        """
+        Log the trace to MLflow backend. If async logging is enabled, the trace logging is non-blocking.
+        """
+        if MLFLOW_ENABLE_ASYNC_LOGGING.get():
+            if not self._async_logging_queue.is_active():
+                self._async_logging_queue.activate()
+            self._async_logging_queue.log_trace_async(trace)
+        else:
+            self._client._log_trace(trace)
+
+    def flush(self, keep_running=True):
+        """Flush the traces to MLflow backend if async logging is enabled."""
+        self._async_logging_queue.flush(keep_running)

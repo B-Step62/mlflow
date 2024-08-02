@@ -14,6 +14,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, NamedTuple, Optional
 
+from mlflow.tracking.fluent import _shut_down_async_logging
 import numpy as np
 import pandas
 import yaml
@@ -33,7 +34,6 @@ from mlflow.tensorflow.callback import MlflowCallback, MlflowModelCheckpointCall
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
 from mlflow.tracking.context import registry as context_registry
-from mlflow.tracking.fluent import _shut_down_async_logging
 from mlflow.types.schema import TensorSpec
 from mlflow.utils import is_iterator
 from mlflow.utils.autologging_utils import (

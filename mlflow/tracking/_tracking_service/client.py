@@ -198,14 +198,13 @@ class TrackingServiceClient:
             tags=tags,
         )
 
-    def _end_trace(
+    def end_trace(
         self,
         request_id: str,
         timestamp_ms: int,
         status: TraceStatus,
         request_metadata: Dict[str, str],
         tags: Dict[str, str],
-        synchronous=True,
     ) -> TraceInfo:
         """
         Update the TraceInfo object in the backend store with the completed trace info.
@@ -219,24 +218,18 @@ class TrackingServiceClient:
                 metadata logged during the start_trace call.
             tags: Tags of the trace. This will be merged with the existing tags logged
                 during the start_trace or set_trace_tag calls.
-            synchronous: *Experimental* If True, blocks until the trace is logged successfully.
 
         Returns:
             The updated TraceInfo object.
         """
         tags = exclude_immutable_tags(tags or {})
-        call_args = dict(
+        self.store.end_trace(
             request_id=request_id,
             timestamp_ms=timestamp_ms,
             status=status,
             request_metadata=request_metadata,
             tags=tags,
         )
-        if synchronous:
-            return self.store.end_trace(**call_args)
-        else:
-            return self.store.end_trace_async(**call_args)
-
 
     def delete_traces(
         self,
@@ -821,20 +814,10 @@ class TrackingServiceClient:
         artifact_repo = self._get_artifact_repo_for_trace(trace_info)
         return TraceData.from_dict(artifact_repo.download_trace_data())
 
-    def log_trace(self, trace: Trace, synchronous: bool = True) -> Optional[RunOperations]:
-        self._upload_trace_data(trace.info, trace.data, synchronous=synchronous)
-        self._end_trace(trace, synchronous=synchronous)
-
-
-    def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData, synchronous: bool = True) -> None:
+    def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData) -> None:
         artifact_repo = self._get_artifact_repo_for_trace(trace_info)
         trace_data_json = json.dumps(trace_data.to_dict(), cls=TraceJSONEncoder)
-
-        if synchronous:
-            artifact_repo.upload_trace_data(trace_data_json)
-        else:
-            return artifact_repo.upload_trace_data_async(trace_data_json)
-
+        artifact_repo.upload_trace_data(trace_data_json)
 
     def _log_artifact_async(self, run_id, filename, artifact_path=None, artifact=None):
         """

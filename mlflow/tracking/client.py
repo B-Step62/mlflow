@@ -31,7 +31,6 @@ from mlflow.entities import (
     SpanStatus,
     SpanType,
     Trace,
-    TraceData,
     TraceInfo,
     ViewType,
 )
@@ -922,16 +921,7 @@ class MlflowClient:
             tags=tags or {},
         )
 
-    def _log_trace(self, trace: Trace, synchronous: bool = None) -> None:
-        synchronous = (
-            synchronous if synchronous is not None else not MLFLOW_ENABLE_ASYNC_LOGGING.get()
-        )
-        self._tracking_client.log_trace(trace, synchronous=synchronous)
-
-    def _upload_ended_trace_info(
-        self,
-        trace_info: TraceInfo,
-    ) -> TraceInfo:
+    def _log_trace(self, trace: Trace) -> None:
         """
         Update the TraceInfo object in the backend store with the completed trace info.
 
@@ -941,12 +931,15 @@ class MlflowClient:
         Returns:
             The updated TraceInfo object.
         """
+        # Upload trace data as an artifact
+        self._tracking_client._upload_trace_data(trace.info, trace.data)
+        # Update the trace info in the backend store
         return self._tracking_client.end_trace(
-            request_id=trace_info.request_id,
-            timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
-            status=trace_info.status,
-            request_metadata=trace_info.request_metadata,
-            tags=trace_info.tags or {},
+            request_id=trace.info.request_id,
+            timestamp_ms=trace.info.timestamp_ms + trace.info.execution_time_ms,
+            status=trace.info.status,
+            request_metadata=trace.info.request_metadata,
+            tags=trace.info.tags or {},
         )
 
     @experimental
