@@ -1,11 +1,38 @@
+from uuid import uuid4, UUID
+from concurrent.futures import Future
 from dataclasses import asdict, dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from mlflow.entities._mlflow_object import _MlflowObject
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.protos.service_pb2 import TraceInfo as ProtoTraceInfo
 from mlflow.protos.service_pb2 import TraceRequestMetadata as ProtoTraceRequestMetadata
 from mlflow.protos.service_pb2 import TraceTag as ProtoTraceTag
+
+
+class RequestIdFuture:
+    """
+    A future-like object that represents a request ID that may not yet be available i.e. not returned from the backend.
+    """
+    def __init__(self):
+        print("Creating RequestIdFuture")
+        self.uuid = uuid4()
+        self.future_request_id = Future()
+
+    def __str__(self):
+        return self.get_if_ready() or str(self.uuid)
+
+    def is_ready(self):
+        return self.future_request_id.done()
+
+    def get_if_ready(self) -> Optional[str]:
+        if self.is_ready():
+            return self.future_request_id.result()
+        return None
+
+    def complete(self, request_id):
+        print(f"Completing request_id: {request_id}. Current future state: {self.future_request_id} {self.future_request_id.done()}")
+        self.future_request_id.set_result(request_id)
 
 
 @dataclass
@@ -24,7 +51,7 @@ class TraceInfo(_MlflowObject):
             that can be updated by the users after the trace is created, unlike request_metadata.
     """
 
-    request_id: str
+    request_id: Union[str, RequestIdFuture]
     experiment_id: str
     timestamp_ms: int
     execution_time_ms: Optional[int]

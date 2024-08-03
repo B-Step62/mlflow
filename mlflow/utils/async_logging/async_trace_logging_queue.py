@@ -9,23 +9,50 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Empty, Queue
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List
 
+from mlflow.entities.span import LiveSpan
 from mlflow.entities.trace import Trace
-from mlflow.utils.async_logging.run_operations import RunOperations
+from mlflow.entities.trace_info import RequestIdFuture, TraceInfo
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import INTERNAL_ERROR
 
 _logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TraceTask:
+class Task:
     """
     A class to encapsulate the trace and its completion event.
     """
-
-    trace: Trace
+    # NB: These fields cannot have default values due to how dataclass works with inheritance.
     completion_event: threading.Event
-    exception: Exception = None
+    exception: Exception
+
+
+@dataclass
+class StartTraceTask(Task):
+    """
+    A class to encapsulate the start trace task.
+    """
+    request_id_future: RequestIdFuture
+    experiment_id: str
+    timestamp_ms: int
+    request_metadata: Dict[str, Any]
+    tags: Dict[str, str]
+
+
+_END_TRACE_MAX_RETRY = 5
+
+@dataclass
+class EndTraceTask(Task):
+    """
+    A class to encapsulate the end trace task.
+    """
+    trace_info: TraceInfo
+    spans: List[LiveSpan]
+    retry: int = 0
 
 
 class AsyncTraceLoggingQueue:
@@ -86,16 +113,16 @@ class AsyncTraceLoggingQueue:
         """
         try:
             while not self._stop_data_logging_thread_event.is_set():
-                self._log_trace()
+                self._process_task()
             # Drain the queue after the stop event is set.
             while not self._queue.empty():
-                self._log_trace()
+                self._process_task()
         except Exception as e:
             from mlflow.exceptions import MlflowException
 
             raise MlflowException(f"Exception inside the run data logging thread: {e}")
 
-    def _log_trace(self) -> None:
+    def _process_task(self) -> None:
         """Process the traces in the running runs queues.
 
         For each run in the running runs queues, this method retrieves the next trace of run
@@ -111,24 +138,42 @@ class AsyncTraceLoggingQueue:
             # Ignore empty queue exception
             return
 
-        def logging_func(task):
+        def _handle(task):
             try:
-                self._client._log_trace(task.trace)
-                # Signal the trace logging is done.
-                task.completion_event.set()
+                if isinstance(task, EndTraceTask):
+                    # Check if StartTraceTask is already processed.
+                    if not task.trace_info.request_id.is_ready():
+                        if task.retry < _END_TRACE_MAX_RETRY:
+                            task.retry += 1
+                            time.sleep(2 ** task.retry)
+                            self._queue.put(task)
+                            _logger.debug(f"Retrying trace logging event {task.retry} time.")
+                            return
+                        else:
+                            _logger.warning(
+                                f"Trace logging event is dropped after {task.retry} retries. "
+                            )
 
+                else:
+                    raise MlflowException(
+                        f"Unknown task type: {type(task)}",
+                        error_code=INTERNAL_ERROR,
+                    )
+
+                # Signal the trace logging is done.
+                task
             except Exception as e:
                 _logger.error(f"Failed to log trace {task.trace}. Exception: {e}", exc_info=True)
                 task.exception = e
                 task.completion_event.set()
 
-        self._trace_logging_worker_threadpool.submit(logging_func, task)
+        self._trace_logging_worker_threadpool.submit(_handle, task)
 
-    def _wait_for_trace(self, task: TraceTask) -> None:
-        """Wait for given traces to be processed by the logging thread.
+    def _wait_for_task(self, task: Task) -> None:
+        """Wait for given task to be processed by the logging thread.
 
         Args:
-            trace: The trace to wait for.
+            trace: The task to wait for.
 
         Raises:
             Exception: If an exception occurred while processing the trace.
@@ -179,10 +224,30 @@ class AsyncTraceLoggingQueue:
         self._trace_status_check_threadpool = None
         self._stop_data_logging_thread_event = threading.Event()
 
-    # TODO: Using RunOperations class while trace logging is not run operations.
-    # The class is indeed not run-specific so we should rename it in
-    # a separate PR.
-    def log_trace_async(self, trace: Trace) -> RunOperations:
+
+    def start_trace_async(self, trace_info: TraceInfo):
+        if (
+            not isinstance(trace_info.request_id, RequestIdFuture)
+            or trace_info.request_id.is_ready()
+        ):
+            raise MlflowException(
+                "The request_id must be a RequestIdFuture that is not ready yet, when submitted to the async queue.",
+                error_code=INTERNAL_ERROR,
+            )
+
+        task = StartTraceTask(
+            request_id_future=trace_info.request_id,
+            experiment_id=trace_info.experiment_id,
+            timestamp_ms=trace_info.timestamp_ms,
+            request_metadata=trace_info.request_metadata,
+            tags=trace_info.tags,
+            completion_event=threading.Event(),
+            exception=None,
+        )
+        self._queue.put(task)
+
+
+    def log_trace_async(self, trace: Trace):
         """Asynchronously logs traces.
 
         Args:
@@ -196,13 +261,13 @@ class AsyncTraceLoggingQueue:
         if not self._is_activated:
             raise MlflowException("AsyncTraceLoggingQueue is not activated.")
 
-        task = TraceTask(
+        task = EndTraceTask(
             trace=trace,
             completion_event=threading.Event(),
+            exception=None,
         )
         self._queue.put(task)
-        operation_future = self._trace_status_check_threadpool.submit(self._wait_for_trace, task)
-        return RunOperations(operation_futures=[operation_future])
+        self._trace_status_check_threadpool.submit(self._wait_for_task, task)
 
     def is_active(self) -> bool:
         return self._is_activated

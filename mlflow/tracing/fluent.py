@@ -220,15 +220,17 @@ def start_span(
         otel_span = provider.start_span_in_context(name)
 
         # Create a new MLflow span and register it to the in-memory trace manager
-        request_id = get_otel_attribute(otel_span, SpanAttributeKey.REQUEST_ID)
+        trace_manager = InMemoryTraceManager.get_instance()
+        request_id = trace_manager.get_request_id_from_trace_id(otel_span.context.trace_id)
+
         mlflow_span = create_mlflow_span(otel_span, request_id, span_type)
         mlflow_span.set_attributes(attributes or {})
-        InMemoryTraceManager.get_instance().register_span(mlflow_span)
+        trace_manager.register_span(mlflow_span)
 
     except Exception as e:
         _logger.warning(
             f"Failed to start span: {e}. For full traceback, set logging level to debug.",
-            exc_info=_logger.isEnabledFor(logging.DEBUG),
+            exc_info=True, #_logger.isEnabledFor(logging.DEBUG),
         )
         mlflow_span = NoOpSpan()
         yield mlflow_span

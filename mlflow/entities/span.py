@@ -4,6 +4,7 @@ from dataclasses import asdict
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 
+from mlflow.entities.trace_info import RequestIdFuture
 from opentelemetry.sdk.trace import Event as OTelEvent
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.trace import NonRecordingSpan
@@ -44,7 +45,7 @@ class SpanType:
 
 
 def create_mlflow_span(
-    otel_span: Any, request_id: str, span_type: Optional[str] = None
+    otel_span: Any, request_id: Union[str, RequestIdFuture], span_type: Optional[str] = None
 ) -> Union["Span", "LiveSpan", "NoOpSpan"]:
     """
     Factory function to create a span object.
@@ -276,7 +277,7 @@ class LiveSpan(Span):
     def __init__(
         self,
         otel_span: OTelSpan,
-        request_id: str,
+        request_id: Union[str, RequestIdFuture],
         span_type: str = SpanType.UNKNOWN,
     ):
         """
@@ -295,9 +296,20 @@ class LiveSpan(Span):
             )
 
         self._span = otel_span
+        self._request_id = request_id
         self._attributes = _SpanAttributesRegistry(otel_span)
-        self._attributes.set(SpanAttributeKey.REQUEST_ID, request_id)
         self._attributes.set(SpanAttributeKey.SPAN_TYPE, span_type)
+
+
+    @property
+    def request_id(self) -> str:
+        """
+        The request ID of the span, a unique identifier for the trace it belongs to.
+        Request ID is equivalent to the trace ID in OpenTelemetry, but generated
+        differently by the tracing backend.
+        """
+        return self._request_id
+
 
     def set_inputs(self, inputs: Any):
         """Set the input values to the span."""
@@ -388,6 +400,16 @@ class LiveSpan(Span):
 
         :meta private:
         """
+        # If the request ID is not yet ready, raise an exception.
+        if isinstance(self.request_id, RequestIdFuture):
+            request_id = self._request_id.get_if_ready()
+            if request_id is None:
+                raise MlflowException(
+                    "The request ID is not yet available for the live span.",
+                    INVALID_PARAMETER_VALUE,
+                )
+        self._attributes.set(SpanAttributeKey.REQUEST_ID, request_id)
+
         # All state of the live span is already persisted in the OpenTelemetry span object.
         return Span(self._span)
 

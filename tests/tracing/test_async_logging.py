@@ -31,6 +31,38 @@ def slow_client():
 
 
 def test_trace(slow_client):
+    import sys
+    import inspect
+    import os
+
+    def trace_calls(frame, event, arg):
+        if event == 'call' and frame.f_globals.get('__name__').startswith('mlflow'):
+            # Get the module name
+            module = frame.f_globals.get('__name__', '')
+            func_name = frame.f_code.co_name
+            file_path = frame.f_code.co_filename
+            # Construct the full path
+            if module != '__main__':
+                full_path = f"{module}.{func_name}"
+            else:
+                # For the main script, use the file name instead of '__main__'
+                file_name = os.path.basename(file_path)
+                full_path = f"{file_name}:{func_name}"
+
+            # Get function arguments
+            try:
+                args, _, _, local_vars = inspect.getargvalues(frame)
+                arg_values = [f"{arg}={local_vars[arg]!r}" for arg in   args]
+                arg_str = ", ".join(arg_values)
+            except Exception:
+                arg_str = "N/A"
+
+            # Show in gray
+            print(f"\033[90mFunction {full_path} called with arguments {arg_str}\033[0m")
+        return trace_calls
+
+    sys.settrace(trace_calls)
+
     model = DefaultTestModel()
     # Prediction should not wait for the long network latency
     # (the start_trace call still takes a bit of time)
