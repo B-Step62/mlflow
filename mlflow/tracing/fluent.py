@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import functools
 import importlib
-import json
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional
 
@@ -28,7 +27,6 @@ from mlflow.tracing.utils import (
     SPANS_COLUMN_NAME,
     capture_function_input_args,
     encode_span_id,
-    get_otel_attribute,
 )
 from mlflow.tracing.utils.search import extract_span_inputs_outputs, traces_to_df
 from mlflow.tracking.fluent import _get_experiment_id
@@ -221,7 +219,9 @@ def start_span(
 
         # Create a new MLflow span and register it to the in-memory trace manager
         trace_manager = InMemoryTraceManager.get_instance()
-        request_id = trace_manager.get_request_id_from_trace_id(otel_span.context.trace_id)
+        request_id = trace_manager.get_request_id_from_trace_id(
+            otel_span.get_span_context().trace_id
+        )
 
         mlflow_span = create_mlflow_span(otel_span, request_id, span_type)
         mlflow_span.set_attributes(attributes or {})
@@ -230,7 +230,7 @@ def start_span(
     except Exception as e:
         _logger.warning(
             f"Failed to start span: {e}. For full traceback, set logging level to debug.",
-            exc_info=True, #_logger.isEnabledFor(logging.DEBUG),
+            exc_info=_logger.isEnabledFor(logging.DEBUG),
         )
         mlflow_span = NoOpSpan()
         yield mlflow_span
@@ -248,7 +248,7 @@ def start_span(
             _logger.warning(
                 f"Failed to end span {mlflow_span.span_id}: {e}. "
                 "For full traceback, set logging level to debug.",
-                exc_info=_logger.isEnabledFor(logging.DEBUG),
+                exc_info=True,  # _logger.isEnabledFor(logging.DEBUG),
             )
 
 
@@ -458,7 +458,7 @@ def get_current_active_span() -> Optional[LiveSpan]:
         return None
 
     trace_manager = InMemoryTraceManager.get_instance()
-    request_id = json.loads(otel_span.attributes.get(SpanAttributeKey.REQUEST_ID))
+    request_id = trace_manager.get_request_id_from_trace_id(otel_span.get_span_context().trace_id)
     return trace_manager.get_span_from_id(request_id, encode_span_id(otel_span.context.span_id))
 
 

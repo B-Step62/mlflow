@@ -38,7 +38,6 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_DOES_NOT_EXIST,
 )
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
-from mlflow.tracing.provider import _get_trace_exporter
 from mlflow.tracking import _get_artifact_repo, _get_store, artifact_utils
 from mlflow.tracking.client import MlflowClient
 from mlflow.tracking.context import registry as context_registry
@@ -724,7 +723,13 @@ def flush_trace_async_logging(keep_running=True) -> None:
         down the workers and new traces need to start a new
         thread pool.
     """
-    _get_trace_exporter().flush(keep_running=keep_running)
+    from mlflow.tracing.provider import _MLFLOW_TRACER_PROVIDER
+
+    if _MLFLOW_TRACER_PROVIDER:
+        processors = _MLFLOW_TRACER_PROVIDER._active_span_processor._span_processors
+        # There should be only one processor used for MLflow tracing
+        processor = processors[0]
+    processor.flush(keep_running=keep_running)
 
 
 def set_experiment_tag(key: str, value: Any) -> None:

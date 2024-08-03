@@ -41,7 +41,6 @@ def test_create_live_span():
         span.set_attribute("non_serializable", non_serializable)
         assert span.get_attribute("non_serializable") == str(non_serializable)
         assert parent_span._attributes == {
-            "mlflow.traceRequestId": json.dumps(request_id),
             "mlflow.spanInputs": '{"input": 1}',
             "mlflow.spanOutputs": "2",
             "mlflow.spanType": '"LLM"',

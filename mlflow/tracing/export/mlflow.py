@@ -1,13 +1,11 @@
-import json
 import logging
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter
 
-from mlflow.entities.span import Span
 from mlflow.entities.trace import Trace
-from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
+from mlflow.entities.trace_info import RequestIdFuture
 from mlflow.tracing.constant import TraceTagKey
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.display.display_handler import IPythonTraceDisplayHandler
@@ -15,7 +13,6 @@ from mlflow.tracing.fluent import TRACE_BUFFER
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import maybe_get_request_id
 from mlflow.tracking.client import MlflowClient
-from mlflow.utils.async_logging.async_trace_logging_queue import AsyncTraceLoggingQueue
 
 _logger = logging.getLogger(__name__)
 
@@ -44,7 +41,6 @@ class MlflowSpanExporter(SpanExporter):
         self._client = client or MlflowClient()
         self._display_handler = display_handler or get_display_handler()
         self._trace_manager = InMemoryTraceManager.get_instance()
-        self._async_logging_queue = AsyncTraceLoggingQueue(self._client)
 
     def export(self, root_spans: Sequence[ReadableSpan]):
         """
@@ -59,9 +55,15 @@ class MlflowSpanExporter(SpanExporter):
                 _logger.debug("Received a non-root span. Skipping export.")
                 continue
 
-            trace = self._trace_manager.pop_trace(span.context.trace_id)
+            trace = self._trace_manager.pop_trace(span.get_span_context().trace_id)
             if trace is None:
                 _logger.debug(f"TraceInfo for span {span} not found. Skipping export.")
+                continue
+
+            if isinstance(trace.info.request_id, RequestIdFuture):
+                _logger.debug(
+                    "Request ID must be determined before exporting the trace. Skipping export."
+                )
                 continue
 
             # Add the trace to the in-memory buffer
@@ -75,53 +77,23 @@ class MlflowSpanExporter(SpanExporter):
                 # an MLflow model evaluation context
                 self._display_handler.display_traces([trace])
 
-            # Set the mlflow.traceSpans tag for table UI display
-            try:
-                trace.info.tags[TraceTagKey.TRACE_SPANS] = self._create_span_tag(trace.data.spans)
-            except Exception as e:
-                _logger.debug(
-                    f"Failed to log trace spans as tag to MLflow backend: {e}", exc_info=True
-                )
-
             # Log the trace to MLflow
-            try:
-                self._log_trace(trace)
-            except Exception as e:
-                # avoid silent failures
-                _logger.warning(
-                    f"Failed to log trace to MLflow backend: {e}",
-                    exc_info=_logger.isEnabledFor(logging.DEBUG),
-                )
-
-    def _create_span_tag(spans: List[Span]) -> str:
-        # When a trace is logged, we set a mlflow.traceSpans tag via SetTraceTag API
-        parsed_spans = []
-        for span in spans:
-            parsed_span = {}
-
-            parsed_span["name"] = span.name
-            parsed_span["type"] = span.span_type
-            span_inputs = span.inputs
-            if span_inputs and isinstance(span_inputs, dict):
-                parsed_span["inputs"] = list(span_inputs.keys())
-            span_outputs = span.outputs
-            if span_outputs and isinstance(span_outputs, dict):
-                parsed_span["outputs"] = list(span_outputs.keys())
-
-            parsed_spans.append(parsed_span)
-        return json.dumps(parsed_spans)
+            self._log_trace(trace)
 
     def _log_trace(self, trace: Trace):
-        """
-        Log the trace to MLflow backend. If async logging is enabled, the trace logging is non-blocking.
-        """
-        if MLFLOW_ENABLE_ASYNC_LOGGING.get():
-            if not self._async_logging_queue.is_active():
-                self._async_logging_queue.activate()
-            self._async_logging_queue.log_trace_async(trace)
-        else:
-            self._client._log_trace(trace)
+        try:
+            self._client._upload_trace_spans_as_tag(trace.info, trace.data)
+        except Exception as e:
+            _logger.debug(f"Failed to log trace spans as tag to MLflow backend: {e}", exc_info=True)
 
-    def flush(self, keep_running=True):
-        """Flush the traces to MLflow backend if async logging is enabled."""
-        self._async_logging_queue.flush(keep_running)
+        # The trace is already updated in processor.on_end method
+        # so we just log to backend store here
+        try:
+            self._client._upload_trace_data(trace.info, trace.data)
+            self._client._upload_ended_trace_info(trace.info)
+        except Exception as e:
+            # avoid silent failures
+            _logger.debug(
+                f"Failed to log trace to MLflow backend: {e}",
+                exc_info=_logger.isEnabledFor(logging.DEBUG),
+            )

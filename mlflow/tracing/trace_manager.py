@@ -71,7 +71,7 @@ class InMemoryTraceManager:
             trace_info: The trace info object to be stored.
         """
         with self._lock:
-            self._set_trace_info(trace_info.request_id, trace_info)
+            self._traces[trace_info.request_id] = _Trace(trace_info)
             self._trace_id_to_request_id[trace_id] = trace_info.request_id
 
     def update_trace_info(self, trace_info: TraceInfo):
@@ -82,7 +82,7 @@ class InMemoryTraceManager:
             trace_info: The updated trace info object to be stored.
         """
         with self._lock:
-            trace = self._get_trace(trace_info.request_id)
+            trace = self._traces.get(trace_info.request_id)
             if not trace:
                 _logger.debug(f"Trace data with request ID {trace_info.request_id} not found.")
                 return
@@ -99,33 +99,30 @@ class InMemoryTraceManager:
             _logger.debug(f"Invalid span object {type(span)} is passed. Skipping.")
             return
 
-        with self._lock:
-            trace_data_dict = self._get_trace(span.request_id).span_dict
-            trace_data_dict[span.span_id] = span
+        with self.get_trace(span.request_id) as trace:
+            if trace:
+                trace.span_dict[span.span_id] = span
 
     @contextlib.contextmanager
-    def get_trace(self, request_id: Union[str, RequestIdFuture]) -> Generator[Optional[_Trace], None, None]:
+    def get_trace(
+        self, request_id: Union[str, RequestIdFuture]
+    ) -> Generator[Optional[_Trace], None, None]:
         """
         Yield the trace info for the given request_id.
         This is designed to be used as a context manager to ensure the trace info is accessed
         with the lock held.
         """
         with self._lock:
-            yield self._traces.get(str(request_id))
+            yield self._traces.get(request_id)
 
-    def _get_trace(self, request_id: Union[str, RequestIdFuture]) -> Optional[_Trace]:
-        return self._traces.get(str(request_id))
-
-    def _set_trace_info(self, request_id: Union[str, RequestIdFuture], trace_info: TraceInfo):
-        self._traces[str(request_id)] = _Trace(trace_info)
-
-
-    def get_span_from_id(self, request_id: Union[str, RequestIdFuture], span_id: str) -> Optional[LiveSpan]:
+    def get_span_from_id(
+        self, request_id: Union[str, RequestIdFuture], span_id: str
+    ) -> Optional[LiveSpan]:
         """
         Get a span object for the given request_id and span_id.
         """
         with self._lock:
-            trace = self._traces.get(str(request_id))
+            trace = self._traces.get(request_id)
 
         return trace.span_dict.get(span_id) if trace else None
 
@@ -134,7 +131,7 @@ class InMemoryTraceManager:
         Get the root span ID for the given trace ID.
         """
         with self._lock:
-            trace = self._traces.get(str(request_id))
+            trace = self._traces.get(request_id)
 
         if trace:
             for span in trace.span_dict.values():
@@ -162,8 +159,10 @@ class InMemoryTraceManager:
         Pop the trace data for the given id and return it as a ready-to-publish Trace object.
         """
         with self._lock:
-            request_id: Union[str, RequestIdFuture] = self._trace_id_to_request_id.pop(trace_id, None)
-            trace = self._traces.pop(str(request_id), None)
+            request_id: Union[str, RequestIdFuture] = self._trace_id_to_request_id.pop(
+                trace_id, None
+            )
+            trace = self._traces.pop(request_id, None)
         return trace.to_mlflow_trace() if trace else None
 
     def flush(self):

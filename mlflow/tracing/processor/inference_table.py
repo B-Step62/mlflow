@@ -13,7 +13,6 @@ from mlflow.tracing.constant import TRACE_SCHEMA_VERSION, TRACE_SCHEMA_VERSION_K
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import (
     deduplicate_span_names_in_place,
-    get_otel_attribute,
     maybe_get_dependencies_schemas,
     maybe_get_request_id,
 )
@@ -86,7 +85,7 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
                 request_metadata={TRACE_SCHEMA_VERSION_KEY: str(TRACE_SCHEMA_VERSION)},
                 tags=tags,
             )
-            self._trace_manager.register_trace(span.context.trace_id, trace_info)
+            self._trace_manager.register_trace(span.get_span_context().trace_id, trace_info)
 
     def on_end(self, span: OTelReadableSpan) -> None:
         """
@@ -99,7 +98,9 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
         if span._parent is not None:
             return
 
-        request_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
+        request_id = self._trace_manager.get_request_id_from_trace_id(
+            span.get_span_context().trace_id
+        )
         with self._trace_manager.get_trace(request_id) as trace:
             if trace is None:
                 _logger.debug(f"Trace data with request ID {request_id} not found.")

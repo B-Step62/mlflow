@@ -4,7 +4,6 @@ from dataclasses import asdict
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 
-from mlflow.entities.trace_info import RequestIdFuture
 from opentelemetry.sdk.trace import Event as OTelEvent
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.trace import NonRecordingSpan
@@ -12,6 +11,7 @@ from opentelemetry.trace import Span as OTelSpan
 
 from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatus, SpanStatusCode
+from mlflow.entities.trace_info import RequestIdFuture
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 from mlflow.tracing.constant import SpanAttributeKey
@@ -155,7 +155,7 @@ class Span:
         The OpenTelemetry trace ID of the span. Note that this should not be exposed to
         the user, instead, use request_id as an unique identifier for a trace.
         """
-        return encode_trace_id(self._span.context.trace_id)
+        return encode_trace_id(self._span.get_span_context().trace_id)
 
     @property
     def attributes(self) -> Dict[str, Any]:
@@ -300,16 +300,14 @@ class LiveSpan(Span):
         self._attributes = _SpanAttributesRegistry(otel_span)
         self._attributes.set(SpanAttributeKey.SPAN_TYPE, span_type)
 
-
     @property
-    def request_id(self) -> str:
+    def request_id(self) -> Union[str, RequestIdFuture]:
         """
         The request ID of the span, a unique identifier for the trace it belongs to.
         Request ID is equivalent to the trace ID in OpenTelemetry, but generated
         differently by the tracing backend.
         """
         return self._request_id
-
 
     def set_inputs(self, inputs: Any):
         """Set the input values to the span."""
@@ -400,18 +398,27 @@ class LiveSpan(Span):
 
         :meta private:
         """
-        # If the request ID is not yet ready, raise an exception.
-        if isinstance(self.request_id, RequestIdFuture):
-            request_id = self._request_id.get_if_ready()
-            if request_id is None:
-                raise MlflowException(
-                    "The request ID is not yet available for the live span.",
-                    INVALID_PARAMETER_VALUE,
-                )
-        self._attributes.set(SpanAttributeKey.REQUEST_ID, request_id)
-
+        self._validate_request_id()
         # All state of the live span is already persisted in the OpenTelemetry span object.
         return Span(self._span)
+
+    def to_dict(self):
+        self._validate_request_id()
+        return super().to_dict()
+
+    def _validate_request_id(self):
+        # In async case, the request_id field is a future object until
+        # the start_trace() call to the backend is completed. We can
+        # only persist the LiveSpan object after the request ID is determined.
+        if isinstance(self.request_id, RequestIdFuture):
+            if request_id := self.request_id.get_if_ready():
+                self._request_id = request_id
+            else:
+                raise MlflowException(
+                    "The request ID must be determined before converting the live span to the immutable span or dictionary.",
+                    INVALID_PARAMETER_VALUE,
+                )
+        self.set_attribute(SpanAttributeKey.REQUEST_ID, self.request_id)
 
 
 NO_OP_SPAN_REQUEST_ID = "MLFLOW_NO_OP_SPAN_REQUEST_ID"
@@ -537,7 +544,12 @@ class _SpanAttributesRegistry:
         # NB: OpenTelemetry attribute can store not only string but also a few primitives like
         #   int, float, bool, and list of them. However, we serialize all into JSON string here
         #   for the simplicity in deserialization process.
-        self._span.set_attribute(key, json.dumps(value, cls=TraceJSONEncoder))
+        serialized = json.dumps(value, cls=TraceJSONEncoder)
+        # NB: We sometimes want to set an attribute after ending the span, but OpenTelemetry does
+        #   not allow it. We bypass this restriction by directly mutating the attribute dictionary.
+        #   Note that we still restrict setting attribute to immutable Span object.
+        with self._span._lock:
+            self._span._attributes[key] = serialized
 
 
 class _CachedSpanAttributesRegistry(_SpanAttributesRegistry):

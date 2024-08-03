@@ -37,6 +37,7 @@ from mlflow.entities import (
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
 from mlflow.entities.model_registry.model_version_stages import ALL_STAGES
 from mlflow.entities.span import NO_OP_SPAN_REQUEST_ID, NoOpSpan, create_mlflow_span
+from mlflow.entities.trace_data import TraceData
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
 from mlflow.exceptions import MlflowException
@@ -58,10 +59,11 @@ from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT, SEARCH_TRACES_DEFA
 from mlflow.tracing.constant import (
     TRACE_REQUEST_ID_PREFIX,
     SpanAttributeKey,
+    TraceTagKey,
 )
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.trace_manager import InMemoryTraceManager
-from mlflow.tracing.utils import exclude_immutable_tags, get_otel_attribute
+from mlflow.tracing.utils import exclude_immutable_tags
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking._model_registry import utils as registry_utils
 from mlflow.tracking._model_registry.client import ModelRegistryClient
@@ -74,7 +76,6 @@ from mlflow.utils.annotations import deprecated, experimental
 from mlflow.utils.async_logging.run_operations import RunOperations
 from mlflow.utils.databricks_utils import (
     get_databricks_run_url,
-    is_in_databricks_model_serving_environment,
 )
 from mlflow.utils.logging_utils import eprint
 from mlflow.utils.mlflow_tags import (
@@ -390,6 +391,9 @@ class MlflowClient:
         """
         return self._tracking_client.create_run(experiment_id, start_time, tags, run_name)
 
+    def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData) -> None:
+        return self._tracking_client._upload_trace_data(trace_info, trace_data)
+
     @experimental
     def delete_traces(
         self,
@@ -598,7 +602,11 @@ class MlflowClient:
             otel_span = mlflow.tracing.provider.start_detached_span(
                 name, experiment_id=experiment_id
             )
-            request_id = get_otel_attribute(otel_span, SpanAttributeKey.REQUEST_ID)
+
+            trace_manager = InMemoryTraceManager.get_instance()
+            request_id = trace_manager.get_request_id_from_trace_id(
+                otel_span.get_span_context().trace_id
+            )
             mlflow_span = create_mlflow_span(otel_span, request_id, span_type)
 
             # # If the span is a no-op span i.e. tracing is disabled, do nothing
@@ -609,17 +617,12 @@ class MlflowClient:
                 mlflow_span.set_inputs(inputs)
             mlflow_span.set_attributes(attributes or {})
 
-            trace_manager = InMemoryTraceManager.get_instance()
             tags = exclude_immutable_tags(tags or {})
-            if is_in_databricks_model_serving_environment():
-                # Update trace tags for trace in in-memory trace manager
-                with trace_manager.get_trace(request_id) as trace:
-                    trace.info.tags.update(tags)
-            else:
-                # Update trace tags in store and in-memory if tracking client is available
-                self._tracking_client.set_trace_tags(request_id, tags)
-                trace_info = self._tracking_client.get_trace_info(request_id)
-                trace_manager.update_trace_info(trace_info)
+            # Update trace tags for trace in in-memory trace manager.
+            # These user tags are logged to the backend at the end of
+            # the trace, similarly to the input and outputs.
+            with trace_manager.get_trace(request_id) as trace:
+                trace.info.tags.update(tags)
             # Register new span in the in-memory trace manager
             trace_manager.register_span(mlflow_span)
 
@@ -683,6 +686,29 @@ class MlflowClient:
                 )
 
         self.end_span(request_id, root_span_id, outputs, attributes, status)
+
+    def _upload_trace_spans_as_tag(self, trace_info: TraceInfo, trace_data: TraceData):
+        # When a trace is logged, we set a mlflow.traceSpans tag via SetTraceTag API
+        # https://databricks.atlassian.net/browse/ML-40306
+        parsed_spans = []
+        for span in trace_data.spans:
+            parsed_span = {}
+
+            parsed_span["name"] = span.name
+            parsed_span["type"] = span.get_attribute(SpanAttributeKey.SPAN_TYPE)
+            span_inputs = span.get_attribute(SpanAttributeKey.INPUTS)
+            if span_inputs and isinstance(span_inputs, dict):
+                parsed_span["inputs"] = list(span_inputs.keys())
+            span_outputs = span.get_attribute(SpanAttributeKey.OUTPUTS)
+            if span_outputs and isinstance(span_outputs, dict):
+                parsed_span["outputs"] = list(span_outputs.keys())
+
+            parsed_spans.append(parsed_span)
+
+        # Directly set the tag on the trace in the backend
+        self._tracking_client.set_trace_tag(
+            trace_info.request_id, TraceTagKey.TRACE_SPANS, json.dumps(parsed_spans)
+        )
 
     @experimental
     def start_span(
@@ -921,7 +947,10 @@ class MlflowClient:
             tags=tags or {},
         )
 
-    def _log_trace(self, trace: Trace) -> None:
+    def _upload_ended_trace_info(
+        self,
+        trace_info: TraceInfo,
+    ) -> TraceInfo:
         """
         Update the TraceInfo object in the backend store with the completed trace info.
 
@@ -931,15 +960,12 @@ class MlflowClient:
         Returns:
             The updated TraceInfo object.
         """
-        # Upload trace data as an artifact
-        self._tracking_client._upload_trace_data(trace.info, trace.data)
-        # Update the trace info in the backend store
         return self._tracking_client.end_trace(
-            request_id=trace.info.request_id,
-            timestamp_ms=trace.info.timestamp_ms + trace.info.execution_time_ms,
-            status=trace.info.status,
-            request_metadata=trace.info.request_metadata,
-            tags=trace.info.tags or {},
+            request_id=trace_info.request_id,
+            timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
+            status=trace_info.status,
+            request_metadata=trace_info.request_metadata,
+            tags=trace_info.tags or {},
         )
 
     @experimental

@@ -3,6 +3,7 @@ from threading import Thread
 from typing import Optional
 
 from mlflow.entities import LiveSpan, Span, Trace
+from mlflow.entities.trace_info import RequestIdFuture
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
@@ -69,6 +70,22 @@ def test_add_spans():
 
     # Pop a trace that does not exist
     assert trace_manager.pop_trace(90123) is None
+
+
+def test_add_spans_future_request_id():
+    trace_manager = InMemoryTraceManager.get_instance()
+
+    request_id = RequestIdFuture()
+    trace_id = 12345
+    trace_manager.register_trace(trace_id, create_test_trace_info(request_id, "test_1"))
+
+    # Add a span for a new trace
+    span_1_1 = _create_test_span(request_id, trace_id, span_id=1)
+    trace_manager.register_span(span_1_1)
+
+    with trace_manager.get_trace(request_id) as trace:
+        assert trace.info.request_id == request_id
+        assert len(trace.span_dict) == 1
 
 
 def test_add_and_pop_span_thread_safety():

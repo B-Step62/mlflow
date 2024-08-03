@@ -16,7 +16,7 @@ from mlflow.entities import (
     TraceInfo,
 )
 from mlflow.entities.trace_status import TraceStatus
-from mlflow.environment_variables import MLFLOW_TRACKING_USERNAME
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING, MLFLOW_TRACKING_USERNAME
 from mlflow.exceptions import MlflowException
 from mlflow.pyfunc.context import Context, set_prediction_context
 from mlflow.store.entities.paged_list import PagedList
@@ -58,8 +58,14 @@ def mock_client():
         yield client
 
 
+@pytest.fixture(params=[True, False])
+def is_async(request, monkeypatch):
+    monkeypatch.setenv(MLFLOW_ENABLE_ASYNC_LOGGING.name, str(request.param))
+    return request.param
+
+
 @pytest.mark.parametrize("with_active_run", [True, False])
-def test_trace(with_active_run):
+def test_trace(with_active_run, is_async):
     model = DefaultTestModel()
 
     if with_active_run:
@@ -68,6 +74,9 @@ def test_trace(with_active_run):
             run_id = run.info.run_id
     else:
         model.predict(2, 5)
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
 
     trace = mlflow.get_last_active_trace()
     trace_info = trace.info
@@ -118,8 +127,19 @@ def test_trace(with_active_run):
         "mlflow.spanOutputs": 64,
     }
 
+    logged_trace = mlflow.MlflowClient().get_trace(trace_info.request_id)
+    assert logged_trace.info.status == SpanStatusCode.OK
+    assert logged_trace.data.request == trace.data.request
+    assert logged_trace.data.response == trace.data.response
+    assert len(logged_trace.data.spans) == len(trace.data.spans)
+    assert all(
+        s1.to_dict() == s2.to_dict() for s1, s2 in zip(logged_trace.data.spans, trace.data.spans)
+    )
 
-def test_trace_with_databricks_tracking_uri(databricks_tracking_uri, mock_store, monkeypatch):
+
+def test_trace_with_databricks_tracking_uri(
+    databricks_tracking_uri, mock_store, monkeypatch, is_async
+):
     monkeypatch.setenv("MLFLOW_EXPERIMENT_NAME", "test")
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
     monkeypatch.setattr(mlflow.tracking.context.default_context, "_get_source_name", lambda: "test")
@@ -137,10 +157,13 @@ def test_trace_with_databricks_tracking_uri(databricks_tracking_uri, mock_store,
     ) as mock_upload_trace_data:
         model.predict(2, 5)
 
+        if is_async:
+            mlflow.flush_trace_async_logging()
+
     traces = get_traces()
     assert len(traces) == 1
     trace_info = traces[0].info
-    assert trace_info.request_id == "tr-12345"
+    assert trace_info.request_id == "tr-0"
     assert trace_info.experiment_id == "test_experiment_id"
     assert trace_info.status == TraceStatus.OK
     assert trace_info.request_metadata == {
@@ -166,7 +189,9 @@ def test_trace_with_databricks_tracking_uri(databricks_tracking_uri, mock_store,
     mock_upload_trace_data.assert_called_once()
 
 
-def test_trace_in_databricks_model_serving(mock_databricks_serving_with_tracing_env):
+def test_trace_in_databricks_model_serving(mock_databricks_serving_with_tracing_env, is_async):
+    # NB: async logging should be no-op in Databricks model serving
+
     # Dummy flask app for prediction
     import flask
 
@@ -275,7 +300,7 @@ def test_trace_in_databricks_model_serving(mock_databricks_serving_with_tracing_
     assert len(traces) == 0
 
 
-def test_trace_in_model_evaluation(mock_store, monkeypatch):
+def test_trace_in_model_evaluation(mock_store, monkeypatch, is_async):
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
     monkeypatch.setattr(mlflow.tracking.context.default_context, "_get_source_name", lambda: "test")
 
@@ -299,6 +324,9 @@ def test_trace_in_model_evaluation(mock_store, monkeypatch):
         with set_prediction_context(Context(request_id=request_id_2, is_evaluate=True)):
             model.predict(3, 4)
 
+        if is_async:
+            mlflow.flush_trace_async_logging()
+
     expected_tags = {
         "mlflow.traceName": "predict",
         "mlflow.source.name": "test",
@@ -320,7 +348,7 @@ def test_trace_in_model_evaluation(mock_store, monkeypatch):
     assert mock_store.end_trace.call_count == 2
 
 
-def test_trace_handle_exception_during_prediction():
+def test_trace_handle_exception_during_prediction(is_async):
     # This test is to make sure that the exception raised by the main prediction
     # logic is raised properly and the trace is still logged.
     class TestModel:
@@ -337,6 +365,9 @@ def test_trace_handle_exception_during_prediction():
     with pytest.raises(ValueError, match=r"Some error"):
         model.predict(2, 5)
 
+    if is_async:
+        mlflow.flush_trace_async_logging()
+
     # Trace should be logged even if the function fails, with status code ERROR
     trace = mlflow.get_last_active_trace()
     assert trace.info.request_id is not None
@@ -349,7 +380,7 @@ def test_trace_handle_exception_during_prediction():
     assert len(trace.data.spans) == 2
 
 
-def test_trace_ignore_exception_from_tracing_logic(monkeypatch):
+def test_trace_ignore_exception_from_tracing_logic(monkeypatch, is_async):
     # This test is to make sure that the main prediction logic is not affected
     # by the exception raised by the tracing logic.
     class TestModel:
@@ -373,6 +404,9 @@ def test_trace_ignore_exception_from_tracing_logic(monkeypatch):
     ) as mock_input_args:
         output = model.predict(2, 5)
         mock_input_args.assert_called_once()
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
 
     assert output == 7
     trace = mlflow.get_last_active_trace()
@@ -406,7 +440,7 @@ def test_trace_skip_resolving_unrelated_tags_to_traces():
     assert "unrelated tags" not in trace.info.tags
 
 
-def test_start_span_context_manager():
+def test_start_span_context_manager(is_async):
     datetime_now = datetime.now()
 
     class TestModel:
@@ -435,6 +469,9 @@ def test_start_span_context_manager():
 
     model = TestModel()
     model.predict(1, 2)
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
 
     trace = mlflow.get_last_active_trace()
     assert trace.info.request_id is not None

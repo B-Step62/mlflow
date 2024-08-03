@@ -28,7 +28,7 @@ from mlflow.entities.model_registry import ModelVersion, ModelVersionTag
 from mlflow.entities.model_registry.model_version_status import ModelVersionStatus
 from mlflow.entities.param import Param
 from mlflow.entities.trace_status import TraceStatus
-from mlflow.environment_variables import MLFLOW_TRACKING_USERNAME
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING, MLFLOW_TRACKING_USERNAME
 from mlflow.exceptions import MlflowException, MlflowTraceDataCorrupted, MlflowTraceDataNotFound
 from mlflow.store.artifact.artifact_repo import ArtifactRepository
 from mlflow.store.model_registry.sqlalchemy_store import (
@@ -135,6 +135,13 @@ def setup_async_logging():
     yield
     flush_async_logging()
     enable_async_logging(False)
+
+
+# Fixture to run test with both async logging enabled and disabled
+@pytest.fixture(params=[True, False])
+def is_async(request, monkeypatch):
+    monkeypatch.setenv(MLFLOW_ENABLE_ASYNC_LOGGING.name, str(request.param))
+    return request.param
 
 
 def test_client_create_run(mock_store, mock_time):
@@ -360,7 +367,7 @@ def tracking_uri(request, tmp_path):
 
 
 @pytest.mark.parametrize("with_active_run", [True, False])
-def test_start_and_end_trace(tracking_uri, with_active_run):
+def test_start_and_end_trace(tracking_uri, is_async, with_active_run):
     client = MlflowClient(tracking_uri)
 
     experiment_id = client.create_experiment("test_experiment")
@@ -423,6 +430,9 @@ def test_start_and_end_trace(tracking_uri, with_active_run):
             run_id = run.info.run_id
     else:
         model.predict(1, 2)
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
 
     request_id = mlflow.get_last_active_trace().info.request_id
 
@@ -500,7 +510,7 @@ def test_start_and_end_trace_capture_falsy_input_and_output(tracking_uri):
 
 
 @pytest.mark.usefixtures("reset_active_experiment")
-def test_start_and_end_trace_before_all_span_end():
+def test_start_and_end_trace_before_all_span_end(is_async):
     # This test is to verify that the trace is still exported even if some spans are not ended
     exp_id = mlflow.set_experiment("test_experiment_1").experiment_id
 
@@ -531,6 +541,9 @@ def test_start_and_end_trace_before_all_span_end():
 
     model = TestModel()
     model.predict(1)
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
 
     traces = get_traces()
     assert len(traces) == 1
@@ -569,7 +582,7 @@ def test_start_and_end_trace_before_all_span_end():
 
 @mock.patch("mlflow.tracking._tracking_service.utils.get_tracking_uri", return_value="databricks")
 def test_log_trace_with_databricks_tracking_uri(
-    databricks_tracking_uri, mock_store_for_tracing, monkeypatch
+    databricks_tracking_uri, is_async, mock_store_for_tracing, monkeypatch
 ):
     monkeypatch.setenv("MLFLOW_EXPERIMENT_NAME", "test")
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
@@ -621,7 +634,7 @@ def test_log_trace_with_databricks_tracking_uri(
 
     def _mock_update_trace_info(trace_info):
         trace_manager = InMemoryTraceManager.get_instance()
-        with trace_manager.get_trace("tr-12345") as trace:
+        with trace_manager.get_trace("tr-0") as trace:
             trace.info.tags.update({"tag": "tag_value"})
 
     with mock.patch(
@@ -638,10 +651,13 @@ def test_log_trace_with_databricks_tracking_uri(
     ):
         model.predict(1, 2)
 
+        if is_async:
+            mlflow.flush_trace_async_logging()
+
     traces = get_traces()
     assert len(traces) == 1
     trace_info = traces[0].info
-    assert trace_info.request_id == "tr-12345"
+    assert trace_info.request_id == "tr-0"
     assert trace_info.experiment_id == "test_experiment_id"
     assert trace_info.status == TraceStatus.OK
     assert trace_info.request_metadata == {
@@ -668,7 +684,7 @@ def test_log_trace_with_databricks_tracking_uri(
     mock_upload_trace_data.assert_called_once()
 
 
-def test_start_and_end_trace_does_not_log_trace_when_disabled(tracking_uri, monkeypatch):
+def test_start_and_end_trace_does_not_log_trace_when_disabled(tracking_uri, monkeypatch, is_async):
     client = MlflowClient(tracking_uri)
     experiment_id = client.create_experiment("test_experiment")
 
@@ -705,7 +721,7 @@ def test_start_and_end_trace_does_not_log_trace_when_disabled(tracking_uri, monk
     mock_logger.warning.assert_not_called()
 
 
-def test_start_trace_within_active_run():
+def test_start_trace_within_active_run(is_async):
     exp_id = mlflow.create_experiment("test")
 
     client = mlflow.MlflowClient()
@@ -715,6 +731,9 @@ def test_start_trace_within_active_run():
             experiment_id=exp_id,
         )
         client.end_trace(root_span.request_id)
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
 
     traces = client.search_traces(experiment_ids=[exp_id])
     assert len(traces) == 1
@@ -778,7 +797,7 @@ def test_start_span_raise_error_when_parent_id_is_not_provided():
         mlflow.tracking.MlflowClient().start_span("span_name", request_id="test", parent_id=None)
 
 
-def test_ignore_exception_from_tracing_logic(monkeypatch):
+def test_ignore_exception_from_tracing_logic(monkeypatch, is_async):
     exp_id = mlflow.set_experiment("test_experiment_1").experiment_id
     client = MlflowClient()
     TRACE_BUFFER.clear()
@@ -806,12 +825,18 @@ def test_ignore_exception_from_tracing_logic(monkeypatch):
     monkeypatch.setattr(processor, "on_start", _always_fail)
     response = model.predict(1)
     assert response == 1
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
     assert len(TRACE_BUFFER) == 0
 
     # Exception while ending the trace should be caught not raise
     monkeypatch.setattr(processor, "on_end", _always_fail)
     response = model.predict(1)
     assert response == 1
+
+    if is_async:
+        mlflow.flush_trace_async_logging()
     assert len(TRACE_BUFFER) == 0
 
 

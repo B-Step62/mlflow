@@ -50,7 +50,7 @@ def mock_store(monkeypatch):
 
         def _mock_start_trace(experiment_id, timestamp_ms, request_metadata, tags):
             trace_info = create_test_trace_info(
-                request_id="tr-12345",
+                request_id=f"tr-{len(_traces)}",
                 experiment_id=experiment_id,
                 timestamp_ms=timestamp_ms,
                 execution_time_ms=None,

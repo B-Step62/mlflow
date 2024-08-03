@@ -62,7 +62,7 @@ class InferenceTableSpanExporter(SpanExporter):
                 _logger.debug("Received a non-root span. Skipping export.")
                 continue
 
-            trace = self._trace_manager.pop_trace(span.context.trace_id)
+            trace = self._trace_manager.pop_trace(span.get_span_context().trace_id)
             if trace is None:
                 _logger.debug(f"Trace for span {span} not found. Skipping export.")
                 continue

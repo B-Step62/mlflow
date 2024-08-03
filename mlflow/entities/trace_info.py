@@ -1,4 +1,3 @@
-from uuid import uuid4, UUID
 from concurrent.futures import Future
 from dataclasses import asdict, dataclass, field
 from typing import Dict, Optional, Union
@@ -14,13 +13,12 @@ class RequestIdFuture:
     """
     A future-like object that represents a request ID that may not yet be available i.e. not returned from the backend.
     """
+
     def __init__(self):
-        print("Creating RequestIdFuture")
-        self.uuid = uuid4()
         self.future_request_id = Future()
 
     def __str__(self):
-        return self.get_if_ready() or str(self.uuid)
+        return self.get_if_ready() or "NOT_READY"
 
     def is_ready(self):
         return self.future_request_id.done()
@@ -31,7 +29,6 @@ class RequestIdFuture:
         return None
 
     def complete(self, request_id):
-        print(f"Completing request_id: {request_id}. Current future state: {self.future_request_id} {self.future_request_id.done()}")
         self.future_request_id.set_result(request_id)
 
 

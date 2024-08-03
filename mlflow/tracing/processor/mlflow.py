@@ -1,17 +1,11 @@
 import atexit
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-import json
 import logging
-from queue import Empty, Queue
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from queue import Empty, Queue
+from typing import Any, Callable, Dict, Optional, Union
 
-from mlflow.entities.span import LiveSpan
-from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INTERNAL_ERROR
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.sdk.trace import Span as OTelSpan
@@ -20,6 +14,9 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 import mlflow
 from mlflow.entities.trace_info import RequestIdFuture, TraceInfo
 from mlflow.entities.trace_status import TraceStatus
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import INTERNAL_ERROR
 from mlflow.tracing.constant import (
     MAX_CHARS_IN_TRACE_INFO_METADATA_AND_TAGS,
     TRACE_SCHEMA_VERSION,
@@ -54,6 +51,7 @@ _logger = logging.getLogger(__name__)
 # so we instead keep track of the warning issuance state manually.
 _ISSUED_DEFAULT_EXPERIMENT_WARNING = False
 
+
 class MlflowSpanProcessor(SimpleSpanProcessor):
     """
     Defines custom hooks to be executed when a span is started or ended (before exporting).
@@ -77,12 +75,13 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
             object is explicitly specified to OpenTelemetry start_span call. If the parent span is
             obtained from the global context, it won't be passed here so we should not rely on it.
         """
-        request_id = self._trace_manager.get_request_id_from_trace_id(span.context.trace_id)
+        request_id = self._trace_manager.get_request_id_from_trace_id(
+            span.get_span_context().trace_id
+        )
         if not request_id:
             trace_info = self._start_trace(span)
-            self._trace_manager.register_trace(span.context.trace_id, trace_info)
+            self._trace_manager.register_trace(span.get_span_context().trace_id, trace_info)
             request_id = trace_info.request_id
-        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(request_id, default=str))
 
         # NB: This is a workaround to exclude the latency of backend StartTrace API call (within
         #   _create_trace_info()) from the execution time of the span. The API call takes ~1 sec
@@ -95,7 +94,6 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
         tags = get_trace_tags(span)
         experiment_id = get_trace_experiment_id(span)
 
-        print("Creating new task")
         task = StartTraceTask(
             client=self._client,
             experiment_id=experiment_id,
@@ -130,11 +128,14 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
             span=span,
             on_end_handler=lambda span: self.span_exporter.export((span,)),
         )
-
         if MLFLOW_ENABLE_ASYNC_LOGGING.get():
             self._async_logging_queue.put(task)
         else:
             task.handle()
+
+    def flush(self, keep_running: bool = False) -> None:
+        """Flush the async logging queue."""
+        self._async_logging_queue.flush(keep_running=keep_running)
 
 
 def get_trace_experiment_id(span: OTelSpan) -> str:
@@ -170,13 +171,12 @@ def get_trace_metadata(span: OTelSpan) -> Dict[str, str]:
         metadata[TraceMetadataKey.SOURCE_RUN] = run.info.run_id
     return metadata
 
+
 def get_trace_tags(span: OTelSpan) -> Dict[str, str]:
     # Avoid running unnecessary context providers to avoid overhead
     unfiltered_tags = resolve_tags(ignore=[DatabricksRepoRunContext, GitRunContext])
     tags = {
-        key: value
-        for key, value in unfiltered_tags.items()
-        if key in TRACE_RESOLVE_TAGS_ALLOWLIST
+        key: value for key, value in unfiltered_tags.items() if key in TRACE_RESOLVE_TAGS_ALLOWLIST
     }
     # If the trace is created in the context of MLflow model evaluation, we extract the request
     # ID from the prediction context. Otherwise, we create a new trace info by calling the
@@ -208,7 +208,6 @@ def _update_trace_info(trace: _Trace, root_span: OTelReadableSpan):
     )
 
 
-
 def _truncate_metadata(value: Optional[str]) -> str:
     """Get truncated value of the attribute if it exceeds the maximum length."""
     if not value:
@@ -219,19 +218,24 @@ def _truncate_metadata(value: Optional[str]) -> str:
         value = value[:trunc_length] + TRUNCATION_SUFFIX
     return value
 
+
 class Task:
     """
-    A class to encapsulate the trace and its completion event.
+    A base class to encapsulate the trace and its completion event.
     """
-    def __init__(self):
-        self.completion_event = threading.Event()
-        self.exception = None
+
+    def handle(self) -> None:
+        """
+        Handle the task.
+        """
+        raise NotImplementedError()
 
 
 class StartTraceTask(Task):
     """
     A class to encapsulate the start trace task.
     """
+
     def __init__(
         self,
         client: MlflowClient,
@@ -259,8 +263,8 @@ class StartTraceTask(Task):
     def request_id(self) -> Union[str, RequestIdFuture]:
         request_id = self.trace_info.request_id
         if isinstance(request_id, RequestIdFuture) and request_id.is_ready():
-            return self._request_id.get_if_ready()
-        return self._request_id
+            return request_id.get_if_ready()
+        return request_id
 
     def handle(self):
         """
@@ -269,32 +273,32 @@ class StartTraceTask(Task):
         Returns:
             The request ID of the trace.
         """
-        ti = self._client._start_tracked_trace(
+        trace_info_response = self._client._start_tracked_trace(
             experiment_id=self.trace_info.experiment_id,
             timestamp_ms=self.trace_info.timestamp_ms,
             request_metadata=self.trace_info.request_metadata,
-            tags=self.trace_info.tags
+            tags=self.trace_info.tags,
         )
-        self.trace_info.request_id.complete(ti.request_id)
-        # Some metadata/tags are updated by the backend
-        self.trace_info.request_metadata = ti.request_metadata
-        self.trace_info.tags = ti.tags
+        self.request_id.complete(trace_info_response.request_id)
+        # Reflect the final values from the backend response to the trace info
+        self.trace_info.request_id = trace_info_response.request_id
+        self.trace_info.request_metadata = trace_info_response.request_metadata
+        self.trace_info.tags = trace_info_response.tags
 
 
 class RetryableTraceException(MlflowException):
     pass
 
+
 _MAX_RETRY = 5
+
 
 class EndTraceTask(Task):
     """
     A class to encapsulate the end trace task.
     """
-    def __init__(
-        self,
-        span: OTelReadableSpan,
-        on_end_handler: Callable[[OTelReadableSpan], None]
-    ):
+
+    def __init__(self, span: OTelReadableSpan, on_end_handler: Callable[[OTelReadableSpan], None]):
         super().__init__()
         self._span = span
         self._on_end_handler = on_end_handler
@@ -303,17 +307,22 @@ class EndTraceTask(Task):
     def handle(self) -> None:
         trace_manager = InMemoryTraceManager.get_instance()
         # Request ID handling (TODO: Add more description)
-        request_id = trace_manager.get_request_id_from_trace_id(self._span.context.trace_id)
+        request_id = trace_manager.get_request_id_from_trace_id(
+            self._span.get_span_context().trace_id
+        )
         if isinstance(request_id, RequestIdFuture) and not request_id.is_ready():
+            _logger.warning("Request ID is not ready, retrying")
             # If async logging is enabled, this exception will be caught and retried in the async logging queue.
             raise RetryableTraceException(
                 "EndTrace task cannot be processed before StartTrace task is done.",
-                error_code=INTERNAL_ERROR
+                error_code=INTERNAL_ERROR,
             )
 
         with trace_manager.get_trace(request_id) as trace:
             if trace is None:
-                _logger.warning(f"Trace data with request ID {request_id} not found. Existing keys are: {trace_manager._traces.keys()}")
+                _logger.warning(
+                    f"Trace data with request ID {request_id} not found. Existing keys are: {trace_manager._traces.keys()}"
+                )
                 return
 
             _update_trace_info(trace, self._span)
@@ -335,14 +344,22 @@ class AsyncTraceTaskQueue:
 
         self._stop_data_logging_thread_event = threading.Event()
         self._is_activated = False
-
+        self._in_progress_tasks = set()
 
     def put(self, task: Task) -> None:
+        """
+
+        Args:
+            task: The task to be processed.
+        """
         if not self.is_active():
             self.activate()
-        self._queue.put(task)
-        self._trace_status_check_threadpool.submit(self._wait_for_task, task)
 
+        # If stop even is set, we should wait for the queue to be drained before putting the task.
+        if self._stop_data_logging_thread_event.is_set():
+            self._stop_data_logging_thread_event.wait()
+        self._in_progress_tasks.add(task)
+        self._queue.put(task)
 
     def _set_up_logging_thread(self) -> None:
         """Sets up the logging thread.
@@ -359,11 +376,6 @@ class AsyncTraceTaskQueue:
                 max_workers=5,
                 thread_name_prefix="MLflowTraceLoggingWorkerPool",
             )
-
-            self._trace_status_check_threadpool = ThreadPoolExecutor(
-                max_workers=5,
-                thread_name_prefix="MLflowAsyncTraceLoggingStatusCheck",
-            )
             self._trace_logging_thread.start()
 
     def _logging_loop(self) -> None:
@@ -374,8 +386,8 @@ class AsyncTraceTaskQueue:
         try:
             while not self._stop_data_logging_thread_event.is_set():
                 self._handle_task()
-            # Drain the queue after the stop event is set.
-            while not self._queue.empty():
+            # Drain the remaining items in the queue after the stop event is set.
+            while not self._queue.empty() or self._in_progress_tasks:
                 self._handle_task()
         except Exception as e:
             from mlflow.exceptions import MlflowException
@@ -383,8 +395,7 @@ class AsyncTraceTaskQueue:
             raise MlflowException(f"Exception inside the run data logging thread: {e}")
 
     def _handle_task(self) -> None:
-        """Process the given task in the running runs queues.
-        """
+        """Process the given task in the running runs queues."""
         try:
             task = self._queue.get(timeout=1)
         except Empty:
@@ -394,34 +405,25 @@ class AsyncTraceTaskQueue:
         def _handle(task):
             try:
                 task.handle()
-                task.completion_event.set()
+                self._in_progress_tasks.remove(task)
             except RetryableTraceException as e:
                 if task.retry < _MAX_RETRY:
                     task.retry += 1
-                    self._queue.put(task)
+                    # Retry the task after N seconds
+                    # Here we directly put the task to the queue instead of calling the put()
+                    # method, to force putting even if the stop event is set.
+                    threading.Timer(task.retry**2, self._queue.put, args=(task,)).start()
                 else:
-                    _logger.warning(f"Failed to process task after {_MAX_RETRY} retries. Exception: {e}", exc_info=True)
-                    task.exception = e
-                    task.completion_event.set()
+                    _logger.warning(
+                        f"Failed to process task after {_MAX_RETRY} retries. Exception: {e}",
+                        exc_info=True,
+                    )
+                    self._in_progress_tasks.remove(task)
             except Exception as e:
-                _logger.error(f"Failed to log trace {task.trace}. Exception: {e}", exc_info=True)
-                task.exception = e
-                task.completion_event.set()
+                _logger.error(f"Failed to handle task {task}. Exception: {e}", exc_info=True)
+                self._in_progress_tasks.remove(task)
 
         self._trace_logging_worker_threadpool.submit(_handle, task)
-
-    def _wait_for_task(self, task: Task) -> None:
-        """Wait for given task to be processed by the logging thread.
-
-        Args:
-            trace: The task to wait for.
-
-        Raises:
-            Exception: If an exception occurred while processing the trace.
-        """
-        task.completion_event.wait()
-        if task.exception:
-            raise task.exception
 
     def is_active(self) -> bool:
         return self._is_activated
@@ -464,15 +466,17 @@ class AsyncTraceTaskQueue:
         Args:
             keep_running: If True, the logging thread will be restarted after flushing the queue.
         """
+        if not self.is_active():
+            return
+
         # Stop the data processing thread.
         self._stop_data_logging_thread_event.set()
         # Waits till logging queue is drained.
         self._trace_logging_thread.join()
         self._trace_logging_worker_threadpool.shutdown(wait=True)
-        self._trace_status_check_threadpool.shutdown(wait=True)
 
         # Restart the thread to listen to incoming data after flushing.
         self._stop_data_logging_thread_event.clear()
 
         if keep_running:
-            self._set_up_logging_thread()
+            self.activate()

@@ -7,7 +7,7 @@ import pytest
 import mlflow.tracking.context.default_context
 from mlflow.entities.span import LiveSpan
 from mlflow.entities.trace_status import TraceStatus
-from mlflow.environment_variables import MLFLOW_TRACKING_USERNAME
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING, MLFLOW_TRACKING_USERNAME
 from mlflow.pyfunc.context import Context, set_prediction_context
 from mlflow.tracing.constant import (
     TRACE_SCHEMA_VERSION,
@@ -26,7 +26,14 @@ _TRACE_ID = 12345
 _REQUEST_ID = f"tr-{_TRACE_ID}"
 
 
-def test_on_start(monkeypatch):
+# Running all tests with and without async logging enabled
+@pytest.fixture(autouse=True, params=[True, False])
+def is_async(request, monkeypatch):
+    monkeypatch.setenv(MLFLOW_ENABLE_ASYNC_LOGGING.name, str(request.param))
+    return request.param
+
+
+def test_on_start(is_async, monkeypatch):
     monkeypatch.setattr(mlflow.tracking.context.default_context, "_get_source_name", lambda: "test")
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
 
@@ -41,6 +48,8 @@ def test_on_start(monkeypatch):
     processor = MlflowSpanProcessor(span_exporter=mock.MagicMock(), client=mock_client)
 
     processor.on_start(span)
+    if is_async:
+        processor.flush()
 
     mock_client._start_tracked_trace.assert_called_once_with(
         experiment_id="0",
@@ -53,8 +62,7 @@ def test_on_start(monkeypatch):
             "mlflow.source.type": "LOCAL",
         },
     )
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
-    assert _REQUEST_ID in InMemoryTraceManager.get_instance()._traces
+    assert len(InMemoryTraceManager.get_instance()._traces) == 1
 
     # Child span should not create a new trace
     child_span = create_mock_otel_span(
@@ -64,11 +72,10 @@ def test_on_start(monkeypatch):
     processor.on_start(child_span)
 
     mock_client._start_tracked_trace.assert_not_called()
-    assert child_span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
 
 
 @pytest.mark.skipif(is_windows(), reason="Timestamp is not precise enough on Windows")
-def test_on_start_adjust_span_timestamp_to_exclude_backend_latency(monkeypatch):
+def test_on_start_adjust_span_timestamp_to_exclude_backend_latency(is_async, monkeypatch):
     monkeypatch.setenv("MLFLOW_TESTING", "false")
     trace_info = create_test_trace_info(_REQUEST_ID, 0)
     mock_client = mock.MagicMock()
@@ -91,8 +98,11 @@ def test_on_start_adjust_span_timestamp_to_exclude_backend_latency(monkeypatch):
     # The span timestamp should not include the backend latency (0.5 second)
     assert time.time_ns() - span.start_time < 100_000_000  # 0.1 second
 
+    if is_async:
+        processor.flush()
 
-def test_on_start_with_experiment_id(monkeypatch):
+
+def test_on_start_with_experiment_id(is_async, monkeypatch):
     monkeypatch.setattr(mlflow.tracking.context.default_context, "_get_source_name", lambda: "test")
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
 
@@ -109,6 +119,9 @@ def test_on_start_with_experiment_id(monkeypatch):
 
     processor.on_start(span)
 
+    if is_async:
+        processor.flush()
+
     mock_client._start_tracked_trace.assert_called_once_with(
         experiment_id=experiment_id,
         timestamp_ms=5,
@@ -120,11 +133,9 @@ def test_on_start_with_experiment_id(monkeypatch):
             "mlflow.source.type": "LOCAL",
         },
     )
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
-    assert _REQUEST_ID in InMemoryTraceManager.get_instance()._traces
 
 
-def test_on_start_during_model_evaluation():
+def test_on_start_during_model_evaluation(is_async):
     # Root span should create a new trace on start
     span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=1)
     mock_client = mock.MagicMock()
@@ -134,11 +145,13 @@ def test_on_start_during_model_evaluation():
     with set_prediction_context(Context(request_id=_REQUEST_ID, is_evaluate=True)):
         processor.on_start(span)
 
+    if is_async:
+        processor.flush()
+
     mock_client._start_tracked_trace.assert_called_once()
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
 
 
-def test_on_start_during_run(monkeypatch):
+def test_on_start_during_run(is_async, monkeypatch):
     monkeypatch.setattr(mlflow.tracking.context.default_context, "_get_source_name", lambda: "test")
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
 
@@ -162,6 +175,9 @@ def test_on_start_during_run(monkeypatch):
         processor.on_start(span)
         expected_run_id = run.info.run_id
 
+    if is_async:
+        processor.flush()
+
     mock_client._start_tracked_trace.assert_called_once_with(
         # expect experiment id to be from the run, not from the environment
         experiment_id=run_experiment_id,
@@ -175,7 +191,8 @@ def test_on_start_during_run(monkeypatch):
     )
 
 
-def test_on_start_warns_default_experiment(monkeypatch):
+def test_on_start_warns_default_experiment(is_async, monkeypatch):
+    mlflow.tracing.processor.mlflow._ISSUED_DEFAULT_EXPERIMENT_WARNING = False
     mlflow.set_experiment(experiment_id=DEFAULT_EXPERIMENT_ID)
 
     mock_client = mock.MagicMock()
@@ -194,8 +211,11 @@ def test_on_start_warns_default_experiment(monkeypatch):
     warns = mock_logger.warning.call_args_list[0][0]
     assert "Creating a trace within the default" in str(warns[0])
 
+    if is_async:
+        processor.flush()
 
-def test_on_end():
+
+def test_on_end(is_async):
     trace_info = create_test_trace_info(_REQUEST_ID, 0)
     trace_manager = InMemoryTraceManager.get_instance()
     trace_manager.register_trace(_TRACE_ID, trace_info)
@@ -219,6 +239,9 @@ def test_on_end():
     processor = MlflowSpanProcessor(span_exporter=mock_exporter, client=mock_client)
 
     processor.on_end(otel_span)
+
+    if is_async:
+        processor.flush()
 
     mock_exporter.export.assert_called_once_with((otel_span,))
     # Trace info should be updated according to the span attributes
