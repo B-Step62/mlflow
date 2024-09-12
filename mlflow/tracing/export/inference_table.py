@@ -19,7 +19,9 @@ def pop_trace(request_id: str) -> Optional[Dict[str, Any]]:
     Pop the completed trace data from the buffer. This method is used in
     the Databricks model serving so please be careful when modifying it.
     """
-    return _TRACE_BUFFER.pop(request_id, None)
+    trace = _TRACE_BUFFER.pop(request_id, None)
+    _logger.warning(f"Pop trace {trace} from the buffer with request ID {request_id}")
+    return trace
 
 
 # For Inference Table, we use special TTLCache to store the finished traces
@@ -58,6 +60,7 @@ class InferenceTableSpanExporter(SpanExporter):
                 Only root spans for each trace are passed to this method.
         """
         for span in root_spans:
+            _logger.warning(f"Exporting span {span}")
             if span._parent is not None:
                 _logger.debug("Received a non-root span. Skipping export.")
                 continue
@@ -68,4 +71,6 @@ class InferenceTableSpanExporter(SpanExporter):
                 continue
 
             # Add the trace to the in-memory buffer so it can be retrieved by upstream
+            _logger.warning(f"Putting trace {trace} to the buffer with request ID {trace.info.request_id}. Spans: {trace.data.spans}")
             _TRACE_BUFFER[trace.info.request_id] = trace.to_dict()
+            _logger.warning(f"Current trace buffer is {_TRACE_BUFFER}")

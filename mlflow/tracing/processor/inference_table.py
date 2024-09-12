@@ -55,6 +55,7 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
                 rely on it.
         """
         request_id = maybe_get_request_id()
+        _logger.warning(f"New span {span} started with request ID {request_id}")
         if request_id is None:
             # If this is invoked outside of a flask request, it raises error about
             # outside of request context. We should avoid this by skipping the trace processing
@@ -77,6 +78,7 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
             tags.update(depedencies_schema)
 
         if span._parent is None:
+            _logger.warning(f"The span {span} is a root span.")
             trace_info = TraceInfo(
                 request_id=request_id,
                 experiment_id=None,
@@ -87,6 +89,8 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
                 tags=tags,
             )
             self._trace_manager.register_trace(span.context.trace_id, trace_info)
+        else:
+            _logger.warning(f"The span {span} is NOT a root span.")
 
     def on_end(self, span: OTelReadableSpan) -> None:
         """
@@ -95,8 +99,10 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
         Args:
             span: An OpenTelemetry ReadableSpan object that is ended.
         """
+        _logger.warning(f"Span {span} ended.")
         # Processing the trace only when the root span is found.
         if span._parent is not None:
+            _logger.warning(f"Span {span} is not a root span. Skip exporting.")
             return
 
         request_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)

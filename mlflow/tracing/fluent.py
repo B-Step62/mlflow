@@ -585,6 +585,7 @@ def use_remote_trace(trace: Trace):
     Raises:
         MlflowException: If there is no active span found.
     """
+    _logger.warning(f"Merging remote trace into the current active trace. Trace: {trace.to_dict() if trace else None}")
     if not isinstance(trace, Trace):
         raise MlflowException.invalid_parameter_value(
             f"Invalid trace object: {type(trace)}. Please provide a valid MLflow Trace object "
@@ -595,17 +596,23 @@ def use_remote_trace(trace: Trace):
     if trace.info.status not in TraceStatus.end_statuses():
         raise MlflowException.invalid_parameter_value("The remote trace must be ended.")
 
+    trace_manager = InMemoryTraceManager.get_instance()
+
     if active_span := get_current_active_span():
+        _logger.warning(f"Active span found: {active_span}")
         # If there is an active span, merge the new trace under the active one
         _merge_remote_trace_to_local(
             remote_trace=trace,
             local_request_id=active_span.request_id,
             local_parent_span_id=active_span.span_id,
         )
+        with trace_manager.get_trace(active_span.request_id) as merged:
+            _logger.warning(f"Merged to active span. Trace: {merged}")
     else:
         # If there is no active span, create a new root span named "Remote Trace <...>"
         # and put the remote trace under it. This design aims to keep the trace export
         # logic simpler and consistent, rather than directly exporting the remote trace.
+        _logger.warning("No active span found. Creating a new trace for the remote trace.")
         client = MlflowClient()
         remote_root_span = trace.data.spans[0]
         span = client.start_trace(
@@ -619,17 +626,21 @@ def use_remote_trace(trace: Trace):
             },
             start_time_ns=remote_root_span.start_time_ns,
         )
+        _logger.warning(f"Created a new trace for the remote trace. Span: {span}")
         _merge_remote_trace_to_local(
             remote_trace=trace,
             local_request_id=span.request_id,
             local_parent_span_id=span.span_id,
         )
+        with trace_manager.get_trace(span.request_id) as merged:
+            _logger.warning(f"Merged to the new span. Trace: {merged}")
         client.end_trace(
             request_id=span.request_id,
             status=trace.info.status,
             outputs=remote_root_span.outputs,
             end_time_ns=remote_root_span.end_time_ns,
         )
+        _logger.warning("Ended the new trace for the remote trace.")
 
 
 def _merge_remote_trace_to_local(
