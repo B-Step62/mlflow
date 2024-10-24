@@ -164,7 +164,7 @@ def test_make_genai_metric_correct_response(custom_metric):
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ):
         metric_value = custom_metric.eval_fn(
@@ -203,7 +203,7 @@ def test_make_genai_metric_correct_response(custom_metric):
     )
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = custom_metric.eval_fn(
@@ -279,7 +279,7 @@ def test_make_genai_metric_supports_string_value_for_grading_context_columns():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = custom_metric.eval_fn(
@@ -345,7 +345,7 @@ def test_make_genai_metric_incorrect_response():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=incorrectly_formatted_openai_response,
     ):
         metric_value = custom_metric.eval_fn(
@@ -367,7 +367,7 @@ def test_make_genai_metric_incorrect_response():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         side_effect=Exception("Some error occurred"),
     ):
         metric_value = custom_metric.eval_fn(
@@ -420,7 +420,7 @@ def test_make_genai_metric_multiple():
     # Use side_effect to specify multiple return values
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         side_effect=[properly_formatted_openai_response1, properly_formatted_openai_response2],
     ):
         metric_value = custom_metric.eval_fn(
@@ -500,7 +500,7 @@ def test_make_genai_metric_failure():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ):
         custom_metric2 = make_genai_metric(
@@ -642,7 +642,7 @@ def test_similarity_metric():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = similarity_metric.eval_fn(
@@ -715,7 +715,7 @@ def test_faithfulness_metric():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = faithfulness_metric.eval_fn(
@@ -793,7 +793,7 @@ def test_answer_correctness_metric():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = answer_correctness_metric.eval_fn(
@@ -861,7 +861,7 @@ def test_answer_relevance_metric():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = answer_relevance_metric.eval_fn(
@@ -939,7 +939,7 @@ def test_relevance_metric():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = relevance_metric.eval_fn(
@@ -1084,7 +1084,7 @@ def test_make_custom_judge_prompt_genai_metric():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ) as mock_predict_function:
         metric_value = custom_judge_prompt_metric.eval_fn(
@@ -1219,7 +1219,7 @@ def test_genai_metrics_callable(custom_metric):
     }
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ):
         expected_result = custom_metric.eval_fn(
@@ -1280,7 +1280,7 @@ def test_genai_metrics_with_llm_judge_callable():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ):
         expected_result = custom_judge_prompt_metric.eval_fn(
@@ -1303,3 +1303,51 @@ def test_genai_metrics_with_llm_judge_callable():
         "input",
         "output",
     }
+
+
+@pytest.mark.parametrize("with_endpoint_type", [True, False])
+def test_genai_metric_with_custom_chat_endpoint(with_endpoint_type):
+    similarity_metric = answer_similarity(
+        model="endpoints:/my-chat", metric_version="v1", examples=[mlflow_example]
+    )
+    input = "What is MLflow?"
+
+    with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
+        mock_client = mock_get_deploy_client.return_value
+        mock_client.get_endpoint.return_value = (
+            {"task": "llm/v1/chat"} if with_endpoint_type else {}
+        )
+        mock_client.predict.return_value = {
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "model": "my-chat",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": properly_formatted_openai_response1,
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        metric_value = similarity_metric.eval_fn(
+            pd.Series([mlflow_prediction]), {}, pd.Series([input]), pd.Series([mlflow_ground_truth])
+        )
+        assert mock_client.predict.call_count == 1
+        assert mock_client.predict.call_args.kwargs == {
+            "endpoint": "my-chat",
+            "inputs": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": mock.ANY,
+                    }
+                ],
+                **AnswerSimilarityMetric.parameters,
+            },
+        }
+    assert metric_value.scores == [3]
+    assert metric_value.justifications == [openai_justification1]

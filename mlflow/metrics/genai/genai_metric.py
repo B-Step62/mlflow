@@ -98,13 +98,17 @@ def _extract_score_and_justification(text):
     return None, None
 
 
-def _score_model_on_one_payload(
-    payload,
-    eval_model,
-    parameters,
+def _score_model_on_one_prompt(
+    prompt: str,
+    eval_model: str,
+    parameters: Dict[str, Any],
 ):
     try:
-        raw_result = model_utils.score_model_on_payload(eval_model, payload, parameters)
+        # If the endpoint does not specify type, default to chat format
+        endpoint_type = model_utils.get_endpoint_type(eval_model) or "llm/v1/chat"
+        raw_result = model_utils.score_model_on_prompt(
+            eval_model, prompt, parameters, endpoint_type
+        )
         return _extract_score_and_justification(raw_result)
     except ImportError:
         raise
@@ -121,20 +125,23 @@ def _score_model_on_one_payload(
         return None, f"Failed to score model on payload. Error: {e!s}"
 
 
-def _score_model_on_payloads(
-    grading_payloads, model, parameters, max_workers
+def _score_model_on_prompts(
+    grading_prompts: List[str],
+    model: str,
+    parameters: Dict[str, Any],
+    max_workers: int,
 ) -> Tuple[List[int], List[str]]:
-    scores = [None] * len(grading_payloads)
-    justifications = [None] * len(grading_payloads)
+    scores = [None] * len(grading_prompts)
+    justifications = [None] * len(grading_prompts)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(
-                _score_model_on_one_payload,
-                payload,
+                _score_model_on_one_prompt,
+                prompt,
                 model,
                 parameters,
             ): indx
-            for indx, payload in enumerate(grading_payloads)
+            for indx, prompt in enumerate(grading_prompts)
         }
 
         as_comp = as_completed(futures)
@@ -289,9 +296,9 @@ def make_genai_metric_from_prompt(
             )
         kwargs = {k: [v] if np.isscalar(v) else v for k, v in kwargs.items()}
         grading_payloads = pd.DataFrame(kwargs).to_dict(orient="records")
-        arg_strings = [prompt_template.format(**payload) for payload in grading_payloads]
-        scores, justifications = _score_model_on_payloads(
-            arg_strings, model, parameters, max_workers
+        grading_prompts = [prompt_template.format(**payload) for payload in grading_payloads]
+        scores, justifications = _score_model_on_prompts(
+            grading_prompts, model, parameters, max_workers
         )
 
         aggregate_scores = _get_aggregate_results(scores, aggregations)
@@ -539,8 +546,8 @@ def make_genai_metric(
                 error_code=INVALID_PARAMETER_VALUE,
             )
 
-        # generate grading payloads
-        grading_payloads = []
+        # generate grading prompts
+        grading_prompts = []
         for indx, (input, output) in enumerate(zip(inputs, outputs)):
             try:
                 arg_string = _format_args_string(grading_context_columns, eval_values, indx)
@@ -557,7 +564,7 @@ def make_genai_metric(
                     "parameter\n"
                     "- input and output data are formatted correctly."
                 )
-            grading_payloads.append(
+            grading_prompts.append(
                 evaluation_context["eval_prompt"].format(
                     input=(input if include_input else None),
                     output=output,
@@ -571,12 +578,12 @@ def make_genai_metric(
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(
-                    _score_model_on_one_payload,
-                    payload,
+                    _score_model_on_one_prompt,
+                    prompt,
                     eval_model,
                     eval_parameters,
                 ): indx
-                for indx, payload in enumerate(grading_payloads)
+                for indx, prompt in enumerate(grading_prompts)
             }
 
             as_comp = as_completed(futures)

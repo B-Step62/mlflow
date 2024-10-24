@@ -6,7 +6,9 @@ from mlflow.exceptions import MlflowException
 from mlflow.gateway.config import Route, RouteModelInfo
 from mlflow.metrics.genai.model_utils import (
     _parse_model_uri,
-    score_model_on_payload,
+    call_deployments_api,
+    get_endpoint_type,
+    score_model_on_prompt,
 )
 
 
@@ -80,14 +82,14 @@ def test_parse_model_uri_throws_for_malformed():
         _parse_model_uri("gpt-4o-mini")
 
 
-def test_score_model_on_payload_throws_for_invalid():
+def test_score_model_on_prompt_throws_for_invalid():
     with pytest.raises(MlflowException, match="Unknown model uri prefix"):
-        score_model_on_payload("myprovider:/gpt-4o-mini", {})
+        score_model_on_prompt("myprovider:/gpt-4o-mini", "")
 
 
 def test_score_model_openai_without_key():
     with pytest.raises(MlflowException, match="OPENAI_API_KEY environment variable not set"):
-        score_model_on_payload("openai:/gpt-4o-mini", {})
+        score_model_on_prompt("openai:/gpt-4o-mini", "")
 
 
 def test_score_model_openai(set_envs):
@@ -117,7 +119,7 @@ def test_score_model_openai(set_envs):
     with mock.patch(
         "mlflow.openai.api_request_parallel_processor.process_api_requests", return_value=[resp]
     ) as mock_post:
-        resp = score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+        resp = score_model_on_prompt("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
         mock_post.assert_called_once_with(
             [
                 {
@@ -149,7 +151,7 @@ def test_openai_authentication_error(set_envs):
         with pytest.raises(
             MlflowException, match="Authentication Error for OpenAI. Error response"
         ):
-            score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+            score_model_on_prompt("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
         mock_post.assert_called_once()
 
 
@@ -159,7 +161,7 @@ def test_openai_other_error(set_envs):
         side_effect=Exception("foo"),
     ) as mock_post:
         with pytest.raises(MlflowException, match="Error response from OpenAI"):
-            score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+            score_model_on_prompt("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
         mock_post.assert_called_once()
 
 
@@ -190,7 +192,7 @@ def test_score_model_azure_openai(set_azure_envs):
     with mock.patch(
         "mlflow.openai.api_request_parallel_processor.process_api_requests", return_value=[resp]
     ) as mock_post:
-        score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+        score_model_on_prompt("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
         mock_post.assert_called_once_with(
             [
                 {
@@ -209,7 +211,7 @@ def test_score_model_azure_openai_bad_envs(set_bad_azure_envs):
     with pytest.raises(
         MlflowException, match="Either engine or deployment_id must be set for Azure OpenAI API"
     ):
-        score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+        score_model_on_prompt("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
 
 
 def test_score_model_gateway_completions():
@@ -236,7 +238,7 @@ def test_score_model_gateway_completions():
         ).to_endpoint(),
     ):
         with mock.patch("mlflow.gateway.query", return_value=expected_output):
-            response = score_model_on_payload("gateway:/my-route", {})
+            response = score_model_on_prompt("gateway:/my-route", "")
             assert response == expected_output["choices"][0]["text"]
 
 
@@ -271,107 +273,140 @@ def test_score_model_gateway_chat():
         ).to_endpoint(),
     ):
         with mock.patch("mlflow.gateway.query", return_value=expected_output):
-            response = score_model_on_payload("gateway:/my-route", {})
+            response = score_model_on_prompt("gateway:/my-route", "")
             assert response == expected_output["choices"][0]["message"]["content"]
 
 
 @pytest.mark.parametrize(
-    "endpoint_type_key",
+    ("get_endpoint_response", "expected"),
     [
-        "task",
-        "endpoint_type",
+        ({"task": "llm/v1/completions"}, "llm/v1/completions"),
+        ({"endpoint_type": "llm/v1/chat"}, "llm/v1/chat"),
+        ({}, None),
     ],
 )
-def test_score_model_endpoints_chat(set_deployment_envs, endpoint_type_key):
-    openai_response_format = {
-        "id": "chatcmpl-123",
-        "object": "chat.completion",
-        "created": 1677652288,
-        "model": "gpt-4o-mini",
-        "system_fingerprint": "fp_44709d6fcb",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "\n\nHello there, how may I assist you today?",
-                },
-                "finish_reason": "stop",
-            }
-        ],
-        "usage": {"prompt_tokens": 9, "completion_tokens": 12, "total_tokens": 21},
-    }
-    expected_output = {
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "\n\nHello there, how may I assist you today?",
-                },
-                "finish_reason": "stop",
-            }
-        ],
-    }
-
+def test_get_endpoint_type(get_endpoint_response, expected):
     with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
-        mock_client = mock.MagicMock()
-        mock_get_deploy_client.return_value = mock_client
-        # mock out mock_client.get_endpoint() to return chat
-        mock_client.get_endpoint.return_value = {
-            endpoint_type_key: "llm/v1/chat",
+        mock_client = mock_get_deploy_client.return_value
+        mock_client.get_endpoint.return_value = get_endpoint_response
+        assert get_endpoint_type("endpoints:/my-endpoint") == expected
+
+
+_TEST_CHAT_RESPONSE = {
+    "id": "chatcmpl-123",
+    "object": "chat.completion",
+    "created": 1677652288,
+    "model": "gpt-4o-mini",
+    "system_fingerprint": "fp_44709d6fcb",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "\n\nHello there, how may I assist you today?",
+            },
+            "finish_reason": "stop",
         }
-        # mock out mock_client.predict() to return expected_output
-        mock_client.predict.return_value = openai_response_format
-        response = score_model_on_payload(
-            "endpoints:/my-endpoint", {"prompt": "my prompt", "temperature": 0.1}
+    ],
+    "usage": {"prompt_tokens": 9, "completion_tokens": 12, "total_tokens": 21},
+}
+
+
+def test_score_model_endpoints_chat(set_deployment_envs):
+    with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
+        mock_get_deploy_client().predict.return_value = _TEST_CHAT_RESPONSE
+        response = score_model_on_prompt(
+            model_uri="endpoints:/my-endpoint",
+            prompt="my prompt",
+            eval_parameters={"temperature": 0.1},
+            endpoint_type="llm/v1/chat",
         )
-        assert response == expected_output["choices"][0]["message"]["content"]
+        assert response == "\n\nHello there, how may I assist you today?"
+
+
+_TEST_COMPLETION_RESPONSE = {
+    "id": "cmpl-8PgdiXapPWBN3pyUuHcELH766QgqK",
+    "object": "text_completion",
+    "created": 1701132798,
+    "model": "gpt-4o-mini",
+    "choices": [
+        {
+            "text": "\n\nHi there! How can I assist you today?",
+            "index": 0,
+            "finish_reason": "stop",
+        },
+    ],
+    "usage": {"prompt_tokens": 2, "completion_tokens": 106, "total_tokens": 108},
+}
+
+
+def test_score_model_endpoints_completions(set_deployment_envs):
+    with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
+        mock_get_deploy_client().predict.return_value = _TEST_COMPLETION_RESPONSE
+        response = score_model_on_prompt(
+            model_uri="endpoints:/my-endpoint",
+            prompt="my prompt",
+            eval_parameters={"temperature": 0.1},
+            endpoint_type="llm/v1/completions",
+        )
+        assert response == "\n\nHi there! How can I assist you today?"
 
 
 @pytest.mark.parametrize(
-    "endpoint_type_key",
+    "input_data",
     [
-        "task",
-        "endpoint_type",
+        "my prompt",
+        {"messages": [{"role": "user", "content": "my prompt"}]},
     ],
 )
-def test_score_model_endpoints_completions(set_deployment_envs, endpoint_type_key):
-    openai_response_format = {
-        "id": "cmpl-8PgdiXapPWBN3pyUuHcELH766QgqK",
-        "object": "text_completion",
-        "created": 1701132798,
-        "model": "gpt-4o-mini",
-        "choices": [
-            {
-                "text": "\n\nHi there! How can I assist you today?",
-                "index": 0,
-                "finish_reason": "stop",
-            },
-        ],
-        "usage": {"prompt_tokens": 2, "completion_tokens": 106, "total_tokens": 108},
-    }
-
-    expected_output = {
-        "choices": [
-            {
-                "text": "\n\nHi there! How can I assist you today?",
-                "index": 0,
-                "finish_reason": "stop",
-            },
-        ],
-    }
-
+def test_call_deployments_api_chat(input_data, set_deployment_envs):
     with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
-        mock_client = mock.MagicMock()
-        mock_get_deploy_client.return_value = mock_client
-        # mock out mock_client.get_endpoint() to return completions
-        mock_client.get_endpoint.return_value = {
-            endpoint_type_key: "llm/v1/completions",
-        }
-        # mock out mock_client.predict() to return expected_output
-        mock_client.predict.return_value = openai_response_format
-        response = score_model_on_payload(
-            "endpoints:/my-endpoint", {"prompt": "my prompt", "temperature": 0.1}
+        mock_get_deploy_client().predict.return_value = _TEST_CHAT_RESPONSE
+        response = call_deployments_api(
+            deployment_uri="my-endpoint",
+            input_data=input_data,
+            eval_parameters={},
+            endpoint_type="llm/v1/chat",
         )
-        assert response == expected_output["choices"][0]["text"]
+        assert response == "\n\nHello there, how may I assist you today?"
+
+
+@pytest.mark.parametrize(
+    "input_data",
+    [
+        "my prompt",
+        {"prompt": "my prompt"},
+    ],
+)
+def test_call_deployments_api_completion(input_data, set_deployment_envs):
+    with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
+        mock_get_deploy_client().predict.return_value = _TEST_COMPLETION_RESPONSE
+        response = call_deployments_api(
+            deployment_uri="my-endpoint",
+            input_data=input_data,
+            eval_parameters={"temperature": 0.1},
+            endpoint_type="llm/v1/completions",
+        )
+        assert response == "\n\nHi there! How can I assist you today?"
+
+
+def test_call_deployments_api_no_endpoint_type(set_deployment_envs):
+    with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
+        mock_get_deploy_client().predict.return_value = {"result": "ok"}
+        response = call_deployments_api(
+            deployment_uri="my-endpoint",
+            input_data={"foo": {"bar": "baz"}},
+            eval_parameters={},
+            endpoint_type=None,
+        )
+        assert response == {"result": "ok"}
+
+
+def test_call_deployments_api_str_input_requires_endpoint_type(set_deployment_envs):
+    with pytest.raises(
+        MlflowException,
+        match="If string input is provided, the endpoint type must be 'llm/v1/completions' or 'llm/v1/chat'.",
+    ):
+        call_deployments_api(
+            deployment_uri="my-endpoint", input_data="my prompt", endpoint_type=None
+        )

@@ -3372,7 +3372,7 @@ def test_evaluate_with_correctness():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ):
         with mlflow.start_run():
@@ -3836,7 +3836,7 @@ def test_target_prediction_col_mapping():
 
     with mock.patch.object(
         model_utils,
-        "score_model_on_payload",
+        "score_model_on_prompt",
         return_value=properly_formatted_openai_response1,
     ):
         with mlflow.start_run():
