@@ -21,7 +21,9 @@ from mlflow.entities import Document as MlflowDocument
 from mlflow.entities import LiveSpan, SpanEvent, SpanStatus, SpanStatusCode, SpanType
 from mlflow.exceptions import MlflowException
 from mlflow.pyfunc.context import Context, maybe_set_prediction_context
+from mlflow.tracing.provider import set_span_in_context, detach_span_from_context
 from mlflow.utils.autologging_utils import ExceptionSafeAbstractClass
+
 
 _logger = logging.getLogger(__name__)
 # Vector Search index column names
@@ -64,13 +66,16 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         # DO NOT use instance variables to manage the state of single trace.
         super().__init__()
         self._mlflow_client = MlflowClient()
-        self._parent_span = parent_span
-        self._run_span_mapping: dict[str, LiveSpan] = {}
+        # Parent span created by the user beyond the callback scope
+        self._parent_span = parent_span or mlflow.get_current_active_span()
+        # run_id: (LiveSpan, OTel token)
+        self._run_span_mapping: dict[str, tuple[LiveSpan, Any]] = {}
         self._active_request_ids: set[str] = set()
         self._prediction_context = prediction_context
 
     def _get_span_by_run_id(self, run_id: UUID) -> Optional[LiveSpan]:
-        if span := self._run_span_mapping.get(str(run_id)):
+        span, token = self._run_span_mapping.get(str(run_id), (None, None))
+        if span:
             return span
         raise MlflowException(f"Span for run_id {run_id!s} not found.")
 
@@ -111,7 +116,9 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
                 )
                 self._active_request_ids.add(span.request_id)
 
-            self._run_span_mapping[str(run_id)] = span
+            # Attach the span to the current context to mark it "active"
+            token = set_span_in_context(span._span)
+            self._run_span_mapping[str(run_id)] = (span, token)
         return span
 
     def _get_parent_span(self, parent_run_id) -> Optional[LiveSpan]:
@@ -122,12 +129,17 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         3. If there is an active span, use it as parent span
         4. If none of the above, return None
         """
-        if parent_run_id:
+        # Span created from this callback must be set as active span, except two cases
+        #  1. Root span
+        #  2. Parent span created in a separate thread (current thread is a child thread).
+        #     In this case, we use the parent Run ID provided by Langchain to find the parent span.
+        if active_span := mlflow.get_current_active_span():
+            return active_span
+        elif parent_run_id:
             return self._get_span_by_run_id(parent_run_id)
         elif self._parent_span:
             return self._parent_span
-        elif active_span := mlflow.get_current_active_span():
-            return active_span
+
         return None
 
     def _end_span(
@@ -139,7 +151,10 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         status=SpanStatus(SpanStatusCode.OK),
     ):
         """Close MLflow Span (or Trace if it is root component)"""
-        self._run_span_mapping.pop(str(run_id), None)
+        _, token = self._run_span_mapping.pop(str(run_id), (None, None))
+
+        if token is None:
+            raise ValueError("TBA")
 
         if not self._is_trace_active(span.request_id):
             # A trace (root span) may be already ended i.e. a parent span ends earlier then its
@@ -165,25 +180,31 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
                 status=status,
             )
 
+        detach_span_from_context(token)
+
     def _is_trace_active(self, request_id: str) -> bool:
         """Check if a trace with the given request ID is active (i.e. not ended yet)"""
         return (
             # Case 1: The root span is started by this callback, the ID
             # should be in the active list, otherwise it's already ended.
             request_id in self._active_request_ids
-            # Case 2: The root span is created by fluent API outside this callback.
-            # In this case, we check the context to see if the trace is active or not.
-            or (
-                (active_span := mlflow.get_current_active_span())
-                and (active_span.request_id == request_id)
-            )
-            # Case 3: The root span is created by client API outside this callback,
+            # Case 2: The root span is created by client API outside this callback,
             # and passed via the `parent_span` argument of the callback. In this case,
             # we have no way to check if it is active or not, so just assume it is.
             or self._parent_span
         )
 
-    def _reset(self):
+    def flush(self):
+        """Flush the state of the tracer."""
+        # Ideally, all spans should be popped and ended. However, LangChain sometimes
+        # does not trigger the end event properly and some spans may be left open.
+        # To avoid leaking tracing context, we remove all psans from the mapping.
+        for run_id, (span, token) in self._run_span_mapping.items():
+            detach_span_from_context(token)
+            self._run_span_mapping.pop(run_id)
+            _logger.debug(f"Found leaked span {span}. Force ending it.")
+
+        self._active_request_ids.clear()
         self._run_span_mapping = {}
 
     def _assign_span_name(self, serialized: dict[str, Any], default_name="unknown") -> str:
@@ -530,9 +551,3 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
                     attributes={"text": text},
                 )
             )
-
-    def flush_tracker(self):
-        try:
-            self._reset()
-        except Exception as e:
-            _logger.debug(f"Failed to flush MLflow tracer due to error {e}.")

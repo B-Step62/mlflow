@@ -85,9 +85,10 @@ def patched_inference(func_name, original, self, *args, **kwargs):
             return original(self, *args, **kwargs)
 
     config = AutoLoggingConfig.init(mlflow.langchain.FLAVOR_NAME)
+    should_trace = not IS_PATCHING_DISABLED_FOR_TRACING.get() and config.log_traces
 
-    if not IS_PATCHING_DISABLED_FOR_TRACING.get() and config.log_traces:
-        args, kwargs = _get_args_with_mlflow_tracer(func_name, args, kwargs)
+    if should_trace:
+        args, kwargs, tracer = _get_args_with_mlflow_tracer(func_name, args, kwargs)
 
     # Traces does not require an MLflow run, only the other optional artifacts require it.
     if not IS_PATCHING_DISABLED_FOR_ARTIFACTS and config.should_log_optional_artifacts():
@@ -96,6 +97,14 @@ def patched_inference(func_name, original, self, *args, **kwargs):
             _log_optional_artifacts(config, run_id, result, self, func_name, *args, **kwargs)
     else:
         result = _invoke(self, *args, **kwargs)
+
+    if should_trace:
+        # Make sure all spans are flushed before finishing the inference. LangChain's on_xyz_end
+        # callbacks are not guaranteed to be invoked always, which results in leaking the active
+        # span context to the next inference call. Flushing the tracer ensures that all spans are
+        # finished and detached from the context.
+        tracer.flush()
+
     return result
 
 
@@ -112,11 +121,11 @@ def _get_args_with_mlflow_tracer(func_name, args, kwargs):
         if len(args) >= 2:
             config = args[1]
             config = _get_runnable_config_with_callback(config, mlflow_tracer)
-            return (args[0], config, *args[2:]), kwargs
+            return (args[0], config, *args[2:]), kwargs, mlflow_tracer
         else:
             config = kwargs.get("config")
             kwargs["config"] = _get_runnable_config_with_callback(config, mlflow_tracer)
-        return args, kwargs
+        return args, kwargs, mlflow_tracer
 
     elif func_name == "__call__":
         # `callbacks` is the third positional argument of chain.__call__ function
@@ -124,22 +133,22 @@ def _get_args_with_mlflow_tracer(func_name, args, kwargs):
         if len(args) >= 3:
             callbacks = args[2] or []
             callbacks = _inject_callback(callbacks, mlflow_tracer)
-            return (*args[:2], callbacks, *args[3:]), kwargs
+            return (*args[:2], callbacks, *args[3:]), kwargs, mlflow_tracer
         else:
             callbacks = kwargs.get("callbacks") or []
             kwargs["callbacks"] = _inject_callback(callbacks, mlflow_tracer)
-            return args, kwargs
+            return args, kwargs, mlflow_tracer
 
     elif func_name == "get_relevant_documents":
         # callbacks is only available as kwargs in get_relevant_documents function
         # https://github.com/langchain-ai/langchain/blob/7d444724d7582386de347fb928619c2243bd0e55/libs/core/langchain_core/retrievers.py#L173
         callbacks = kwargs.get("callbacks") or []
         kwargs["callbacks"] = _inject_callback(callbacks, mlflow_tracer)
-        return args, kwargs
+        return args, kwargs, mlflow_tracer
 
     else:
         _logger.warning(f"Unsupported function `{func_name}`. Skipping injecting MLflow callbacks.")
-        return args, kwargs
+        return args, kwargs, mlflow_tracer
 
 
 def _get_runnable_config_with_callback(
