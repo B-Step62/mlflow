@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import json
 import time
 from typing import AsyncIterable
@@ -213,6 +214,8 @@ class AnthropicAdapter(ProviderAdapter):
         raise NotImplementedError
 
 
+ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1/"
+
 class AnthropicProvider(BaseProvider, AnthropicAdapter):
     NAME = "Anthropic"
     CONFIG_TYPE = AnthropicConfig
@@ -226,7 +229,6 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
             "x-api-key": self.anthropic_config.anthropic_api_key,
             "anthropic-version": self.anthropic_config.anthropic_version,
         }
-        self.base_url = "https://api.anthropic.com/v1/"
 
     async def chat_stream(
         self, payload: chat.RequestPayload
@@ -235,7 +237,7 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
         self.check_for_model_field(payload)
         stream = send_stream_request(
             headers=self.headers,
-            base_url=self.base_url,
+            base_url=ANTHROPIC_BASE_URL,
             path="messages",
             payload={
                 "model": self.config.model.name,
@@ -290,7 +292,7 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
         self.check_for_model_field(payload)
         resp = await send_request(
             headers=self.headers,
-            base_url=self.base_url,
+            base_url=ANTHROPIC_BASE_URL,
             path="messages",
             payload={
                 "model": self.config.model.name,
@@ -305,7 +307,7 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
 
         resp = await send_request(
             headers=self.headers,
-            base_url=self.base_url,
+            base_url=ANTHROPIC_BASE_URL,
             path="complete",
             payload={
                 "model": self.config.model.name,

@@ -1,7 +1,9 @@
 import logging
 import os
 import urllib.parse
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
+
+import requests
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
@@ -34,11 +36,18 @@ def get_endpoint_type(endpoint_uri: str) -> Optional[str]:
 
 
 # TODO: improve this name
-def score_model_on_payload(model_uri, payload, eval_parameters=None, endpoint_type=None):
+def score_model_on_payload(
+    model_uri,
+    payload,
+    eval_parameters=None,
+    endpoint_type=None,
+    extra_headers=None,
+):
     """Call the model identified by the given uri with the given string prompt."""
 
-    if eval_parameters is None:
-        eval_parameters = {}
+    eval_parameters = eval_parameters or {}
+    extra_headers = extra_headers or {}
+
     prefix, suffix = _parse_model_uri(model_uri)
 
     if prefix == "openai":
@@ -50,11 +59,19 @@ def score_model_on_payload(model_uri, payload, eval_parameters=None, endpoint_ty
     elif prefix in ("model", "runs"):
         # TODO: call _load_model_or_server
         raise NotImplementedError
+    elif _is_supported_provider(prefix):
+        return _call_llm_api(prefix, suffix, payload, eval_parameters, extra_headers)
     else:
         raise MlflowException(
             f"Unknown model uri prefix '{prefix}'",
             error_code=INVALID_PARAMETER_VALUE,
         )
+
+def _is_supported_provider(schema: str) -> bool:
+    from mlflwo.gateway.provider_registry import provider_registry
+
+    return schema in provider_registry.keys()
+
 
 
 def _parse_model_uri(model_uri):
@@ -143,6 +160,63 @@ is set correctly and the input payload is valid.\n
 - Error: {e}\n
 - Deployment URI: {uri}\n
 - Input payload: {payload}"""
+
+
+def _call_llm_api(
+    schema: str,
+    model: str,
+    input_data: str,
+    eval_parameters: Dict[str, Any],
+    extra_headers: Dict[str, Any],
+) -> str:
+    from mlflow.gateway.schemas import chat
+
+    # This will be a proper factory
+    if schema == "openai":
+        from mlflow.openai import OpenAIAdapter
+
+        adapter = OpenAIAdapter
+        endpoint = REQUEST_URL_CHAT
+        headers = {
+            "content-type": "application/json",
+            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+        }
+    elif schema == "anthropic":
+        from mlflow.gateway.providers.anthropic import AnthropicAdapter, ANTHROPIC_BASE_URL
+
+        adapter = AnthropicAdapter
+        endpoint = ANTHROPIC_BASE_URL + "/messages"
+        headers = {
+            "content-type": "application/json",
+            "x-api-key": extra_headers.get("x-api-key") or os.environ.get("ANTHROPIC_API_KEY"),
+            "anthropic-version": extra_headers.get("anthropic-version", "2023-06-01"),
+        }
+
+    chat_request = chat.RequestPayload(
+        model=model,
+        messages=[
+            chat.RequestMessage(role="user", content=input_data),
+        ],
+        temperature=eval_parameters.get("temperature", 0.0),
+        max_tokens=eval_parameters.get("max_tokens"),
+        stream=False
+    )
+    payload = adapter.chat_to_model(chat_request.model_dump(), None)
+    try:
+        response = requests.post(
+            url=endpoint,
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        raise MlflowException(
+            _PREDICT_ERROR_MSG.format(e=e, uri=ANTHROPIC_BASE_URL, payload=payload)
+        ) from e
+
+    chat_response = adapter.model_to_chat(response.json(), None)
+    return chat_response.choices[0].message.content
 
 
 def call_deployments_api(
