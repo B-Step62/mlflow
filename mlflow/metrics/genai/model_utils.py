@@ -1,14 +1,11 @@
-import asyncio
-from dataclasses import dataclass
 import logging
 import os
 import urllib.parse
 from typing import Any, Dict, Optional, Union
 
-import requests
-
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
+from mlflow.utils._async import run_async_task
 from mlflow.utils.openai_utils import REQUEST_URL_CHAT
 
 _logger = logging.getLogger(__name__)
@@ -235,7 +232,7 @@ def _call_llm_provider_api(
     )
 
     # The chat() method of the provider is async.
-    chat_response = asyncio.run(provider.chat(chat_request))
+    chat_response = run_async_task(provider.chat(chat_request))
     return chat_response.choices[0].message.content
 
 
