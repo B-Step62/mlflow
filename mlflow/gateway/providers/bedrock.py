@@ -263,6 +263,8 @@ class AmazonBedrockProvider(BaseProvider):
         return adapter
 
     def _request(self, body):
+        import botocore.exceptions
+
         try:
             response = self.get_bedrock_client().invoke_model(
                 body=json.dumps(body).encode(),

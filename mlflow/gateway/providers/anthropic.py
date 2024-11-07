@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import json
 import time
 from typing import AsyncIterable
@@ -214,8 +213,6 @@ class AnthropicAdapter(ProviderAdapter):
         raise NotImplementedError
 
 
-ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1/"
-
 class AnthropicProvider(BaseProvider, AnthropicAdapter):
     NAME = "Anthropic"
     CONFIG_TYPE = AnthropicConfig
@@ -225,10 +222,29 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
         if config.model.config is None or not isinstance(config.model.config, AnthropicConfig):
             raise TypeError(f"Invalid config type {config.model.config}")
         self.anthropic_config: AnthropicConfig = config.model.config
-        self.headers = {
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {
             "x-api-key": self.anthropic_config.anthropic_api_key,
             "anthropic-version": self.anthropic_config.anthropic_version,
         }
+
+    @property
+    def base_url(self) -> str:
+        return "https://api.anthropic.com/v1/"
+
+    @property
+    def adapter(self):
+        return AnthropicAdapter
+
+    def get_endpoint_url(self, route_type: str) -> str:
+        if route_type == "llm/v1/chat":
+            return f"{self.base_url}messages"
+        elif route_type == "llm/v1/completions":
+            return f"{self.base_url}complete"
+        else:
+            raise ValueError(f"Invalid route type {route_type}")
 
     async def chat_stream(
         self, payload: chat.RequestPayload
@@ -237,7 +253,7 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
         self.check_for_model_field(payload)
         stream = send_stream_request(
             headers=self.headers,
-            base_url=ANTHROPIC_BASE_URL,
+            base_url=self.base_url,
             path="messages",
             payload={
                 "model": self.config.model.name,
@@ -292,7 +308,7 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
         self.check_for_model_field(payload)
         resp = await send_request(
             headers=self.headers,
-            base_url=ANTHROPIC_BASE_URL,
+            base_url=self.base_url,
             path="messages",
             payload={
                 "model": self.config.model.name,
@@ -307,7 +323,7 @@ class AnthropicProvider(BaseProvider, AnthropicAdapter):
 
         resp = await send_request(
             headers=self.headers,
-            base_url=ANTHROPIC_BASE_URL,
+            base_url=self.base_url,
             path="complete",
             payload={
                 "model": self.config.model.name,

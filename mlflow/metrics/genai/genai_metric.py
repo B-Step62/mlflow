@@ -102,12 +102,13 @@ def _score_model_on_one_payload(
     payload: str,
     eval_model: str,
     parameters: Optional[dict[str, Any]],
+    headers: Optional[dict[str, str]],
 ):
     try:
         # If the endpoint does not specify type, default to chat format
         endpoint_type = model_utils.get_endpoint_type(eval_model) or "llm/v1/chat"
         raw_result = model_utils.score_model_on_payload(
-            eval_model, payload, parameters, endpoint_type
+            eval_model, payload, parameters, headers, endpoint_type
         )
         return _extract_score_and_justification(raw_result)
     except ImportError:
@@ -126,7 +127,7 @@ def _score_model_on_one_payload(
 
 
 def _score_model_on_payloads(
-    grading_payloads, model, parameters, max_workers
+    grading_payloads, model, parameters, headers, max_workers
 ) -> tuple[list[int], list[str]]:
     scores = [None] * len(grading_payloads)
     justifications = [None] * len(grading_payloads)
@@ -137,6 +138,7 @@ def _score_model_on_payloads(
                 payload,
                 model,
                 parameters,
+                headers,
             ): indx
             for indx, payload in enumerate(grading_payloads)
         }
@@ -199,6 +201,7 @@ def make_genai_metric_from_prompt(
     greater_is_better: bool = True,
     max_workers: int = 10,
     metric_metadata: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     Create a genai metric used to evaluate LLM using LLM as a judge in MLflow. This produces
@@ -230,6 +233,7 @@ def make_genai_metric_from_prompt(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        extra_headers: (Optional) Additional headers to be passed to the judge model.
 
     Returns:
         A metric object.
@@ -268,6 +272,7 @@ def make_genai_metric_from_prompt(
         "judge_prompt": judge_prompt,
         "model": model,
         "parameters": parameters,
+        # Not recording headers to avoid storing sensitive information
         "aggregations": aggregations,
         "greater_is_better": greater_is_better,
         "max_workers": max_workers,
@@ -295,7 +300,7 @@ def make_genai_metric_from_prompt(
         grading_payloads = pd.DataFrame(kwargs).to_dict(orient="records")
         arg_strings = [prompt_template.format(**payload) for payload in grading_payloads]
         scores, justifications = _score_model_on_payloads(
-            arg_strings, model, parameters, max_workers
+            arg_strings, model, parameters, extra_headers, max_workers
         )
 
         aggregate_scores = _get_aggregate_results(scores, aggregations)
@@ -333,6 +338,7 @@ def make_genai_metric(
     greater_is_better: bool = True,
     max_workers: int = 10,
     metric_metadata: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     Create a genai metric used to evaluate LLM using LLM as a judge in MLflow. The full grading
@@ -369,6 +375,7 @@ def make_genai_metric(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        extra_headers: (Optional) Additional headers to be passed to the judge model.
 
     Returns:
         A metric object.
@@ -447,6 +454,7 @@ def make_genai_metric(
         "grading_context_columns": grading_context_columns,
         "include_input": include_input,
         "parameters": parameters,
+        # Not recording headers to avoid storing sensitive information
         "aggregations": aggregations,
         "greater_is_better": greater_is_better,
         "max_workers": max_workers,
@@ -579,6 +587,7 @@ def make_genai_metric(
                     payload,
                     eval_model,
                     eval_parameters,
+                    extra_headers,
                 ): indx
                 for indx, payload in enumerate(grading_payloads)
             }

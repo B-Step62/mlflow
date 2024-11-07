@@ -16,6 +16,8 @@ def answer_similarity(
     metric_version: Optional[str] = None,
     examples: Optional[list[EvaluationExample]] = None,
     metric_metadata: Optional[dict[str, Any]] = None,
+    parameters: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     This function will create a genai metric used to evaluate the answer similarity of an LLM
@@ -41,6 +43,10 @@ def answer_similarity(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        parameters: (Optional) Dictionary of parameters to be passed to the judge model,
+            e.g., {"temperature": 0.5}. When specified, these parameters will override
+            the default parameters defined in the metric implementation.
+        extra_headers: (Optional) Dictionary of extra headers to be passed to the judge model.
 
     Returns:
         A metric object
@@ -76,10 +82,11 @@ def answer_similarity(
         version=metric_version,
         model=model,
         grading_context_columns=answer_similarity_class_module.grading_context_columns,
-        parameters=answer_similarity_class_module.parameters,
+        parameters=parameters or answer_similarity_class_module.parameters,
         aggregations=["mean", "variance", "p90"],
         greater_is_better=True,
         metric_metadata=metric_metadata,
+        extra_headers=extra_headers,
     )
 
 
@@ -89,6 +96,8 @@ def answer_correctness(
     metric_version: Optional[str] = None,
     examples: Optional[list[EvaluationExample]] = None,
     metric_metadata: Optional[dict[str, Any]] = None,
+    parameters: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     This function will create a genai metric used to evaluate the answer correctness of an LLM
@@ -114,6 +123,10 @@ def answer_correctness(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        parameters: (Optional) Dictionary of parameters to be passed to the judge model,
+            e.g., {"temperature": 0.5}. When specified, these parameters will override
+            the default parameters defined in the metric implementation.
+        extra_headers: (Optional) Dictionary of extra headers to be passed to the judge model.
 
     Returns:
         A metric object
@@ -148,10 +161,11 @@ def answer_correctness(
         version=metric_version,
         model=model,
         grading_context_columns=answer_correctness_class_module.grading_context_columns,
-        parameters=answer_correctness_class_module.parameters,
+        parameters=parameters or answer_correctness_class_module.parameters,
         aggregations=["mean", "variance", "p90"],
         greater_is_better=True,
         metric_metadata=metric_metadata,
+        extra_headers=extra_headers,
     )
 
 
@@ -161,6 +175,8 @@ def faithfulness(
     metric_version: Optional[str] = _get_latest_metric_version(),
     examples: Optional[list[EvaluationExample]] = None,
     metric_metadata: Optional[dict[str, Any]] = None,
+    parameters: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     This function will create a genai metric used to evaluate the faithfullness of an LLM using the
@@ -186,6 +202,10 @@ def faithfulness(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        parameters: (Optional) Dictionary of parameters to be passed to the judge model,
+            e.g., {"temperature": 0.5}. When specified, these parameters will override
+            the default parameters defined in the metric implementation.
+        extra_headers: (Optional) Dictionary of extra headers to be passed to the judge model.
 
     Returns:
         A metric object
@@ -219,10 +239,11 @@ def faithfulness(
         version=metric_version,
         model=model,
         grading_context_columns=faithfulness_class_module.grading_context_columns,
-        parameters=faithfulness_class_module.parameters,
+        parameters=parameters or faithfulness_class_module.parameters,
         aggregations=["mean", "variance", "p90"],
         greater_is_better=True,
         metric_metadata=metric_metadata,
+        extra_headers=extra_headers,
     )
 
 
@@ -232,6 +253,8 @@ def answer_relevance(
     metric_version: Optional[str] = _get_latest_metric_version(),
     examples: Optional[list[EvaluationExample]] = None,
     metric_metadata: Optional[dict[str, Any]] = None,
+    parameters: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     This function will create a genai metric used to evaluate the answer relevance of an LLM
@@ -253,6 +276,10 @@ def answer_relevance(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        parameters: (Optional) Dictionary of parameters to be passed to the judge model,
+            e.g., {"temperature": 0.5}. When specified, these parameters will override
+            the default parameters defined in the metric implementation.
+        extra_headers: (Optional) Dictionary of extra headers to be passed to the judge model.
 
     Returns:
         A metric object
@@ -284,10 +311,11 @@ def answer_relevance(
         examples=examples,
         version=metric_version,
         model=model,
-        parameters=answer_relevance_class_module.parameters,
+        parameters=parameters or answer_relevance_class_module.parameters,
         aggregations=["mean", "variance", "p90"],
         greater_is_better=True,
         metric_metadata=metric_metadata,
+        extra_headers=extra_headers,
     )
 
 
@@ -296,6 +324,8 @@ def relevance(
     metric_version: Optional[str] = None,
     examples: Optional[list[EvaluationExample]] = None,
     metric_metadata: Optional[dict[str, Any]] = None,
+    parameters: Optional[dict[str, Any]] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> EvaluationMetric:
     """
     This function will create a genai metric used to evaluate the evaluate the relevance of an
@@ -321,6 +351,10 @@ def relevance(
         metric_metadata: (Optional) Dictionary of metadata to be attached to the
             EvaluationMetric object. Useful for model evaluators that require additional
             information to determine how to evaluate this metric.
+        parameters: (Optional) Dictionary of parameters to be passed to the judge model,
+            e.g., {"temperature": 0.5}. When specified, these parameters will override
+            the default parameters defined in the metric implementation.
+        extra_headers: (Optional) Dictionary of extra headers to be passed to the judge model.
 
     Returns:
         A metric object
@@ -355,8 +389,9 @@ def relevance(
         version=metric_version,
         model=model,
         grading_context_columns=relevance_class_module.grading_context_columns,
-        parameters=relevance_class_module.parameters,
+        parameters=parameters or relevance_class_module.parameters,
         aggregations=["mean", "variance", "p90"],
         greater_is_better=True,
         metric_metadata=metric_metadata,
+        extra_headers=extra_headers,
     )
