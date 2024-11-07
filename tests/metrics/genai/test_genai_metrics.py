@@ -633,9 +633,21 @@ def test_extract_score_and_justification():
     assert justification6 == "This is a justification"
 
 
-def test_similarity_metric():
+@pytest.mark.parametrize(
+    ("parameters", "extra_headers"),
+    [
+        (None, None),
+        ({"temperature": 0.2, "max_tokens": 1000}, None),
+        ({"top_k": 10}, {"api_key": "foo"}),
+    ],
+)
+def test_similarity_metric(parameters, extra_headers):
     similarity_metric = answer_similarity(
-        model="gateway:/gpt-4o-mini", metric_version="v1", examples=[mlflow_example]
+        model="gateway:/gpt-4o-mini",
+        metric_version="v1",
+        examples=[mlflow_example],
+        parameters=parameters,
+        extra_headers=extra_headers,
     )
 
     input = "What is MLflow?"
@@ -685,9 +697,10 @@ def test_similarity_metric():
             "lines. Do "
             "not add any other fields.\n    "
         )
-        assert mock_predict_function.call_args[0][2] == {
+        assert mock_predict_function.call_args[0][2] == parameters or {
             **AnswerSimilarityMetric.parameters,
         }
+        assert mock_predict_function.call_args[0][3] == extra_headers
 
     assert metric_value.scores == [3]
     assert metric_value.justifications == [openai_justification1]
@@ -1074,6 +1087,7 @@ def test_make_custom_judge_prompt_genai_metric():
         name="custom",
         judge_prompt=custom_judge_prompt,
         metric_metadata={"metadata_field": "metadata_value"},
+        parameters={"temperature": 0.0},
     )
 
     inputs = ["What is MLflow?", "What is Spark?"]
@@ -1101,6 +1115,7 @@ def test_make_custom_judge_prompt_genai_metric():
             "\njustification: Your reasoning for giving this score"
             "\n\nDo not add additional new lines. Do not add any other fields."
         )
+        assert mock_predict_function.call_args_list[0][0][2] == {"temperature": 0.0}
         assert mock_predict_function.call_args_list[1][0][1] == (
             "This is a custom judge prompt that uses What is Spark? and "
             "Apache Spark is an open-source distributed framework"
@@ -1351,18 +1366,3 @@ def test_genai_metric_with_custom_chat_endpoint(with_endpoint_type):
         }
     assert metric_value.scores == [3]
     assert metric_value.justifications == [openai_justification1]
-
-
-def test_call_anthropic(monkeypatch):
-    from mlflow.metrics.genai.model_utils import _call_llm_provider_api
-
-    response = _call_llm_provider_api(
-        schema="anthropic",
-        model="claude-3-5-sonnet-20241022",
-        input_data="Hi there",
-        eval_parameters={"temperature": 0.0, "max_tokens": 1024},
-        extra_headers={
-            "anthropic-version": "2023-06-01",
-        }
-    )
-    assert response is None

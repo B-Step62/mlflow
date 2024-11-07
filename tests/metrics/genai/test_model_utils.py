@@ -214,6 +214,92 @@ def test_score_model_azure_openai_bad_envs(set_bad_azure_envs):
         score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
 
 
+def test_score_model_anthropic(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    resp = {
+        "content": [
+            {
+                "text": "This is a test!",
+                "type": "text",
+            }
+        ],
+        "id": "msg_013Zva2CMHLNnXjNJJKqJ2EF",
+        "model": "claude-3-5-sonnet-20241022",
+        "role": "assistant",
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "type": "message",
+        "usage": {"input_tokens": 2095, "output_tokens": 503},
+    }
+
+    with mock.patch(
+        "mlflow.metrics.genai.model_utils._send_request", return_value=resp
+    ) as mock_request:
+        response = score_model_on_payload(
+            model_uri="anthropic:/claude-3-5-sonnet-20241022",
+            payload="input prompt",
+            eval_parameters={"temperature": 0, "max_tokens": 1000},
+            extra_headers={"anthropic-version": "2024-10-22"},
+        )
+
+    assert response == "This is a test!"
+    mock_request.assert_called_once_with(
+        endpoint="https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": "test-key",
+            "anthropic-version": "2024-10-22",
+        },
+        payload={
+            "model": "claude-3-5-sonnet-20241022",
+            "temperature": 0.0,
+            "messages": [{"role": "user", "content": "input prompt"}],
+            "max_tokens": 1000,
+            "stream": False,
+        },
+    )
+
+
+def test_score_model_cohere(monkeypatch):
+    monkeypatch.setenv("COHERE_API_KEY", "test-key")
+
+    resp = {
+        "response_id": "abc123",
+        "text": "This is a test!",
+        "generation_id": "def456",
+        "token_count": {
+            "prompt_tokens": 13,
+            "response_tokens": 7,
+            "total_tokens": 20,
+            "billed_tokens": 20,
+        },
+        "meta": {
+            "api_version": {"version": "1"},
+            "billed_units": {"input_tokens": 13, "output_tokens": 7},
+        },
+        "tool_inputs": None,
+    }
+
+    with mock.patch(
+        "mlflow.metrics.genai.model_utils._send_request", return_value=resp
+    ) as mock_request:
+        score_model_on_payload(
+            model_uri="cohere:/command",
+            payload="input prompt",
+        )
+
+        mock_request.assert_called_once_with(
+            endpoint="https://api.cohere.ai/v1/chat",
+            headers={"Authorization": "Bearer test-key"},
+            payload={
+                "model": "command",
+                "message": "input prompt",
+                "temperature": 0.0,
+                "stream": False,
+            },
+        )
+
+
 def test_score_model_gateway_completions():
     expected_output = {
         "choices": [
