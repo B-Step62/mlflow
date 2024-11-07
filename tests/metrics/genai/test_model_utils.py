@@ -283,21 +283,60 @@ def test_score_model_cohere(monkeypatch):
     with mock.patch(
         "mlflow.metrics.genai.model_utils._send_request", return_value=resp
     ) as mock_request:
-        score_model_on_payload(
+        response = score_model_on_payload(
             model_uri="cohere:/command",
             payload="input prompt",
         )
 
-        mock_request.assert_called_once_with(
-            endpoint="https://api.cohere.ai/v1/chat",
-            headers={"Authorization": "Bearer test-key"},
-            payload={
-                "model": "command",
-                "message": "input prompt",
-                "temperature": 0.0,
-                "stream": False,
-            },
+    assert response == "This is a test!"
+    mock_request.assert_called_once_with(
+        endpoint="https://api.cohere.ai/v1/chat",
+        headers={"Authorization": "Bearer test-key"},
+        payload={
+            "model": "command",
+            "message": "input prompt",
+            "temperature": 0.0,
+            "stream": False,
+        },
+    )
+
+
+def test_score_model_togetherai(monkeypatch):
+    monkeypatch.setenv("TOGETHERAI_API_KEY", "test-key")
+
+    resp = {
+        "id": "8448080b880415ea-SJC",
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": "This is a test!"}
+            }
+        ],
+        "usage": {"prompt_tokens": 13, "completion_tokens": 7, "total_tokens": 20},
+        "created": 1705090115,
+        "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "object": "chat.completion",
+    }
+
+    with mock.patch(
+        "mlflow.metrics.genai.model_utils._send_request", return_value=resp
+    ) as mock_request:
+        response = score_model_on_payload(
+            model_uri="togetherai:/mistralai/Mixtral-8x7B-Instruct-v0.1",
+            payload="input prompt",
         )
+
+    assert response == "This is a test!"
+    mock_request.assert_called_once_with(
+        endpoint="https://api.together.xyz/v1/chat/completions",
+        headers={"Authorization": "Bearer test-key"},
+        payload={
+            "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            "messages": [{"role": "user", "content": "input prompt"}],
+            "temperature": 0.0,
+            "n": 1,
+            "stream": False,
+        },
+    )
 
 
 def test_score_model_gateway_completions():

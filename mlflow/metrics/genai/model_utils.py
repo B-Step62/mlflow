@@ -56,7 +56,7 @@ def score_model_on_payload(
     if prefix == "openai":
         # TODO: Migrate OpenAI schema to use _call_llm_provider_api.
         return _call_openai_api(suffix, payload, eval_parameters)
-    elif prefix == "gateway":
+    if prefix == "gateway":
         return _call_gateway_api(suffix, payload, eval_parameters)
     elif prefix == "endpoints":
         return call_deployments_api(suffix, payload, eval_parameters, endpoint_type)
@@ -226,6 +226,10 @@ def _get_provider_instance(provider: str, model: str):
             },
         )
 
+    # TODO: Add more LLM provider that support chat endpoints. These three are the only
+    # providers that satisfies the required conditions:
+    #  1. The provider has a chat endpoint.
+    #  2. The gateway provider implements ProviderAdapter class.
     if provider == "anthropic":
         from mlflow.gateway.providers.anthropic import AnthropicConfig, AnthropicProvider
 
@@ -238,11 +242,11 @@ def _get_provider_instance(provider: str, model: str):
         config = CohereConfig(cohere_api_key=os.environ.get("COHERE_API_KEY"))
         return CohereProvider(_get_route_config(config))
 
-    elif provider == "openai":
-        from mlflow.gateway.providers.openai import OpenAIConfig, OpenAIProvider
+    elif provider == "togetherai":
+        from mlflow.gateway.providers.togetherai import TogetherAIConfig, TogetherAIProvider
 
-        config = OpenAIConfig(openai_api_key=os.environ.get("OPENAI_API_KEY"))
-        return OpenAIProvider(_get_route_config(config))
+        config = TogetherAIConfig(togetherai_api_key=os.environ.get("TOGETHERAI_API_KEY"))
+        return TogetherAIProvider(_get_route_config(config))
 
     raise MlflowException(f"Provider '{provider}' is not supported for evaluation.")
 

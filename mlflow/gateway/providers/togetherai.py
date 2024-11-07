@@ -1,11 +1,9 @@
 import json
 from typing import Any, AsyncGenerator, AsyncIterable
 
-from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-
 from mlflow.exceptions import MlflowException
 from mlflow.gateway.config import RouteConfig, TogetherAIConfig
+from mlflow.gateway.exceptions import AIGatewayException
 from mlflow.gateway.providers.base import BaseProvider, ProviderAdapter
 from mlflow.gateway.providers.utils import rename_payload_keys, send_request, send_stream_request
 from mlflow.gateway.schemas import chat as chat_schema
@@ -148,7 +146,7 @@ class TogetherAIAdapter(ProviderAdapter):
         )
 
         if logprobs_in_payload_condition:
-            raise HTTPException(
+            raise AIGatewayException(
                 status_code=422,
                 detail="Wrong type for logprobs. It should be an 32bit integer.",
             )
@@ -158,7 +156,7 @@ class TogetherAIAdapter(ProviderAdapter):
         )
 
         if openai_top_logprobs_in_payload_condition:
-            raise HTTPException(
+            raise AIGatewayException(
                 status_code=422,
                 detail="Wrong type for top_logprobs. It should a 32bit integer.",
             )
@@ -310,12 +308,26 @@ class TogetherAIProvider(BaseProvider):
         return "https://api.together.xyz/v1"
 
     @property
-    def auth_headers(self):
+    def headers(self):
         return {"Authorization": f"Bearer {self.togetherai_config.togetherai_api_key}"}
+
+    @property
+    def adapter(self):
+        return TogetherAIAdapter
+
+    def get_endpoint_url(self, route_type: str) -> str:
+        if route_type == "llm/v1/chat":
+            return f"{self.base_url}/chat/completions"
+        elif route_type == "llm/v1/completions":
+            return f"{self.base_url}/completions"
+        elif route_type == "llm/v1/embeddings":
+            return f"{self.base_url}/embeddings"
+        else:
+            raise ValueError(f"Invalid route type {route_type}")
 
     async def _request(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         return await send_request(
-            headers=self.auth_headers,
+            headers=self.headers,
             base_url=self.base_url,
             path=path,
             payload=payload,
@@ -325,7 +337,7 @@ class TogetherAIProvider(BaseProvider):
         self, path: str, payload: dict[str, Any]
     ) -> AsyncGenerator[bytes, None]:
         return send_stream_request(
-            headers=self.auth_headers,
+            headers=self.headers,
             base_url=self.base_url,
             path=path,
             payload=payload,
@@ -334,6 +346,8 @@ class TogetherAIProvider(BaseProvider):
     async def embeddings(
         self, payload: embeddings_schema.RequestPayload
     ) -> embeddings_schema.ResponsePayload:
+        from fastapi.encoders import jsonable_encoder
+
         payload = jsonable_encoder(payload, exclude_none=True)
 
         resp = await self._request(
@@ -349,10 +363,12 @@ class TogetherAIProvider(BaseProvider):
     async def completions_stream(
         self, payload: completions_schema.RequestPayload
     ) -> AsyncIterable[completions_schema.StreamResponsePayload]:
+        from fastapi.encoders import jsonable_encoder
+
         payload = jsonable_encoder(payload, exclude_none=True)
 
         if not payload.get("max_tokens"):
-            raise HTTPException(
+            raise AIGatewayException(
                 status_code=422,
                 detail=(
                     "max_tokens is not present in payload."
@@ -383,10 +399,12 @@ class TogetherAIProvider(BaseProvider):
     async def completions(
         self, payload: completions_schema.RequestPayload
     ) -> completions_schema.ResponsePayload:
+        from fastapi.encoders import jsonable_encoder
+
         payload = jsonable_encoder(payload, exclude_none=True)
 
         if not payload.get("max_tokens"):
-            raise HTTPException(
+            raise AIGatewayException(
                 status_code=422,
                 detail=(
                     "max_tokens is not present in payload."
@@ -405,6 +423,8 @@ class TogetherAIProvider(BaseProvider):
         return TogetherAIAdapter.model_to_completions(resp, self.config)
 
     async def chat_stream(self, payload: chat_schema.RequestPayload) -> chat_schema.ResponsePayload:
+        from fastapi.encoders import jsonable_encoder
+
         payload = jsonable_encoder(payload, exclude_none=True)
 
         stream = await self._stream_request(
@@ -428,6 +448,8 @@ class TogetherAIProvider(BaseProvider):
             yield TogetherAIAdapter.model_to_chat_streaming(resp, self.config)
 
     async def chat(self, payload: chat_schema.RequestPayload) -> chat_schema.ResponsePayload:
+        from fastapi.encoders import jsonable_encoder
+
         payload = jsonable_encoder(payload, exclude_none=True)
 
         resp = await self._request(
