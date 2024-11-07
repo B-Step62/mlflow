@@ -188,7 +188,7 @@ def _call_llm_provider_api(
     """
     from mlflow.gateway.schemas import chat
 
-    provider = _get_provider(provider, model)
+    provider = _get_provider_instance(provider, model)
 
     chat_request = chat.RequestPayload(
         model=model,
@@ -211,6 +211,42 @@ def _call_llm_provider_api(
     return chat_response.choices[0].message.content
 
 
+def _get_provider_instance(provider: str, model: str):
+    """Get the provider instance for the given provider name and the model name."""
+    from mlflow.gateway.config import RouteConfig
+
+    def _get_route_config(config):
+        return RouteConfig(
+            name=provider,
+            route_type="llm/v1/chat",
+            model={
+                "provider": provider,
+                "name": model,
+                "config": config.model_dump(),
+            },
+        )
+
+    if provider == "anthropic":
+        from mlflow.gateway.providers.anthropic import AnthropicConfig, AnthropicProvider
+
+        config = AnthropicConfig(anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        return AnthropicProvider(_get_route_config(config))
+
+    elif provider == "cohere":
+        from mlflow.gateway.providers.cohere import CohereConfig, CohereProvider
+
+        config = CohereConfig(cohere_api_key=os.environ.get("COHERE_API_KEY"))
+        return CohereProvider(_get_route_config(config))
+
+    elif provider == "openai":
+        from mlflow.gateway.providers.openai import OpenAIConfig, OpenAIProvider
+
+        config = OpenAIConfig(openai_api_key=os.environ.get("OPENAI_API_KEY"))
+        return OpenAIProvider(_get_route_config(config))
+
+    raise MlflowException(f"Provider '{provider}' is not supported for evaluation.")
+
+
 def _send_request(
     endpoint: str, headers: dict[str, str], payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -223,47 +259,11 @@ def _send_request(
         )
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:
-        raise MlflowException(_PREDICT_ERROR_MSG.format(e=e, uri=endpoint, payload=payload)) from e
-
-    return response.json()
-
-
-def _get_provider(schema, model):
-    from mlflow.gateway.config import RouteConfig
-
-    # Copy to avoid mutation of the original dictionary when popping values
-
-    def _get_route_config(config):
-        return RouteConfig(
-            name=schema,
-            route_type="llm/v1/chat",
-            model={
-                "provider": schema,
-                "name": model,
-                "config": config.model_dump(),
-            },
+        raise MlflowException(
+            f"Failed to call LLM endpoint at {endpoint}.\n- Error: {e}\n- Input payload: {payload}."
         )
 
-    if schema == "anthropic":
-        from mlflow.gateway.providers.anthropic import AnthropicConfig, AnthropicProvider
-
-        config = AnthropicConfig(anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        return AnthropicProvider(_get_route_config(config))
-
-    elif schema == "cohere":
-        from mlflow.gateway.providers.cohere import CohereConfig, CohereProvider
-
-        config = CohereConfig(cohere_api_key=os.environ.get("COHERE_API_KEY"))
-        return CohereProvider(_get_route_config(config))
-
-    elif schema == "openai":
-        from mlflow.gateway.providers.openai import OpenAIConfig, OpenAIProvider
-
-        config = OpenAIConfig(openai_api_key=os.environ.get("OPENAI_API_KEY"))
-        return OpenAIProvider(_get_route_config(config))
-
-
-    raise MlflowException(f"Provider '{schema}' is not supported for evaluation.")
+    return response.json()
 
 
 def call_deployments_api(
