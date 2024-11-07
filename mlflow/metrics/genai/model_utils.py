@@ -1,3 +1,5 @@
+import asyncio
+from dataclasses import dataclass
 import logging
 import os
 import urllib.parse
@@ -50,6 +52,8 @@ def score_model_on_payload(
 
     prefix, suffix = _parse_model_uri(model_uri)
 
+    # TODO: We should migrate OpenAI schema to use _call_llm_provider_api.
+    # Keeping it now to avoid breaking changes.
     if prefix == "openai":
         return _call_openai_api(suffix, payload, eval_parameters)
     elif prefix == "gateway":
@@ -60,19 +64,12 @@ def score_model_on_payload(
         # TODO: call _load_model_or_server
         raise NotImplementedError
     elif _is_supported_provider(prefix):
-        return _call_llm_api(prefix, suffix, payload, eval_parameters, extra_headers)
+        return _call_llm_provider_api(prefix, suffix, payload, eval_parameters, extra_headers)
     else:
         raise MlflowException(
             f"Unknown model uri prefix '{prefix}'",
             error_code=INVALID_PARAMETER_VALUE,
         )
-
-def _is_supported_provider(schema: str) -> bool:
-    from mlflwo.gateway.provider_registry import provider_registry
-
-    return schema in provider_registry.keys()
-
-
 
 def _parse_model_uri(model_uri):
     parsed = urllib.parse.urlparse(model_uri, allow_fragments=False)
@@ -162,38 +159,73 @@ is set correctly and the input payload is valid.\n
 - Input payload: {payload}"""
 
 
-def _call_llm_api(
+def _is_supported_provider(schema: str) -> bool:
+    from mlflwo.gateway.provider_registry import provider_registry
+
+    return schema in provider_registry.keys()
+
+
+def _construct_provider_config(schema, extra_headers):
+    if schema == "anthropic":
+        from mlflow.gateway.config import AnthropicConfig
+
+        return AnthropicConfig(
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            anthropic_version=extra_headers.get("anthropic-version", "2023-06-01"),
+        )
+    elif schema == "bedrock":
+        from mlflow.gateway.config import AmazonBedrockConfig
+
+        return AmazonBedrockConfig(
+            aws_config={
+                "aws_region": os.environ.get("AWS_REGION"),
+                "aws_access_key_id": os.environ.get("AWS_ACCESS_KEY_ID"),
+                "aws_secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY"),
+            }
+        )
+
+    raise ValueError(f"Provider '{schema}' is not supported for evaluation.")
+
+
+def _call_llm_provider_api(
     schema: str,
     model: str,
     input_data: str,
     eval_parameters: Dict[str, Any],
     extra_headers: Dict[str, Any],
 ) -> str:
+    # TODO: We use wrapper implementation for MLflow Gateway to convert input string into the correct
+    # payload format for each provider, and the wrapper imports fastapi utilities e.g. HTTPException.
+    # However, we don't use the web server functionality of FastAPI so this import should not be
+    # necessary. Ideally we should refactor the wrapper implementation so that fastapi is only used
+    # where the server functionality is needed.
+    try:
+        import fastapi
+    except ImportError:
+        raise MlflowException(
+            f"The 'fastapi' package is required to use '{schema}' model for computing GenAI metrics. "
+            "Please install the package by running 'pip install fastapi'.",
+        )
+
+    from mlflow.gateway.config import RouteConfig
+    from mlflow.gateway.provider_registry import provider_registry
     from mlflow.gateway.schemas import chat
 
-    # This will be a proper factory
-    if schema == "openai":
-        from mlflow.openai import OpenAIAdapter
+    provider_cls = provider_registry.get(schema)
 
-        adapter = OpenAIAdapter
-        endpoint = REQUEST_URL_CHAT
-        headers = {
-            "content-type": "application/json",
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
-        }
-    elif schema == "anthropic":
-        from mlflow.gateway.providers.anthropic import AnthropicAdapter, ANTHROPIC_BASE_URL
-
-        adapter = AnthropicAdapter
-        endpoint = ANTHROPIC_BASE_URL + "/messages"
-        headers = {
-            "content-type": "application/json",
-            "x-api-key": extra_headers.get("x-api-key") or os.environ.get("ANTHROPIC_API_KEY"),
-            "anthropic-version": extra_headers.get("anthropic-version", "2023-06-01"),
-        }
+    provider = provider_cls(
+        RouteConfig(
+            name="dummy",
+            route_type="llm/v1/chat",
+            model={
+                "provider": schema,
+                "name": model,
+                "config": _construct_provider_config(schema, extra_headers).model_dump()
+            },
+        )
+    )
 
     chat_request = chat.RequestPayload(
-        model=model,
         messages=[
             chat.RequestMessage(role="user", content=input_data),
         ],
@@ -201,21 +233,9 @@ def _call_llm_api(
         max_tokens=eval_parameters.get("max_tokens"),
         stream=False
     )
-    payload = adapter.chat_to_model(chat_request.model_dump(), None)
-    try:
-        response = requests.post(
-            url=endpoint,
-            headers=headers,
-            json=payload,
-            timeout=60,
-        )
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        raise MlflowException(
-            _PREDICT_ERROR_MSG.format(e=e, uri=ANTHROPIC_BASE_URL, payload=payload)
-        ) from e
 
-    chat_response = adapter.model_to_chat(response.json(), None)
+    # The chat() method of the provider is async.
+    chat_response = asyncio.run(provider.chat(chat_request))
     return chat_response.choices[0].message.content
 
 

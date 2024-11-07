@@ -1353,10 +1353,10 @@ def test_genai_metric_with_custom_chat_endpoint(with_endpoint_type):
     assert metric_value.justifications == [openai_justification1]
 
 
-def test_call_anthropic():
-    from mlflow.metrics.genai.model_utils import _call_llm_api
+def test_call_anthropic(monkeypatch):
+    from mlflow.metrics.genai.model_utils import _call_llm_provider_api
 
-    response = _call_llm_api(
+    response = _call_llm_provider_api(
         schema="anthropic",
         model="claude-3-5-sonnet-20241022",
         input_data="Hi there",
