@@ -928,13 +928,12 @@ def _patch_runnable_cls(cls):
 
     patch_functions = ["invoke", "batch", "stream", "ainvoke", "abatch", "astream"]
     for func_name in patch_functions:
-        if hasattr(cls, func_name):
-            safe_patch(
-                FLAVOR_NAME,
-                cls,
-                func_name,
-                functools.partial(patched_inference, func_name),
-            )
+        safe_patch(
+            FLAVOR_NAME,
+            cls,
+            func_name,
+            functools.partial(patched_inference, func_name),
+        )
 
 
 def _inspect_module_and_patch_cls(module_name, inspected_modules, patched_classes):

@@ -398,7 +398,7 @@ def test_agent_autolog(async_logging_enabled):
     from tests.langchain.sample_code.openai_agent import create_openai_agent
 
     model = create_openai_agent()
-    input = {"input": "The result of 2 * 3 is 6."}
+    input = {"input": "What is 2 * 3?"}
     expected_output = {"output": "The result of 2 * 3 is 6."}
 
     with mock.patch("mlflow.langchain.log_model") as log_model_mock:
