@@ -1365,7 +1365,19 @@ class FileStore(AbstractStore):
                 time.sleep(0.1 * (3 - attempts_remaining))
                 return _read_helper(root, file_name, attempts_remaining - 1)
 
-        return _read_helper(root, file_name, attempts_remaining=retries)
+        try:
+            return _read_helper(root, file_name, attempts_remaining=retries)
+        except MissingConfigException as e:
+            # NB: Provide a more informative error message in the case where "meta.yaml" is missing,
+            # as it is frequently asked question from users.
+            if file_name == FileStore.META_DATA_FILE_NAME:
+                raise MissingConfigException(
+                    f"The metadata YAML file {FileStore.META_DATA_FILE_NAME} was not found at "
+                    f"`{root}`. Perhaps you forgot to set the tracking URI? Ensure that the URI "
+                    "matches the one used to create the run or experiment. You can set it using "
+                    "the `mlflow.set_tracking_uri` the `MLFLOW_TRACKING_URI` environment variable."
+                ) from e
+            raise
 
     def _get_traces_artifact_dir(self, experiment_id, request_id):
         return append_to_uri_path(
