@@ -15,6 +15,7 @@ from packaging.version import Version
 import mlflow
 from mlflow.entities import SpanType
 from mlflow.models.dependencies_schemas import DependenciesSchemasType, _clear_retriever_schema
+from mlflow.pyfunc.context import Context, set_prediction_context
 
 from tests.tracing.helper import get_traces
 
@@ -246,7 +247,6 @@ class RAG(dspy.Module):
 
     def forward(self, question):
         # Create a custom span inside the module using fluent API
-        assert mlflow.get_current_active_span() is not None
         with mlflow.start_span(name="retrieve_context", span_type=SpanType.RETRIEVER) as span:
             span.set_inputs(question)
             docs = self.retrieve(question)
@@ -412,3 +412,47 @@ def test_autolog_set_retriever_schema():
             "other_columns": [],
         }
     ]
+
+
+@pytest.mark.parametrize("enabled_at_logging", [True, False])
+@pytest.mark.parametrize("enabled_in_serving", [True, False])
+def test_autolog_trace_in_databricks_model_serving(
+    monkeypatch, enabled_at_logging, enabled_in_serving
+):
+    monkeypatch.setenv("IS_IN_DB_MODEL_SERVING_ENV", "true")
+    monkeypatch.setenv("ENABLE_MLFLOW_TRACING", str(enabled_in_serving).lower())
+
+    mlflow.dspy.autolog(disable=not enabled_at_logging)
+    dspy.settings.configure(
+        lm=DummyLM(
+            [
+                {
+                    "answer": "test output",
+                    "reasoning": "No more responses",
+                },
+            ]
+        )
+    )
+
+    with mlflow.start_run():
+        model_info = mlflow.dspy.log_model(RAG(), "model")
+
+    loaded_pyfunc = mlflow.pyfunc.load_model(model_info.model_uri)
+
+    # Serving trace should be logged to the tracing buffer for exporting to the inference table.
+    from mlflow.tracing.export.inference_table import _TRACE_BUFFER
+
+    assert len(_TRACE_BUFFER) == 0
+
+    SERVING_REQUEST_ID = "request-id-123"
+    with set_prediction_context(Context(request_id=SERVING_REQUEST_ID)):
+        loaded_pyfunc.predict("What castle did David Gregory inherit?")
+
+    if enabled_in_serving:
+        trace = _TRACE_BUFFER.pop(SERVING_REQUEST_ID)
+        assert trace is not None
+        assert trace["info"]["status"] == "OK"
+        assert trace["info"]["request_id"] == SERVING_REQUEST_ID
+        assert len(trace["data"]["spans"]) == 8
+    else:
+        assert len(_TRACE_BUFFER) == 0

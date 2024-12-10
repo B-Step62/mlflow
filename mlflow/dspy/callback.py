@@ -7,7 +7,7 @@ from dspy.utils.callback import BaseCallback
 import mlflow
 from mlflow.entities import SpanStatusCode, SpanType
 from mlflow.entities.span_event import SpanEvent
-from mlflow.pyfunc.context import Context, maybe_set_prediction_context
+from mlflow.pyfunc.context import Context, get_prediction_context, maybe_set_prediction_context
 from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
 from mlflow.tracing.utils.token import SpanWithToken
 
@@ -17,11 +17,24 @@ _logger = logging.getLogger(__name__)
 class MlflowCallback(BaseCallback):
     """Callback for generating MLflow traces for DSPy components"""
 
-    def __init__(self, prediction_context: Optional[Context] = None):
+    def __init__(self):
         self._client = mlflow.MlflowClient()
-        self._prediction_context = prediction_context or Context()
+        # Store dependency schema to set them to the trace
+        # TODO: Replace this is global context. Currently dependency schema is managed via
+        #   prediction context, which does not make sense because it is not dynamic between
+        #   prediction (only changes when loading a new model). Due to this design, we need
+        #   to store it here and propagate it to the prediction context in _start_span.
+        self._dependency_schema = None
         # call_id: (LiveSpan, OTel token)
         self._call_id_to_span: dict[str, SpanWithToken] = {}
+
+    @property
+    def dependency_schema(self):
+        return self._dependency_schema
+
+    @dependency_schema.setter
+    def dependency_schema(self, schema):
+        self._dependency_schema = schema
 
     def on_module_start(self, call_id: str, instance: Any, inputs: dict[str, Any]):
         span_type = self._get_span_type_for_module(instance)
@@ -124,7 +137,17 @@ class MlflowCallback(BaseCallback):
             "attributes": attributes,
         }
 
-        with maybe_set_prediction_context(self._prediction_context):
+        # Update the prediction context with dependency schema.
+        # TODO: This is required because dependency schema is propagated via prediction context
+        #   in current design. Once we move dependency schema to global context, we can remove
+        #   this logic and let the trace processor to handle request_id.
+        context = get_prediction_context()
+        if context and self._dependency_schema:
+            context.update(**self._dependency_schema)
+        elif self._dependency_schema:
+            context = Context(dependencies_schemas=self._dependency_schema)
+
+        with maybe_set_prediction_context(context):
             if parent_span:
                 span = self._client.start_span(
                     request_id=parent_span.request_id,
