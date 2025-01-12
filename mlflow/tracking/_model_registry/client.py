@@ -44,7 +44,7 @@ class ModelRegistryClient:
 
     # Registered Model Methods
 
-    def create_registered_model(self, name, tags=None, description=None, is_prompt=False):
+    def create_registered_model(self, name, tags=None, description=None):
         """Create a new registered model in backend store.
 
         Args:
@@ -62,7 +62,7 @@ class ModelRegistryClient:
         #       Those are constraints applicable to any backend, given the model URI format.
         tags = tags if tags else {}
         tags = [RegisteredModelTag(key, str(value)) for key, value in tags.items()]
-        return self.store.create_registered_model(name, tags, description, is_prompt)
+        return self.store.create_registered_model(name, tags, description)
 
     def update_registered_model(self, name, description):
         """Updates description for RegisteredModel entity.

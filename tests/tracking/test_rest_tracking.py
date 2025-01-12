@@ -10,12 +10,14 @@ import os
 import pathlib
 import posixpath
 import sys
+import textwrap
 import time
 import urllib.parse
 from unittest import mock
 
 import flask
 import pandas as pd
+from mlflow.entities.model_registry.prompt import PROMPT_TEXT_TAG_KEY
 import pytest
 import requests
 
@@ -2427,3 +2429,72 @@ def test_search_datasets_graphql(mlflow_client):
     assert (
         sort_dataset_summaries(json["data"]["mlflowSearchDatasets"]["datasetSummaries"]) == expected
     )
+
+
+def test_crud_prompt(mlflow_client):
+    template = textwrap.dedent("""This is a test template.
+    {context}
+    Question: {question}""")
+
+    # Create prompt
+    prompt = mlflow_client.register_prompt(
+        name="test",
+        template_text=template,
+        description="This is a test prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a test prompt."
+    assert prompt.template_text == template
+    assert prompt.version == "1"
+    assert prompt.tags == {}
+
+    # Read prompt
+    prompt = mlflow_client.load_prompt("test")
+    assert prompt.template_text == template
+
+    # Update prompt with new version
+    new_template = textwrap.dedent("""This is an improved template.
+    {context}
+    Question: {question}""")
+
+    prompt = mlflow_client.register_prompt(
+        name="test",
+        template_text=new_template,
+        description="This is a new version of the prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a new version of the prompt."
+    assert prompt.template_text == new_template
+    assert prompt.version == "2"
+    assert prompt.tags == {}
+
+    prompt = mlflow_client.load_prompt("test")
+    assert prompt.template_text == new_template
+
+    prompt = mlflow_client.load_prompt("test", version=1)
+    assert prompt.template_text == template
+
+    # Delete prompt
+    mlflow_client.delete_prompt("test", version=2)
+    prompt = mlflow_client.load_prompt("test")
+    assert prompt.template_text == template
+
+    # Search prompts (via search_registered_model)
+    mlflow_client.register_prompt(
+        name="test-2",
+        template_text=template,
+        description="This is a test prompt 2.",
+    )
+
+    rms = mlflow_client._get_registry_client().store.search_registered_models(is_prompt=True, max_results=10)
+    assert len(rms) == 2
+
+    rms = mlflow_client._get_registry_client().store.search_registered_models(max_results=10)
+    assert len(rms) == 0
+
+    mvs = mlflow_client._get_registry_client().store.search_model_versions(filter_string="name = 'test-2'", max_results=10)
+    assert len(mvs) == 1
+    assert mvs[0].name == "test-2"
+    assert mvs[0].tags == {PROMPT_TEXT_TAG_KEY: template}

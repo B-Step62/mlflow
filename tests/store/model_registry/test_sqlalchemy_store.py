@@ -3,6 +3,7 @@ import time
 import uuid
 from unittest import mock
 
+from mlflow.entities.model_registry.prompt import PROMPT_TEXT_TAG_KEY
 from mlflow.tracking.client import MlflowClient
 import pytest
 
@@ -1754,7 +1755,6 @@ def test_copy_model_version(store, copy_to_same_model):
     assert store.get_model_version_download_uri(dst_mv.name, dst_mv.version) == src_mv.source
 
 
-# TODO: This test should pass once we added prompt support in SQLAlchemy store
 @mock.patch("mlflow.tracking._model_registry.utils._get_store")
 def test_crud_prompt(mock_get_store, store):
     mock_get_store.return_value = store

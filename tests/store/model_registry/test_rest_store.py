@@ -1,7 +1,10 @@
 import json
+import textwrap
 import uuid
 from unittest import mock
 
+from mlflow.entities.model_registry.prompt import PROMPT_TEXT_TAG_KEY
+from mlflow.tracking.client import MlflowClient
 import pytest
 
 from mlflow.entities.model_registry import ModelVersion, ModelVersionTag, RegisteredModelTag

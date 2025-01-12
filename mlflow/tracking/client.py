@@ -39,7 +39,7 @@ from mlflow.entities import (
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
 from mlflow.entities.model_registry.model_version_stages import ALL_STAGES
 from mlflow.entities.model_registry.model_version_tag import ModelVersionTag
-from mlflow.entities.model_registry.prompt import PROMPT_TEXT_TAG_KEY, Prompt
+from mlflow.entities.model_registry.prompt import IS_PROMPT_TAG_KEY, PROMPT_TEXT_TAG_KEY, Prompt
 from mlflow.entities.span import NO_OP_SPAN_REQUEST_ID, NoOpSpan, create_mlflow_span
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
@@ -414,7 +414,15 @@ class MlflowClient:
         except MlflowException as e:
             # Create a new prompt (model) entry
             if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-                registry_client.create_registered_model(name, description=description, is_prompt=True)
+                registry_client.create_registered_model(
+                    name,
+                    description=description,
+                    # A special tag in RegisteredModel to indicate that it is a prompt.
+                    # This is not recorded in the backend store but used for setting the
+                    # is_prompt field in the data model. We use tags to propagate this so
+                    # that we don't need to update REST interface.
+                    tags={IS_PROMPT_TAG_KEY: "true"}
+                )
             else:
                 raise
 
@@ -425,7 +433,7 @@ class MlflowClient:
         mv: ModelVersion = registry_client.create_model_version(
             name=name,
             description=description,
-            source=None,
+            source="dummy",  # Not used
             tags=tags,
         )
 

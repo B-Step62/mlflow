@@ -9,6 +9,9 @@ from mlflow.entities.model_registry.model_version_tag import ModelVersionTag
 
 
 
+# A special tag in RegisteredModel to indicate that it is a prompt
+IS_PROMPT_TAG_KEY = "mlflow.prompt.is_prompt"
+# A special tag in ModelVersion to store the prompt text
 PROMPT_TEXT_TAG_KEY = "mlflow.prompt.text"
 
 # Alias type

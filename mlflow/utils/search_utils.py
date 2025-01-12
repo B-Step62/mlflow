@@ -1105,7 +1105,7 @@ class SearchModelUtils(SearchUtils):
             value = int(value)
         elif cls.is_tag(key_type, comparator):
             # if the filter doesn't apply, do we return False or?
-            lhs = model.tags.get(key, None)
+            lhs = model._tags.get(key, None)
         else:
             raise MlflowException(
                 f"Invalid search expression type '{key_type}'", error_code=INVALID_PARAMETER_VALUE

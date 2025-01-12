@@ -1,5 +1,6 @@
 from mlflow.entities.model_registry._model_registry_entity import _ModelRegistryEntity
 from mlflow.entities.model_registry.model_version import ModelVersion
+from mlflow.entities.model_registry.prompt import IS_PROMPT_TAG_KEY
 from mlflow.entities.model_registry.registered_model_alias import RegisteredModelAlias
 from mlflow.entities.model_registry.registered_model_tag import RegisteredModelTag
 from mlflow.protos.model_registry_pb2 import RegisteredModel as ProtoRegisteredModel
@@ -21,7 +22,6 @@ class RegisteredModel(_ModelRegistryEntity):
         latest_versions=None,
         tags=None,
         aliases=None,
-        is_prompt=False,
     ):
         # Constructor is called only from within the system by various backend stores.
         super().__init__()
@@ -32,11 +32,7 @@ class RegisteredModel(_ModelRegistryEntity):
         self._latest_version = latest_versions
         self._tags = {tag.key: tag.value for tag in (tags or [])}
         self._aliases = {alias.alias: alias.version for alias in (aliases or [])}
-        self._is_prompt = is_prompt
-
-    @property
-    def is_prompt(self):
-        return self._is_prompt
+        self._is_prompt = IS_PROMPT_TAG_KEY in self._tags
 
     @property
     def name(self):
@@ -86,7 +82,11 @@ class RegisteredModel(_ModelRegistryEntity):
     @property
     def tags(self):
         """Dictionary of tag key (string) -> tag value for the current registered model."""
-        return self._tags
+        return {k: v for k, v in self._tags.items() if k != IS_PROMPT_TAG_KEY}
+
+    @tags.setter
+    def tags(self, tags):
+        self._tags = {**tags, IS_PROMPT_TAG_KEY: self._is_prompt}
 
     @property
     def aliases(self):
@@ -118,10 +118,10 @@ class RegisteredModel(_ModelRegistryEntity):
         )
         for tag in proto.tags:
             registered_model._add_tag(RegisteredModelTag.from_proto(tag))
+
         for alias in proto.aliases:
             registered_model._add_alias(RegisteredModelAlias.from_proto(alias))
 
-        registered_model._is_prompt = proto.is_prompt if proto.HasField("is_prompt") else False
         return registered_model
 
     def to_proto(self):
@@ -147,5 +147,4 @@ class RegisteredModel(_ModelRegistryEntity):
                 for alias, version in self._aliases.items()
             ]
         )
-        rmd.is_prompt = self.is_prompt
         return rmd

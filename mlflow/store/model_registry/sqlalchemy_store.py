@@ -1,6 +1,8 @@
 import logging
 import urllib
 
+from mlflow.entities.model_registry.prompt import IS_PROMPT_TAG_KEY
+from mlflow.entities.model_registry.registered_model_tag import RegisteredModelTag
 import sqlalchemy
 from sqlalchemy.future import select
 
@@ -151,7 +153,7 @@ class SqlAlchemyStore(AbstractStore):
         # loading_relationships.html#relationship-loading-techniques
         return [sqlalchemy.orm.subqueryload(SqlModelVersion.model_version_tags)]
 
-    def create_registered_model(self, name, tags=None, description=None, is_prompt=False):
+    def create_registered_model(self, name, tags=None, description=None):
         """
         Create a new registered model in backend store.
 
@@ -176,7 +178,6 @@ class SqlAlchemyStore(AbstractStore):
                     creation_time=creation_time,
                     last_updated_time=creation_time,
                     description=description,
-                    is_prompt=is_prompt,
                 )
                 tags_dict = {}
                 for tag in tags or []:
@@ -325,6 +326,14 @@ class SqlAlchemyStore(AbstractStore):
                 f"{SEARCH_REGISTERED_MODEL_MAX_RESULTS_THRESHOLD}, but got value {max_results}",
                 INVALID_PARAMETER_VALUE,
             )
+
+        # Additional filter string to include/exclude prompts from the result
+        if not IS_PROMPT_TAG_KEY in (filter_string or ""):
+            prompt_filter_query = f"tag.`{IS_PROMPT_TAG_KEY}` = 'true'" if is_prompt else f"tag.`{IS_PROMPT_TAG_KEY}` = 'false'"
+            if filter_string:
+                filter_string = f"{filter_string} AND {prompt_filter_query}"
+            else:
+                filter_string = prompt_filter_query
 
         parsed_filters = SearchModelUtils.parse_search_filter(filter_string)
 

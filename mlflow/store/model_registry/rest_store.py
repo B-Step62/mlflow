@@ -1,6 +1,7 @@
 import logging
 
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
+from mlflow.entities.model_registry.prompt import IS_PROMPT_TAG_KEY
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
     CreateRegisteredModel,
@@ -128,7 +129,7 @@ class RestStore(BaseRestStore):
         self._call_endpoint(DeleteRegisteredModel, req_body)
 
     def search_registered_models(
-        self, filter_string=None, max_results=None, order_by=None, page_token=None
+        self, filter_string=None, max_results=None, order_by=None, page_token=None, is_prompt=False
     ):
         """
         Search for registered models in backend that satisfy the filter criteria.
@@ -147,6 +148,13 @@ class RestStore(BaseRestStore):
             obtained via the ``token`` attribute of the object.
 
         """
+        # Additional filter string to include/exclude prompts from the result
+        prompt_filter_query = f"tag.`{IS_PROMPT_TAG_KEY}` = 'true'" if is_prompt else f"tag.`{IS_PROMPT_TAG_KEY}` = 'false'"
+        if filter_string:
+            filter_string = f"{filter_string} AND {prompt_filter_query}"
+        else:
+            filter_string = prompt_filter_query
+
         req_body = message_to_json(
             SearchRegisteredModels(
                 filter=filter_string,

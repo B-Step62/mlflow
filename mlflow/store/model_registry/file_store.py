@@ -22,6 +22,7 @@ from mlflow.entities.model_registry.model_version_stages import (
     STAGE_NONE,
     get_canonical_stage,
 )
+from mlflow.entities.model_registry.prompt import IS_PROMPT_TAG_KEY
 from mlflow.environment_variables import MLFLOW_REGISTRY_DIR
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
@@ -177,7 +178,7 @@ class FileStore(AbstractStore):
         registered_model.last_updated_timestamp = updated_time
         self._save_registered_model_as_meta_file(registered_model)
 
-    def create_registered_model(self, name, tags=None, description=None, is_prompt=False):
+    def create_registered_model(self, name, tags=None, description=None):
         """
         Create a new registered model in backend store.
 
@@ -196,7 +197,7 @@ class FileStore(AbstractStore):
         self._check_root_dir()
         _validate_model_name(name)
         self._validate_registered_model_does_not_exist(name)
-        for tag in tags or []:
+        for tag in tags:
             _validate_registered_model_tag(tag.key, tag.value)
         meta_dir = self._get_registered_model_path(name)
         mkdir(meta_dir)
@@ -209,7 +210,6 @@ class FileStore(AbstractStore):
             description=description,
             latest_versions=latest_versions,
             tags=tags,
-            is_prompt=is_prompt,
         )
         self._save_registered_model_as_meta_file(
             registered_model, meta_dir=meta_dir, overwrite=False
@@ -378,12 +378,13 @@ class FileStore(AbstractStore):
             )
 
         # Additional filter string to include/exclude prompts from the result
-        # (FileStore does not support boolean filter so using string here)
-        prompt_filter_query = "is_prompt = 'true'" if is_prompt else "is_prompt = 'false'"
-        if filter_string:
-            filter_string = f"{filter_string} AND {prompt_filter_query}"
-        else:
-            filter_string = prompt_filter_query
+        # NB: The filter string might already contain a prompt filter query (e.g. request from RestStore)
+        if not IS_PROMPT_TAG_KEY in (filter_string or ""):
+            prompt_filter_query = f"tag.`{IS_PROMPT_TAG_KEY}` = 'true'" if is_prompt else f"tag.`{IS_PROMPT_TAG_KEY}` = 'false'"
+            if filter_string:
+                filter_string = f"{filter_string} AND {prompt_filter_query}"
+            else:
+                filter_string = prompt_filter_query
 
         registered_models = self._list_all_registered_models()
         filtered_rms = SearchModelUtils.filter(registered_models, filter_string)
