@@ -115,4 +115,17 @@ export class Services {
    */
   static deleteModelVersionAlias = (data: { name: string; version: string; alias: string }) =>
     deleteJson({ relativeUrl: 'ajax-api/2.0/mlflow/registered-models/alias', data });
+
+  /**
+   * Search prompts
+   */
+  static searchPrompts = (data: any) =>
+    getBigIntJson({ relativeUrl: 'ajax-api/2.0/mlflow/prompts/search', data });
+
+  /**
+   * List versions of a prompt
+   */
+  static listPromptVersions = (data: any) =>
+    getJson({ relativeUrl: 'ajax-api/2.0/mlflow/prompts/versions/list', data });
+
 }

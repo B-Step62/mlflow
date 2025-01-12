@@ -23,6 +23,19 @@ export class ModelRegistryRoutePaths {
   static get createModel() {
     return createMLflowRoutePath('/createModel');
   }
+
+  /* Prompt Management */
+  static get promptListPage() {
+    return createMLflowRoutePath('/prompts');
+  }
+
+  static get promptSubpage() {
+    return createMLflowRoutePath('/prompts/:promptName/:subpage');
+  }
+
+  static get promptVersionPage() {
+    return createMLflowRoutePath('/prompts/:promptName/versions/:version');
+  }
 }
 
 // Concrete routes and functions for generating parametrized paths
@@ -54,6 +67,25 @@ export class ModelRegistryRoutes {
       `&runs=${JSON.stringify(runsToVersions, (_, v) => (v === undefined ? null : v))}`;
 
     return [path, query].join('');
+  }
+
+  /* Prompt Management */
+  static get promptListPageRoute() {
+    return ModelRegistryRoutePaths.promptListPage;
+  }
+
+  static getPromptPageRoute(promptName: string) {
+    return generatePath(ModelRegistryRoutePaths.promptSubpage, {
+      promptName: encodeURIComponent(promptName),
+      subpage: PANES.DETAILS,
+    });
+  }
+
+  static getPromptVersionPageRoute(promptName: string, version: string) {
+    return generatePath(ModelRegistryRoutePaths.promptVersionPage, {
+      promptName: encodeURIComponent(promptName),
+      version,
+    });
   }
 }
 

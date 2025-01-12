@@ -364,3 +364,33 @@ export const updateModelVersionTagsApi = (
     meta: { id, name, version, existingTags, newTags },
   };
 };
+
+/* Prompt Management */
+export const SEARCH_PROMPTS = 'SEARCH_PROMPTS';
+export const searchPromptsApi = (
+  filter?: any,
+  maxResults?: any,
+  orderBy?: any,
+  pageToken?: any,
+  id = getUUID(),
+) => {
+  return {
+    type: SEARCH_PROMPTS,
+    payload: Services.searchPrompts({
+      filter,
+      max_results: maxResults,
+      order_by: orderBy,
+      ...(pageToken ? { page_token: pageToken } : null),
+    }),
+    meta: { id },
+  };
+};
+
+export const LIST_PROMPT_VERSIONS = 'LIST_PROMPT_VERSIONS';
+export const listPromptVersionsApi = (name: string) => {
+  return {
+    type: LIST_PROMPT_VERSIONS,
+    payload: Services.listPromptVersions({ name }),
+    meta: { name },
+  };
+};
