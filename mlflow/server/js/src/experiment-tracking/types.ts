@@ -57,30 +57,6 @@ export interface ModelVersionInfoEntity {
   tags?: KeyValueEntity[];
 }
 
-
-/**
- * An entity defining a single prompt
- */
-export interface PromptEntity {
-  id: string;
-  name: string;
-  description: string;
-  latest_versions: PromptVersionInfoEntity[];
-  created_at: number;
-  last_updated_at: number;
-}
-
-/**
- * An entity defining a single prompt version
- */
-export interface PromptVersionInfoEntity {
-  version: string;
-  description: string;
-  template_text: string;
-  created_at: number;
-  tags?: KeyValueEntity[];
-}
-
 /**
  * A run entity as seen in the API response
  */

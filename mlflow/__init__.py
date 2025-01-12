@@ -131,6 +131,8 @@ from mlflow.tracking._model_registry.fluent import (
     register_model,
     search_model_versions,
     search_registered_models,
+    register_prompt,
+    load_prompt,
 )
 from mlflow.tracking.fluent import (
     ActiveRun,
@@ -247,6 +249,9 @@ __all__ = [
     "trace",
     "add_trace",
     "update_current_trace",
+    # Prompt Management API
+    "register_prompt",
+    "load_prompt",
 ]
 
 

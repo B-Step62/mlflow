@@ -25,16 +25,12 @@ export class ModelRegistryRoutePaths {
   }
 
   /* Prompt Management */
-  static get promptListPage() {
-    return createMLflowRoutePath('/prompts');
-  }
-
-  static get promptSubpage() {
-    return createMLflowRoutePath('/prompts/:promptName/:subpage');
-  }
-
   static get promptVersionPage() {
-    return createMLflowRoutePath('/prompts/:promptName/versions/:version');
+    return createMLflowRoutePath('/prompts/:modelName/versions/:version');
+  }
+
+  static get comparePromptVersionsPage() {
+    return createMLflowRoutePath('/compare-prompt-versions');
   }
 }
 
@@ -69,23 +65,20 @@ export class ModelRegistryRoutes {
     return [path, query].join('');
   }
 
-  /* Prompt Management */
-  static get promptListPageRoute() {
-    return ModelRegistryRoutePaths.promptListPage;
-  }
-
-  static getPromptPageRoute(promptName: string) {
-    return generatePath(ModelRegistryRoutePaths.promptSubpage, {
-      promptName: encodeURIComponent(promptName),
-      subpage: PANES.DETAILS,
-    });
-  }
-
-  static getPromptVersionPageRoute(promptName: string, version: string) {
+  static getPromptVersionPageRoute(modelName: string, version: string) {
     return generatePath(ModelRegistryRoutePaths.promptVersionPage, {
-      promptName: encodeURIComponent(promptName),
+      modelName: encodeURIComponent(modelName),
       version,
     });
+  }
+
+  static getComparePromptVersionsPageRoute(modelName: string, versions: string[]) {
+    const path = generatePath(ModelRegistryRoutePaths.comparePromptVersionsPage);
+    const query =
+      `?name=${JSON.stringify(encodeURIComponent(modelName))}` +
+      `&versions=${JSON.stringify(versions)}`;
+
+    return [path, query].join('');
   }
 }
 

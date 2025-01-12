@@ -46,3 +46,30 @@
     max-width: 500px;
 }
 /* <<< Extract to our own Alert wrapper component */
+
+
+/* Prompt Management */
+.rich-text {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    font-family: 'Arial', sans-serif;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    resize: vertical;
+    background-color: #f9f9f9;
+    color: #333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+.rich-text:focus {
+border-color: #66afe9;
+box-shadow: 0 0 8px rgba(102, 175, 233, 0.6);
+outline: none;
+}
+
+.rich-text::placeholder {
+color: #aaa;
+font-style: italic;
+}

@@ -33,20 +33,17 @@ export const getRouteDefs = () => [
     element: createLazyRouteElement(() => import('./components/CompareModelVersionsPage')),
     pageId: 'mlflow.model-registry.compare-model-versions',
   },
+
   /* Prompt Management */
   {
-    path: ModelRegistryRoutePaths.promptListPage,
-    element: createLazyRouteElement(() => import('./components/prompts/PromptListPage')),
-    pageId: 'mlflow.model-registry.prompt-list',
+    path: ModelRegistryRoutePaths.promptVersionPage,
+    element: createLazyRouteElement(() => import('./components/PromptVersionPage')),
+    pageId: 'mlflow.model-registry.prompt-version-page',
   },
+
   {
-    path: ModelRegistryRoutePaths.promptSubpage,
-    element: createLazyRouteElement(() => import('./components/prompts/PromptPage')),
-    pageId: 'mlflow.model-registry.prompt-page',
-  },
-  // {
-  //   path: ModelRegistryRoutePaths.promptVersionPage,
-  //   element: createLazyRouteElement(() => import('./components/prompts/PromptVersionPage')),
-  //   pageId: 'mlflow.model-registry.prompt-version-page',
-  // }
+    path: ModelRegistryRoutePaths.comparePromptVersionsPage,
+    element: createLazyRouteElement(() => import('./components/ComparePromptVersionsPage')),
+    pageId: 'mlflow.model-registry.compare-prompt-versions',
+  }
 ];

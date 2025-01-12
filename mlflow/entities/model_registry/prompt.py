@@ -45,6 +45,9 @@ class Prompt(ModelVersion):
             tags=[ModelVersionTag(key=key, value=value) for key, value in tags.items()],
         )
 
+    def __repr__(self) -> str:
+        return f"Prompt(name={self.name}, version={self.version}, template_text={self.template_text})"
+
     @property
     def tags(self) -> dict[str, str]:
         """

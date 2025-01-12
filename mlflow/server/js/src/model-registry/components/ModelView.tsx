@@ -26,6 +26,7 @@ import { ModelVersionInfoEntity, type ModelEntity } from '../../experiment-track
 import { shouldShowModelsNextUI } from '../../common/utils/FeatureUtils';
 import { ModelsNextUIToggleSwitch } from './ModelsNextUIToggleSwitch';
 import { withNextModelsUIContext } from '../hooks/useNextModelsUI';
+import { isPromptModel } from '../utils/PromptUtils';
 
 export const StageFilters = {
   ALL: 'ALL',
@@ -65,6 +66,7 @@ export class ModelViewImpl extends React.Component<ModelViewImplProps, ModelView
     isDeleteModalVisible: false,
     isDeleteModalConfirmLoading: false,
     runsSelected: {},
+    selectedVersions: [] as string[],
     isTagsRequestPending: false,
     updatingEmailPreferences: false,
   };
@@ -195,11 +197,13 @@ export class ModelViewImpl extends React.Component<ModelViewImplProps, ModelView
   onChange = (selectedRowKeys: any, selectedRows: any) => {
     const newState = Object.assign({}, this.state);
     newState.runsSelected = {};
+    newState.selectedVersions = [];
     selectedRows.forEach((row: any) => {
       newState.runsSelected = {
         ...newState.runsSelected,
         [row.version]: row.run_id,
       };
+      newState.selectedVersions.push(row.version);
     });
     this.setState(newState);
   };
@@ -208,9 +212,16 @@ export class ModelViewImpl extends React.Component<ModelViewImplProps, ModelView
     if (!this.props.model) {
       return;
     }
-    this.props.navigate(
-      ModelRegistryRoutes.getCompareModelVersionsPageRoute(this.props.model.name, this.state.runsSelected),
-    );
+
+    if (isPromptModel(this.props.model)) {
+      this.props.navigate(
+        ModelRegistryRoutes.getComparePromptVersionsPageRoute(this.props.model.name, this.state.selectedVersions),
+      );
+    } else {
+      this.props.navigate(
+        ModelRegistryRoutes.getCompareModelVersionsPageRoute(this.props.model.name, this.state.runsSelected),
+      );
+    }
   }
 
   renderDescriptionEditIcon() {

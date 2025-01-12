@@ -47,6 +47,8 @@ import { ModelVersionTableAliasesCell } from './aliases/ModelVersionTableAliases
 import { Interpolation, Theme } from '@emotion/react';
 import { truncateToFirstLineWithMaxLength } from '../../common/utils/StringUtils';
 import ExpandableList from '../../common/components/ExpandableList';
+import { isPromptModel } from '../utils/PromptUtils';
+import { is } from 'immutable';
 
 type ModelVersionTableProps = {
   modelName: string;
@@ -172,111 +174,174 @@ export const ModelVersionTable = ({
             description="Link to model version in the model version table"
             values={{
               link: (chunks) => (
-                <Link to={ModelRegistryRoutes.getModelVersionPageRoute(modelName, String(getValue()))}>{chunks}</Link>
+                isPromptModel(modelEntity)
+                ? <Link to={ModelRegistryRoutes.getPromptVersionPageRoute(modelName, String(getValue()))}>{chunks}</Link>
+                : <Link to={ModelRegistryRoutes.getModelVersionPageRoute(modelName, String(getValue()))}>{chunks}</Link>
               ),
               versionNumber: getValue(),
             }}
           />
         ),
       },
-      {
-        id: COLUMN_IDS.CREATION_TIMESTAMP,
-        enableSorting: true,
-        meta: { styles: { minWidth: 200 } },
-        header: intl.formatMessage({
-          defaultMessage: 'Registered at',
-          description: 'Column title text for created at timestamp in model version table',
-        }),
-        accessorKey: 'creation_timestamp',
-        cell: ({ getValue }) => Utils.formatTimestamp(getValue()),
-      },
-
-      {
-        id: COLUMN_IDS.USER_ID,
-        enableSorting: false,
-        meta: { styles: { minWidth: 100 } },
-        header: intl.formatMessage({
-          defaultMessage: 'Created by',
-          description: 'Column title text for creator username in model version table',
-        }),
-        accessorKey: 'user_id',
-        cell: ({ getValue }) => <span>{getValue()}</span>,
-      },
     );
 
-    if (usingNextModelsUI) {
-      // Display tags and aliases columns only when "new models UI" is flipped
-      columns.push(
-        {
-          id: COLUMN_IDS.TAGS,
-          enableSorting: false,
-          header: intl.formatMessage({
-            defaultMessage: 'Tags',
-            description: 'Column title text for model version tags in model version table',
-          }),
-          meta: { styles: { flex: 2 } },
-          accessorKey: 'tags',
-          cell: ({ getValue, row: { original } }) => {
-            return (
-              <KeyValueTagsEditorCell
-                tags={getValue() as KeyValueEntity[]}
-                onAddEdit={() => {
-                  showEditTagsModal?.(original);
-                }}
-              />
-            );
-          },
-        },
-        {
-          id: COLUMN_IDS.ALIASES,
-          accessorKey: 'aliases',
-          enableSorting: false,
-          header: intl.formatMessage({
-            defaultMessage: 'Aliases',
-            description: 'Column title text for model version aliases in model version table',
-          }),
-          meta: { styles: { flex: 2 }, multiline: true },
-          cell: ({ getValue, row: { original } }) => {
-            const mvAliases = aliasesByVersion[original.version] || [];
-            return (
-              <ModelVersionTableAliasesCell
-                modelName={modelName}
-                version={original.version}
-                aliases={mvAliases}
-                onAddEdit={() => {
-                  showEditAliasesModal?.(original.version);
-                }}
-              />
-            );
-          },
-        },
-      );
-    } else {
-      // If not, display legacy "Stage" columns
+    if (isPromptModel(modelEntity)) {
       columns.push({
-        id: COLUMN_IDS.STAGE,
+        id: COLUMN_IDS.DESCRIPTION,
         enableSorting: false,
         header: intl.formatMessage({
-          defaultMessage: 'Stage',
-          description: 'Column title text for model version stage in model version table',
+          defaultMessage: 'Description',
+          description: 'Column title text for description in model version table',
         }),
-        accessorKey: 'current_stage',
-        cell: ({ getValue }) => {
-          return StageTagComponents[getValue() as string];
+        meta: { styles: { flex: 2 } },
+        accessorKey: 'description',
+        cell: ({ getValue }) => truncateToFirstLineWithMaxLength(getValue(), 32),
+      },
+      {
+        id: COLUMN_IDS.ALIASES,
+        accessorKey: 'aliases',
+        enableSorting: false,
+        header: intl.formatMessage({
+          defaultMessage: 'Aliases',
+          description: 'Column title text for model version aliases in model version table',
+        }),
+        meta: { styles: { flex: 2 }, multiline: true },
+        cell: ({ getValue, row: { original } }) => {
+          const mvAliases = aliasesByVersion[original.version] || [];
+          return (
+            <ModelVersionTableAliasesCell
+              modelName={modelName}
+              version={original.version}
+              aliases={mvAliases}
+              onAddEdit={() => {
+                showEditAliasesModal?.(original.version);
+              }}
+            />
+          );
         },
+      },
+      {
+        id: COLUMN_IDS.TAGS,
+        enableSorting: false,
+        header: intl.formatMessage({
+          defaultMessage: 'Tags',
+          description: 'Column title text for model version tags in model version table',
+        }),
+        meta: { styles: { flex: 2 } },
+        accessorKey: 'tags',
+        cell: ({ getValue, row: { original } }) => {
+          // If tag key is 'mlflow.prompt.is_prompt', don't show it in the table
+          const allTags = getValue() as KeyValueEntity[] || [];
+          const filteredTags = allTags.filter(({ key }) => key !== 'mlflow.prompt.text');
+          return (
+            <KeyValueTagsEditorCell
+              tags={filteredTags}
+              onAddEdit={() => {
+                showEditTagsModal?.(original);
+              }}
+            />
+          );
+        },
+      },
+    );
+    } else {
+        columns.push(
+        {
+          id: COLUMN_IDS.CREATION_TIMESTAMP,
+          enableSorting: true,
+          meta: { styles: { minWidth: 200 } },
+          header: intl.formatMessage({
+            defaultMessage: 'Registered at',
+            description: 'Column title text for created at timestamp in model version table',
+          }),
+          accessorKey: 'creation_timestamp',
+          cell: ({ getValue }) => Utils.formatTimestamp(getValue()),
+        },
+        {
+          id: COLUMN_IDS.USER_ID,
+          enableSorting: false,
+          header: intl.formatMessage({
+            defaultMessage: 'Registered by',
+            description: 'Column title text for registered by user in model version table',
+          }),
+          accessorKey: 'user_id',
+          cell: ({ getValue }) => getValue() || EMPTY_CELL_PLACEHOLDER,
+        });
+
+      if (usingNextModelsUI) {
+        // Display tags and aliases columns only when "new models UI" is flipped
+        columns.push(
+          {
+            id: COLUMN_IDS.TAGS,
+            enableSorting: false,
+            header: intl.formatMessage({
+              defaultMessage: 'Tags',
+              description: 'Column title text for model version tags in model version table',
+            }),
+            meta: { styles: { flex: 2 } },
+            accessorKey: 'tags',
+            cell: ({ getValue, row: { original } }) => {
+              return (
+                <KeyValueTagsEditorCell
+                  tags={getValue() as KeyValueEntity[]}
+                  onAddEdit={() => {
+                    showEditTagsModal?.(original);
+                  }}
+                />
+              );
+            },
+          },
+          {
+            id: COLUMN_IDS.ALIASES,
+            accessorKey: 'aliases',
+            enableSorting: false,
+            header: intl.formatMessage({
+              defaultMessage: 'Aliases',
+              description: 'Column title text for model version aliases in model version table',
+            }),
+            meta: { styles: { flex: 2 }, multiline: true },
+            cell: ({ getValue, row: { original } }) => {
+              const mvAliases = aliasesByVersion[original.version] || [];
+              return (
+                <ModelVersionTableAliasesCell
+                  modelName={modelName}
+                  version={original.version}
+                  aliases={mvAliases}
+                  onAddEdit={() => {
+                    showEditAliasesModal?.(original.version);
+                  }}
+                />
+              );
+            },
+          },
+        );
+      } else {
+        // If not, display legacy "Stage" columns
+        columns.push({
+          id: COLUMN_IDS.STAGE,
+          enableSorting: false,
+          header: intl.formatMessage({
+            defaultMessage: 'Stage',
+            description: 'Column title text for model version stage in model version table',
+          }),
+          accessorKey: 'current_stage',
+          cell: ({ getValue }) => {
+            return StageTagComponents[getValue() as string];
+          },
+        });
+      }
+      columns.push({
+        id: COLUMN_IDS.DESCRIPTION,
+        enableSorting: false,
+        header: intl.formatMessage({
+          defaultMessage: 'Description',
+          description: 'Column title text for description in model version table',
+        }),
+        meta: { styles: { flex: 2 } },
+        accessorKey: 'description',
+        cell: ({ getValue }) => truncateToFirstLineWithMaxLength(getValue(), 32),
       });
     }
-    columns.push({
-      id: COLUMN_IDS.DESCRIPTION,
-      enableSorting: false,
-      header: intl.formatMessage({
-        defaultMessage: 'Description',
-        description: 'Column title text for description in model version table',
-      }),
-      meta: { styles: { flex: 2 } },
-      accessorKey: 'description',
-      cell: ({ getValue }) => truncateToFirstLineWithMaxLength(getValue(), 32),
-    });
     return columns;
   }, [theme, intl, modelName, showEditTagsModal, showEditAliasesModal, usingNextModelsUI, aliasesByVersion]);
 

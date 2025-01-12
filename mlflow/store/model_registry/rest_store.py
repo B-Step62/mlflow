@@ -149,11 +149,12 @@ class RestStore(BaseRestStore):
 
         """
         # Additional filter string to include/exclude prompts from the result
-        prompt_filter_query = f"tag.`{IS_PROMPT_TAG_KEY}` = 'true'" if is_prompt else f"tag.`{IS_PROMPT_TAG_KEY}` = 'false'"
-        if filter_string:
-            filter_string = f"{filter_string} AND {prompt_filter_query}"
-        else:
-            filter_string = prompt_filter_query
+        if not IS_PROMPT_TAG_KEY in (filter_string or ""):
+            prompt_filter_query = f"tag.`{IS_PROMPT_TAG_KEY}` = 'true'" if is_prompt else f"tag.`{IS_PROMPT_TAG_KEY}` = 'false'"
+            if filter_string:
+                filter_string = f"{filter_string} AND {prompt_filter_query}"
+            else:
+                filter_string = prompt_filter_query
 
         req_body = message_to_json(
             SearchRegisteredModels(
