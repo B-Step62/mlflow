@@ -2,6 +2,7 @@ import json
 import os
 import pickle
 import sys
+import textwrap
 import time
 from unittest import mock
 
@@ -35,6 +36,7 @@ from mlflow.store.model_registry.sqlalchemy_store import (
     SqlAlchemyStore as SqlAlchemyModelRegistryStore,
 )
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
+from mlflow.store.model_registry.file_store import FileStore
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore as SqlAlchemyTrackingStore
 from mlflow.tracing.constant import TRACE_SCHEMA_VERSION, TRACE_SCHEMA_VERSION_KEY, TraceMetadataKey
 from mlflow.tracing.fluent import TRACE_BUFFER
@@ -1683,3 +1685,56 @@ def test_store_trace_span_tag_when_exception_raised():
         client.end_trace(span.request_id, outputs={"result": "b" * 1000000})
         mock_set_trace_tag.assert_called_once()
         mock_upload_trace_data.assert_called_once()
+
+
+@pytest.fixture
+def mock_registry_file_store(tmp_path):
+    store = FileStore(str(tmp_path.joinpath("mlruns")))
+    with mock.patch("mlflow.tracking._model_registry.utils._get_store", return_value=store):
+        yield store
+
+
+def test_crud_prompt(mock_registry_file_store):
+    template = textwrap.dedent("""This is a test template.
+    {context}
+    Question: {question}""")
+
+    client = MlflowClient()
+    prompt = client.register_prompt(
+        name="test",
+        template_text=template,
+        description="This is a test prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a test prompt."
+    assert prompt.template_text == template
+    assert prompt.version == 1
+    assert prompt.tags == []
+
+    new_template = textwrap.dedent("""This is an improved template.
+    {context}
+    Question: {question}""")
+
+    prompt = client.register_prompt(
+        name="test",
+        template_text=new_template,
+        description="This is a new version of the prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a new version of the prompt."
+    assert prompt.template_text == new_template
+    assert prompt.version == 2
+    assert prompt.tags == []
+
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == new_template
+
+    prompt = client.load_prompt("test", version=1)
+    assert prompt.template_text == template
+
+    client.delete_prompt("test", version=2)
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == template
+

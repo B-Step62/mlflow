@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import time
+from typing import Optional
 import urllib
 from os.path import join
 
@@ -12,6 +13,8 @@ from mlflow.entities.model_registry import (
     RegisteredModel,
     RegisteredModelAlias,
     RegisteredModelTag,
+    Prompt,
+    PromptTag,
 )
 from mlflow.entities.model_registry.model_version_stages import (
     ALL_STAGES,
@@ -120,6 +123,8 @@ class FileStore(AbstractStore):
     CREATE_MODEL_VERSION_RETRIES = 3
     REGISTERED_MODELS_ALIASES_FOLDER_NAME = "aliases"
 
+    PROMPT_FOLDER_NAME = "prompts"
+
     def __init__(self, root_directory=None):
         """
         Create a new FileStore with the given root directory.
@@ -175,6 +180,85 @@ class FileStore(AbstractStore):
         registered_model = self.get_registered_model(name)
         registered_model.last_updated_timestamp = updated_time
         self._save_registered_model_as_meta_file(registered_model)
+
+
+    def create_prompt(self,
+                      name: str,
+                      template_text: str,
+                      description: str,
+                      # commit_message: Optional[str],
+                      tags: list[PromptTag] = None,
+                    ) -> Prompt:
+        """
+        Create a new prompt entity if it is not present. Otherwise add a new version to the existing prompt entity.
+        """
+        self._check_root_dir()
+        prompt_dir = self._get_prompt_path(name)
+        latest_prompt_version = self._get_latest_prompt_version(name)
+        creation_time = get_current_time_millis()
+
+        if not latest_prompt_version:
+            mkdir(prompt_dir)
+            version = 1
+        else:
+            version = latest_prompt_version.version + 1
+
+        prompt = Prompt(
+            name=name,
+            version=version,
+            template_text=template_text,
+            description=description,
+            created_at=creation_time,
+            tags=tags,
+        )
+        prompt.to_yaml(join(prompt_dir, str(version)))
+        return prompt
+
+
+    def _get_prompt_path(self, name: str) -> str:
+        self._check_root_dir()
+        return join(self.root_directory, FileStore.PROMPT_FOLDER_NAME, name)
+
+    def _get_latest_prompt_version(self, name: str) -> Optional[Prompt]:
+        prompt_path = self._get_prompt_path(name)
+        if not exists(prompt_path):
+            return None
+
+        # each prompt is saved as a single yaml file
+        versions = list_all(prompt_path)
+        latest_version = max(versions, key=lambda x: int(os.path.basename(x)))
+        return Prompt.from_yaml(join(prompt_path, latest_version))
+
+
+    def load_prompt(self, name: str, version: Optional[int]=None) -> Prompt:
+        """
+        Load the prompt entity.
+
+        If version is not provided, return the latest version of the prompt entity.
+        """
+        if not version:
+            version = self._get_latest_prompt_version(name).version
+        prompt_dir = join(self._get_prompt_path(name))
+        prompt_path = join(prompt_dir, str(version))
+        return Prompt.from_yaml(prompt_path)
+
+
+    def delete_prompt(self, name: str, version: Optional[int]) -> None:
+        """Delete the prompt entity."""
+        if version is None:
+            # If version is not provided, delete the entire prompt entity
+            prompt_path = self._get_prompt_path(name)
+            shutil.rmtree(prompt_path)
+        else:
+            # Delete the specific version of the prompt entity
+            prompt_path = join(self._get_prompt_path(name), str(version))
+            if not exists(prompt_path):
+                raise MlflowException(
+                    f"Prompt with name={name} and version={version} not found",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            os.remove(prompt_path)
+
 
     def create_registered_model(self, name, tags=None, description=None):
         """

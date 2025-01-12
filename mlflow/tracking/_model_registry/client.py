@@ -5,8 +5,10 @@ exposed in the :py:mod:`mlflow.tracking` module.
 """
 
 import logging
+from typing import Optional
 
 from mlflow.entities.model_registry import ModelVersionTag, RegisteredModelTag
+from mlflow.entities.model_registry.prompt import PromptTag
 from mlflow.exceptions import MlflowException
 from mlflow.store.model_registry import (
     SEARCH_MODEL_VERSION_MAX_RESULTS_DEFAULT,
@@ -423,3 +425,45 @@ class ModelRegistryClient:
 
         """
         return self.store.get_model_version_by_alias(name, alias)
+
+    ### Prompt Management Methods ###
+    def register_prompt(self, name, template_text, description=None, tags=None):
+        """Create a new prompt in the model registry.
+
+        Args:
+            name: Name of the prompt.
+            template_text: Template text for the prompt.
+            description: Description of the prompt.
+            tags: A dictionary of key-value pairs that are converted into
+                :py:class:`mlflow.entities.model_registry.PromptTag` objects.
+
+        Returns:
+            A single object of :py:class:`mlflow.entities.model_registry.Prompt` created by backend.
+
+        """
+        tags = tags if tags else {}
+        tags = [PromptTag(key, str(value)) for key, value in tags.items()]
+        return self.store.create_prompt(name, template_text, description, tags)
+
+    def delete_prompt(self, name: str, version: Optional[int]=None):
+        """Delete prompt in backend.
+
+        Args:
+            name: Name of the prompt.
+            version: Version number of the prompt.
+
+        """
+        self.store.delete_prompt(name, version)
+
+    def load_prompt(self, name: str, version: Optional[int]=None):
+        """Load a prompt from the model registry.
+
+        Args:
+            name: Name of the prompt.
+            version: Version number of the prompt.
+
+        Returns:
+            A single :py:class:`mlflow.entities.model_registry.Prompt` object.
+
+        """
+        return self.store.load_prompt(name, version)

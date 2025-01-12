@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
+from mlflow.entities.model_registry.prompt import Prompt, PromptTag
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import ALREADY_EXISTS, RESOURCE_ALREADY_EXISTS, ErrorCode
 from mlflow.store.artifact.runs_artifact_repo import RunsArtifactRepository
@@ -323,3 +324,31 @@ def search_model_versions(
         max_results_per_page=SEARCH_MODEL_VERSION_MAX_RESULTS_DEFAULT,
         max_results=max_results,
     )
+
+
+def register_prompt(
+    name: str,
+    template_text: str,
+    description: Optional[str] = None,
+    tags: Optional[dict[str, str]] = None,
+) -> Prompt:
+    """
+    Create a new prompt object.
+
+    Args:
+        name: Name of the prompt.
+        template_text: Template text of the prompt.
+        description: Description of the prompt.
+        tags: List of prompt tags.
+
+    Returns:
+        A new prompt object.
+    """
+    return MlflowClient().register_prompt(
+        name=name,
+        template_text=template_text, description=description,
+        tags=tags
+    )
+
+def load_prompt(name: str, version: Optional[int]) -> Prompt:
+    return MlflowClient().load_prompt(name=name, version=version)

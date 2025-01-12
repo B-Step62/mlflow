@@ -38,6 +38,7 @@ from mlflow.entities import (
 )
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
 from mlflow.entities.model_registry.model_version_stages import ALL_STAGES
+from mlflow.entities.model_registry.prompt import Prompt, PromptTag
 from mlflow.entities.span import NO_OP_SPAN_REQUEST_ID, NoOpSpan, create_mlflow_span
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
@@ -391,6 +392,27 @@ class MlflowClient:
             status: RUNNING
         """
         return self._tracking_client.create_run(experiment_id, start_time, tags, run_name)
+
+
+    ##### Prompt Management #####
+    def register_prompt(self,
+                        name: str,
+                        template_text: str,
+                        description: str,
+                        # commit_message: Optional[str],
+                        tags: list[PromptTag] = None,
+                        ) -> Prompt:
+        """
+        Register a new prompt version in the model registry.
+        """
+        return self._get_registry_client().create_prompt(name, template_text, description, tags)
+
+    def load_prompt(self, name: str, version: Optional[int] = None) -> Prompt:
+        return self._get_registry_client().load_prompt(name, version)
+
+    def delete_prompt(self, name: str, version: Optional[int] = None) -> None:
+        self._get_registry_client().delete_prompt(name, version)
+
 
     def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData) -> None:
         return self._tracking_client._upload_trace_data(trace_info, trace_data)
