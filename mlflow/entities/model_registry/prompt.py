@@ -2,21 +2,87 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
-import yaml
-from mlflow.entities.model_registry._model_registry_entity import _ModelRegistryEntity
+from mlflow.entities.model_registry.model_version import ModelVersion
+from mlflow.entities.model_registry.model_version_tag import ModelVersionTag
 
+
+
+PROMPT_TEXT_TAG_KEY = "mlflow.prompt.text"
+
+# Alias type
+PromptVersionTag = ModelVersionTag
 
 @dataclass
-class Prompt(_ModelRegistryEntity):
-    name: str
-    version: int
-    template_text: str
-    description: Optional[str] = None
-    created_at: Optional[int] = None
-    tags: Optional[list[PromptTag]] = None
+class Prompt(ModelVersion):
+    """
+    Prompt is a subclass of ModelVersion. It represents a prompt in the model registry.
+    """
+    def __init__(
+        self,
+        name: str,
+        version: int,
+        template_text: str,
+        description: Optional[str] = None,
+        creation_timestamp: Optional[int] = None,
+        tags: Optional[dict[str, str]] = None,
+    ):
+        # Store template text as a tag
+        tags = tags or {}
 
+        if not PROMPT_TEXT_TAG_KEY in tags:
+            tags[PROMPT_TEXT_TAG_KEY] = template_text
+
+        super().__init__(
+            name=name,
+            version=version,
+            creation_timestamp=creation_timestamp,
+            description=description,
+            tags=[ModelVersionTag(key=key, value=value) for key, value in tags.items()],
+        )
+
+    @property
+    def tags(self) -> dict[str, str]:
+        """
+        Return the tags of the prompt as a dictionary.
+        """
+        # Remove the prompt text tag as it is internal
+        return {key: value for key, value in self._tags.items() if key != PROMPT_TEXT_TAG_KEY}
+
+    @tags.setter
+    def tags(self, tags: dict[str, str]):
+        """
+        Set the tags of the prompt.
+        """
+        self._tags = {
+            **tags,
+            PROMPT_TEXT_TAG_KEY: self.template_text,
+        }
+
+    @classmethod
+    def from_model_version(cls, model_version: ModelVersion) -> Prompt:
+        """
+        Create a Prompt object from a ModelVersion object.
+        """
+        if not PROMPT_TEXT_TAG_KEY in model_version.tags:
+            raise ValueError("ModelVersion object does not contain prompt text.")
+
+        return cls(
+            name=model_version.name,
+            version=model_version.version,
+            template_text=model_version.tags[PROMPT_TEXT_TAG_KEY],
+            description=model_version.description,
+            creation_timestamp=model_version.creation_timestamp,
+            tags=model_version.tags,
+        )
+
+    @property
+    def template_text(self) -> str:
+        """
+        Return the template text of the prompt.
+        """
+        return self._tags[PROMPT_TEXT_TAG_KEY]
 
     @property
     def variables(self) -> set[str]:
@@ -48,54 +114,4 @@ class Prompt(_ModelRegistryEntity):
         if missing_keys and not allow_partial:
             raise ValueError(f"Missing variables: {missing_keys}. To partially format the prompt, set `allow_partial=True`.")
 
-        formatted_text = self._format_text(kwargs, missing_keys)
-        if not missing_keys:
-            return formatted_text
-
-        return Prompt(
-            name=self.name,
-            version=self.version,
-            template_text=formatted_text,
-            description=self.description,
-            created_at=self.created_at,
-            tags=self.tags,
-        )
-
-
-    @classmethod
-    def from_yaml(cls, yaml_path: str):
-        """
-        Load a prompt from a YAML file.
-        """
-        with open(yaml_path, "r") as f:
-            data = yaml.safe_load(f)
-
-        return cls(
-            name=data["name"],
-            version=data["version"],
-            template_text=data["template_text"],
-            description=data.get("description"),
-            created_at=data.get("created_at"),
-            tags=[PromptTag(key=k, value=v) for k, v in data.get("tags", {}).items()],
-        )
-
-    def to_yaml(self, yaml_path: str):
-        """
-        Save a prompt to a YAML file.
-        """
-        data = {
-            "name": self.name,
-            "version": self.version,
-            "template_text": self.template_text,
-            "description": self.description,
-            "created_at": self.created_at,
-            "tags": {tag.key: tag.value for tag in self.tags or []},
-        }
-
-        with open(yaml_path, "w") as f:
-            yaml.safe_dump(data, f)
-
-@dataclass
-class PromptTag(_ModelRegistryEntity):
-    key: str
-    value: str
+        return self.template_text.format(**kwargs)

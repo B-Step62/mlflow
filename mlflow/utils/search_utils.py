@@ -1082,7 +1082,7 @@ def _apply_reversor(model, key, ascending):
 
 class SearchModelUtils(SearchUtils):
     NUMERIC_ATTRIBUTES = {"creation_timestamp", "last_updated_timestamp"}
-    VALID_SEARCH_ATTRIBUTE_KEYS = {"name"}
+    VALID_SEARCH_ATTRIBUTE_KEYS = {"name", "is_prompt"}
     VALID_ORDER_BY_KEYS_REGISTERED_MODELS = {"name", "creation_timestamp", "last_updated_timestamp"}
 
     @classmethod
@@ -1095,6 +1095,11 @@ class SearchModelUtils(SearchUtils):
         # what comparators do we support here?
         if cls.is_string_attribute(key_type, key, comparator):
             lhs = getattr(model, key)
+
+            # For is_prompt (bool). The search utils does not support boolean field.
+            if isinstance(lhs, bool):
+                lhs = str(lhs).lower()
+
         elif cls.is_numeric_attribute(key_type, key, comparator):
             lhs = getattr(model, key)
             value = int(value)

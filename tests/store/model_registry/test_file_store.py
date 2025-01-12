@@ -1,8 +1,11 @@
+import textwrap
 import time
 import uuid
 from typing import NamedTuple
 from unittest import mock
 
+from mlflow.entities.model_registry.prompt import PROMPT_TEXT_TAG_KEY
+from mlflow.tracking.client import MlflowClient
 import pytest
 
 from mlflow.entities.model_registry import (
@@ -1085,7 +1088,7 @@ def test_search_registered_models(store):
     # cannot search by run_id
     with pytest.raises(
         MlflowException,
-        match=r"Invalid attribute key 'run_id' specified. Valid keys are '{'name'}'",
+        match=r"Invalid attribute key 'run_id' specified. Valid keys are '{'is_prompt', 'name'}'",
     ) as exception_context:
         _search_registered_models(store, "run_id='somerunID'")
     assert exception_context.value.error_code == ErrorCode.Name(INVALID_PARAMETER_VALUE)
@@ -1093,7 +1096,7 @@ def test_search_registered_models(store):
     # cannot search by source_path
     with pytest.raises(
         MlflowException,
-        match=r"Invalid attribute key 'source_path' specified\. Valid keys are '{'name'}'",
+        match=r"Invalid attribute key 'source_path' specified\. Valid keys are '{'is_prompt', 'name'}'",
     ) as exception_context:
         _search_registered_models(store, "source_path = 'A/D'")
     assert exception_context.value.error_code == ErrorCode.Name(INVALID_PARAMETER_VALUE)
@@ -1641,3 +1644,77 @@ def test_writing_model_version_preserves_storage_location(store):
         store._fetch_file_model_version_if_exists("test_storage_location_new", 1).storage_location
         == source
     )
+
+
+@mock.patch("mlflow.tracking._model_registry.utils._get_store")
+def test_crud_prompt(mock_get_store, store):
+    mock_get_store.return_value = store
+
+    client = MlflowClient()
+
+    template = textwrap.dedent("""This is a test template.
+    {context}
+    Question: {question}""")
+
+    # Create prompt
+    prompt = client.register_prompt(
+        name="test",
+        template_text=template,
+        description="This is a test prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a test prompt."
+    assert prompt.template_text == template
+    assert prompt.version == 1
+    assert prompt.tags == {}
+
+    # Read prompt
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == template
+
+    # Update prompt with new version
+    new_template = textwrap.dedent("""This is an improved template.
+    {context}
+    Question: {question}""")
+
+    prompt = client.register_prompt(
+        name="test",
+        template_text=new_template,
+        description="This is a new version of the prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a new version of the prompt."
+    assert prompt.template_text == new_template
+    assert prompt.version == 2
+    assert prompt.tags == {}
+
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == new_template
+
+    prompt = client.load_prompt("test", version=1)
+    assert prompt.template_text == template
+
+    # Delete prompt
+    client.delete_prompt("test", version=2)
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == template
+
+    # Search prompts (via search_registered_model)
+    client.register_prompt(
+        name="test-2",
+        template_text=template,
+        description="This is a test prompt 2.",
+    )
+
+    rms = store.search_registered_models(is_prompt=True, max_results=10)
+    assert len(rms) == 2
+
+    rms = store.search_registered_models(max_results=10)
+    assert len(rms) == 0
+
+    mvs = store.search_model_versions(filter_string="name = 'test-2'", max_results=10)
+    assert len(mvs) == 1
+    assert mvs[0].name == "test-2"
+    assert mvs[0].tags == {PROMPT_TEXT_TAG_KEY: template}

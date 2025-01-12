@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
-from mlflow.entities.model_registry.prompt import Prompt, PromptTag
+from mlflow.entities.model_registry.prompt import Prompt
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import ALREADY_EXISTS, RESOURCE_ALREADY_EXISTS, ErrorCode
 from mlflow.store.artifact.runs_artifact_repo import RunsArtifactRepository

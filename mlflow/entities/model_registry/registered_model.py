@@ -21,6 +21,7 @@ class RegisteredModel(_ModelRegistryEntity):
         latest_versions=None,
         tags=None,
         aliases=None,
+        is_prompt=False,
     ):
         # Constructor is called only from within the system by various backend stores.
         super().__init__()
@@ -31,6 +32,11 @@ class RegisteredModel(_ModelRegistryEntity):
         self._latest_version = latest_versions
         self._tags = {tag.key: tag.value for tag in (tags or [])}
         self._aliases = {alias.alias: alias.version for alias in (aliases or [])}
+        self._is_prompt = is_prompt
+
+    @property
+    def is_prompt(self):
+        return self._is_prompt
 
     @property
     def name(self):
@@ -114,6 +120,8 @@ class RegisteredModel(_ModelRegistryEntity):
             registered_model._add_tag(RegisteredModelTag.from_proto(tag))
         for alias in proto.aliases:
             registered_model._add_alias(RegisteredModelAlias.from_proto(alias))
+
+        registered_model._is_prompt = proto.is_prompt if proto.HasField("is_prompt") else False
         return registered_model
 
     def to_proto(self):
@@ -139,4 +147,5 @@ class RegisteredModel(_ModelRegistryEntity):
                 for alias, version in self._aliases.items()
             ]
         )
+        rmd.is_prompt = self.is_prompt
         return rmd

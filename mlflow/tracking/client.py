@@ -38,12 +38,14 @@ from mlflow.entities import (
 )
 from mlflow.entities.model_registry import ModelVersion, RegisteredModel
 from mlflow.entities.model_registry.model_version_stages import ALL_STAGES
-from mlflow.entities.model_registry.prompt import Prompt, PromptTag
+from mlflow.entities.model_registry.model_version_tag import ModelVersionTag
+from mlflow.entities.model_registry.prompt import PROMPT_TEXT_TAG_KEY, Prompt
 from mlflow.entities.span import NO_OP_SPAN_REQUEST_ID, NoOpSpan, create_mlflow_span
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
+    ErrorCode,
     BAD_REQUEST,
     FEATURE_DISABLED,
     INVALID_PARAMETER_VALUE,
@@ -400,18 +402,48 @@ class MlflowClient:
                         template_text: str,
                         description: str,
                         # commit_message: Optional[str],
-                        tags: list[PromptTag] = None,
+                        tags: Optional[dict[str, Any]] = None
                         ) -> Prompt:
         """
         Register a new prompt version in the model registry.
         """
-        return self._get_registry_client().create_prompt(name, template_text, description, tags)
+        registry_client = self._get_registry_client()
+
+        try:
+            registry_client.get_registered_model(name)
+        except MlflowException as e:
+            # Create a new prompt (model) entry
+            if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                registry_client.create_registered_model(name, description=description, is_prompt=True)
+            else:
+                raise
+
+        tags = tags or {}
+        # Store prompt text as a tag
+        tags[PROMPT_TEXT_TAG_KEY] = template_text
+
+        mv: ModelVersion = registry_client.create_model_version(
+            name=name,
+            description=description,
+            source=None,
+            tags=tags,
+        )
+
+        return Prompt.from_model_version(mv)
 
     def load_prompt(self, name: str, version: Optional[int] = None) -> Prompt:
-        return self._get_registry_client().load_prompt(name, version)
+        registry_client = self._get_registry_client()
+        if version is None:
+            version = registry_client.get_latest_versions(name, stages=ALL_STAGES)[0].version
+
+        mv = registry_client.get_model_version(name, version)
+        return Prompt.from_model_version(mv)
 
     def delete_prompt(self, name: str, version: Optional[int] = None) -> None:
-        self._get_registry_client().delete_prompt(name, version)
+        if version is None:
+            self._get_registry_client().delete_registered_model(name)
+        else:
+            self._get_registry_client().delete_model_version(name, version)
 
 
     def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData) -> None:

@@ -1,7 +1,9 @@
+import textwrap
 import time
 import uuid
 from unittest import mock
 
+from mlflow.tracking.client import MlflowClient
 import pytest
 
 from mlflow.entities.model_registry import (
@@ -1750,3 +1752,78 @@ def test_copy_model_version(store, copy_to_same_model):
     double_copy_mv = store.copy_model_version(copied_mv, "test_for_copy_MV3")
     assert double_copy_mv.source == f"models:/{copied_mv.name}/{copied_mv.version}"
     assert store.get_model_version_download_uri(dst_mv.name, dst_mv.version) == src_mv.source
+
+
+# TODO: This test should pass once we added prompt support in SQLAlchemy store
+@mock.patch("mlflow.tracking._model_registry.utils._get_store")
+def test_crud_prompt(mock_get_store, store):
+    mock_get_store.return_value = store
+
+    client = MlflowClient()
+
+    template = textwrap.dedent("""This is a test template.
+    {context}
+    Question: {question}""")
+
+    # Create prompt
+    prompt = client.register_prompt(
+        name="test",
+        template_text=template,
+        description="This is a test prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a test prompt."
+    assert prompt.template_text == template
+    assert prompt.version == 1
+    assert prompt.tags == {}
+
+    # Read prompt
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == template
+
+    # Update prompt with new version
+    new_template = textwrap.dedent("""This is an improved template.
+    {context}
+    Question: {question}""")
+
+    prompt = client.register_prompt(
+        name="test",
+        template_text=new_template,
+        description="This is a new version of the prompt.",
+    )
+
+    assert prompt.name == "test"
+    assert prompt.description == "This is a new version of the prompt."
+    assert prompt.template_text == new_template
+    assert prompt.version == 2
+    assert prompt.tags == {}
+
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == new_template
+
+    prompt = client.load_prompt("test", version=1)
+    assert prompt.template_text == template
+
+    # Delete prompt
+    client.delete_prompt("test", version=2)
+    prompt = client.load_prompt("test")
+    assert prompt.template_text == template
+
+    # Search prompts (via search_registered_model)
+    client.register_prompt(
+        name="test-2",
+        template_text=template,
+        description="This is a test prompt 2.",
+    )
+
+    rms = store.search_registered_models(is_prompt=True, max_results=10)
+    assert len(rms) == 2
+
+    rms = store.search_registered_models(max_results=10)
+    assert len(rms) == 0
+
+    mvs = store.search_model_versions(filter_string="name = 'test-2'", max_results=10)
+    assert len(mvs) == 1
+    assert mvs[0].name == "test-2"
+    assert mvs[0].tags == {PROMPT_TEXT_TAG_KEY: template}

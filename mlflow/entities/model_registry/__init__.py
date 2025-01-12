@@ -5,7 +5,7 @@ from mlflow.entities.model_registry.registered_model import RegisteredModel
 from mlflow.entities.model_registry.registered_model_alias import RegisteredModelAlias
 from mlflow.entities.model_registry.registered_model_search import RegisteredModelSearch
 from mlflow.entities.model_registry.registered_model_tag import RegisteredModelTag
-from mlflow.entities.model_registry.prompt import Prompt, PromptTag
+from mlflow.entities.model_registry.prompt import Prompt, PromptVersionTag
 
 __all__ = [
     "RegisteredModel",
@@ -16,5 +16,5 @@ __all__ = [
     "RegisteredModelSearch",
     "ModelVersionSearch",
     "Prompt",
-    "PromptTag",
+    "PromptVersionTag",
 ]

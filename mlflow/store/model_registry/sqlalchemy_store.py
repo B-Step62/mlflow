@@ -151,7 +151,7 @@ class SqlAlchemyStore(AbstractStore):
         # loading_relationships.html#relationship-loading-techniques
         return [sqlalchemy.orm.subqueryload(SqlModelVersion.model_version_tags)]
 
-    def create_registered_model(self, name, tags=None, description=None):
+    def create_registered_model(self, name, tags=None, description=None, is_prompt=False):
         """
         Create a new registered model in backend store.
 
@@ -176,6 +176,7 @@ class SqlAlchemyStore(AbstractStore):
                     creation_time=creation_time,
                     last_updated_time=creation_time,
                     description=description,
+                    is_prompt=is_prompt,
                 )
                 tags_dict = {}
                 for tag in tags or []:
@@ -300,6 +301,7 @@ class SqlAlchemyStore(AbstractStore):
         max_results=SEARCH_REGISTERED_MODEL_MAX_RESULTS_DEFAULT,
         order_by=None,
         page_token=None,
+        is_prompt=False,
     ):
         """
         Search for registered models in backend that satisfy the filter criteria.
