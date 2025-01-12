@@ -123,9 +123,19 @@ export class Services {
     getBigIntJson({ relativeUrl: 'ajax-api/2.0/mlflow/prompts/search', data });
 
   /**
+   * Get prompt
+  */
+  static getPrompt = (data: any) => getJson({ relativeUrl: 'ajax-api/2.0/mlflow/prompts/get', data });
+
+  /**
    * List versions of a prompt
    */
   static listPromptVersions = (data: any) =>
     getJson({ relativeUrl: 'ajax-api/2.0/mlflow/prompts/versions/list', data });
+
+  /**
+   * Get prompt version
+   */
+  static getPromptVersion = (data: any) => getJson({ relativeUrl: 'ajax-api/2.0/mlflow/prompts/versions/get', data });
 
 }

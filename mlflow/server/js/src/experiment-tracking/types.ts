@@ -65,7 +65,7 @@ export interface PromptEntity {
   id: string;
   name: string;
   description: string;
-  latest_versions: ModelVersionInfoEntity[];
+  latest_versions: PromptVersionInfoEntity[];
   created_at: number;
   last_updated_at: number;
 }

@@ -22,6 +22,8 @@ import { withRouterNext } from '../../../common/utils/withRouterNext';
 import type { WithRouterNextProps } from '../../../common/utils/withRouterNext';
 import { ScrollablePageWrapper } from '../../../common/components/ScrollablePageWrapper';
 import { createMLflowRoutePath } from '../../../common/utils/RoutingUtils';
+import ErrorUtils from '@mlflow/mlflow/src/common/utils/ErrorUtils';
+import { withErrorBoundary } from '@mlflow/mlflow/src/common/utils/withErrorBoundary';
 
 type PromptListPageImplProps = WithRouterNextProps & {
   prompts?: any[];
@@ -298,19 +300,34 @@ export class PromptListPageImpl extends React.Component<PromptListPageImplProps,
       searchInput,
       // eslint-disable-nextline
     } = this.state;
-    const { prompts } = this.props;
+    // const { prompts } = this.props;
+    const prompts = [
+      {
+        id: '1',
+        name: 'test',
+        description: 'this is test description',
+        latest_versions: [
+          {
+            version: '1',
+            description: 'this is version 1',
+            template_text: 'Answer the following questions\n{question}',
+            created_at: 123456789,
+            tags: [{ key: 'tag1', value: 'value1' }],
+          }
+        ]
+      }
+    ]
     return (
       <ScrollablePageWrapper>
         <PromptListView
-          // @ts-expect-error TS(2322): Type '{ models: any[] | undefined; loading: any; e... Remove this comment to see the full error message
           prompts={prompts}
-          loading={this.state.loading}
-          error={this.state.error}
           searchInput={searchInput}
           orderByKey={orderByKey}
           orderByAsc={orderByAsc}
           currentPage={currentPage}
           nextPageToken={pageTokens[currentPage + 1]}
+          loading={this.state.loading}
+          error={this.state.error}
           onSearch={this.handleSearch}
           onClickNext={this.handleClickNext}
           onClickPrev={this.handleClickPrev}
@@ -336,4 +353,8 @@ const mapDispatchToProps = {
 
 const PromptListPageWithRouter = withRouterNext(connect(mapStateToProps, mapDispatchToProps)(PromptListPageImpl));
 
-export const PromptListPage = PromptListPageWithRouter;
+export const PromptListPage = withErrorBoundary(
+  ErrorUtils.mlflowServices.MODEL_REGISTRY,
+  PromptListPageWithRouter);
+
+export default PromptListPage;

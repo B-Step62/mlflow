@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import './ModelListView.css';
+import './PromptListView.css';
 import Utils from '../../../common/utils/Utils';
 import {
   REGISTERED_MODELS_PER_PAGE_COMPACT,
@@ -28,13 +28,6 @@ const LAST_MODIFIED_COLUMN_INDEX = 'last_updated_timestamp';
 
 type PromptListViewImplProps = {
   prompts: any[];
-  endpoints?: any;
-  showEditPermissionModal: (...args: any[]) => any;
-  permissionLevel: string;
-  selectedOwnerFilter: string;
-  selectedStatusFilter: string;
-  onOwnerFilterChange: (...args: any[]) => any;
-  onStatusFilterChange: (...args: any[]) => any;
   searchInput: string;
   orderByKey: string;
   orderByAsc: boolean;

@@ -17,6 +17,10 @@ import {
   SET_MODEL_VERSION_TAG,
   DELETE_MODEL_VERSION_TAG,
   PARSE_MLMODEL_FILE,
+  SEARCH_PROMPTS,
+  LIST_PROMPT_VERSIONS,
+  GET_PROMPT_VERSION,
+  GET_PROMPT,
 } from './actions';
 import { getProtoField } from './utils';
 import _ from 'lodash';
@@ -344,12 +348,114 @@ export const getModelVersionTags = (modelName: any, version: any, state: any) =>
   }
 };
 
+/* Prompt Management */
+const promptByName = (state = {}, action: any) => {
+  switch (action.type) {
+    case fulfilled(SEARCH_PROMPTS): {
+      const prompts = action.payload[getProtoField('prompts')];
+      const nameToPromptMap = {};
+      if (prompts) {
+        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+        prompts.forEach((model: any) => (nameToPromptMap[prompt.name] = prompt));
+      }
+      return {
+        ...nameToPromptMap,
+      };
+    }
+    case rejected(SEARCH_PROMPTS): {
+      return {};
+    }
+    case fulfilled(GET_PROMPT): {
+      const detailedPrompt = action.payload[getProtoField('prompt')];
+
+      // If model retrieved from API contains no assigned aliases,
+      // the corresponding field will be excluded from the payload.
+      // We set it explicitly to make sure it works properly with the equality check below.
+      detailedPrompt.aliases ||= [];
+
+      const { promptName } = action.meta;
+      const promptWithUpdatedMetadata = {
+        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+        ...state[promptName],
+        ...detailedPrompt,
+      };
+      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+      if (_.isEqual(promptWithUpdatedMetadata, state[promptName])) {
+        return state;
+      }
+      return {
+        ...state,
+        ...{ [promptName]: promptWithUpdatedMetadata },
+      };
+    }
+    default:
+      return state;
+  }
+};
+
+// 2-levels lookup for prompt version indexed by (promptName, version)
+const promptVersionsByPrompt = (state = {}, action: any) => {
+  switch (action.type) {
+    case fulfilled(GET_PROMPT_VERSION): {
+      const promptVersion = action.payload[getProtoField('prompt_version')];
+      const { promptName } = action.meta;
+      const updatedMap = {
+        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+        ...state[promptName],
+        [promptVersion.version]: [promptVersion],
+      };
+      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+      if (_.isEqual(state[promptName], updatedMap)) {
+        return state;
+      }
+      return {
+        ...state,
+        [promptName]: updatedMap,
+      };
+    }
+    case fulfilled(LIST_PROMPT_VERSIONS): {
+      const promptVersions = action.payload[getProtoField('prompt_versions')];
+      if (!promptVersions) {
+        return state;
+      }
+      // Merge all promptVersions into the store
+      const newPromptVersions = promptVersions.reduce(
+        (newState: any, promptVersion: any) => {
+          const { name, version } = promptVersion;
+          return {
+            ...newState,
+            [name]: {
+              ...newState[name],
+              [version]: promptVersion,
+            },
+          };
+        },
+        { ...state },
+      );
+
+      if (_.isEqual(state, newPromptVersions)) {
+        return state;
+      }
+      return newPromptVersions;
+    }
+    default:
+      return state;
+  }
+};
+
+export const getPromptVersions = (state: any, promptName: any) => {
+  const promptVersions = state.entities.promptVersionsByPrompt[promptName];
+  return promptVersions && Object.values(promptVersions);
+};
+
 const reducers = {
   modelByName,
   modelVersionsByModel,
   tagsByRegisteredModel,
   tagsByModelVersion,
   mlModelArtifactByModelVersion,
+  promptByName,
+  promptVersionsByPrompt,
 };
 
 export default reducers;

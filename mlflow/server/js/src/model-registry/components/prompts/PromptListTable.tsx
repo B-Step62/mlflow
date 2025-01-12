@@ -19,7 +19,6 @@ import { PromptListTagsCell, PromptsListVersionLinkCell } from './PromptTableCel
 import Utils from '../../../common/utils/Utils';
 import type { KeyValueEntity, PromptEntity, PromptVersionInfoEntity } from '../../../experiment-tracking/types';
 import { ModelRegistryRoutes } from '../../routes';
-import { useNextModelsUIContext } from '../../hooks/useNextModelsUI';
 
 
 enum ColumnKeys {

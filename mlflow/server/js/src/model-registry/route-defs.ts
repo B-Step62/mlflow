@@ -33,4 +33,20 @@ export const getRouteDefs = () => [
     element: createLazyRouteElement(() => import('./components/CompareModelVersionsPage')),
     pageId: 'mlflow.model-registry.compare-model-versions',
   },
+  /* Prompt Management */
+  {
+    path: ModelRegistryRoutePaths.promptListPage,
+    element: createLazyRouteElement(() => import('./components/prompts/PromptListPage')),
+    pageId: 'mlflow.model-registry.prompt-list',
+  },
+  {
+    path: ModelRegistryRoutePaths.promptSubpage,
+    element: createLazyRouteElement(() => import('./components/prompts/PromptPage')),
+    pageId: 'mlflow.model-registry.prompt-page',
+  },
+  // {
+  //   path: ModelRegistryRoutePaths.promptVersionPage,
+  //   element: createLazyRouteElement(() => import('./components/prompts/PromptVersionPage')),
+  //   pageId: 'mlflow.model-registry.prompt-version-page',
+  // }
 ];

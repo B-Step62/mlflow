@@ -386,11 +386,29 @@ export const searchPromptsApi = (
   };
 };
 
+export const GET_PROMPT = 'GET_PROMPT';
+export const getPromptApi = (name: string, id = getUUID()) => {
+  return {
+    type: GET_PROMPT,
+    payload: Services.getPrompt({ name }),
+    meta: { id, name },
+  };
+};
+
 export const LIST_PROMPT_VERSIONS = 'LIST_PROMPT_VERSIONS';
 export const listPromptVersionsApi = (name: string) => {
   return {
     type: LIST_PROMPT_VERSIONS,
     payload: Services.listPromptVersions({ name }),
     meta: { name },
+  };
+};
+
+export const GET_PROMPT_VERSION = 'GET_PROMPT_VERSION';
+export const getPromptVersionApi = (name: string, version: string) => {
+  return {
+    type: GET_PROMPT_VERSION,
+    payload: Services.getPromptVersion({ name, version }),
+    meta: { name, version },
   };
 };
