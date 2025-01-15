@@ -4,7 +4,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 from mlflow.entities import LiveSpan
-from mlflow.tracing.export.mlflow import AsyncTraceExportQueue, MlflowSpanExporter, Task
+from mlflow.tracing.export.mlflow import AsyncTraceExportQueue, MlflowExperimentSpanExporter, Task
 from mlflow.tracing.fluent import TRACE_BUFFER
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 
@@ -40,7 +40,7 @@ def test_export(async_logging_enabled):
 
     mock_client = MagicMock()
     mock_display = MagicMock()
-    exporter = MlflowSpanExporter(mock_client, mock_display)
+    exporter = MlflowExperimentSpanExporter(mock_client, mock_display)
 
     exporter.export([otel_span, non_root_otel_span, invalid_otel_span])
 

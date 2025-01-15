@@ -21,7 +21,7 @@ from mlflow.tracking.client import MlflowClient
 _logger = logging.getLogger(__name__)
 
 
-class MlflowSpanExporter(SpanExporter):
+class MlflowExperimentSpanExporter(SpanExporter):
     """
     An exporter implementation that logs the traces to MLflow.
 

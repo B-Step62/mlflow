@@ -95,9 +95,8 @@ from mlflow.models.resources import (
 )
 from mlflow.models.signature import ModelSignature, Schema, infer_signature
 from mlflow.models.utils import load_serving_example
-from mlflow.pyfunc.context import Context
+from mlflow.pyfunc.context import Context, set_prediction_context
 from mlflow.tracing.constant import TRACE_SCHEMA_VERSION, TRACE_SCHEMA_VERSION_KEY
-from mlflow.tracing.processor.inference_table import _HEADER_REQUEST_ID_KEY
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
 from mlflow.types.schema import AnyType, Array, ColSpec, DataType, Object, Property
 
@@ -3088,10 +3087,7 @@ def test_langchain_model_inject_callback_in_model_serving(
 
     loaded_model = mlflow.pyfunc.load_model(model_path)
 
-    # Mock Flask context
-    with mock.patch("mlflow.tracing.processor.inference_table._get_flask_request") as mock_request:
-        mock_request.return_value.headers = {_HEADER_REQUEST_ID_KEY: _REQUEST_ID}
-
+    with set_prediction_context(Context(_REQUEST_ID)):
         loaded_model.predict({"product": "shoe"})
 
     # Trace should be logged to the inference table

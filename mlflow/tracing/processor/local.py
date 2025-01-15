@@ -45,8 +45,15 @@ class LocalSpanProcessor(SimpleSpanProcessor):
                 span is obtained from the global context, it won't be passed here so we should not
                 rely on it.
         """
+        if span._parent is None:
+            request_id = self.generate_request_id()
+        else:
+            request_id = self._trace_manager.get_request_id_from_trace_id(span.context.trace_id)
 
-        request_id = self._create_or_get_request_id(span)
+        if not request_id:
+            _logger.warning("Request ID is not found in the span. Skip processing the span.")
+            return
+
         span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(request_id))
 
         tags = {}
@@ -65,11 +72,13 @@ class LocalSpanProcessor(SimpleSpanProcessor):
             )
             self._trace_manager.register_trace(span.context.trace_id, trace_info)
 
-    def _create_or_get_request_id(self, span: OTelSpan) -> str:
-        if span._parent is None:
-            return "tr-" + uuid.uuid4().hex
-        else:
-            return self._trace_manager.get_request_id_from_trace_id(span.context.trace_id)
+    def generate_request_id(self) -> Optional[str]:
+        """
+        Generate a new request ID for tahe new trace.
+
+        NB: This method can be overridden by other processors to customize the request ID generation logic.
+        """
+        return "tr-" + uuid.uuid4().hex
 
     def on_end(self, span: OTelReadableSpan) -> None:
         """

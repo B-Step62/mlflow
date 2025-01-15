@@ -37,7 +37,7 @@ from mlflow.utils.mlflow_tags import TRACE_RESOLVE_TAGS_ALLOWLIST
 _logger = logging.getLogger(__name__)
 
 
-class MlflowSpanProcessor(SimpleSpanProcessor):
+class MlflowExperimentSpanProcessor(SimpleSpanProcessor):
     """
     Defines custom hooks to be executed when a span is started or ended (before exporting).
 

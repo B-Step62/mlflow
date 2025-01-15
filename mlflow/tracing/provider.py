@@ -205,11 +205,11 @@ def _setup_tracer_provider(disabled=False):
 
     else:
         # Default to MLflow Tracking Server
-        from mlflow.tracing.export.mlflow import MlflowSpanExporter
-        from mlflow.tracing.processor.mlflow import MlflowSpanProcessor
+        from mlflow.tracing.export.mlflow import MlflowExperimentSpanExporter
+        from mlflow.tracing.processor.mlflow import MlflowExperimentSpanProcessor
 
-        exporter = MlflowSpanExporter()
-        processor = MlflowSpanProcessor(exporter)
+        exporter = MlflowExperimentSpanExporter()
+        processor = MlflowExperimentSpanProcessor(exporter)
 
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(processor)

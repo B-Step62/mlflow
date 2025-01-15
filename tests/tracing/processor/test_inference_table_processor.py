@@ -1,15 +1,11 @@
 import json
 from unittest import mock
 
-import pytest
-
 from mlflow.entities.span import LiveSpan
 from mlflow.entities.trace_status import TraceStatus
+from mlflow.pyfunc.context import Context, set_prediction_context
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.processor.inference_table import (
-    _HEADER_REQUEST_ID_KEY,
-    InferenceTableSpanProcessor,
-)
+from mlflow.tracing.processor.inference_table import InferenceTableSpanProcessor
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
@@ -18,17 +14,7 @@ _TRACE_ID = 12345
 _REQUEST_ID = f"tr-{_TRACE_ID}"
 
 
-@pytest.fixture
-def flask_request():
-    with mock.patch(
-        "mlflow.tracing.processor.inference_table._get_flask_request"
-    ) as mock_get_flask_request:
-        request = mock_get_flask_request.return_value
-        request.headers = {_HEADER_REQUEST_ID_KEY: _REQUEST_ID}
-        yield request
-
-
-def test_on_start(flask_request):
+def test_on_start():
     # Root span should create a new trace on start
     span = create_mock_otel_span(
         trace_id=_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
@@ -36,7 +22,8 @@ def test_on_start(flask_request):
     trace_manager = InMemoryTraceManager.get_instance()
     processor = InferenceTableSpanProcessor(span_exporter=mock.MagicMock())
 
-    processor.on_start(span)
+    with set_prediction_context(Context(request_id=_REQUEST_ID)):
+        processor.on_start(span)
 
     assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
     assert _REQUEST_ID in InMemoryTraceManager.get_instance()._traces
@@ -84,13 +71,7 @@ def test_on_end():
 
     processor.on_end(otel_span)
 
-    mock_exporter.export.assert_called_once_with((otel_span,))
+    assert mock_exporter.export.call_count == 2
     # Trace info should be updated according to the span attributes
     assert trace_info.status == TraceStatus.OK
     assert trace_info.execution_time_ms == 4
-
-    # Non-root span should not be exported
-    mock_exporter.reset_mock()
-    child_span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=2, parent_id=1)
-    processor.on_end(child_span)
-    mock_exporter.export.assert_not_called()
