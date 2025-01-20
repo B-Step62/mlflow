@@ -711,6 +711,32 @@ Trace Decorator
 The trace decorator allows you to automatically capture the inputs and outputs of a function by simply adding the :py:func:`@mlflow.trace <mlflow.trace>` decorator 
 to its definition. This approach is ideal for quickly adding tracing to individual functions without significant changes to your existing code.
 
+.. note::
+
+    The :py:func:`@mlflow.trace <mlflow.trace>` decorator support decorating both sync and async functions/generators.
+
+    .. list-table::
+        :widths: 20 80
+        :header-rows: 1
+
+        * - Function type
+          - Supported MLflow Version
+
+        * - Normal Function
+          - >= 2.14.0
+
+        * - Async Function
+          - >= 2.16.0
+
+        * - Sync/Async Generator Function
+          - >= 2.20.0
+
+    If you are using an older version of MLflow and need to trace unsupported function types, use the `mlflow.start_span <#context-manager>`_ context manager instead.
+
+
+Basic Function
+^^^^^^^^^^^^^^
+
 .. code-block:: python
 
     import mlflow
@@ -739,6 +765,8 @@ You can add additional metadata to the tracing decorator as follows:
 When adding additional metadata to the trace decorator constructor, these additional components will be logged along with the span entry within 
 the trace that is stored within the active MLflow experiment.
 
+Async Function
+^^^^^^^^^^^^^^
 
 Since MLflow 2.16.0, the trace decorator also supports async functions:
 
@@ -748,15 +776,88 @@ Since MLflow 2.16.0, the trace decorator also supports async functions:
 
     client = AsyncOpenAI()
 
-
     @mlflow.trace
     async def async_func(message: str):
         return await client.chat.completion.create(
             model="gpt-4o", messages=[{"role": "user", "content": message}]
         )
 
-
     await async_func("What is MLflow Tracing?")
+
+Sync/Async Generator (Streaming)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Since MLflow 2.20.0, the trace decorator also supports sync/async generator functions:
+
+.. code-block:: python
+
+    import mlflow
+    from openai import OpenAI, AsyncOpenAI
+
+    # 1. Tracing sync generator function
+    @mlflow.trace
+    def sync_generator(message: str):
+        yield from OpenAI().chat.completion.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": message}],
+            stream=True,
+        )
+
+    for chunk in sync_generator("What is MLflow Tracing?"):
+        print(chunk)
+
+    # 2. Tracing async generator function
+    @mlflow.trace
+    async def async_generator(message: str):
+        astream = AsyncOpenAI().chat.completion.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": message}],
+            stream=True,
+        )
+        async for response in astream:
+            yield response.content
+
+
+    async for chunk in async_generator("What is MLflow Tracing?"):
+        print(chunk)
+
+There are a few things to note when using the trace decorator with generator functions:
+
+* The trace is started when the generator is created.
+* The trace is ended when the returned generator is **fully consumed**.
+* The created span does not have "Output" field. Instead, it records each generated chunk as an ``Event`` of the span. You can see chunk events by clicking the "Event" tab on the UI, or call ``span.events`` property.
+
+If you want to trace a generator function with a different behavior, you can use the `mlflow.start_span <#context-manager>`_ context manager instead.
+
+Detailed behavior of parent-child relationship
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    import mlflow
+    from openai import OpenAI, AsyncOpenAI
+
+    @mlflow.trace(name="parent")
+    def traced_generator(x: int):
+        # (A) A span created inside the function will become a child of "parent"
+        with mlflow.start_span(name="A"):
+            pass
+
+        for i in range(x):
+            # (B) A span created here will also become a child of "parent"
+            with mlflow.start_span(name=f"B_{i}"):
+                yield i
+
+    # (C) A span created here will NOT become a child of "parent"
+    with mlflow.start_span(name="C"):
+        pass
+
+    for chunk in traced_generator(5):
+        # (D) A span created here will NOT become a child of "parent"
+        with mlflow.start_span(name="D"):
+            print(chunk)
+
+# TODO: add screenshot here
 
 What is captured?
 #################
