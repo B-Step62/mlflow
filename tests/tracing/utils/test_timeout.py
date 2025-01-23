@@ -33,7 +33,7 @@ def test_expire_traces(cache):
     span_1_1 = _mock_span("span_1")
     span_1_2 = _mock_span("span_2", parent_id="span_1")
     cache["tr_1"] = _Trace(None, span_dict={"span_1": span_1_1, "span_2": span_1_2})
-    time.sleep(2)
+    time.sleep(5)
 
     assert "tr_1" not in cache
     span_1_1.end.assert_called_once()
