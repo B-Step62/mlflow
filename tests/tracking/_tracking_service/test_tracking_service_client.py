@@ -1,8 +1,27 @@
 import json
+import mlflow
+from mlflow.tracking import TrackingServiceClient
+from unittest.mock import patch
+import unittest
+
 import uuid
 from unittest import mock
 
 import pydantic
+class TestTrackingServiceClient(unittest.TestCase):
+
+    @patch('mlflow.tracking.fluent._get_experiment_id')
+    def test_start_trace_with_none_experiment_id(self, mock_get_experiment_id):
+        mock_get_experiment_id.return_value = 'test_experiment_id'
+        client = TrackingServiceClient(tracking_uri='http://localhost:5000')
+        trace_info = client.start_trace(
+            experiment_id=None,
+            timestamp_ms=1234567890,
+            request_metadata={},
+            tags={}
+        )
+        self.assertEqual(trace_info.experiment_id, 'test_experiment_id')
+
 import pytest
 
 from mlflow import MlflowClient
