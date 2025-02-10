@@ -6,7 +6,7 @@ import importlib
 import inspect
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Generator, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Generator, Optional, TypeVar, Union
 
 from cachetools import TTLCache
 from opentelemetry import trace as trace_api
@@ -54,12 +54,16 @@ TRACE_BUFFER = TTLCache(
 )
 
 
+# Generics for allowing type validation for the decorated function
+T = TypeVar("T")
+
+
 def trace(
-    func: Optional[Callable] = None,
+    func: Optional[Callable[..., T]] = None,
     name: Optional[str] = None,
     span_type: str = SpanType.UNKNOWN,
     attributes: Optional[dict[str, Any]] = None,
-) -> Callable:
+) -> Callable[..., T]:
     """
     A decorator that creates a new span for the decorated function.
 
