@@ -39,6 +39,13 @@ from mlflow.utils import get_results_from_paginated_fn
 from mlflow.utils.annotations import experimental
 from mlflow.utils.databricks_utils import is_in_databricks_model_serving_environment
 
+# If Python version is >= 3.10, use ParamSpec
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
+
+
 _logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -53,17 +60,17 @@ TRACE_BUFFER = TTLCache(
     ttl=MLFLOW_TRACE_BUFFER_TTL_SECONDS.get(),
 )
 
-
 # Generics for allowing type validation for the decorated function
+P = ParamSpec("P")
 T = TypeVar("T")
 
 
 def trace(
-    func: Optional[Callable[..., T]] = None,
+    func: Optional[Callable[P, T]] = None,
     name: Optional[str] = None,
     span_type: str = SpanType.UNKNOWN,
     attributes: Optional[dict[str, Any]] = None,
-) -> Callable[..., T]:
+) -> Callable[P, T]:
     """
     A decorator that creates a new span for the decorated function.
 
