@@ -29,7 +29,6 @@ UNSUPPORTED_LOG_MODEL_MESSAGE = (
     "logging the model requires `loader_fn` and `persist_dir`. Please log the model manually "
     "using `mlflow.langchain.log_model(model, artifact_path, loader_fn=..., persist_dir=...)`"
 )
-INFERENCE_FILE_NAME = "inference_inputs_outputs.json"
 
 
 # A *global* state that indicates whether MLflow should patch the inference method
@@ -76,33 +75,33 @@ def patched_inference(func_name, original, self, *args, **kwargs):
     """
     A patched implementation of langchain models inference process which enables
     logging the traces, and other optional artifacts like model, input examples, etc.
-
-    We patch inference functions for different models based on their usage.
     """
+    if inspect.isasyncgenfunction(original):
+        return _patched_async_stream(func_name, original, self, *args, **kwargs)
+    elif inspect.isgeneratorfunction(original):
+        return _patched_stream(func_name, original, self, *args, **kwargs)
+    else:
+        return _patched_invoke(func_name, original, self, *args, **kwargs)
 
-    def _invoke(self, *args, **kwargs):
-        with disable_patching():
-            return original(self, *args, **kwargs)
 
+def _patched_invoke(func_name, original, self, *args, **kwargs):
     config = AutoLoggingConfig.init(mlflow.langchain.FLAVOR_NAME)
-    should_trace = not IS_PATCHING_DISABLED_FOR_TRACING.get() and config.log_traces
-
-    if should_trace:
+    if _should_patch_callback(config):
         tracer = MlflowLangchainTracer(
             set_span_in_context=should_attach_span_to_context(func_name, self)
         )
-        args, kwargs = _get_args_with_mlflow_tracer(tracer, func_name, args, kwargs)
+        args, kwargs = _get_args_with_mlflow_tracer(tracer, args, kwargs)
 
-    # Traces does not require an MLflow run, only the other optional artifacts require it.
     try:
-        if not IS_PATCHING_DISABLED_FOR_ARTIFACTS and config.should_log_optional_artifacts():
-            with _setup_autolog_run(config, self) as run_id:
-                result = _invoke(self, *args, **kwargs)
+        if _should_log_artifacts(config):
+            with disable_patching(), _setup_autolog_run(config, self) as run_id:
+                result = original(self, *args, **kwargs)
                 _log_optional_artifacts(config, run_id, result, self, func_name, *args, **kwargs)
         else:
-            result = _invoke(self, *args, **kwargs)
+            with disable_patching():
+                result = original(self, *args, **kwargs)
     finally:
-        if should_trace:
+        if _should_patch_callback(config):
             # Make sure all spans are flushed before finishing the inference. LangChain's on_xyz_end
             # callbacks are not guaranteed to be invoked always, which results in leaking the active
             # span context to the next inference call. Flushing the tracer ensures that all spans
@@ -112,77 +111,73 @@ def patched_inference(func_name, original, self, *args, **kwargs):
     return result
 
 
-def patched_stream(func_name, original, self, *args, **kwargs):
-    """
-    A patched implementation of langchain's streaming inference which enables
-    logging the traces, and other optional artifacts like model, input examples, etc.
-    """
-    # NB: The autologging logic should happen when the generator is consumed, not when it is created.
-    # Therefore, we need to wrap the original generator function with a new generator function.
+def _patched_stream(func_name, original, self, *args, **kwargs):
     def _patched_gen(*args, **kwargs):
         config = AutoLoggingConfig.init(mlflow.langchain.FLAVOR_NAME)
-        should_trace = not IS_PATCHING_DISABLED_FOR_TRACING.get() and config.log_traces
 
-        if should_trace:
+        if _should_patch_callback(config):
             tracer = MlflowLangchainTracer()
-            args, kwargs = _get_args_with_mlflow_tracer(tracer, func_name, args, kwargs)
+            args, kwargs = _get_args_with_mlflow_tracer(tracer, args, kwargs)
+
         try:
-            # Traces does not require an MLflow run, only the other optional artifacts require it.
-            if not IS_PATCHING_DISABLED_FOR_ARTIFACTS and config.should_log_optional_artifacts():
+            if _should_log_artifacts(config):
                 with disable_patching(), _setup_autolog_run(config, self) as run_id:
                     yield from original(self, *args, **kwargs)
-
                     _log_optional_artifacts(config, run_id, None, self, func_name, *args, **kwargs)
             else:
-                with disable_patching():
-                    yield from original(self, *args, **kwargs)
+                yield from original(self, *args, **kwargs)
         finally:
-            if should_trace:
-                # Make sure all spans are flushed before finishing the inference.
+            if _should_patch_callback(config):
                 tracer.flush()
 
     return _patched_gen(*args, **kwargs)
 
 
-def _get_args_with_mlflow_tracer(mlflow_tracer, func_name, args, kwargs):
-    """
-    Get the patched arguments with MLflow tracer injected.
-    """
-    if func_name in ["invoke", "batch", "stream", "ainvoke", "abatch", "astream", "astream_events"]:
-        # `config` is the second positional argument of runnable APIs such as
-        # invoke, batch, stream, ainvoke, abatch, and astream
-        # https://github.com/langchain-ai/langchain/blob/7d444724d7582386de347fb928619c2243bd0e55/libs/core/langchain_core/runnables/base.py
-        if len(args) >= 2:
-            config = args[1]
-            config = _get_runnable_config_with_callback(config, mlflow_tracer)
-            return (args[0], config, *args[2:]), kwargs
-        else:
-            config = kwargs.get("config")
-            kwargs["config"] = _get_runnable_config_with_callback(config, mlflow_tracer)
-        return args, kwargs
+def _patched_async_stream(func_name, original, self, *args, **kwargs):
+    async def _patched_gen(*args, **kwargs):
+        config = AutoLoggingConfig.init(mlflow.langchain.FLAVOR_NAME)
 
-    elif func_name == "__call__":
-        # `callbacks` is the third positional argument of chain.__call__ function
-        # https://github.com/langchain-ai/langchain/blob/7d444724d7582386de347fb928619c2243bd0e55/libs/langchain/langchain/chains/base.py#L320
-        if len(args) >= 3:
-            callbacks = args[2] or []
-            callbacks = _inject_callback(callbacks, mlflow_tracer)
-            return (*args[:2], callbacks, *args[3:]), kwargs
-        else:
-            callbacks = kwargs.get("callbacks") or []
-            kwargs["callbacks"] = _inject_callback(callbacks, mlflow_tracer)
-            return args, kwargs
+        if _should_patch_callback(config):
+            tracer = MlflowLangchainTracer()
+            args, kwargs = _get_args_with_mlflow_tracer(tracer, args, kwargs)
 
-    elif func_name == "get_relevant_documents":
-        # callbacks is only available as kwargs in get_relevant_documents function
-        # https://github.com/langchain-ai/langchain/blob/7d444724d7582386de347fb928619c2243bd0e55/libs/core/langchain_core/retrievers.py#L173
-        callbacks = kwargs.get("callbacks") or []
-        kwargs["callbacks"] = _inject_callback(callbacks, mlflow_tracer)
-        return args, kwargs
+        try:
+            if _should_log_artifacts(config):
+                async with disable_patching(), _setup_autolog_run(config, self) as run_id:
+                    async for item in original(self, *args, **kwargs):
+                        yield item
+                    _log_optional_artifacts(config, run_id, None, self, func_name, *args, **kwargs)
+            else:
+                async for item in original(self, *args, **kwargs):
+                    yield item
+        finally:
+            if _should_patch_callback(config):
+                tracer.flush()
 
+    return _patched_gen(*args, **kwargs)
+
+
+def _should_patch_callback(config):
+    return not IS_PATCHING_DISABLED_FOR_TRACING.get() and config.log_traces
+
+
+def _should_log_artifacts(config):
+    return not IS_PATCHING_DISABLED_FOR_ARTIFACTS and config.should_log_optional_artifacts()
+
+
+def _get_args_with_mlflow_tracer(mlflow_tracer, args, kwargs):
+    """Get the patched arguments with MLflow tracer injected."""
+    # `config` is the second positional argument of runnable APIs such as
+    # invoke, batch, stream, ainvoke, abatch, and astream
+    # https://github.com/langchain-ai/langchain/blob/7d444724d7582386de347fb928619c2243bd0e55/libs/core/langchain_core/runnables/base.py
+    if len(args) >= 2:
+        config = args[1]
+        config = _get_runnable_config_with_callback(config, mlflow_tracer)
+        return (args[0], config, *args[2:]), kwargs
     else:
-        _logger.warning(f"Unsupported function `{func_name}`. Skipping injecting MLflow callbacks.")
-        return args, kwargs
+        config = kwargs.get("config")
+        kwargs["config"] = _get_runnable_config_with_callback(config, mlflow_tracer)
+    return args, kwargs
 
 
 def _get_runnable_config_with_callback(
@@ -329,11 +324,9 @@ def _resolve_tags(extra_tags, active_run=None):
 
 def _get_input_data_from_function(func_name, model, args, kwargs):
     func_param_name_mapping = {
-        "__call__": "inputs",
         "invoke": "input",
         "batch": "inputs",
         "stream": "input",
-        "get_relevant_documents": "query",
     }
     input_example_exc = None
     if param_name := func_param_name_mapping.get(func_name):
@@ -419,11 +412,7 @@ def _chain_with_retriever(model):
 def _log_optional_artifacts(autolog_config, run_id, result, self, func_name, *args, **kwargs):
     input_example = None
     if autolog_config.log_models and not hasattr(self, "_mlflow_model_logged"):
-        if (
-            (func_name == "get_relevant_documents")
-            or _runnable_with_retriever(self)
-            or _chain_with_retriever(self)
-        ):
+        if _runnable_with_retriever(self) or _chain_with_retriever(self):
             _logger.info(UNSUPPORTED_LOG_MODEL_MESSAGE)
         else:
             # warn user in case we did't capture some cases where retriever is used

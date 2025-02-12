@@ -628,7 +628,9 @@ def safe_patch(
                         )
                 try:
                     if not original_has_been_called:
-                        original_result = call_original_fn_with_event_logging(original, args, kwargs)
+                        original_result = call_original_fn_with_event_logging(
+                            original, args, kwargs
+                        )
 
                     return original_result if return_original else patched_result
                 finally:

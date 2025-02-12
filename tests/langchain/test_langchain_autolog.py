@@ -928,8 +928,7 @@ def test_langchain_autolog_callback_injection_in_stream(invoke_arg, config, asyn
     elif invoke_arg is None:
         result = model.stream(input)
 
-    print("B", result)
-    result = list(result)
+    assert list(result) == ["Hello", "world"]
 
     if async_logging_enabled:
         mlflow.flush_trace_async_logging(terminate=True)

@@ -12,13 +12,13 @@ LangChain (native) format
     https://python.langchain.com/en/latest/index.html
 """
 
-import functools
 import importlib
 import inspect
 import logging
 import os
 import tempfile
 import warnings
+from functools import partial
 from typing import Any, Iterator, Optional, Union
 
 import cloudpickle
@@ -29,7 +29,6 @@ from packaging.version import Version
 import mlflow
 from mlflow import pyfunc
 from mlflow.exceptions import MlflowException
-from mlflow.langchain._langchain_autolog import patched_stream
 from mlflow.langchain.databricks_dependencies import _detect_databricks_dependencies
 from mlflow.langchain.runnables import _load_runnables, _save_runnables
 from mlflow.langchain.utils import (
@@ -918,23 +917,23 @@ def _patch_runnable_cls(cls):
     """
     from mlflow.langchain._langchain_autolog import patched_inference
 
-    for func_name in ["invoke", "batch", "ainvoke", "abatch"]:
+    patch_functions = [
+        "invoke",
+        "batch",
+        "stream",
+        "ainvoke",
+        "abatch",
+        "astream",
+        "astream_events",
+    ]
+    for func_name in patch_functions:
         if hasattr(cls, func_name):
             safe_patch(
                 FLAVOR_NAME,
                 cls,
                 func_name,
-                functools.partial(patched_inference, func_name),
-            )
-
-    for func_name in ["stream", "astream", "astream_events"]:
-        if hasattr(cls, func_name):
-            safe_patch(
-                FLAVOR_NAME,
-                cls,
-                func_name,
-                functools.partial(patched_stream, func_name),
-                # NB: We need to wrap the stream object to add side effects
+                partial(patched_inference, func_name),
+                # NB: For stream APIs, we need to wrap the response stream to add side effects
                 return_original=False,
             )
 
@@ -1027,8 +1026,6 @@ def autolog(
             MlflowLangchainTracer as a callback during inference. If ``False``, no traces are
             collected during inference. Default to ``True``.
     """
-    from mlflow.langchain._langchain_autolog import patched_inference
-
     # avoid duplicate patching
     patched_classes = set()
     # avoid infinite recursion
@@ -1068,37 +1065,3 @@ def autolog(
                 f"Unsupported classes found in extra_model_classes: {unsupported_classes}. "
                 "Only subclasses of Runnable are supported."
             )
-
-    try:
-        from langchain.agents.agent import AgentExecutor
-        from langchain.chains.base import Chain
-
-        for cls in [AgentExecutor, Chain]:
-            safe_patch(
-                FLAVOR_NAME,
-                cls,
-                "__call__",
-                functools.partial(patched_inference, "__call__"),
-            )
-    except ImportError:
-        logger.debug(
-            "AgentExecutor and Chain are not available in the current environment."
-            "Skipping patching for __call__ method.",
-            exc_info=True,
-        )
-
-    try:
-        from langchain_core.retrievers import BaseRetriever
-
-        safe_patch(
-            FLAVOR_NAME,
-            BaseRetriever,
-            "get_relevant_documents",
-            functools.partial(patched_inference, "get_relevant_documents"),
-        )
-    except ImportError:
-        logger.debug(
-            "BaseRetriever is not available in the current environment."
-            "Skipping patching for get_relevant_documents method.",
-            exc_info=True,
-        )
