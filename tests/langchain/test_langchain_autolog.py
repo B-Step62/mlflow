@@ -922,11 +922,14 @@ def test_langchain_autolog_callback_injection_in_stream(invoke_arg, config, asyn
 
     input = {"product": "MLflow"}
     if invoke_arg == "args":
-        list(model.stream(input, config))
+        result = model.stream(input, config)
     elif invoke_arg == "kwargs":
-        list(model.stream(input, config=config))
+        result = model.stream(input, config=config)
     elif invoke_arg is None:
-        list(model.stream(input))
+        result = model.stream(input)
+
+    print("B", result)
+    result = list(result)
 
     if async_logging_enabled:
         mlflow.flush_trace_async_logging(terminate=True)

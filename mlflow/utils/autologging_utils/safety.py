@@ -312,6 +312,7 @@ def safe_patch(
     patch_function,
     manage_run=False,
     extra_tags=None,
+    return_original=True,
 ):
     """Patches the specified `function_name` on the specified `destination` class for autologging
     purposes, preceding its implementation with an error-safe copy of the specified patch
@@ -337,6 +338,11 @@ def safe_patch(
             does not apply the `with_managed_run` wrapper to the specified
             `patch_function`.
         extra_tags: A dictionary of extra tags to set on each managed run created by autologging.
+        return_original: If `True`, the original function's output will be returned, i.e. patched
+            function cannot affect the return value. If `False`, the patched function's output
+            will be returned. Setting this to `False` is necessary for some cases, for example,
+            a streaming function where we need to wrap the stream object to add side effects
+            to the stream consumption.
     """
     from mlflow.utils.autologging_utils import autologging_is_disabled, get_autologging_config
 
@@ -587,9 +593,9 @@ def safe_patch(
                     )
 
                     if patch_is_class:
-                        patch_function.call(call_original, *args, **kwargs)
+                        patched_result = patch_function.call(call_original, *args, **kwargs)
                     else:
-                        patch_function(call_original, *args, **kwargs)
+                        patched_result = patch_function(call_original, *args, **kwargs)
 
                     session.state = "succeeded"
 
@@ -621,10 +627,10 @@ def safe_patch(
                             autologging_integration, patch_function_run_for_testing.info.run_id
                         )
                 try:
-                    if original_has_been_called:
-                        return original_result
-                    else:
-                        return call_original_fn_with_event_logging(original, args, kwargs)
+                    if not original_has_been_called:
+                        original_result = call_original_fn_with_event_logging(original, args, kwargs)
+
+                    return original_result if return_original else patched_result
                 finally:
                     # If original function succeeds, but `patch_function_exception` exists,
                     # it represent patching code unexpected failure, so we call

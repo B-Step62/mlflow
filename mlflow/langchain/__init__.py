@@ -29,6 +29,7 @@ from packaging.version import Version
 import mlflow
 from mlflow import pyfunc
 from mlflow.exceptions import MlflowException
+from mlflow.langchain._langchain_autolog import patched_stream
 from mlflow.langchain.databricks_dependencies import _detect_databricks_dependencies
 from mlflow.langchain.runnables import _load_runnables, _save_runnables
 from mlflow.langchain.utils import (
@@ -917,14 +918,24 @@ def _patch_runnable_cls(cls):
     """
     from mlflow.langchain._langchain_autolog import patched_inference
 
-    patch_functions = ["invoke", "batch", "stream", "ainvoke", "abatch", "astream"]
-    for func_name in patch_functions:
+    for func_name in ["invoke", "batch", "ainvoke", "abatch"]:
         if hasattr(cls, func_name):
             safe_patch(
                 FLAVOR_NAME,
                 cls,
                 func_name,
                 functools.partial(patched_inference, func_name),
+            )
+
+    for func_name in ["stream", "astream", "astream_events"]:
+        if hasattr(cls, func_name):
+            safe_patch(
+                FLAVOR_NAME,
+                cls,
+                func_name,
+                functools.partial(patched_stream, func_name),
+                # NB: We need to wrap the stream object to add side effects
+                return_original=False,
             )
 
 

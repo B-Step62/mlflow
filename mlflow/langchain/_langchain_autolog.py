@@ -112,11 +112,43 @@ def patched_inference(func_name, original, self, *args, **kwargs):
     return result
 
 
+def patched_stream(func_name, original, self, *args, **kwargs):
+    """
+    A patched implementation of langchain's streaming inference which enables
+    logging the traces, and other optional artifacts like model, input examples, etc.
+    """
+    # NB: The autologging logic should happen when the generator is consumed, not when it is created.
+    # Therefore, we need to wrap the original generator function with a new generator function.
+    def _patched_gen(*args, **kwargs):
+        config = AutoLoggingConfig.init(mlflow.langchain.FLAVOR_NAME)
+        should_trace = not IS_PATCHING_DISABLED_FOR_TRACING.get() and config.log_traces
+
+        if should_trace:
+            tracer = MlflowLangchainTracer()
+            args, kwargs = _get_args_with_mlflow_tracer(tracer, func_name, args, kwargs)
+        try:
+            # Traces does not require an MLflow run, only the other optional artifacts require it.
+            if not IS_PATCHING_DISABLED_FOR_ARTIFACTS and config.should_log_optional_artifacts():
+                with disable_patching(), _setup_autolog_run(config, self) as run_id:
+                    yield from original(self, *args, **kwargs)
+
+                    _log_optional_artifacts(config, run_id, None, self, func_name, *args, **kwargs)
+            else:
+                with disable_patching():
+                    yield from original(self, *args, **kwargs)
+        finally:
+            if should_trace:
+                # Make sure all spans are flushed before finishing the inference.
+                tracer.flush()
+
+    return _patched_gen(*args, **kwargs)
+
+
 def _get_args_with_mlflow_tracer(mlflow_tracer, func_name, args, kwargs):
     """
     Get the patched arguments with MLflow tracer injected.
     """
-    if func_name in ["invoke", "batch", "stream", "ainvoke", "abatch", "astream"]:
+    if func_name in ["invoke", "batch", "stream", "ainvoke", "abatch", "astream", "astream_events"]:
         # `config` is the second positional argument of runnable APIs such as
         # invoke, batch, stream, ainvoke, abatch, and astream
         # https://github.com/langchain-ai/langchain/blob/7d444724d7582386de347fb928619c2243bd0e55/libs/core/langchain_core/runnables/base.py
@@ -322,32 +354,6 @@ def _get_input_data_from_function(func_name, model, args, kwargs):
         f"Failed to gather input example of model {model.__class__.__name__} "
         f"due to {input_example_exc}."
     )
-
-
-def _convert_data_to_dict(data, key):
-    if isinstance(data, dict):
-        return {f"{key}-{k}": v for k, v in data.items()}
-    if isinstance(data, list):
-        return {key: data}
-    if isinstance(data, str):
-        return {key: [data]}
-    raise MlflowException("Unsupported data type.")
-
-
-def _combine_input_and_output(input, output, session_id, func_name):
-    """
-    Combine input and output into a single dictionary
-    """
-    if func_name == "get_relevant_documents" and output is not None:
-        output = [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in output]
-        # to make sure output is inside a single row when converted into pandas DataFrame
-        output = [output]
-    result = {"session_id": [session_id]}
-    if input:
-        result.update(_convert_data_to_dict(input, "input"))
-    if output:
-        result.update(_convert_data_to_dict(output, "output"))
-    return result
 
 
 def _update_langchain_model_config(model):
