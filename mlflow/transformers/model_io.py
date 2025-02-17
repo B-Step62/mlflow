@@ -252,6 +252,9 @@ def _load_model(model_name_or_path, flavor_conf, accelerate_conf, device, revisi
     if trust_remote:
         load_kwargs.update({"trust_remote_code": True})
 
+    if qt_config := flavor_conf.get[FlavorKey.QUANTIZATION_CONFIG]:
+        load_kwargs[FlavorKey.QUANTIZATION_CONFIG] = qt_config
+
     if model := _try_load_model_with_accelerate(
         cls, model_name_or_path, {**accelerate_conf, **load_kwargs}
     ):

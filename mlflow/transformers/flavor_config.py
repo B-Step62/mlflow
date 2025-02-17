@@ -21,6 +21,8 @@ class FlavorKey:
     TORCH_DTYPE = "torch_dtype"
     FRAMEWORK = "framework"
 
+    QUANTIZATION_CONFIG = "quantization_config"
+
     MODEL = "model"
     MODEL_TYPE = "pipeline_model_type"
     MODEL_BINARY = "model_binary"
