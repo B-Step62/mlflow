@@ -1313,6 +1313,7 @@ def _load_model(path: str, flavor_config, return_type: str, device=None, **kwarg
 
     accelerate_model_conf["low_cpu_mem_usage"] = MLFLOW_HUGGINGFACE_USE_LOW_CPU_MEM_USAGE.get()
 
+
     # Load model and components either from local or from HuggingFace Hub. We check for the
     # presence of the model revision (a commit hash of the hub repository) that is only present
     # in the model logged with `save_pretrained=False
