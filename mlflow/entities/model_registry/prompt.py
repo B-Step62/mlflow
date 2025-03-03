@@ -88,6 +88,17 @@ class Prompt(ModelVersion):
         """
         return self._tags[PROMPT_TEXT_TAG_KEY]
 
+    def to_single_brace_format(self) -> str:
+        """
+        Convert the template text to single brace format. This is useful for integrating with other
+        systems that use single curly braces for variable replacement, such as LangChain's prompt
+        template. Default is False.
+        """
+        t = self.template
+        for var in self.variables:
+            t = re.sub(r"\{\{\s*" + var + r"\s*\}\}", "{" + var + "}", t)
+        return t
+
     @property
     def variables(self) -> set[str]:
         """
@@ -101,6 +112,11 @@ class Prompt(ModelVersion):
         """Return the tags of the prompt as a dictionary."""
         # Remove the prompt text tag as it should not be user-facing
         return {key: value for key, value in self._tags.items() if not _is_reserved_tag(key)}
+
+    @property
+    def run_ids(self) -> list[str]:
+        """Get the run IDs associated with the prompt."""
+        return self.tags.get(PROMPT_ASSOCIATED_RUN_IDS_TAG_KEY, "").split(",")
 
     def format(self, allow_partial: bool = False, **kwargs) -> Union[Prompt, str]:
         """
