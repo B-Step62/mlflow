@@ -31,7 +31,7 @@ MLflow LlamaIndex integration is not only about tracing. MLflow offers full trac
 :::
 
 
-### Example Usage
+## Example Usage
 
 First, let's download a test data to create a toy index:
 
@@ -67,7 +67,7 @@ response = query_engine.query("What was the first program the author wrote?")
 ```
 
 
-### LlamaIndex workflow
+## LlamaIndex workflow
 
 The `Workflow` is LlamaIndex’s next-generation GenAI orchestration framework. It is designed as a flexible and interpretable framework for building arbitrary LLM applications such as an agent, a RAG flow, a data extraction pipeline, etc. MLflow supports tracking, evaluating, and tracing the Workflow objects, which makes them more observable and maintainable.
 
@@ -79,6 +79,6 @@ To learn more about MLflow's integration with LlamaIndex Workflow, continue to t
 * [Building Advanced RAG with MLflow and LlamaIndex Workflow](https://mlflow.org/blog/mlflow-llama-index-workflow)
 
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for LlamaIndex can be disabled globally by calling `mlflow.llama_index.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

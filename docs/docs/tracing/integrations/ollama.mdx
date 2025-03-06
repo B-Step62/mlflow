@@ -23,7 +23,7 @@ import mlflow
 mlflow.ollama.autolog()
 ```
 
-### Example Usage
+## Example Usage
 
 
 1. Run the Ollama server with the desired LLM model.
@@ -65,6 +65,6 @@ response = client.chat.completions.create(
 )
 ```
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for Ollama can be disabled globally by calling `mlflow.ollama.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

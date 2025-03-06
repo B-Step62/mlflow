@@ -15,7 +15,17 @@ usage of the Groq SDK will automatically record generated traces during interact
 
 Note that only synchronous calls are supported, and that asynchronous API and streaming methods are not traced.
 
-### Example Usage
+## Supported APIs
+
+MLflow supports automatic tracing for the following Groq APIs:
+
+|Chat Completion|Function Calling|Reasoning|Streaming|Async|Vision|Speech|
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+|✅|✅|✅|-|-|-|-|
+
+To request support for additional APIs, please open a [feature request](https://github.com/mlflow/mlflow/issues/new?assignees=&labels=enhancement&projects=&template=feature_request_template.yaml) on GitHub.
+
+## Example Usage
 
 ```python
 import groq

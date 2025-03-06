@@ -31,7 +31,7 @@ MLflow DSPy integration is not only about tracing. MLflow offers full tracking e
 :::
 
 
-### Example Usage
+## Example Usage
 
 ```python
 import dspy
@@ -76,7 +76,7 @@ summarizer(
 )
 ```
 
-### Tracing during Evaluation
+## Tracing during Evaluation
 
 Evaluating DSPy models is an important step in the development of AI systems. MLflow Tracing can help you track the performance of your programs after the evaluation, by providing detailed information about the execution of your programs for each input.
 
@@ -148,7 +148,7 @@ You can disable tracing for these steps by calling the <APILink fn="mlflow.dspy.
 
 :::
 
-### Tracing during Compilation (Optimization)
+## Tracing during Compilation (Optimization)
 
 [Compilation (optimization)](https://dspy.ai/learn/optimization/overview/) is the core concept of DSPy. Through compilation, DSPy automatically optimizes the prompts and weights of your DSPy program to achieve the best performance.
 
@@ -166,6 +166,6 @@ tp = dspy.MIPROv2(metric=metric, auto="medium", num_threads=24)
 optimized = tp.compile(cot, trainset=trainset, ...)
 ```
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for LlamaIndex can be disabled globally by calling `mlflow.llama_index.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

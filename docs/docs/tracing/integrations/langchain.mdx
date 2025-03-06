@@ -31,7 +31,25 @@ MLflow LangChain integration is not only about tracing. MLflow offers full track
 
 :::
 
-### Example Usage
+
+## Supported APIs
+
+The following APIs are supported by auto tracing for LangChain.
+
+|`invoke`|`batch`|`stream`|`ainvoke`|`abatch`|`astream`|`astream_events`|
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+|✅|✅|✅|✅|✅|✅|✅ (*1)|
+
+(*1) `astream_events` support is available since MLflow 2.21.0.
+
+Following deprecated LangChain APIs are also supported:
+
+* ``get_relevant_documents`` (for retrievers)
+* ``__call__`` (for Chains and AgentExecutors)
+
+To request support for additional APIs, please open a [feature request](https://github.com/mlflow/mlflow/issues/new?assignees=&labels=enhancement&projects=&template=feature_request_template.yaml) on GitHub.
+
+## Example Usage
 
 ```python
 import mlflow
@@ -77,21 +95,8 @@ pip install openai==1.30.5 langchain==0.2.1 langchain-openai==0.1.8 langchain-co
 ```
 :::
 
-### Supported APIs
 
-The following APIs are supported by auto tracing for LangChain.
-
-* ``invoke``
-* ``batch``
-* ``stream``
-* ``ainvoke``
-* ``abatch``
-* ``astream``
-* ``get_relevant_documents`` (for retrievers)
-* ``__call__`` (for Chains and AgentExecutors)
-
-
-### Customize Tracing Behavior
+## Customize Tracing Behavior
 
 Sometimes you may want to customize what information is logged in the traces. You can achieve this by creating a custom callback handler that inherits from <APILink fn="mlflow.langchai.langchain_tracer.MlflowLangchainTracer">`MlflowLangchainTracer`</APILink>. MlflowLangchainTracer is a callback handler that is injected into the langchain model inference process to log traces automatically. It starts a new span upon a set of actions of the chain such as on_chain_start, on_llm_start, and concludes it when the action is finished. Various metadata such as span type, action name, input, output, latency, are automatically recorded to the span.
 
@@ -136,6 +141,6 @@ class CustomLangchainTracer(MlflowLangchainTracer):
         )
 ```
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for LangChain can be disabled globally by calling `mlflow.langchain.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

@@ -38,7 +38,7 @@ Currently, MLflow CrewAI integration only support tracing for synchronous task e
 
 :::
 
-### Example Usage
+## Example Usage
 
 
 First, enable auto-tracing for CrewAI, and optionally create an MLflow experiment to write traces to. This helps organizing your traces better.
@@ -194,6 +194,6 @@ trip_crew = TripCrew("California", "Tokyo", "Dec 12 - Dec 20", "sports")
 result = trip_crew.run()
 ```
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for CrewAI can be disabled globally by calling `mlflow.crewai.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

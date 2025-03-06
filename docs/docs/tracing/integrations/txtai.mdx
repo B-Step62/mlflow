@@ -32,7 +32,7 @@ import mlflow
 mlflow.txtai.autolog()
 ```
 
-### Basic Example
+## Basic Example
 
 The first example traces a [Textractor pipeline](https://neuml.github.io/txtai/pipeline/data/textractor/).
 
@@ -55,7 +55,7 @@ textractor("https://github.com/neuml/txtai")
 ![txtai Textractor Tracing via autolog](/images/llms/tracing/txtai-textractor-tracing.png)
 
 
-### Retrieval Augmented Generation (RAG)
+## Retrieval Augmented Generation (RAG)
 
 The next example traces a [RAG pipeline](https://neuml.github.io/txtai/pipeline/text/rag/).
 
@@ -93,7 +93,7 @@ rag("Tell me about the Roman Empire", maxlength=2048)
 ![txtai Rag Tracing via autolog](/images/llms/tracing/txtai-rag-tracing.png)
 
 
-### Agent
+## Agent
 
 The last example runs a [txtai agent](https://neuml.github.io/txtai/agent/) designed to research questions on astronomy.
 
@@ -158,6 +158,6 @@ Write a detailed list with explanations of 10 candidate stars that could potenti
 ![txtai Agent Tracing via autolog](/images/llms/tracing/txtai-agent-tracing.png)
 
 
-### More Information
+## More Information
 
 For more examples and guidance on using txtai with MLflow, please refer to the [MLflow txtai extension documentation](https://github.com/neuml/mlflow-txtai/tree/master)

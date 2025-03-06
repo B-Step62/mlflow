@@ -33,8 +33,17 @@ MLflow trace automatically captures the following information about LiteLLM call
 * Cache hit
 * Any exception if raised
 
-### Basic Example
+## Supported APIs
 
+MLflow supports automatic tracing for the following LiteLLM APIs:
+
+|Chat Completion|Embeddings|Function Calling|Structured Output|Streaming|Async|Image|Audio|
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+|✅|✅|✅|✅|✅|✅|-|-|
+
+To request support for additional APIs, please open a [feature request](https://github.com/mlflow/mlflow/issues/new?assignees=&labels=enhancement&projects=&template=feature_request_template.yaml) on GitHub.
+
+## Basic Example
 
 ```python
 import mlflow
@@ -67,7 +76,7 @@ response = await litellm.acompletion(
 )
 ```
 
-### Streaming
+## Streaming
 
 MLflow supports tracing LiteLLM's sync and async streaming APIs:
 
@@ -86,6 +95,6 @@ for chunk in response:
 MLflow will record concatenated outputs from the stream chunks as a span output.
 
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for LiteLLM can be disabled globally by calling `mlflow.litellm.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

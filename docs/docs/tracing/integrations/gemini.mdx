@@ -39,13 +39,19 @@ MLflow trace automatically captures the following information about Gemini calls
 * Function calling if returned in the response
 * Any exception if raised
 
-:::note
 
-Currently, MLflow Gemini integration only supports tracing of synchronous calls for text interactions. Async APIs are not traced and full inputs may not be recorded for multi-modal inputs.
 
-:::
+## Supported APIs
 
-### Basic Example
+MLflow supports automatic tracing for the following Gemini APIs:
+
+|Chat Conversation|Embeddings|Function Calling|Structured Outputs|Thinking|Streaming|Async|Vision|Audio|
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+|✅|✅|✅|✅|✅|-|-|-|-|
+
+To request support for additional APIs, please open a [feature request](https://github.com/mlflow/mlflow/issues/new?assignees=&labels=enhancement&projects=&template=feature_request_template.yaml) on GitHub.
+
+## Basic Example
 
 
 ```python
@@ -70,7 +76,7 @@ response = client.models.generate_content(
 )
 ```
 
-### Multi-turn chat interactions
+## Multi-turn chat interactions
 
 MLflow support tracing multi-turn conversations with Gemini:
 
@@ -86,7 +92,7 @@ response = chat.send_message("Okay, how about a more detailed explanation to a h
 print(response.text)
 ```
 
-### Embeddings
+## Embeddings
 
 MLflow Tracing for Gemini SDK supports embeddings API:
 
@@ -94,6 +100,6 @@ MLflow Tracing for Gemini SDK supports embeddings API:
 result = client.models.embed_content(model="text-embedding-004", contents="Hello world")
 ```
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for Gemini can be disabled globally by calling `mlflow.gemini.autolog(disable=True)` or `mlflow.autolog(disable=True)`.

@@ -31,7 +31,21 @@ MLflow LangGraph integration is not only about tracing. MLflow offers full track
 :::
 
 
-### Usage
+## Supported APIs
+
+The following APIs are supported by auto tracing for LangChain.
+
+|`invoke`|`stream`|`ainvoke`|`astream`|
+|:--:|:--:|:--:|:--:|
+|✅|✅|✅|✅|
+
+:::note
+
+For `stream` and `astream`, a trace always captures the full input and output state regardless of `stream_mode`, due to a [known limitation](https://github.com/langchain-ai/langgraph/issues/3705) in LangGraph.
+
+:::
+
+## Usage
 
 Running the following code will generate a trace for the graph as shown in the above video clip.
 
@@ -73,7 +87,7 @@ result = graph.invoke(
 )
 ```
 
-### Adding spans within a node or a tool
+## Adding spans within a node or a tool
 
 By combining auto-tracing with the [manual tracing APIs](/tracing/api/manual-instrumentation/), you can add child spans inside a node or tool, to get more detailed insights for the step.
 
@@ -138,6 +152,6 @@ This way, the span for the `check_code` node will have child spans, which record
 ![LangGraph Child Span](/images/llms/tracing/langgraph-child-span.png)
 
 
-### Disable auto-tracing
+## Disable auto-tracing
 
 Auto tracing for LangGraph can be disabled globally by calling `mlflow.langchain.autolog(disable=True)` or `mlflow.autolog(disable=True)`.
