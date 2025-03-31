@@ -14,8 +14,6 @@ from mlflow.environment_variables import _MLFLOW_TESTING, MLFLOW_TRACKING_URI
 from mlflow.utils.os import is_windows
 from mlflow.version import VERSION
 
-from tests.helper_functions import get_safe_port
-
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -337,6 +335,8 @@ def serve_wheel(request, tmp_path_factory):
     PyPI repository running on localhost and appends the repository URL to the
     `PIP_EXTRA_INDEX_URL` environment variable to make the wheel available to pip.
     """
+    from tests.helper_functions import get_safe_port
+
     if not request.config.getoption("--serve-wheel"):
         yield  # pytest expects a generator fixture to yield
         return
