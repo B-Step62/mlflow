@@ -84,6 +84,7 @@ from mlflow.tracing.constant import (
     TRACE_REQUEST_ID_PREFIX,
     SpanAttributeKey,
 )
+from mlflow.tracing.core.detached import start_detached_span, end_detached_span
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import exclude_immutable_tags, get_otel_attribute
@@ -1017,40 +1018,15 @@ class MlflowClient:
                 error_code=BAD_REQUEST,
             )
 
-        try:
-            # Create new trace and a root span
-            # Once OTel span is created, SpanProcessor.on_start is invoked
-            # TraceInfo is created and logged into backend store inside on_start method
-            otel_span = mlflow.tracing.provider.start_detached_span(
-                name, experiment_id=experiment_id, start_time_ns=start_time_ns
-            )
-            request_id = get_otel_attribute(otel_span, SpanAttributeKey.REQUEST_ID)
-            mlflow_span = create_mlflow_span(otel_span, request_id, span_type)
-
-            # # If the span is a no-op span i.e. tracing is disabled, do nothing
-            if isinstance(mlflow_span, NoOpSpan):
-                return mlflow_span
-
-            if inputs is not None:
-                mlflow_span.set_inputs(inputs)
-            mlflow_span.set_attributes(attributes or {})
-
-            trace_manager = InMemoryTraceManager.get_instance()
-            tags = exclude_immutable_tags(tags or {})
-            # Update trace tags for trace in in-memory trace manager
-            with trace_manager.get_trace(request_id) as trace:
-                trace.info.tags.update(tags)
-            # Register new span in the in-memory trace manager
-            trace_manager.register_span(mlflow_span)
-
-            return mlflow_span
-        except Exception as e:
-            _logger.warning(
-                f"Failed to start trace {name}: {e}. "
-                "For full traceback, set logging level to debug.",
-                exc_info=_logger.isEnabledFor(logging.DEBUG),
-            )
-            return NoOpSpan()
+        return start_detached_span(
+            name=name,
+            span_type=span_type,
+            inputs=inputs,
+            attributes=attributes,
+            tags=tags,
+            experiment_id=experiment_id,
+            start_time_ns=start_time_ns,
+        )
 
     def end_trace(
         self,
@@ -1103,7 +1079,7 @@ class MlflowClient:
                     error_code=INVALID_PARAMETER_VALUE,
                 )
 
-        self.end_span(request_id, root_span_id, outputs, attributes, status, end_time_ns)
+        end_detached_span(request_id, root_span_id, outputs, attributes, status, end_time_ns)
 
     @experimental
     def _log_trace(self, trace: Trace) -> str:
@@ -1145,6 +1121,7 @@ class MlflowClient:
         )
         self._upload_trace_data(new_info, trace.data)
         return new_info.request_id
+
 
     def start_span(
         self,
@@ -1290,26 +1267,13 @@ class MlflowClient:
                 error_code=RESOURCE_DOES_NOT_EXIST,
             )
 
-        try:
-            otel_span = mlflow.tracing.provider.start_detached_span(
-                name=name,
-                parent=parent_span._span,
-                start_time_ns=start_time_ns,
-            )
-
-            span = create_mlflow_span(otel_span, request_id, span_type)
-            span.set_attributes(attributes or {})
-            if inputs is not None:
-                span.set_inputs(inputs)
-            trace_manager.register_span(span)
-            return span
-        except Exception as e:
-            _logger.warning(
-                f"Failed to start span {name}: {e}. "
-                "For full traceback, set logging level to debug.",
-                exc_info=_logger.isEnabledFor(logging.DEBUG),
-            )
-            return NoOpSpan()
+        return start_detached_span(
+            name=name,
+            span_type=span_type,
+            parent_span=parent_span,
+            inputs=inputs,
+            attributes=attributes,
+        )
 
     def end_span(
         self,
@@ -1338,30 +1302,14 @@ class MlflowClient:
             end_time_ns: The end time of the span in nano seconds since the UNIX epoch.
                 If not provided, the current time will be used.
         """
-        if request_id == NO_OP_SPAN_REQUEST_ID:
-            return
-
-        trace_manager = InMemoryTraceManager.get_instance()
-        span = trace_manager.get_span_from_id(request_id, span_id)
-
-        if span is None:
-            raise MlflowException(
-                f"Span with ID {span_id} is not found or already finished.",
-                error_code=RESOURCE_DOES_NOT_EXIST,
-            )
-        span.set_attributes(attributes or {})
-        if outputs is not None:
-            span.set_outputs(outputs)
-        span.set_status(status)
-
-        try:
-            span.end(end_time=end_time_ns)
-        except Exception as e:
-            _logger.warning(
-                f"Failed to end span {span_id}: {e}. "
-                "For full traceback, set logging level to debug.",
-                exc_info=_logger.isEnabledFor(logging.DEBUG),
-            )
+        end_detached_span(
+            request_id=request_id,
+            span_id=span_id,
+            outputs=outputs,
+            attributes=attributes,
+            status=status,
+            end_time_ns=end_time_ns,
+        )
 
     def _start_tracked_trace(
         self,

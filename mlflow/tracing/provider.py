@@ -64,40 +64,6 @@ def start_span_in_context(name: str) -> trace.Span:
     return _get_tracer(__name__).start_span(name)
 
 
-def start_detached_span(
-    name: str,
-    parent: Optional[trace.Span] = None,
-    experiment_id: Optional[str] = None,
-    start_time_ns: Optional[int] = None,
-) -> Optional[tuple[str, trace.Span]]:
-    """
-    Start a new OpenTelemetry span that is not part of the current trace context, but with the
-    explicit parent span ID if provided.
-
-    Args:
-        name: The name of the span.
-        parent: The parent OpenTelemetry span. If not provided, the span will be created as a root
-                span.
-        experiment_id: The ID of the experiment. This is used to associate the span with a specific
-            experiment in MLflow.
-        start_time_ns: The start time of the span in nanoseconds.
-            If not provided, the current timestamp is used.
-
-    Returns:
-        The newly created OpenTelemetry span.
-    """
-    tracer = _get_tracer(__name__)
-    context = trace.set_span_in_context(parent) if parent else None
-    attributes = {}
-
-    # Set start time and experiment to attribute so we can pass it to the span processor
-    if start_time_ns:
-        attributes[SpanAttributeKey.START_TIME_NS] = json.dumps(start_time_ns)
-    if experiment_id:
-        attributes[SpanAttributeKey.EXPERIMENT_ID] = json.dumps(experiment_id)
-    return tracer.start_span(name, context=context, attributes=attributes, start_time=start_time_ns)
-
-
 @contextmanager
 def safe_set_span_in_context(span: "Span"):
     """

@@ -1,3 +1,4 @@
+"""Tracing APIs that requires tracking server"""
 from __future__ import annotations
 
 import contextlib
@@ -679,45 +680,6 @@ def search_traces(
     return results
 
 
-def get_current_active_span() -> Optional[LiveSpan]:
-    """
-    Get the current active span in the global context.
-
-    .. attention::
-
-        This only works when the span is created with fluent APIs like `@mlflow.trace` or
-        `with mlflow.start_span`. If a span is created with MlflowClient APIs, it won't be
-        attached to the global context so this function will not return it.
-
-
-    .. code-block:: python
-        :test:
-
-        import mlflow
-
-
-        @mlflow.trace
-        def f():
-            span = mlflow.get_current_active_span()
-            span.set_attribute("key", "value")
-            return 0
-
-
-        f()
-
-    Returns:
-        The current active span if exists, otherwise None.
-    """
-    otel_span = trace_api.get_current_span()
-    # NonRecordingSpan is returned if a tracer is not instantiated.
-    if otel_span is None or isinstance(otel_span, trace_api.NonRecordingSpan):
-        return None
-
-    trace_manager = InMemoryTraceManager.get_instance()
-    request_id = json.loads(otel_span.attributes.get(SpanAttributeKey.REQUEST_ID))
-    return trace_manager.get_span_from_id(request_id, encode_span_id(otel_span.context.span_id))
-
-
 def get_last_active_trace(thread_local=False) -> Optional[Trace]:
     """
     Get the last active trace in the same process if exists.
@@ -789,50 +751,6 @@ def _set_last_active_trace_id(trace_id: str):
     global _LAST_ACTIVE_TRACE_ID_GLOBAL
     _LAST_ACTIVE_TRACE_ID_GLOBAL = trace_id
     _LAST_ACTIVE_TRACE_ID_THREAD_LOCAL.set(trace_id)
-
-
-def update_current_trace(
-    tags: Optional[dict[str, str]] = None,
-):
-    """
-    Update the current active trace with the given tags.
-
-    You can use this function either within a function decorated with `@mlflow.trace` or within the
-    scope of the `with mlflow.start_span` context manager. If there is no active trace found, this
-    function will raise an exception.
-
-    Using within a function decorated with `@mlflow.trace`:
-
-    .. code-block:: python
-
-        @mlflow.trace
-        def my_func(x):
-            mlflow.update_current_trace(tags={"fruit": "apple"})
-            return x + 1
-
-    Using within the `with mlflow.start_span` context manager:
-
-    .. code-block:: python
-
-        with mlflow.start_span("span"):
-            mlflow.update_current_trace(tags={"fruit": "apple"})
-
-    """
-    active_span = get_current_active_span()
-
-    if not active_span:
-        raise MlflowException(
-            "No active trace found. Please create a span using `mlflow.start_span` or "
-            "`@mlflow.trace` before calling this function.",
-            error_code=BAD_REQUEST,
-        )
-
-    # Update tags for the trace stored in-memory rather than directly updating the
-    # backend store. The in-memory trace will be exported when it is ended. By doing
-    # this, we can avoid unnecessary server requests for each tag update.
-    request_id = active_span.request_id
-    with InMemoryTraceManager.get_instance().get_trace(request_id) as trace:
-        trace.info.tags.update(tags or {})
 
 
 @experimental

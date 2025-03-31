@@ -18,7 +18,7 @@ from mlflow.models.model import _MODEL_TRACKER
 from mlflow.pyfunc.context import get_prediction_context, maybe_set_prediction_context
 from mlflow.tracing.constant import SpanAttributeKey
 from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
-from mlflow.tracing.utils import (
+from mlflow.tracing.core import (
     end_client_span_or_trace,
     set_span_chat_messages,
     start_client_span_or_trace,

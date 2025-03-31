@@ -13,7 +13,6 @@ from mlflow.models.model import _MODEL_TRACKER
 from mlflow.tracing.constant import SpanAttributeKey
 from mlflow.tracing.utils import (
     construct_full_inputs,
-    end_client_span_or_trace,
     set_span_chat_messages,
     set_span_chat_tools,
     start_client_span_or_trace,
@@ -100,7 +99,7 @@ class TracingSession:
 
             _set_chat_message_attribute(self.span, self.inputs, self.output)
 
-            end_client_span_or_trace(
+            start_detached_span(
                 self.mlflow_client,
                 self.span,
                 status=status,
