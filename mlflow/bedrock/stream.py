@@ -165,3 +165,174 @@ class _ConverseMessageBuilder:
         self._response.update({"output": {"message": message}})
 
         return self._response
+
+import json
+import re
+import time
+
+import mlflow
+from mlflow.bedrock.chat import convert_message_to_mlflow_chat
+from mlflow.entities import Document, SpanType
+from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
+from mlflow.tracing.utils import set_span_chat_messages, start_client_span_or_trace, end_client_span_or_trace, construct_full_inputs
+
+class AgentStreamWrapper(BaseEventStreamWrapper):
+    """A wrapper class for a event stream returned by the ConverseStream API."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._mlflow_client = mlflow.MlflowClient()
+
+        self._current_step = -1
+        self._current_step_span = None
+        self._current_leaf_span = None
+        self._last_event_time = time.time_ns()
+
+    def __getattr__(self, attr):
+        """Delegate all other attributes to the original stream."""
+        return getattr(self._stream, attr)
+
+    @capture_exception("Failed to handle event for the stream")
+    def _handle_event(self, root_span, event):
+        """
+        Process a single event from the stream.
+
+        Refer to the following documentation for the event format:
+        https://boto3.amazonaws.com/v1/documentation/api/1.35.8/reference/services/bedrock-runtime/client/converse_stream.html
+        """
+        try:
+            if trace := event.get("trace", {}).get("trace"):
+                if orchestration_trace := trace.get("orchestrationTrace"):
+                    if model_input := orchestration_trace.get("modelInvocationInput"):
+                        self._maybe_start_new_step_span(root_span, model_input)
+
+                        self._current_leaf_span = start_client_span_or_trace(
+                            client=self._mlflow_client,
+                            name="chat.completions",
+                            parent_span=self._current_step_span,
+                            inputs=model_input,
+                            span_type=SpanType.LLM,
+                        )
+
+                        if text := model_input.get("text"):
+                            raw_inputs = json.loads(text)
+                            messages = raw_inputs.get("messages", [])
+                            # for message in messages:
+                            #     message["content"] = parse_content_str(message["content"])
+                            if system := raw_inputs.get("system"):
+                                messages = [{"role": "system", "content": system}] + messages
+                            set_span_chat_messages(self._current_leaf_span, messages)
+
+                    elif model_outputs := orchestration_trace.get("modelInvocationOutput"):
+                        if raw_content := model_outputs.get("rawResponse").get("content"):
+                            message = json.loads(raw_content)
+                            message = convert_message_to_mlflow_chat(message)
+                            set_span_chat_messages(self._current_leaf_span, [message], append=True)
+
+                        end_client_span_or_trace(
+                            client=self._mlflow_client,
+                            span=self._current_leaf_span,
+                            outputs=model_outputs,
+                            attributes=model_outputs["metadata"],
+                        )
+
+                    elif invocation_input := orchestration_trace.get("invocationInput"):
+                        self._maybe_start_new_step_span(root_span, invocation_input)
+                        action_type = invocation_input["invocationType"]
+                        if code_interpreter_input := invocation_input.get("codeInterpreterInvocationInput"):
+                            self._current_leaf_span = start_client_span_or_trace(
+                                client=self._mlflow_client,
+                                name="code_interpreter",
+                                parent_span=self._current_step_span,
+                                inputs=code_interpreter_input,
+                                span_type=SpanType.TOOL,
+                            )
+
+                        if action_input := invocation_input.get("actionGroupInvocationInput"):
+                            self._current_leaf_span = start_client_span_or_trace(
+                                client=self._mlflow_client,
+                                name=action_input["actionGroupName"],
+                                parent_span=self._current_step_span,
+                                inputs={p["name"]: p["value"] for p in action_input["parameters"]},
+                                span_type=SpanType.TOOL,
+                            )
+
+                        if knowledge_base_input := invocation_input.get("knowledgeBaseLookupInput"):
+                            span = start_client_span_or_trace(
+                                client=self._mlflow_client,
+                                name="knowledge_base_lookup",
+                                inputs=knowledge_base_input,
+                                span_type=SpanType.RETRIEVER,
+                            )
+
+                    elif observation := orchestration_trace.get("observation"):
+                        if code_interpreter_output := observation.get("codeInterpreterInvocationOutput"):
+                            end_client_span_or_trace(
+                                client=self._mlflow_client,
+                                span=self._current_leaf_span,
+                                outputs=code_interpreter_output,
+                            )
+
+                        if action_output := observation.get("actionGroupInvocationOutput"):
+                            end_client_span_or_trace(
+                                client=self._mlflow_client,
+                                span=self._current_leaf_span,
+                                outputs=action_output["text"], # TODO: Support other types
+                            )
+
+                        if knowledge_base_output := observation.get("knowledgeBaseLookupOutput"):
+                            docs = []
+                            for i, retrieved in enumerate(knowledge_base_output["retrievedReferences"]):
+                                metadata = retrieved.get("metadata", {})
+                                if metadata:
+                                    doc_meta = {
+                                        "doc_uri": retrieved["metadata"]["x-amz-bedrock-kb-source-uri"],
+                                        "chunk_id": retrieved["metadata"]["x-amz-bedrock-kb-document-page-number"],
+                                    }
+                                else:
+                                    doc_meta = {}
+                                docs.append(Document(
+                                    id=metadata.get("x-amz-bedrock-kb-data-source-id") or f"doc-{i}",
+                                    page_content=retrieved["content"]["text"],
+                                    metadata=doc_meta,
+                                ))
+
+                            end_client_span_or_trace(
+                                client=self._mlflow_client,
+                                span=self._current_leaf_span,
+                                outputs=docs,
+                            )
+
+                        if final_response := observation.get("finalResponse"):
+                            # Close last step span
+                            if self._current_step_span:
+                                end_client_span_or_trace(client=self._mlflow_client, span=self._current_step_span)
+        except Exception as e:
+            _logger.warning(f"Failed to handle event: {e}")
+
+        self._last_event_time = time.time_ns()
+
+        # Last event
+        if chunk := event.get("chunk"):
+            end_client_span_or_trace(client=self._mlflow_client, span=root_span, outputs=chunk["bytes"].decode("utf-8"))
+
+    def _close(self):
+        pass
+
+    def _maybe_start_new_step_span(self, root_span, inputs):
+
+        step = int(inputs["traceId"].split("-")[-1])
+        if step != self._current_step:
+            if self._current_step_span:
+                end_client_span_or_trace(client=self._mlflow_client, span=self._current_step_span)
+
+            step_span = start_client_span_or_trace(
+                client=self._mlflow_client,
+                name=f"step_{step}",
+                parent_span=root_span,
+                span_type=SpanType.CHAIN,
+            )
+
+            self._current_step += 1
+            self._current_step_span = step_span
