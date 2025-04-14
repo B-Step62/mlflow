@@ -53,7 +53,7 @@ from mlflow.store.artifact.databricks_artifact_repo_resources import (
     _Run,
     _Trace,
 )
-from mlflow.tracing.constant import TRACE_REQUEST_ID_PREFIX
+from mlflow.tracing.constant import TRACE_ID_PREFIX
 from mlflow.utils import chunk_list
 from mlflow.utils.databricks_utils import get_databricks_host_creds
 from mlflow.utils.file_utils import (
@@ -142,7 +142,7 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
                 id_=parts[4], artifact_uri=artifact_uri, call_endpoint=self._call_endpoint
             )
 
-        if parts[3].startswith(TRACE_REQUEST_ID_PREFIX):
+        if parts[3].startswith(TRACE_ID_PREFIX):
             return _Trace(
                 id_=parts[3], artifact_uri=artifact_uri, call_endpoint=self._call_endpoint
             )
@@ -220,13 +220,13 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
                 augmented_raise_for_status(resp)
             except requests.HTTPError as e:
                 if e.response.status_code == 404:
-                    raise MlflowTraceDataNotFound(request_id=self.resource.id) from e
+                    raise MlflowTraceDataNotFound(trace_id=self.resource.id) from e
                 raise
 
             try:
                 return json.loads(resp.content)
             except json.JSONDecodeError as e:
-                raise MlflowTraceDataCorrupted(request_id=self.resource.id) from e
+                raise MlflowTraceDataCorrupted(trace_id=self.resource.id) from e
 
     def upload_trace_data(self, trace_data: str) -> None:
         [cred], _ = self.resource.get_credentials(cred_type=_CredentialType.WRITE)

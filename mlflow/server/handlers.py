@@ -2496,7 +2496,7 @@ def _end_trace(request_id):
     tags = {e.key: e.value for e in request_message.tags}
 
     trace_info = _get_tracking_store().end_trace(
-        request_id=request_id,
+        trace_id=request_id,
         timestamp_ms=request_message.timestamp_ms,
         status=TraceStatus.from_proto(request_message.status),
         request_metadata=request_metadata,
@@ -2587,7 +2587,7 @@ def _delete_traces():
         experiment_id=request_message.experiment_id,
         max_timestamp_millis=_get_nullable_field("max_timestamp_millis"),
         max_traces=_get_nullable_field("max_traces"),
-        request_ids=request_message.request_ids,
+        trace_ids=request_message.request_ids,
     )
     return _wrap_response(DeleteTraces.Response(traces_deleted=traces_deleted))
 

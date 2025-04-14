@@ -50,7 +50,7 @@ class DatabricksSpanExporter(SpanExporter):
         """
         for span in spans:
             if span._parent is not None:
-                _logger.debug("Received a non-root span. Skipping export.")
+                _logger.debug("Non-root spans are exported with a root span. Skipping.")
                 continue
 
             trace = InMemoryTraceManager.get_instance().pop_trace(span.context.trace_id)

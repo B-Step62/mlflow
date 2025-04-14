@@ -356,25 +356,25 @@ def extract_all_api_info_for_service(service, path_prefix):
     return res
 
 
-def get_single_trace_endpoint(request_id):
-    return f"{_TRACE_REST_API_PATH_PREFIX}/{request_id}"
+def get_single_trace_endpoint(trace_id):
+    return f"{_TRACE_REST_API_PATH_PREFIX}/{trace_id}"
 
 
 def get_logged_model_endpoint(model_id: str) -> str:
     return f"{_REST_API_PATH_PREFIX}/mlflow/logged-models/{model_id}"
 
 
-def get_trace_info_endpoint(request_id):
-    return f"{get_single_trace_endpoint(request_id)}/info"
+def get_trace_info_endpoint(trace_id):
+    return f"{get_single_trace_endpoint(trace_id)}/info"
 
 
-def get_trace_assessment_endpoint(request_id):
+def get_trace_assessment_endpoint(trace_id):
     # TEMPORARY ENDPOINT: this is currently hosted at /api/2.0/... but will be moved to /api/3.0/...
-    return f"{get_single_trace_endpoint(request_id)}"
+    return f"{get_single_trace_endpoint(trace_id)}"
 
 
-def get_set_trace_tag_endpoint(request_id):
-    return f"{get_single_trace_endpoint(request_id)}/tags"
+def get_set_trace_tag_endpoint(trace_id):
+    return f"{get_single_trace_endpoint(trace_id)}/tags"
 
 
 def get_create_assessment_endpoint(trace_id: str):

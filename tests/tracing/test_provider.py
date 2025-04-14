@@ -322,7 +322,7 @@ def test_enable_mlflow_tracing_switch_in_serving_client(monkeypatch, enable_mlfl
         client.start_trace("root")
         foo()
         if enable_mlflow_tracing:
-            client.end_trace(request_id="123")
+            client.end_trace(trace_id="123")
 
     if enable_mlflow_tracing:
         assert sorted(_TRACE_BUFFER) == request_ids

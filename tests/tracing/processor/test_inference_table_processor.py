@@ -15,36 +15,36 @@ from mlflow.tracing.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 
-_TRACE_ID = 12345
-_REQUEST_ID = f"tr-{_TRACE_ID}"
+_OTEL_TRACE_ID = 12345
+_TRACE_ID = f"tr-{_OTEL_TRACE_ID}"
 
 
 @pytest.mark.parametrize("context_type", ["mlflow", "flask"])
 def test_on_start(context_type):
     # Root span should create a new trace on start
     span = create_mock_otel_span(
-        trace_id=_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
+        trace_id=_OTEL_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
     )
     trace_manager = InMemoryTraceManager.get_instance()
     processor = InferenceTableSpanProcessor(span_exporter=mock.MagicMock())
 
     if context_type == "mlflow":
-        with set_prediction_context(Context(request_id=_REQUEST_ID)):
+        with set_prediction_context(Context(request_id=_TRACE_ID)):
             processor.on_start(span)
     else:
         with mock.patch(
             "mlflow.tracing.processor.inference_table._get_flask_request"
         ) as mock_get_flask_request:
             request = mock_get_flask_request.return_value
-            request.headers = {_HEADER_REQUEST_ID_KEY: _REQUEST_ID}
+            request.headers = {_HEADER_REQUEST_ID_KEY: _TRACE_ID}
 
             processor.on_start(span)
 
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
-    assert _REQUEST_ID in InMemoryTraceManager.get_instance()._traces
+    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_TRACE_ID)
+    assert _TRACE_ID in InMemoryTraceManager.get_instance()._traces
 
-    with trace_manager.get_trace(_REQUEST_ID) as trace:
-        assert trace.info.request_id == _REQUEST_ID
+    with trace_manager.get_trace(_TRACE_ID) as trace:
+        assert trace.info.trace_id == _TRACE_ID
         assert trace.info.experiment_id is None
         assert trace.info.timestamp_ms == 5
         assert trace.info.execution_time_ms is None
@@ -52,33 +52,33 @@ def test_on_start(context_type):
 
     # Child span should not create a new trace
     child_span = create_mock_otel_span(
-        trace_id=_TRACE_ID, span_id=2, parent_id=1, start_time=8_000_000
+        trace_id=_OTEL_TRACE_ID, span_id=2, parent_id=1, start_time=8_000_000
     )
 
-    with set_prediction_context(Context(request_id=_REQUEST_ID)):
+    with set_prediction_context(Context(request_id=_TRACE_ID)):
         processor.on_start(child_span)
 
-    assert child_span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
+    assert child_span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_TRACE_ID)
 
     # start time should not be overwritten
-    with trace_manager.get_trace(_REQUEST_ID) as trace:
+    with trace_manager.get_trace(_TRACE_ID) as trace:
         assert trace.info.timestamp_ms == 5
 
 
 def test_on_end():
-    trace_info = create_test_trace_info(_REQUEST_ID, 0)
+    trace_info = create_test_trace_info(_TRACE_ID, 0)
     trace_manager = InMemoryTraceManager.get_instance()
-    trace_manager.register_trace(_TRACE_ID, trace_info)
+    trace_manager.register_trace(_OTEL_TRACE_ID, trace_info)
 
     otel_span = create_mock_otel_span(
         name="foo",
-        trace_id=_TRACE_ID,
+        trace_id=_OTEL_TRACE_ID,
         span_id=1,
         parent_id=None,
         start_time=5_000_000,
         end_time=9_000_000,
     )
-    span = LiveSpan(otel_span, request_id=_REQUEST_ID)
+    span = LiveSpan(otel_span, _TRACE_ID)
     span.set_status("OK")
     span.set_inputs({"input1": "very long input" * 100})
     span.set_outputs({"output": "very long output" * 100})
@@ -95,6 +95,6 @@ def test_on_end():
 
     # Non-root span should not be exported
     mock_exporter.reset_mock()
-    child_span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=2, parent_id=1)
+    child_span = create_mock_otel_span(trace_id=_OTEL_TRACE_ID, span_id=2, parent_id=1)
     processor.on_end(child_span)
     mock_exporter.export.assert_not_called()

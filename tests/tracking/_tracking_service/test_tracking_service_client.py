@@ -96,7 +96,7 @@ def test_artifact_repo_is_cached_per_run_id(tmp_path):
 
 def test_download_trace_data(tmp_path, mock_store):
     trace_info = TraceInfo(
-        request_id="test",
+        trace_id="test",
         experiment_id="test",
         timestamp_ms=0,
         execution_time_ms=1,
@@ -120,7 +120,7 @@ def test_download_trace_data(tmp_path, mock_store):
 
 def test_upload_trace_data(tmp_path, mock_store):
     trace_info = TraceInfo(
-        request_id="test",
+        trace_id="test",
         experiment_id="test",
         timestamp_ms=0,
         execution_time_ms=1,
@@ -161,7 +161,7 @@ def test_search_traces(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -170,7 +170,7 @@ def test_search_traces(tmp_path):
                             tags={"mlflow.artifactLocation": "test"},
                         ),
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -185,7 +185,7 @@ def test_search_traces(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=1,
                             execution_time_ms=1,
@@ -194,7 +194,7 @@ def test_search_traces(tmp_path):
                             tags={"mlflow.artifactLocation": "test"},
                         ),
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=1,
                             execution_time_ms=1,
@@ -243,7 +243,7 @@ def test_search_traces_download_failures(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -252,7 +252,7 @@ def test_search_traces_download_failures(tmp_path):
                             tags={"mlflow.artifactLocation": "test"},
                         ),
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -267,7 +267,7 @@ def test_search_traces_download_failures(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=1,
                             execution_time_ms=1,
@@ -282,7 +282,7 @@ def test_search_traces_download_failures(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=1,
                             execution_time_ms=1,
@@ -301,9 +301,9 @@ def test_search_traces_download_failures(tmp_path):
             side_effect=[
                 # Page 1
                 TraceData(),
-                MlflowTraceDataCorrupted(request_id="test"),
+                MlflowTraceDataCorrupted(trace_id="test"),
                 # Page 2
-                MlflowTraceDataNotFound(request_id="test"),
+                MlflowTraceDataNotFound(trace_id="test"),
                 # Page 3
                 TraceData(),
             ],
@@ -326,7 +326,7 @@ def test_search_traces_download_failures(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -335,7 +335,7 @@ def test_search_traces_download_failures(tmp_path):
                             tags={"mlflow.artifactLocation": "test"},
                         ),
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -350,7 +350,7 @@ def test_search_traces_download_failures(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=1,
                             execution_time_ms=1,
@@ -369,9 +369,9 @@ def test_search_traces_download_failures(tmp_path):
             side_effect=[
                 # Page 1
                 TraceData(),
-                MlflowTraceDataCorrupted(request_id="test"),
+                MlflowTraceDataCorrupted(trace_id="test"),
                 # Page 2
-                MlflowTraceDataNotFound(request_id="test"),
+                MlflowTraceDataNotFound(trace_id="test"),
             ],
         ) as mock_download_trace_data,
     ):
@@ -392,7 +392,7 @@ def test_search_traces_does_not_swallow_unexpected_exceptions(tmp_path):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -428,7 +428,7 @@ def test_search_traces_with_filestore(tmp_path):
                 exp_id,
                 i * 1000,
                 {
-                    SpanAttributeKey.REQUEST_ID: f"request_id_{i}",
+                    SpanAttributeKey.REQUEST_ID: f"tr_{i}",
                     TRACE_SCHEMA_VERSION_KEY: str(TRACE_SCHEMA_VERSION),
                 },
                 {},
@@ -466,7 +466,7 @@ def test_search_traces_with_assessments(tracking_uri):
                 (
                     [
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -475,7 +475,7 @@ def test_search_traces_with_assessments(tracking_uri):
                             tags={"mlflow.artifactLocation": "test"},
                         ),
                         TraceInfo(
-                            request_id="test",
+                            trace_id="test",
                             experiment_id="test",
                             timestamp_ms=0,
                             execution_time_ms=0,
@@ -500,7 +500,7 @@ def test_search_traces_with_assessments(tracking_uri):
             client,
             "get_trace_info",
             return_value=TraceInfo(
-                request_id="test",
+                trace_id="test",
                 experiment_id="test",
                 timestamp_ms=0,
                 execution_time_ms=0,

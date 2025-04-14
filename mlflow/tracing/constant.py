@@ -14,6 +14,9 @@ class TraceTagKey:
 # A set of reserved attribute keys
 class SpanAttributeKey:
     EXPERIMENT_ID = "mlflow.experimentId"
+    # TODO: The attribute key is confusingly named `requestId` due to the legacy
+    # implementation. We should rename it to "mlflow.traceId" once we make sure
+    # the downstream consumers are not affected by the change.
     REQUEST_ID = "mlflow.traceRequestId"
     INPUTS = "mlflow.spanInputs"
     OUTPUTS = "mlflow.spanOutputs"
@@ -38,8 +41,8 @@ class SpanAttributeKey:
 MAX_CHARS_IN_TRACE_INFO_METADATA_AND_TAGS = 250
 TRUNCATION_SUFFIX = "..."
 
-# Trace request ID must have the prefix "tr-" appended to the OpenTelemetry trace ID
-TRACE_REQUEST_ID_PREFIX = "tr-"
+# Trace ID must have the prefix "tr-" appended to the OpenTelemetry trace ID
+TRACE_ID_PREFIX = "tr-"
 
 # Schema version of traces and spans.
 TRACE_SCHEMA_VERSION = 2

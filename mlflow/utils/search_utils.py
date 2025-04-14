@@ -1575,7 +1575,7 @@ class SearchTraceUtils(SearchUtils):
     """
 
     VALID_SEARCH_ATTRIBUTE_KEYS = {
-        "request_id",
+        "request_id",  # Backwards compatibility
         "timestamp",
         "timestamp_ms",
         "execution_time",

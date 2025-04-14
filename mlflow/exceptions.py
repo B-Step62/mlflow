@@ -186,10 +186,10 @@ class MlflowTraceDataException(MlflowTracingException):
     """Exception thrown for trace data related error"""
 
     def __init__(
-        self, error_code: str, request_id: Optional[str] = None, artifact_path: Optional[str] = None
+        self, error_code: str, trace_id: Optional[str] = None, artifact_path: Optional[str] = None
     ):
-        if request_id:
-            self.ctx = f"request_id={request_id}"
+        if trace_id:
+            self.ctx = f"trace_id={trace_id}"
         elif artifact_path:
             self.ctx = f"path={artifact_path}"
 
@@ -202,12 +202,12 @@ class MlflowTraceDataException(MlflowTracingException):
 class MlflowTraceDataNotFound(MlflowTraceDataException):
     """Exception thrown when trace data is not found"""
 
-    def __init__(self, request_id: Optional[str] = None, artifact_path: Optional[str] = None):
-        super().__init__(NOT_FOUND, request_id, artifact_path)
+    def __init__(self, trace_id: Optional[str] = None, artifact_path: Optional[str] = None):
+        super().__init__(NOT_FOUND, trace_id, artifact_path)
 
 
 class MlflowTraceDataCorrupted(MlflowTraceDataException):
     """Exception thrown when trace data is corrupted"""
 
-    def __init__(self, request_id: Optional[str] = None, artifact_path: Optional[str] = None):
-        super().__init__(INVALID_STATE, request_id, artifact_path)
+    def __init__(self, trace_id: Optional[str] = None, artifact_path: Optional[str] = None):
+        super().__init__(INVALID_STATE, trace_id, artifact_path)

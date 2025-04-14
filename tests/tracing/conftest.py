@@ -56,7 +56,7 @@ def mock_store(monkeypatch):
 
         def _mock_start_trace(experiment_id, timestamp_ms, request_metadata, tags):
             trace_info = create_test_trace_info(
-                request_id=f"tr-{len(_traces)}",
+                trace_id=f"tr-{len(_traces)}",
                 experiment_id=experiment_id,
                 timestamp_ms=timestamp_ms,
                 execution_time_ms=None,
@@ -68,11 +68,11 @@ def mock_store(monkeypatch):
                     **tags,
                 },
             )
-            _traces[trace_info.request_id] = trace_info
+            _traces[trace_info.trace_id] = trace_info
             return trace_info
 
-        def _mock_end_trace(request_id, timestamp_ms, status, request_metadata, tags):
-            trace_info = _traces[request_id]
+        def _mock_end_trace(trace_id, timestamp_ms, status, request_metadata, tags):
+            trace_info = _traces[trace_id]
             trace_info.execution_time_ms = timestamp_ms - trace_info.timestamp_ms
             trace_info.status = status
             trace_info.request_metadata.update(request_metadata)

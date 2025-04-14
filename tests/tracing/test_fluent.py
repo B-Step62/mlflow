@@ -187,7 +187,7 @@ def test_trace(wrap_sync_func, with_active_run, async_logging_enabled):
     traces = get_traces()
     assert len(traces) == 1
     trace = traces[0]
-    assert trace.info.request_id is not None
+    assert trace.info.trace_id is not None
     assert trace.info.experiment_id == "0"  # default experiment
     assert trace.info.execution_time_ms >= 0.1 * 1e3  # at least 0.1 sec
     assert trace.info.status == SpanStatusCode.OK
@@ -206,7 +206,7 @@ def test_trace(wrap_sync_func, with_active_run, async_logging_enabled):
     # assert root_span.start_time_ns // 1e6 == trace.info.timestamp_ms
     assert root_span.parent_id is None
     assert root_span.attributes == {
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanFunctionName": "predict",
         "mlflow.spanType": "UNKNOWN",
         "mlflow.spanInputs": {"x": 2, "y": 5},
@@ -217,7 +217,7 @@ def test_trace(wrap_sync_func, with_active_run, async_logging_enabled):
     assert child_span_1.parent_id == root_span.span_id
     assert child_span_1.attributes == {
         "delta": 1,
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanFunctionName": "add_one",
         "mlflow.spanType": "LLM",
         "mlflow.spanInputs": {"z": 7},
@@ -228,7 +228,7 @@ def test_trace(wrap_sync_func, with_active_run, async_logging_enabled):
     assert child_span_2.parent_id == root_span.span_id
     assert child_span_2.start_time_ns <= child_span_2.end_time_ns - 0.1 * 1e6
     assert child_span_2.attributes == {
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanFunctionName": "square",
         "mlflow.spanType": "UNKNOWN",
         "mlflow.spanInputs": {"t": 8},
@@ -266,7 +266,7 @@ def test_trace_stream(wrap_sync_func):
     traces = get_traces()
     assert len(traces) == 1
     trace = traces[0]
-    assert trace.info.request_id is not None
+    assert trace.info.trace_id is not None
     assert trace.info.experiment_id == "0"  # default experiment
     assert trace.info.execution_time_ms >= 0.1 * 1e3  # at least 0.1 sec
     assert trace.info.status == SpanStatusCode.OK
@@ -344,7 +344,7 @@ def test_trace_in_databricks_model_serving(
         with set_prediction_context(Context(request_id=request_id)):
             prediction = TestModel().predict(**data)
 
-        trace = pop_trace(request_id=request_id)
+        trace = pop_trace(trace_id=request_id)
 
         result = json.dumps(
             {
@@ -385,13 +385,13 @@ def test_trace_in_databricks_model_serving(
 
     trace_dict = response.json["trace"]
     trace = Trace.from_dict(trace_dict)
-    assert trace.info.request_id == databricks_request_id
+    assert trace.info.trace_id == databricks_request_id
     assert trace.info.request_metadata[TRACE_SCHEMA_VERSION_KEY] == "2"
     assert len(trace.data.spans) == 3
 
     span_name_to_span = {span.name: span for span in trace.data.spans}
     root_span = span_name_to_span["predict"]
-    assert isinstance(root_span._trace_id, str)
+    assert isinstance(root_span._otel_trace_id, str)
     assert isinstance(root_span.span_id, str)
     assert isinstance(root_span.start_time_ns, int)
     assert isinstance(root_span.end_time_ns, int)
@@ -431,7 +431,7 @@ def test_trace_in_databricks_model_serving(
     }
 
     # The trace should be removed from the buffer after being retrieved
-    assert pop_trace(request_id=databricks_request_id) is None
+    assert pop_trace(trace_id=databricks_request_id) is None
 
     # In model serving, the traces should not be stored in the fluent API buffer
     traces = get_traces()
@@ -483,8 +483,13 @@ def test_trace_handle_exception_during_prediction(sync):
         model.predict(2, 5) if sync else asyncio.run(model.predict(2, 5))
 
     # Trace should be logged even if the function fails, with status code ERROR
+<<<<<<< HEAD
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
     assert trace.info.request_id is not None
+=======
+    trace = mlflow.get_last_active_trace()
+    assert trace.info.trace_id is not None
+>>>>>>> 049099bd4 (Update request_id to trace_id)
     assert trace.info.status == TraceStatus.ERROR
     assert trace.info.request_metadata[TraceMetadataKey.INPUTS] == '{"x": 2, "y": 5}'
     assert trace.info.request_metadata[TraceMetadataKey.OUTPUTS] == ""
@@ -639,7 +644,7 @@ def test_start_span_context_manager(async_logging_enabled):
     traces = get_traces()
     assert len(traces) == 1
     trace = traces[0]
-    assert trace.info.request_id is not None
+    assert trace.info.trace_id is not None
     assert trace.info.experiment_id == "0"  # default experiment
     assert trace.info.execution_time_ms >= 0.1 * 1e3  # at least 0.1 sec
     assert trace.info.status == TraceStatus.OK
@@ -654,7 +659,7 @@ def test_start_span_context_manager(async_logging_enabled):
     root_span = span_name_to_span["root_span"]
     assert root_span.parent_id is None
     assert root_span.attributes == {
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanType": "UNKNOWN",
         "mlflow.spanInputs": {"x": 1, "y": 2},
         "mlflow.spanOutputs": 25,
@@ -666,7 +671,7 @@ def test_start_span_context_manager(async_logging_enabled):
     assert child_span_1.attributes == {
         "delta": 2,
         "time": str(datetime_now),
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanType": "LLM",
         "mlflow.spanInputs": 3,
         "mlflow.spanOutputs": 5,
@@ -675,7 +680,7 @@ def test_start_span_context_manager(async_logging_enabled):
     child_span_2 = span_name_to_span["child_span_2"]
     assert child_span_2.parent_id == root_span.span_id
     assert child_span_2.attributes == {
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanType": "UNKNOWN",
         "mlflow.spanInputs": {"t": 5},
         "mlflow.spanOutputs": 25,
@@ -700,7 +705,7 @@ def test_start_span_context_manager_with_imperative_apis(async_logging_enabled):
                 child_span = self._mlflow_client.start_span(
                     name="child_span_1",
                     span_type=SpanType.LLM,
-                    request_id=root_span.request_id,
+                    trace_id=root_span.trace_id,
                     parent_id=root_span.span_id,
                 )
                 child_span.set_inputs(z)
@@ -724,7 +729,7 @@ def test_start_span_context_manager_with_imperative_apis(async_logging_enabled):
     traces = get_traces()
     assert len(traces) == 1
     trace = traces[0]
-    assert trace.info.request_id is not None
+    assert trace.info.trace_id is not None
     assert trace.info.experiment_id == "0"  # default experiment
     assert trace.info.execution_time_ms >= 0.1 * 1e3  # at least 0.1 sec
     assert trace.info.status == TraceStatus.OK
@@ -739,7 +744,7 @@ def test_start_span_context_manager_with_imperative_apis(async_logging_enabled):
     root_span = span_name_to_span["root_span"]
     assert root_span.parent_id is None
     assert root_span.attributes == {
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanType": "UNKNOWN",
         "mlflow.spanInputs": {"x": 1, "y": 2},
         "mlflow.spanOutputs": 5,
@@ -749,7 +754,7 @@ def test_start_span_context_manager_with_imperative_apis(async_logging_enabled):
     assert child_span_1.parent_id == root_span.span_id
     assert child_span_1.attributes == {
         "delta": 2,
-        "mlflow.traceRequestId": trace.info.request_id,
+        "mlflow.traceRequestId": trace.info.trace_id,
         "mlflow.spanType": "LLM",
         "mlflow.spanInputs": 3,
         "mlflow.spanOutputs": 5,
@@ -797,18 +802,23 @@ def test_get_trace(mock_get_display_handler):
     model = DefaultTestModel()
     model.predict(2, 5)
 
+<<<<<<< HEAD
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
     request_id = trace.info.request_id
+=======
+    trace = mlflow.get_last_active_trace()
+    trace_id = trace.info.trace_id
+>>>>>>> 049099bd4 (Update request_id to trace_id)
     mock_get_display_handler.reset_mock()
 
     # Fetch trace from in-memory buffer
-    trace_in_memory = mlflow.get_trace(request_id)
-    assert trace.info.request_id == trace_in_memory.info.request_id
+    trace_in_memory = mlflow.get_trace(trace_id)
+    assert trace.info.trace_id == trace_in_memory.info.trace_id
     mock_get_display_handler.assert_not_called()
 
     # Fetch trace from backend
-    trace_from_backend = mlflow.get_trace(request_id)
-    assert trace.info.request_id == trace_from_backend.info.request_id
+    trace_from_backend = mlflow.get_trace(trace_id)
+    assert trace.info.trace_id == trace_from_backend.info.trace_id
     mock_get_display_handler.assert_not_called()
 
     # If not found, return None with warning
@@ -944,7 +954,7 @@ def test_search_traces_yields_expected_dataframe_contents(monkeypatch):
 
     df = mlflow.search_traces(max_results=10, order_by=["timestamp ASC"])
     assert df.columns.tolist() == [
-        "request_id",
+        "trace_id",
         "trace",
         "timestamp_ms",
         "status",
@@ -957,8 +967,8 @@ def test_search_traces_yields_expected_dataframe_contents(monkeypatch):
         "assessments",
     ]
     for idx, trace in enumerate(expected_traces):
-        assert df.iloc[idx].request_id == trace.info.request_id
-        assert df.iloc[idx].trace.info.request_id == trace.info.request_id
+        assert df.iloc[idx].trace_id == trace.info.trace_id
+        assert df.iloc[idx].trace.info.trace_id == trace.info.trace_id
         assert df.iloc[idx].timestamp_ms == trace.info.timestamp_ms
         assert df.iloc[idx].status == trace.info.status
         assert df.iloc[idx].execution_time_ms == trace.info.execution_time_ms
@@ -1225,8 +1235,8 @@ def test_search_traces_with_run_id():
     def _create_trace(name, tags=None):
         with mlflow.start_span(name=name) as span:
             for k, v in (tags or {}).items():
-                mlflow.MlflowClient().set_trace_tag(request_id=span.request_id, key=k, value=v)
-        return span.request_id
+                mlflow.MlflowClient().set_trace_tag(trace_id=span.trace_id, key=k, value=v)
+        return span.trace_id
 
     def _get_names(traces):
         tags = traces["tags"].tolist()
@@ -1284,14 +1294,19 @@ def test_get_last_active_trace_id():
     predict(2, 5)
     predict(3, 6)
 
+<<<<<<< HEAD
     trace_id = mlflow.get_last_active_trace_id()
     trace = mlflow.get_trace(trace_id)
     assert trace.info.request_id is not None
+=======
+    trace = mlflow.get_last_active_trace()
+    assert trace.info.trace_id is not None
+>>>>>>> 049099bd4 (Update request_id to trace_id)
     assert trace.data.request == '{"x": 3, "y": 6}'
 
     # Mutation of the copy should not affect the original trace logged in the backend
     trace.info.status = TraceStatus.ERROR
-    original_trace = mlflow.MlflowClient().get_trace(trace.info.request_id)
+    original_trace = mlflow.MlflowClient().get_trace(trace.info.trace_id)
     assert original_trace.info.status == TraceStatus.OK
 
 
@@ -1356,7 +1371,7 @@ def test_non_ascii_characters_not_encoded_as_unicode():
     with mlflow.start_span() as span:
         span.set_inputs({"japanese": "あ", "emoji": "👍"})
 
-    trace = mlflow.MlflowClient().get_trace(span.request_id)
+    trace = mlflow.MlflowClient().get_trace(span.trace_id)
     span = trace.data.spans[0]
     assert span.inputs == {"japanese": "あ", "emoji": "👍"}
 
@@ -1485,19 +1500,25 @@ def test_add_trace():
 
     # If we call add_trace, the trace from the remote service should be merged
     predict(add_trace=True)
+<<<<<<< HEAD
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
     request_id = trace.info.request_id
     assert request_id is not None
+=======
+    trace = mlflow.get_last_active_trace()
+    trace_id = trace.info.trace_id
+    assert trace_id is not None
+>>>>>>> 049099bd4 (Update request_id to trace_id)
     assert trace.data.request == '{"add_trace": true}'
     assert trace.data.response == "1"
     # Remote spans should be merged
     assert len(trace.data.spans) == 3
-    assert all(span.request_id == request_id for span in trace.data.spans)
+    assert all(span.trace_id == trace_id for span in trace.data.spans)
     parent_span, child_span, grandchild_span = trace.data.spans
     assert child_span.parent_id == parent_span.span_id
-    assert child_span._trace_id == parent_span._trace_id
+    assert child_span._otel_trace_id == parent_span._otel_trace_id
     assert grandchild_span.parent_id == child_span.span_id
-    assert grandchild_span._trace_id == parent_span._trace_id
+    assert grandchild_span._otel_trace_id == parent_span._otel_trace_id
     # Check if span information is correctly copied
     rs = Trace.from_dict(_SAMPLE_REMOTE_TRACE).data.spans[0]
     assert child_span.name == rs.name
@@ -1541,7 +1562,7 @@ def test_add_trace_specific_target_span():
     client = mlflow.MlflowClient()
     span = client.start_trace(name="parent")
     mlflow.add_trace(_SAMPLE_REMOTE_TRACE, target=span)
-    client.end_trace(span.request_id)
+    client.end_trace(span.trace_id)
 
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
     assert len(trace.data.spans) == 3
@@ -1558,8 +1579,8 @@ def test_add_trace_merge_tags():
 
     # Start the parent trace and merge the above trace as a child
     with mlflow.start_span(name="parent") as span:
-        client.set_trace_tag(span.request_id, "vegetable", "carrot")
-        client.set_trace_tag(span.request_id, "food", "sushi")
+        client.set_trace_tag(span.trace_id, "vegetable", "carrot")
+        client.set_trace_tag(span.trace_id, "food", "sushi")
 
         mlflow.add_trace(Trace.from_dict(_SAMPLE_REMOTE_TRACE))
 
@@ -1618,16 +1639,16 @@ def test_add_trace_in_databricks_model_serving(mock_databricks_serving_with_trac
         predict()
 
     # Pop the trace to be written to the inference table
-    trace = Trace.from_dict(pop_trace(request_id=db_request_id))
+    trace = Trace.from_dict(pop_trace(db_request_id))
 
-    assert trace.info.request_id == db_request_id
+    assert trace.info.trace_id == db_request_id
     assert len(trace.data.spans) == 3
-    assert all(span.request_id == db_request_id for span in trace.data.spans)
+    assert all(span.trace_id == db_request_id for span in trace.data.spans)
     parent_span, child_span, grandchild_span = trace.data.spans
     assert child_span.parent_id == parent_span.span_id
-    assert child_span._trace_id == parent_span._trace_id
+    assert child_span._otel_trace_id == parent_span._otel_trace_id
     assert grandchild_span.parent_id == child_span.span_id
-    assert grandchild_span._trace_id == parent_span._trace_id
+    assert grandchild_span._otel_trace_id == parent_span._otel_trace_id
     # Check if span information is correctly copied
     rs = Trace.from_dict(_SAMPLE_REMOTE_TRACE).data.spans[0]
     assert child_span.name == rs.name

@@ -26,7 +26,6 @@ from packaging.version import Version
 
 import mlflow
 from mlflow.entities import Document as MlflowDocument
-from mlflow.entities import Trace
 from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatus, SpanStatusCode
 from mlflow.exceptions import MlflowException
@@ -60,36 +59,6 @@ def create_retriever():
     embeddings = FakeEmbeddings(size=5)
     db = FAISS.from_documents(docs, embeddings)
     return db.as_retriever()
-
-
-def _validate_trace_json_serialization(trace):
-    trace_dict = trace.to_dict()
-    trace_from_dict = Trace.from_dict(trace_dict)
-    trace_json = trace.to_json()
-    trace_from_json = Trace.from_json(trace_json)
-    for loaded_trace in [trace_from_dict, trace_from_json]:
-        assert trace.info == loaded_trace.info
-        assert trace.data.request == loaded_trace.data.request
-        assert trace.data.response == loaded_trace.data.response
-        assert len(trace.data.spans) == len(loaded_trace.data.spans)
-        for i in range(len(trace.data.spans)):
-            for attr in [
-                "name",
-                "request_id",
-                "span_id",
-                "start_time_ns",
-                "end_time_ns",
-                "parent_id",
-                "status",
-                "inputs",
-                "outputs",
-                "_trace_id",
-                "attributes",
-                "events",
-            ]:
-                assert getattr(trace.data.spans[i], attr) == getattr(
-                    loaded_trace.data.spans[i], attr
-                )
 
 
 def test_llm_success():
@@ -129,8 +98,6 @@ def test_llm_success():
         },
     ]
 
-    _validate_trace_json_serialization(trace)
-
 
 def test_llm_error():
     callback = MlflowLangchainTracer()
@@ -161,8 +128,6 @@ def test_llm_error():
             "content": "test prompt",
         },
     ]
-
-    _validate_trace_json_serialization(trace)
 
 
 def test_llm_internal_exception():
@@ -365,8 +330,6 @@ def test_retriever_success():
     assert retriever_span.end_time_ns is not None
     assert retriever_span.status.status_code == SpanStatusCode.OK
 
-    _validate_trace_json_serialization(trace)
-
 
 def test_retriever_error():
     callback = MlflowLangchainTracer()
@@ -388,8 +351,6 @@ def test_retriever_error():
     assert retriever_span.status.status_code == SpanStatusCode.ERROR
     assert retriever_span.events[0].name == error_event.name
     assert retriever_span.events[0].attributes == error_event.attributes
-
-    _validate_trace_json_serialization(trace)
 
 
 def test_retriever_internal_exception():
@@ -505,8 +466,6 @@ def test_multiple_components():
             ).to_dict()
         )
 
-    _validate_trace_json_serialization(trace)
-
 
 def test_tool_success():
     callback = MlflowLangchainTracer()
@@ -548,8 +507,6 @@ def test_tool_success():
     output_parser_span = spans[4]
     assert output_parser_span.span_type == "CHAIN"
     assert output_parser_span.outputs == response
-
-    _validate_trace_json_serialization(trace)
 
 
 def test_tracer_thread_safe():

@@ -59,7 +59,7 @@ def test_json_deserialization(monkeypatch):
     trace_json_as_dict = json.loads(trace_json)
     assert trace_json_as_dict == {
         "info": {
-            "trace_id": trace.info.request_id,
+            "trace_id": trace.info.trace_id,
             "trace_location": {
                 "mlflow_experiment": {
                     "experiment_id": "0",
@@ -88,7 +88,7 @@ def test_json_deserialization(monkeypatch):
                 {
                     "name": "predict",
                     "context": {
-                        "trace_id": trace.data.spans[0]._trace_id,
+                        "trace_id": trace.data.spans[0]._otel_trace_id,
                         "span_id": trace.data.spans[0].span_id,
                     },
                     "parent_id": None,
@@ -97,7 +97,7 @@ def test_json_deserialization(monkeypatch):
                     "status_code": "OK",
                     "status_message": "",
                     "attributes": {
-                        "mlflow.traceRequestId": json.dumps(trace.info.request_id),
+                        "mlflow.traceRequestId": json.dumps(trace.info.trace_id),
                         "mlflow.spanType": '"UNKNOWN"',
                         "mlflow.spanFunctionName": '"predict"',
                         "mlflow.spanInputs": '{"x": 2, "y": 5}',
@@ -108,7 +108,7 @@ def test_json_deserialization(monkeypatch):
                 {
                     "name": "add_one_with_custom_name",
                     "context": {
-                        "trace_id": trace.data.spans[1]._trace_id,
+                        "trace_id": trace.data.spans[1]._otel_trace_id,
                         "span_id": trace.data.spans[1].span_id,
                     },
                     "parent_id": trace.data.spans[0].span_id,
@@ -117,7 +117,7 @@ def test_json_deserialization(monkeypatch):
                     "status_code": "OK",
                     "status_message": "",
                     "attributes": {
-                        "mlflow.traceRequestId": json.dumps(trace.info.request_id),
+                        "mlflow.traceRequestId": json.dumps(trace.info.trace_id),
                         "mlflow.spanType": '"LLM"',
                         "mlflow.spanFunctionName": '"add_one"',
                         "mlflow.spanInputs": '{"z": 7}',
@@ -223,6 +223,7 @@ def test_trace_to_from_dict_and_json():
         for i in range(len(trace.data.spans)):
             for attr in [
                 "name",
+                "trace_id",
                 "request_id",
                 "span_id",
                 "start_time_ns",
@@ -231,7 +232,7 @@ def test_trace_to_from_dict_and_json():
                 "status",
                 "inputs",
                 "outputs",
-                "_trace_id",
+                "_otel_trace_id",
                 "attributes",
                 "events",
             ]:

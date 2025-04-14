@@ -64,9 +64,9 @@ class BaseEventStreamWrapper:
     def _end_span(self):
         """End the span."""
         if self._span.parent_id:
-            self._client.end_span(self._span.request_id, self._span.span_id)
+            self._client.end_span(self._span.trace_id, self._span.span_id)
         else:
-            self._client.end_trace(self._span.request_id)
+            self._client.end_trace(self._span.trace_id)
 
 
 class InvokeModelStreamWrapper(BaseEventStreamWrapper):

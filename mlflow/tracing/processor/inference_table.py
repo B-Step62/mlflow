@@ -54,8 +54,8 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
                 span is obtained from the global context, it won't be passed here so we should not
                 rely on it.
         """
-        request_id = maybe_get_request_id()
-        if request_id is None:
+        trace_id = maybe_get_request_id()
+        if trace_id is None:
             # NB: This is currently used for streaming inference in Databricks Model Serving.
             # In normal prediction, serving logic pass the request ID using the
             # `with set_prediction_context` context manager that wraps `model.predict`
@@ -63,8 +63,8 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
             # so we still need to rely on Flask request context (which is set to the
             # stream response via flask.stream_with_context()
             if flask_request := _get_flask_request():
-                request_id = flask_request.headers.get(_HEADER_REQUEST_ID_KEY)
-                if not request_id:
+                trace_id = flask_request.headers.get(_HEADER_REQUEST_ID_KEY)
+                if not trace_id:
                     _logger.warning(
                         "Request ID not found in the request headers. Skipping trace processing."
                     )
@@ -76,14 +76,14 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
                 )
                 return
 
-        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(request_id))
+        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(trace_id))
         tags = {}
         if dependencies_schema := maybe_get_dependencies_schemas():
             tags.update(dependencies_schema)
 
         if span._parent is None:
             trace_info = TraceInfo(
-                request_id=request_id,
+                request_id=trace_id,
                 experiment_id=None,
                 timestamp_ms=span.start_time // 1_000_000,  # nanosecond to millisecond
                 execution_time_ms=None,
@@ -104,10 +104,10 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
         if span._parent is not None:
             return
 
-        request_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
-        with self._trace_manager.get_trace(request_id) as trace:
+        trace_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
+        with self._trace_manager.get_trace(trace_id) as trace:
             if trace is None:
-                _logger.debug(f"Trace data with request ID {request_id} not found.")
+                _logger.debug(f"Trace data with ID {trace_id} not found.")
                 return
 
             trace.info.execution_time_ms = (span.end_time - span.start_time) // 1_000_000

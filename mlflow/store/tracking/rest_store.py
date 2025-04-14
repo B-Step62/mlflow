@@ -108,7 +108,7 @@ class RestStore(AbstractStore):
     def _call_endpoint(self, api, json_body=None, endpoint=None):
         if endpoint:
             # Allow customizing the endpoint for compatibility with dynamic endpoints, such as
-            # /mlflow/traces/{request_id}/info.
+            # /mlflow/traces/{trace_id}/info.
             _, method = _METHOD_TO_INFO[api]
         else:
             endpoint, method = _METHOD_TO_INFO[api]
@@ -292,7 +292,7 @@ class RestStore(AbstractStore):
 
     def end_trace(
         self,
-        request_id: str,
+        trace_id: str,
         timestamp_ms: int,
         status: TraceStatus,
         request_metadata: dict[str, str],
@@ -302,7 +302,7 @@ class RestStore(AbstractStore):
         Update the TraceInfo object in the backend store with the completed trace info.
 
         Args:
-            request_id: Unique string identifier of the trace.
+            trace_id: Unique string identifier of the trace.
             timestamp_ms: End time of the trace, in milliseconds. The execution time field
                 in the TraceInfo will be calculated by subtracting the start time from this.
             status: Status of the trace.
@@ -330,15 +330,15 @@ class RestStore(AbstractStore):
 
         req_body = message_to_json(
             EndTrace(
-                request_id=request_id,
+                request_id=trace_id,
                 timestamp_ms=timestamp_ms,
                 status=status.to_proto(),
                 request_metadata=request_metadata_proto,
                 tags=tags_proto,
             )
         )
-        # EndTrace endpoint is a dynamic path built with the request_id
-        endpoint = get_single_trace_endpoint(request_id)
+        # EndTrace endpoint is a dynamic path built with the trace_id
+        endpoint = get_single_trace_endpoint(trace_id)
         response_proto = self._call_endpoint(EndTrace, req_body, endpoint=endpoint)
         return TraceInfo.from_proto(response_proto.trace_info)
 
@@ -347,25 +347,25 @@ class RestStore(AbstractStore):
         experiment_id: str,
         max_timestamp_millis: Optional[int] = None,
         max_traces: Optional[int] = None,
-        request_ids: Optional[list[str]] = None,
+        trace_ids: Optional[list[str]] = None,
     ) -> int:
         req_body = message_to_json(
             DeleteTraces(
                 experiment_id=experiment_id,
                 max_timestamp_millis=max_timestamp_millis,
                 max_traces=max_traces,
-                request_ids=request_ids,
+                request_ids=trace_ids,
             )
         )
         res = self._call_endpoint(DeleteTraces, req_body)
         return res.traces_deleted
 
-    def get_trace_info(self, request_id, should_query_v3: bool = False):
+    def get_trace_info(self, trace_id, should_query_v3: bool = False):
         """
-        Get the trace matching the `request_id`.
+        Get the trace matching the `trace_id`.
 
         Args:
-            request_id: String id of the trace to fetch.
+            trace_id: String id of the trace to fetch.
             should_query_v3: If True, the backend store will query the V3 API for the trace info.
                 TODO: Remove this flag once the V3 API is the default in OSS.
 
@@ -373,8 +373,8 @@ class RestStore(AbstractStore):
             The fetched Trace object, of type ``mlflow.entities.TraceInfo``.
         """
         if should_query_v3:
-            trace_v3_req_body = message_to_json(GetTraceInfoV3(trace_id=request_id))
-            trace_v3_endpoint = get_trace_assessment_endpoint(request_id)
+            trace_v3_req_body = message_to_json(GetTraceInfoV3(trace_id=trace_id))
+            trace_v3_endpoint = get_trace_assessment_endpoint(trace_id)
             try:
                 trace_v3_response_proto = self._call_endpoint(
                     GetTraceInfoV3, trace_v3_req_body, endpoint=trace_v3_endpoint
@@ -383,11 +383,11 @@ class RestStore(AbstractStore):
             except Exception:
                 # TraceV3 endpoint is not globally enabled yet; graceful fallback path.
                 _logger.debug(
-                    f"Failed to fetch trace info from V3 API for request ID {request_id!r}.",
+                    f"Failed to fetch trace info from V3 API for trace ID {trace_id!r}.",
                     exc_info=True,
                 )
-        req_body = message_to_json(GetTraceInfo(request_id=request_id))
-        endpoint = get_trace_info_endpoint(request_id)
+        req_body = message_to_json(GetTraceInfo(request_id=trace_id))
+        endpoint = get_trace_info_endpoint(trace_id)
         response_proto = self._call_endpoint(GetTraceInfo, req_body, endpoint=endpoint)
         return TraceInfo.from_proto(response_proto.trace_info)
 
@@ -463,30 +463,28 @@ class RestStore(AbstractStore):
         req_body = message_to_json(request)
         return self._call_endpoint(SearchUnifiedTraces, req_body)
 
-    def set_trace_tag(self, request_id: str, key: str, value: str):
+    def set_trace_tag(self, trace_id: str, key: str, value: str):
         """
-        Set a tag on the trace with the given request_id.
+        Set a tag on the trace with the given trace_id.
 
         Args:
-            request_id: The ID of the trace.
+            trace_id: The ID of the trace.
             key: The string key of the tag.
             value: The string value of the tag.
         """
         req_body = message_to_json(SetTraceTag(key=key, value=value))
-        self._call_endpoint(SetTraceTag, req_body, endpoint=get_set_trace_tag_endpoint(request_id))
+        self._call_endpoint(SetTraceTag, req_body, endpoint=get_set_trace_tag_endpoint(trace_id))
 
-    def delete_trace_tag(self, request_id: str, key: str):
+    def delete_trace_tag(self, trace_id: str, key: str):
         """
-        Delete a tag on the trace with the given request_id.
+        Delete a tag on the trace with the given trace_id.
 
         Args:
-            request_id: The ID of the trace.
+            trace_id: The ID of the trace.
             key: The string key of the tag.
         """
         req_body = message_to_json(DeleteTraceTag(key=key))
-        self._call_endpoint(
-            DeleteTraceTag, req_body, endpoint=get_set_trace_tag_endpoint(request_id)
-        )
+        self._call_endpoint(DeleteTraceTag, req_body, endpoint=get_set_trace_tag_endpoint(trace_id))
 
     def create_assessment(self, assessment: Assessment) -> Assessment:
         """

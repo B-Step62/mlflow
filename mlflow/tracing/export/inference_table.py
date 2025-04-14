@@ -15,12 +15,12 @@ from mlflow.tracing.trace_manager import InMemoryTraceManager
 _logger = logging.getLogger(__name__)
 
 
-def pop_trace(request_id: str) -> Optional[dict[str, Any]]:
+def pop_trace(trace_id: str) -> Optional[dict[str, Any]]:
     """
     Pop the completed trace data from the buffer. This method is used in
     the Databricks model serving so please be careful when modifying it.
     """
-    return _TRACE_BUFFER.pop(request_id, None)
+    return _TRACE_BUFFER.pop(trace_id, None)
 
 
 # For Inference Table, we use special TTLCache to store the finished traces
@@ -60,7 +60,7 @@ class InferenceTableSpanExporter(SpanExporter):
         """
         for span in spans:
             if span._parent is not None:
-                _logger.debug("Received a non-root span. Skipping export.")
+                _logger.debug("Non-root spans are exported with a root span. Skipping.")
                 continue
 
             trace = self._trace_manager.pop_trace(span.context.trace_id)
@@ -71,4 +71,4 @@ class InferenceTableSpanExporter(SpanExporter):
             _set_last_active_trace_id(trace.info.request_id)
 
             # Add the trace to the in-memory buffer so it can be retrieved by upstream
-            _TRACE_BUFFER[trace.info.request_id] = trace.to_dict()
+            _TRACE_BUFFER[trace.info.trace_id] = trace.to_dict()

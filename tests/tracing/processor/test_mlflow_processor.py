@@ -22,8 +22,8 @@ from mlflow.utils.os import is_windows
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 
-_TRACE_ID = 12345
-_REQUEST_ID = f"tr-{_TRACE_ID}"
+_OTEL_TRACE_ID = 12345
+_TRACE_ID = f"tr-{_OTEL_TRACE_ID}"
 
 
 def test_on_start(monkeypatch):
@@ -32,9 +32,9 @@ def test_on_start(monkeypatch):
 
     # Root span should create a new trace on start
     span = create_mock_otel_span(
-        trace_id=_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
+        trace_id=_OTEL_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
     )
-    trace_info = create_test_trace_info(_REQUEST_ID, 0)
+    trace_info = create_test_trace_info(_TRACE_ID, 0)
 
     mock_client = mock.MagicMock()
     mock_client._start_tracked_trace.return_value = trace_info
@@ -53,24 +53,24 @@ def test_on_start(monkeypatch):
             "mlflow.source.type": "LOCAL",
         },
     )
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
-    assert _REQUEST_ID in InMemoryTraceManager.get_instance()._traces
+    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_TRACE_ID)
+    assert _TRACE_ID in InMemoryTraceManager.get_instance()._traces
 
     # Child span should not create a new trace
     child_span = create_mock_otel_span(
-        trace_id=_TRACE_ID, span_id=2, parent_id=1, start_time=8_000_000
+        trace_id=_OTEL_TRACE_ID, span_id=2, parent_id=1, start_time=8_000_000
     )
     mock_client._start_tracked_trace.reset_mock()
     processor.on_start(child_span)
 
     mock_client._start_tracked_trace.assert_not_called()
-    assert child_span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
+    assert child_span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_TRACE_ID)
 
 
 @pytest.mark.skipif(is_windows(), reason="Timestamp is not precise enough on Windows")
 def test_on_start_adjust_span_timestamp_to_exclude_backend_latency(monkeypatch):
     monkeypatch.setenv("MLFLOW_TESTING", "false")
-    trace_info = create_test_trace_info(_REQUEST_ID, 0)
+    trace_info = create_test_trace_info(_TRACE_ID, 0)
     mock_client = mock.MagicMock()
 
     def _mock_start_tracked_trace(*args, **kwargs):
@@ -81,10 +81,10 @@ def test_on_start_adjust_span_timestamp_to_exclude_backend_latency(monkeypatch):
     processor = MlflowSpanProcessor(span_exporter=mock.MagicMock(), client=mock_client)
 
     original_start_time = time.time_ns()
-    span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=1, start_time=original_start_time)
+    span = create_mock_otel_span(trace_id=_OTEL_TRACE_ID, span_id=1, start_time=original_start_time)
 
     # make sure _start_tracked_trace is invoked
-    assert processor._trace_manager.get_request_id_from_trace_id(span.context.trace_id) is None
+    assert processor._trace_manager.get_mlflow_trace_id_from_otel_id(span.context.trace_id) is None
     processor.on_start(span)
 
     assert span.start_time > original_start_time
@@ -98,10 +98,10 @@ def test_on_start_with_experiment_id(monkeypatch):
 
     experiment_id = "test_experiment_id"
     span = create_mock_otel_span(
-        trace_id=_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
+        trace_id=_OTEL_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
     )
     span.set_attribute(SpanAttributeKey.EXPERIMENT_ID, json.dumps(experiment_id))
-    trace_info = create_test_trace_info(_REQUEST_ID, experiment_id=experiment_id)
+    trace_info = create_test_trace_info(_TRACE_ID, experiment_id=experiment_id)
 
     mock_client = mock.MagicMock()
     mock_client._start_tracked_trace.return_value = trace_info
@@ -120,22 +120,22 @@ def test_on_start_with_experiment_id(monkeypatch):
             "mlflow.source.type": "LOCAL",
         },
     )
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
-    assert _REQUEST_ID in InMemoryTraceManager.get_instance()._traces
+    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_TRACE_ID)
+    assert _TRACE_ID in InMemoryTraceManager.get_instance()._traces
 
 
 def test_on_start_during_model_evaluation():
     # Root span should create a new trace on start
-    span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=1)
+    span = create_mock_otel_span(trace_id=_OTEL_TRACE_ID, span_id=1)
     mock_client = mock.MagicMock()
-    mock_client._start_tracked_trace.return_value = create_test_trace_info(_REQUEST_ID, 0)
+    mock_client._start_tracked_trace.return_value = create_test_trace_info(_TRACE_ID, 0)
     processor = MlflowSpanProcessor(span_exporter=mock.MagicMock(), client=mock_client)
 
-    with set_prediction_context(Context(request_id=_REQUEST_ID, is_evaluate=True)):
+    with set_prediction_context(Context(request_id=_TRACE_ID, is_evaluate=True)):
         processor.on_start(span)
 
     mock_client._start_tracked_trace.assert_called_once()
-    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_REQUEST_ID)
+    assert span.attributes.get(SpanAttributeKey.REQUEST_ID) == json.dumps(_TRACE_ID)
 
 
 def test_on_start_during_run(monkeypatch):
@@ -143,7 +143,7 @@ def test_on_start_during_run(monkeypatch):
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "bob")
 
     span = create_mock_otel_span(
-        trace_id=_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
+        trace_id=_OTEL_TRACE_ID, span_id=1, parent_id=None, start_time=5_000_000
     )
 
     env_experiment_name = "env_experiment_id"
@@ -153,7 +153,7 @@ def test_on_start_during_run(monkeypatch):
     run_experiment_id = mlflow.create_experiment(run_experiment_name)
 
     mlflow.set_experiment(experiment_name=env_experiment_name)
-    trace_info = create_test_trace_info(_REQUEST_ID)
+    trace_info = create_test_trace_info(_TRACE_ID)
     mock_client = mock.MagicMock()
     mock_client._start_tracked_trace.return_value = trace_info
     processor = MlflowSpanProcessor(span_exporter=mock.MagicMock(), client=mock_client)
@@ -179,7 +179,7 @@ def test_on_start_with_experiment_id_override(monkeypatch):
     mlflow.set_experiment(experiment_id=DEFAULT_EXPERIMENT_ID)
 
     mock_client = mock.MagicMock()
-    mock_client._start_tracked_trace.return_value = create_test_trace_info(_REQUEST_ID, 0)
+    mock_client._start_tracked_trace.return_value = create_test_trace_info(_TRACE_ID, 0)
 
     mock_logger = mock.MagicMock()
     monkeypatch.setattr("mlflow.tracing.processor.mlflow._logger", mock_logger)
@@ -202,7 +202,7 @@ def test_on_start_warns_default_experiment(monkeypatch):
     mlflow.set_experiment(experiment_id=DEFAULT_EXPERIMENT_ID)
 
     mock_client = mock.MagicMock()
-    mock_client._start_tracked_trace.return_value = create_test_trace_info(_REQUEST_ID, 0)
+    mock_client._start_tracked_trace.return_value = create_test_trace_info(_TRACE_ID, 0)
 
     mock_logger = mock.MagicMock()
     monkeypatch.setattr("mlflow.tracing.processor.mlflow._logger", mock_logger)
@@ -219,19 +219,19 @@ def test_on_start_warns_default_experiment(monkeypatch):
 
 
 def test_on_end():
-    trace_info = create_test_trace_info(_REQUEST_ID, 0)
+    trace_info = create_test_trace_info(_TRACE_ID, 0)
     trace_manager = InMemoryTraceManager.get_instance()
-    trace_manager.register_trace(_TRACE_ID, trace_info)
+    trace_manager.register_trace(_OTEL_TRACE_ID, trace_info)
 
     otel_span = create_mock_otel_span(
         name="foo",
-        trace_id=_TRACE_ID,
+        trace_id=_OTEL_TRACE_ID,
         span_id=1,
         parent_id=None,
         start_time=5_000_000,
         end_time=9_000_000,
     )
-    span = LiveSpan(otel_span, request_id=_REQUEST_ID)
+    span = LiveSpan(otel_span, _TRACE_ID)
     span.set_status("OK")
     span.set_inputs({"input1": "very long input" * 100})
     span.set_outputs({"output": "very long output" * 100})
@@ -257,6 +257,6 @@ def test_on_end():
 
     # Non-root span should not be exported
     mock_exporter.reset_mock()
-    child_span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=2, parent_id=1)
+    child_span = create_mock_otel_span(trace_id=_OTEL_TRACE_ID, span_id=2, parent_id=1)
     processor.on_end(child_span)
     mock_exporter.export.assert_not_called()

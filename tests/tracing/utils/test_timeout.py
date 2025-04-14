@@ -85,7 +85,7 @@ def test_trace_halted_after_timeout(monkeypatch):
     assert (
         root_span.events[0]
         .attributes["exception.message"]
-        .startswith(f"Trace {trace.info.request_id} is timed out")
+        .startswith(f"Trace {trace.info.trace_id} is timed out")
     )
 
     first_span = trace.data.spans[1]

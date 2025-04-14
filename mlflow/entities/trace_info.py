@@ -52,6 +52,11 @@ class TraceInfo(_MlflowObject):
             return self.__dict__ == other.__dict__
         return False
 
+    @property
+    def trace_id(self):
+        """Alias for request_id."""
+        return self.request_id
+
     def to_proto(self):
         proto = ProtoTraceInfo()
         proto.request_id = self.request_id

@@ -99,12 +99,12 @@ def create_mock_otel_span(
     )
 
 
-def create_trace(request_id) -> Trace:
-    return Trace(info=create_test_trace_info(request_id), data=TraceData())
+def create_trace(trace_id) -> Trace:
+    return Trace(info=create_test_trace_info(trace_id), data=TraceData())
 
 
 def create_test_trace_info(
-    request_id,
+    trace_id,
     experiment_id="test",
     timestamp_ms=0,
     execution_time_ms=1,
@@ -113,7 +113,7 @@ def create_test_trace_info(
     tags=None,
 ):
     return TraceInfo(
-        request_id=request_id,
+        request_id=trace_id,
         experiment_id=experiment_id,
         timestamp_ms=timestamp_ms,
         execution_time_ms=execution_time_ms,

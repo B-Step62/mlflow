@@ -13,29 +13,29 @@ from mlflow.tracing.utils import encode_span_id, encode_trace_id
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 
-_TRACE_ID = 12345
-_REQUEST_ID = f"tr-{_TRACE_ID}"
-_REQUEST_ID_2 = f"tr-{_TRACE_ID + 1}"
+_OTEL_TRACE_ID = 12345
+_TRACE_ID = f"tr-{_OTEL_TRACE_ID}"
+_TRACE_ID_2 = f"tr-{_OTEL_TRACE_ID + 1}"
 
 
 def test_export():
     otel_span = create_mock_otel_span(
         name="root",
-        trace_id=_TRACE_ID,
+        trace_id=_OTEL_TRACE_ID,
         span_id=1,
         parent_id=None,
         start_time=0,
         end_time=1_000_000,  # 1 millisecond
     )
-    span = LiveSpan(otel_span, request_id=_REQUEST_ID)
+    span = LiveSpan(otel_span, _TRACE_ID)
     span.set_inputs({"input1": "very long input" * 100})
     span.set_outputs("very long output" * 100)
     _register_span_and_trace(span)
 
     child_otel_span = create_mock_otel_span(
-        name="child", trace_id=_TRACE_ID, span_id=2, parent_id=1
+        name="child", trace_id=_OTEL_TRACE_ID, span_id=2, parent_id=1
     )
-    child_span = LiveSpan(child_otel_span, request_id=_REQUEST_ID)
+    child_span = LiveSpan(child_otel_span, _TRACE_ID)
     _register_span_and_trace(child_span)
 
     # Invalid span should be also ignored
@@ -50,7 +50,7 @@ def test_export():
 
     # Trace should be added to the in-memory buffer and can be extracted
     assert len(_TRACE_BUFFER) == 1
-    trace_dict = pop_trace(_REQUEST_ID)
+    trace_dict = pop_trace(_TRACE_ID)
     trace_info = trace_dict["info"]
     assert trace_info["request_time"] == "1970-01-01T00:00:00Z"
     assert trace_info["execution_duration_ms"] == 1
@@ -59,7 +59,7 @@ def test_export():
     assert len(spans) == 2
     assert spans[0]["name"] == "root"
     assert spans[0]["context"] == {
-        "trace_id": encode_trace_id(_TRACE_ID),
+        "trace_id": encode_trace_id(_OTEL_TRACE_ID),
         "span_id": encode_span_id(1),
     }
     assert isinstance(spans[0]["attributes"], dict)
@@ -69,8 +69,8 @@ def test_export():
 
 
 def test_export_warn_invalid_attributes():
-    otel_span = create_mock_otel_span(trace_id=_TRACE_ID, span_id=1)
-    span = LiveSpan(otel_span, request_id=_REQUEST_ID)
+    otel_span = create_mock_otel_span(trace_id=_OTEL_TRACE_ID, span_id=1)
+    span = LiveSpan(otel_span, _TRACE_ID)
     span.set_attribute("valid", "value")
     # # Users may set attribute directly to the OpenTelemetry span
     # otel_span.set_attribute("int", 1)
@@ -80,11 +80,11 @@ def test_export_warn_invalid_attributes():
     exporter = InferenceTableSpanExporter()
     exporter.export([otel_span])
 
-    trace_dict = pop_trace(_REQUEST_ID)
+    trace_dict = pop_trace(_TRACE_ID)
     trace = Trace.from_dict(trace_dict)
     stored_span = trace.data.spans[0]
     assert stored_span.attributes == {
-        "mlflow.traceRequestId": _REQUEST_ID,
+        "mlflow.traceRequestId": _TRACE_ID,
         "mlflow.spanType": "UNKNOWN",
         "valid": "value",
         "str": "a",
@@ -108,25 +108,25 @@ def test_export_trace_buffer_not_exceeds_max_size(monkeypatch):
 
     exporter = InferenceTableSpanExporter()
 
-    otel_span_1 = create_mock_otel_span(name="1", trace_id=_TRACE_ID, span_id=1)
-    _register_span_and_trace(LiveSpan(otel_span_1, request_id=_REQUEST_ID))
+    otel_span_1 = create_mock_otel_span(name="1", trace_id=_OTEL_TRACE_ID, span_id=1)
+    _register_span_and_trace(LiveSpan(otel_span_1, _TRACE_ID))
 
     exporter.export([otel_span_1])
 
-    assert pop_trace(_REQUEST_ID) is not None
+    assert pop_trace(_TRACE_ID) is not None
 
-    otel_span_2 = create_mock_otel_span(name="2", trace_id=_TRACE_ID + 1, span_id=1)
-    _register_span_and_trace(LiveSpan(otel_span_2, request_id=_REQUEST_ID_2))
+    otel_span_2 = create_mock_otel_span(name="2", trace_id=_OTEL_TRACE_ID + 1, span_id=1)
+    _register_span_and_trace(LiveSpan(otel_span_2, _TRACE_ID_2))
 
     exporter.export([otel_span_2])
 
-    assert pop_trace(_REQUEST_ID) is None
-    assert pop_trace(_REQUEST_ID_2) is not None
+    assert pop_trace(_TRACE_ID) is None
+    assert pop_trace(_TRACE_ID_2) is not None
 
 
 def _register_span_and_trace(span: LiveSpan):
     trace_manager = InMemoryTraceManager.get_instance()
     if span.parent_id is None:
-        trace_info = create_test_trace_info(span.request_id, "0")
+        trace_info = create_test_trace_info(span.trace_id, "0")
         trace_manager.register_trace(span._span.context.trace_id, trace_info)
     trace_manager.register_span(span)

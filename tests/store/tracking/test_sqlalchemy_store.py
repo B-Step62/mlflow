@@ -4116,25 +4116,25 @@ def test_start_and_end_trace(store: SqlAlchemyStore):
         request_metadata={"rq1": "foo", "rq2": "bar"},
         tags={"tag1": "apple", "tag2": "orange"},
     )
-    request_id = trace_info.request_id
+    trace_id = trace_info.trace_id
 
-    assert trace_info.request_id is not None
+    assert trace_info.trace_id is not None
     assert trace_info.experiment_id == experiment_id
     assert trace_info.timestamp_ms == 1234
     assert trace_info.execution_time_ms is None
     assert trace_info.status == TraceStatus.IN_PROGRESS
     assert trace_info.request_metadata == {"rq1": "foo", "rq2": "bar"}
     artifact_location = trace_info.tags[MLFLOW_ARTIFACT_LOCATION]
-    assert artifact_location.endswith(f"/{experiment_id}/traces/{request_id}/artifacts")
+    assert artifact_location.endswith(f"/{experiment_id}/traces/{trace_id}/artifacts")
     assert trace_info.tags == {
         "tag1": "apple",
         "tag2": "orange",
         MLFLOW_ARTIFACT_LOCATION: artifact_location,
     }
-    assert trace_info == store.get_trace_info(request_id)
+    assert trace_info == store.get_trace_info(trace_id)
 
     trace_info = store.end_trace(
-        request_id=request_id,
+        trace_id=trace_id,
         timestamp_ms=2345,
         status=TraceStatus.OK,
         # Update one key and add a new key
@@ -4144,7 +4144,7 @@ def test_start_and_end_trace(store: SqlAlchemyStore):
         },
         tags={"tag1": "updated", "tag3": "grape"},
     )
-    assert trace_info.request_id == request_id
+    assert trace_info.trace_id == trace_id
     assert trace_info.experiment_id == experiment_id
     assert trace_info.timestamp_ms == 1234
     assert trace_info.execution_time_ms == 2345 - 1234
@@ -4160,7 +4160,7 @@ def test_start_and_end_trace(store: SqlAlchemyStore):
         "tag3": "grape",
         MLFLOW_ARTIFACT_LOCATION: artifact_location,
     }
-    assert trace_info == store.get_trace_info(request_id)
+    assert trace_info == store.get_trace_info(trace_id)
 
 
 def test_start_trace_with_invalid_experiment_id(store: SqlAlchemyStore):
@@ -4175,7 +4175,7 @@ def test_start_trace_with_invalid_experiment_id(store: SqlAlchemyStore):
 
 def _create_trace(
     store: SqlAlchemyStore,
-    request_id: str,
+    trace_id: str,
     experiment_id=0,
     timestamp_ms=0,
     execution_time_ms=0,
@@ -4188,18 +4188,18 @@ def _create_trace(
         store.create_experiment(store, experiment_id)
 
     with mock.patch(
-        "mlflow.store.tracking.sqlalchemy_store.generate_request_id",
-        side_effect=lambda: request_id,
+        "mlflow.store.tracking.sqlalchemy_store.generate_trace_id",
+        side_effect=lambda: trace_id,
     ):
         # In case if under the hood of `store` is a GO implementation, it is
-        # not possible to mock `generate.request_id`. Let's send generated `request_id`
-        # via special tag='mock.generate_request_id.go.testing.tag'
+        # not possible to mock `generate_trace_id`. Let's send generated `trace_id`
+        # via special tag='mock.generate_trace_id.go.testing.tag'
         # so GO implementation can catch it.
         if _MLFLOW_GO_STORE_TESTING.get():
             if tags:
-                tags["mock.generate_request_id.go.testing.tag"] = request_id
+                tags["mock.generate_trace_id.go.testing.tag"] = trace_id
             else:
-                tags = {"mock.generate_request_id.go.testing.tag": request_id}
+                tags = {"mock.generate_trace_id.go.testing.tag": trace_id}
 
         trace_info = store.start_trace(
             experiment_id=experiment_id,
@@ -4209,7 +4209,7 @@ def _create_trace(
         )
 
     store.end_trace(
-        request_id=request_id,
+        trace_id=trace_id,
         timestamp_ms=timestamp_ms + execution_time_ms,
         status=status,
         request_metadata={},
@@ -4314,7 +4314,7 @@ def test_search_traces_order_by(store_with_traces, order_by, expected_ids):
         max_results=5,
         order_by=order_by,
     )
-    actual_ids = [trace_info.request_id for trace_info in trace_infos]
+    actual_ids = [trace_info.trace_id for trace_info in trace_infos]
     assert actual_ids == expected_ids
 
 
@@ -4356,7 +4356,7 @@ def test_search_traces_with_filter(store_with_traces, filter_string, expected_id
         max_results=5,
         order_by=[],
     )
-    actual_ids = [trace_info.request_id for trace_info in trace_infos]
+    actual_ids = [trace_info.trace_id for trace_info in trace_infos]
     assert actual_ids == expected_ids
 
 
@@ -4408,13 +4408,13 @@ def test_search_traces_pagination(store_with_traces):
     ]
 
     traces, token = store_with_traces.search_traces(exps, max_results=2)
-    assert [t.request_id for t in traces] == ["tr-4", "tr-3"]
+    assert [t.trace_id for t in traces] == ["tr-4", "tr-3"]
 
     traces, token = store_with_traces.search_traces(exps, max_results=2, page_token=token)
-    assert [t.request_id for t in traces] == ["tr-2", "tr-1"]
+    assert [t.trace_id for t in traces] == ["tr-2", "tr-1"]
 
     traces, token = store_with_traces.search_traces(exps, max_results=2, page_token=token)
-    assert [t.request_id for t in traces] == ["tr-0"]
+    assert [t.trace_id for t in traces] == ["tr-0"]
     assert token is None
 
 
@@ -4423,52 +4423,52 @@ def test_search_traces_pagination_tie_breaker(store):
     # works correctly.
     exp1 = store.create_experiment("exp1")
 
-    request_ids = [f"tr-{i}" for i in range(5)]
-    random.shuffle(request_ids)
+    trace_ids = [f"tr-{i}" for i in range(5)]
+    random.shuffle(trace_ids)
     # Insert traces with random order
-    for rid in request_ids:
+    for rid in trace_ids:
         _create_trace(store, rid, exp1, timestamp_ms=0)
 
     # Insert 5 more traces with newer timestamp
-    request_ids = [f"tr-{i + 5}" for i in range(5)]
-    random.shuffle(request_ids)
-    for rid in request_ids:
+    trace_ids = [f"tr-{i + 5}" for i in range(5)]
+    random.shuffle(trace_ids)
+    for rid in trace_ids:
         _create_trace(store, rid, exp1, timestamp_ms=1)
 
     traces, token = store.search_traces([exp1], max_results=3)
-    assert [t.request_id for t in traces] == ["tr-5", "tr-6", "tr-7"]
+    assert [t.trace_id for t in traces] == ["tr-5", "tr-6", "tr-7"]
     traces, token = store.search_traces([exp1], max_results=3, page_token=token)
-    assert [t.request_id for t in traces] == ["tr-8", "tr-9", "tr-0"]
+    assert [t.trace_id for t in traces] == ["tr-8", "tr-9", "tr-0"]
     traces, token = store.search_traces([exp1], max_results=3, page_token=token)
-    assert [t.request_id for t in traces] == ["tr-1", "tr-2", "tr-3"]
+    assert [t.trace_id for t in traces] == ["tr-1", "tr-2", "tr-3"]
     traces, token = store.search_traces([exp1], max_results=3, page_token=token)
-    assert [t.request_id for t in traces] == ["tr-4"]
+    assert [t.trace_id for t in traces] == ["tr-4"]
 
 
 def test_set_and_delete_tags(store: SqlAlchemyStore):
     exp1 = store.create_experiment("exp1")
-    request_id = "tr-123"
-    _create_trace(store, request_id, experiment_id=exp1)
+    trace_id = "tr-123"
+    _create_trace(store, trace_id, experiment_id=exp1)
 
     # Delete system tag for easier testing
-    store.delete_trace_tag(request_id, MLFLOW_ARTIFACT_LOCATION)
+    store.delete_trace_tag(trace_id, MLFLOW_ARTIFACT_LOCATION)
 
-    assert store.get_trace_info(request_id).tags == {}
+    assert store.get_trace_info(trace_id).tags == {}
 
-    store.set_trace_tag(request_id, "tag1", "apple")
-    assert store.get_trace_info(request_id).tags == {"tag1": "apple"}
+    store.set_trace_tag(trace_id, "tag1", "apple")
+    assert store.get_trace_info(trace_id).tags == {"tag1": "apple"}
 
-    store.set_trace_tag(request_id, "tag1", "grape")
-    assert store.get_trace_info(request_id).tags == {"tag1": "grape"}
+    store.set_trace_tag(trace_id, "tag1", "grape")
+    assert store.get_trace_info(trace_id).tags == {"tag1": "grape"}
 
-    store.set_trace_tag(request_id, "tag2", "orange")
-    assert store.get_trace_info(request_id).tags == {"tag1": "grape", "tag2": "orange"}
+    store.set_trace_tag(trace_id, "tag2", "orange")
+    assert store.get_trace_info(trace_id).tags == {"tag1": "grape", "tag2": "orange"}
 
-    store.delete_trace_tag(request_id, "tag1")
-    assert store.get_trace_info(request_id).tags == {"tag2": "orange"}
+    store.delete_trace_tag(trace_id, "tag1")
+    assert store.get_trace_info(trace_id).tags == {"tag2": "orange"}
 
     with pytest.raises(MlflowException, match="No trace tag with key 'tag1'"):
-        store.delete_trace_tag(request_id, "tag1")
+        store.delete_trace_tag(trace_id, "tag1")
 
 
 @pytest.mark.parametrize(
@@ -4498,11 +4498,11 @@ def test_set_invalid_tag(key, value, expected_error, store: SqlAlchemyStore):
 
 def test_set_tag_truncate_too_long_tag(store: SqlAlchemyStore):
     exp1 = store.create_experiment("exp1")
-    request_id = "tr-123"
-    _create_trace(store, request_id, experiment_id=exp1)
+    trace_id = "tr-123"
+    _create_trace(store, trace_id, experiment_id=exp1)
 
-    store.set_trace_tag(request_id, "key", "123" + "a" * 8000)
-    tags = store.get_trace_info(request_id).tags
+    store.set_trace_tag(trace_id, "key", "123" + "a" * 8000)
+    tags = store.get_trace_info(trace_id).tags
     assert len(tags["key"]) == 8000
     assert tags["key"] == "123" + "a" * 7997
 
@@ -4584,16 +4584,16 @@ def test_delete_traces_with_max_count(store):
     assert len(traces) == 1
 
 
-def test_delete_traces_with_request_ids(store):
+def test_delete_traces_with_trace_ids(store):
     exp1 = store.create_experiment("exp1")
     for i in range(10):
         _create_trace(store, f"tr-{i}", exp1, timestamp_ms=i)
 
-    deleted = store.delete_traces(exp1, request_ids=[f"tr-{i}" for i in range(8)])
+    deleted = store.delete_traces(exp1, trace_ids=[f"tr-{i}" for i in range(8)])
     assert deleted == 8
     traces, _ = store.search_traces([exp1])
     assert len(traces) == 2
-    assert [trace.request_id for trace in traces] == ["tr-9", "tr-8"]
+    assert [trace.trace_id for trace in traces] == ["tr-9", "tr-8"]
 
 
 def test_delete_traces_raises_error(store):
@@ -4601,19 +4601,19 @@ def test_delete_traces_raises_error(store):
 
     with pytest.raises(
         MlflowException,
-        match=r"Either `max_timestamp_millis` or `request_ids` must be specified.",
+        match=r"Either `max_timestamp_millis` or `trace_ids` must be specified.",
     ):
         store.delete_traces(exp_id)
     with pytest.raises(
         MlflowException,
-        match=r"Only one of `max_timestamp_millis` and `request_ids` can be specified.",
+        match=r"Only one of `max_timestamp_millis` and `trace_ids` can be specified.",
     ):
-        store.delete_traces(exp_id, max_timestamp_millis=100, request_ids=["request_id"])
+        store.delete_traces(exp_id, max_timestamp_millis=100, trace_ids=["trace_id"])
     with pytest.raises(
         MlflowException,
-        match=r"`max_traces` can't be specified if `request_ids` is specified.",
+        match=r"`max_traces` can't be specified if `trace_ids` is specified.",
     ):
-        store.delete_traces(exp_id, max_traces=2, request_ids=["request_id"])
+        store.delete_traces(exp_id, max_traces=2, trace_ids=["trace_id"])
     with pytest.raises(
         MlflowException, match=r"`max_traces` must be a positive integer, received 0"
     ):

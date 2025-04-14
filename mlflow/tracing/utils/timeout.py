@@ -19,7 +19,7 @@ from mlflow.exceptions import MlflowTracingException
 _logger = logging.getLogger(__name__)
 
 _TRACE_EXPIRATION_MSG = (
-    "Trace {request_id} is timed out after {ttl} seconds. The operation may be stuck or "
+    "Trace {trace_id} is timed out after {ttl} seconds. The operation may be stuck or "
     "taking too long to complete. To increase the timeout, set the environment variable "
     "MLFLOW_TRACE_TIMEOUT_SECONDS to a larger value."
 )
@@ -207,23 +207,23 @@ class MlflowTraceTimeoutCache(_TimedCache):
         expired = self._get_expired_traces()
 
         # End the expired traces and set the status to ERROR in background thread
-        for request_id in expired:
-            trace = self[request_id]
+        for trace_id in expired:
+            trace = self[trace_id]
             if root_span := trace.get_root_span():
                 try:
                     root_span.set_status(SpanStatusCode.ERROR)
-                    msg = _TRACE_EXPIRATION_MSG.format(request_id=request_id, ttl=self._timeout)
+                    msg = _TRACE_EXPIRATION_MSG.format(trace_id=trace_id, ttl=self._timeout)
                     exception_event = SpanEvent.from_exception(MlflowTracingException(msg))
                     root_span.add_event(exception_event)
                     root_span.end()  # Calling end() triggers span export
                     _logger.info(msg + " You can find the aborted trace in the MLflow UI.")
                 except Exception as e:
-                    _logger.debug(f"Failed to export an expired trace {request_id}: {e}")
+                    _logger.debug(f"Failed to export an expired trace {trace_id}: {e}")
 
                 # NB: root_span.end() should pop the trace from the cache. But we need to
                 # double-check it because it may not happens due to some errors.
-                if request_id in self:
-                    del self[request_id]
+                if trace_id in self:
+                    del self[trace_id]
 
     def _get_expired_traces(self) -> list[str]:
         """
