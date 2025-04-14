@@ -216,6 +216,7 @@ safe_import_functions(
     base_module="mlflow.tracing.core.api",
     functions=[
         "get_current_active_span",
+        "get_last_active_trace_id",
         "start_span",
         "trace",
         "update_current_trace",
@@ -228,7 +229,6 @@ safe_import_functions(
     base_module="mlflow.tracing.tracking",
     functions=[
         "add_trace",
-        "get_last_active_trace",
         "get_trace",
         "log_trace",
         "search_traces",

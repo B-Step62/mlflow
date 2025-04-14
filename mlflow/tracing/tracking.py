@@ -26,7 +26,7 @@ from mlflow.tracing.utils import SPANS_COLUMN_NAME
 from mlflow.tracing.utils.search import extract_span_inputs_outputs, traces_to_df
 from mlflow.tracking.fluent import _get_experiment_id
 from mlflow.utils import get_results_from_paginated_fn
-from mlflow.utils.annotations import experimental
+from mlflow.utils.annotations import deprecated, experimental
 
 _logger = logging.getLogger(__name__)
 
@@ -255,79 +255,6 @@ def search_traces(
             )
 
     return results
-
-
-def get_last_active_trace(thread_local=False) -> Optional[Trace]:
-    """
-    Get the last active trace in the same process if exists.
-
-    .. warning::
-
-        This function DOES NOT work in the model deployed in Databricks model serving.
-
-    .. warning::
-
-        This function is not thread-safe by default, returns the last active trace in
-        the same process. If you want to get the last active trace in the current thread,
-        set the `thread_local` parameter to True.
-
-    .. note::
-
-        This function returns an immutable copy of the original trace that is logged
-        in the tracking store. Any changes made to the returned object will not be reflected
-        in the original trace. To modify the already ended trace (while most of the data is
-        immutable after the trace is ended, you can still edit some fields such as `tags`),
-        please use the respective MlflowClient APIs with the request ID of the trace, as
-        shown in the example below.
-
-    Args:
-
-        thread_local: If True, returns the last active trace in the current thread. Otherwise,
-            returns the last active trace in the same process. Default is False.
-
-    .. code-block:: python
-        :test:
-
-        import mlflow
-
-
-        @mlflow.trace
-        def f():
-            pass
-
-
-        f()
-
-        trace = mlflow.get_last_active_trace()
-
-
-        # Use MlflowClient APIs to mutate the ended trace
-        mlflow.MlflowClient().set_trace_tag(trace.info.request_id, "key", "value")
-
-    Returns:
-        The last active trace if exists, otherwise None.
-    """
-    trace_id = (
-        _LAST_ACTIVE_TRACE_ID_THREAD_LOCAL.get() if thread_local else _LAST_ACTIVE_TRACE_ID_GLOBAL
-    )
-    if trace_id is not None:
-        try:
-            return MlflowClient().get_trace(trace_id, display=False)
-        except:
-            _logger.debug(
-                f"Failed to get the last active trace with request ID {trace_id}.",
-                exc_info=True,
-            )
-            raise
-    else:
-        return None
-
-
-def _set_last_active_trace_id(trace_id: str):
-    """Internal function to set the last active trace ID."""
-    global _LAST_ACTIVE_TRACE_ID_GLOBAL
-    _LAST_ACTIVE_TRACE_ID_GLOBAL = trace_id
-    _LAST_ACTIVE_TRACE_ID_THREAD_LOCAL.set(trace_id)
 
 
 @experimental

@@ -418,6 +418,50 @@ def update_current_trace(
         trace.info.tags.update(tags or {})
 
 
+def get_last_active_trace_id(thread_local: bool = False) -> Optional[str]:
+    """
+    Get the last active trace in the same process if exists.
+
+    .. warning::
+
+        This function is not thread-safe by default, returns the last active trace in
+        the same process. If you want to get the last active trace in the current thread,
+        set the `thread_local` parameter to True.
+
+    Args:
+
+        thread_local: If True, returns the last active trace in the current thread. Otherwise,
+            returns the last active trace in the same process. Default is False.
+
+    Returns:
+        The ID of the last active trace if exists, otherwise None.
+
+    .. code-block:: python
+        :test:
+
+        import mlflow
+
+
+        @mlflow.trace
+        def f():
+            pass
+
+
+        f()
+
+        trace_id = mlflow.get_last_active_trace_id()
+
+        # Use MlflowClient APIs to mutate the ended trace
+        mlflow.MlflowClient().set_trace_tag(trace_id, "key", "value")
+
+        # Get the full trace object
+        trace = mlflow.get_trace(trace_id)
+    """
+    return (
+        _LAST_ACTIVE_TRACE_ID_THREAD_LOCAL.get() if thread_local else _LAST_ACTIVE_TRACE_ID_GLOBAL
+    )
+
+
 def _set_last_active_trace_id(trace_id: str):
     """Internal function to set the last active trace ID."""
     global _LAST_ACTIVE_TRACE_ID_GLOBAL
