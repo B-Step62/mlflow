@@ -9,17 +9,15 @@ use OpenTelemetry e.g. PromptFlow, Snowpark.
 
 import contextvars
 import functools
-import json
 import logging
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 from mlflow.exceptions import MlflowException, MlflowTracingException
-from mlflow.tracing.constant import SpanAttributeKey
 from mlflow.tracing.destination import Databricks, MlflowExperiment, TraceDestination
 from mlflow.tracing.utils.exception import raise_as_trace_exception
 from mlflow.tracing.utils.once import Once

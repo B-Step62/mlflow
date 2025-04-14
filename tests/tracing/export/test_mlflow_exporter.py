@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from mlflow.entities import LiveSpan
 from mlflow.tracing.export.mlflow import MlflowSpanExporter
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 

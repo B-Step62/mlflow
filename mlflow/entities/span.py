@@ -466,7 +466,7 @@ class LiveSpan(Span):
 
         :meta private:
         """
-        from mlflow.tracing.trace_manager import InMemoryTraceManager
+        from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 
         trace_manager = InMemoryTraceManager.get_instance()
         request_id = request_id or span.request_id

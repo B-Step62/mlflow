@@ -4,7 +4,7 @@ from typing import Optional
 
 from mlflow.entities import LiveSpan, Span, Trace
 from mlflow.entities.span_status import SpanStatusCode
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 

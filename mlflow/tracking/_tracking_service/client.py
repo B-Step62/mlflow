@@ -50,7 +50,7 @@ from mlflow.store.tracking import (
     SEARCH_TRACES_DEFAULT_MAX_RESULTS,
 )
 from mlflow.store.tracking.rest_store import RestStore
-from mlflow.tracing.artifact_utils import get_artifact_uri_for_trace
+from mlflow.tracing.utils.artifact_utils import get_artifact_uri_for_trace
 from mlflow.tracing.constant import TraceMetadataKey
 from mlflow.tracing.utils import TraceJSONEncoder, exclude_immutable_tags
 from mlflow.tracking._tracking_service import utils

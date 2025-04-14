@@ -33,7 +33,7 @@ from mlflow.tracing.constant import (
     TraceTagKey,
 )
 from mlflow.tracing.export.inference_table import pop_trace
-from mlflow.tracing.provider import _get_trace_exporter, _get_tracer
+from mlflow.tracing.core.provider import _get_trace_exporter, _get_tracer
 from mlflow.tracking.default_experiment import DEFAULT_EXPERIMENT_ID
 from mlflow.utils.file_utils import local_file_uri_to_path
 from mlflow.utils.os import is_windows

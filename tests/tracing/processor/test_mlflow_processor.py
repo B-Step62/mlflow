@@ -16,7 +16,7 @@ from mlflow.tracing.constant import (
     TraceMetadataKey,
 )
 from mlflow.tracing.processor.mlflow import MlflowSpanProcessor
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracking.default_experiment import DEFAULT_EXPERIMENT_ID
 from mlflow.utils.os import is_windows
 

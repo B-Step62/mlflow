@@ -22,25 +22,26 @@ from mlflow.entities.trace_status import TraceStatus
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST
 from mlflow.store.tracking import SEARCH_TRACES_DEFAULT_MAX_RESULTS
-from mlflow.tracing import provider
+from mlflow.tracing.core import provider
 from mlflow.tracing.constant import (
     STREAM_CHUNK_EVENT_NAME_FORMAT,
     STREAM_CHUNK_EVENT_VALUE_KEY,
     SpanAttributeKey,
 )
-from mlflow.tracing.provider import (
+from mlflow.tracing.core import (
+    end_span,
+    get_current_active_span,
     is_tracing_enabled,
     safe_set_span_in_context,
+    start_detached_span,
 )
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import (
     SPANS_COLUMN_NAME,
     TraceJSONEncoder,
     capture_function_input_args,
     encode_span_id,
-    end_client_span_or_trace,
     get_otel_attribute,
-    start_client_span_or_trace,
 )
 from mlflow.tracing.utils.search import extract_span_inputs_outputs, traces_to_df
 from mlflow.tracking.fluent import _get_experiment_id
@@ -271,8 +272,7 @@ def _wrap_generator(
 
     def _start_stream_span(fn, args, kwargs):
         try:
-            return start_client_span_or_trace(
-                client=MlflowClient(),
+            return start_detached_span(
                 name=name or fn.__name__,
                 parent_span=get_current_active_span(),
                 span_type=span_type,
@@ -289,10 +289,9 @@ def _wrap_generator(
         output_reducer: Optional[Callable] = None,
         error: Optional[Exception] = None,
     ):
-        client = MlflowClient()
         if error:
             span.add_event(SpanEvent.from_exception(error))
-            end_client_span_or_trace(client, span, status=SpanStatusCode.ERROR)
+            end_span(span, status=SpanStatusCode.ERROR)
             return
 
         if output_reducer:
@@ -300,7 +299,7 @@ def _wrap_generator(
                 outputs = output_reducer(outputs)
             except Exception as e:
                 _logger.debug(f"Failed to reduce outputs from stream: {e}")
-        end_client_span_or_trace(client, span, outputs=outputs)
+        end_span(span, outputs=outputs)
 
     def _record_chunk_event(span: LiveSpan, chunk: Any, chunk_index: int):
         try:

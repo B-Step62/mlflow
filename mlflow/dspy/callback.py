@@ -17,12 +17,14 @@ from mlflow.exceptions import MlflowException
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.pyfunc.context import get_prediction_context, maybe_set_prediction_context
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
+from mlflow.tracing.core.provider import detach_span_from_context, set_span_in_context
 from mlflow.tracing.core import (
-    end_client_span_or_trace,
-    set_span_chat_messages,
-    start_client_span_or_trace,
+    detach_span_from_context,
+    end_span,
+    set_span_in_context,
+    start_detached_span,
 )
+from mlflow.tracing.utils import set_span_chat_messages
 from mlflow.tracing.utils.token import SpanWithToken
 from mlflow.utils.autologging_utils import (
     get_autologging_config,
@@ -310,8 +312,7 @@ class MlflowCallback(BaseCallback):
             attributes = {**attributes, SpanAttributeKey.MODEL_ID: model_id}
 
         with maybe_set_prediction_context(prediction_context):
-            span = start_client_span_or_trace(
-                self._client,
+            span = start_detached_span(
                 name=name,
                 span_type=span_type,
                 parent_span=mlflow.get_current_active_span(),
@@ -342,8 +343,7 @@ class MlflowCallback(BaseCallback):
             st.span.add_event(SpanEvent.from_exception(exception))
 
         try:
-            end_client_span_or_trace(
-                client=self._client,
+            end_span(
                 span=st.span,
                 outputs=outputs,
                 status=status,

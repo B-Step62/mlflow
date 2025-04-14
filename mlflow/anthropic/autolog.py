@@ -11,11 +11,11 @@ from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatusCode
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.tracing.constant import SpanAttributeKey
+from mlflow.tracing.core import start_detached_span
 from mlflow.tracing.utils import (
     construct_full_inputs,
     set_span_chat_messages,
     set_span_chat_tools,
-    start_client_span_or_trace,
 )
 from mlflow.utils.autologging_utils.config import AutoLoggingConfig
 
@@ -40,7 +40,6 @@ class TracingSession:
     """Context manager for handling MLflow spans in both sync and async contexts."""
 
     def __init__(self, original, instance, args, kwargs):
-        self.mlflow_client = mlflow.MlflowClient()
         self.original = original
         self.instance = instance
         self.inputs = construct_full_inputs(original, instance, *args, **kwargs)
@@ -78,8 +77,7 @@ class TracingSession:
                 model_id = logged_model.model_id
             if model_id:
                 attributes[SpanAttributeKey.MODEL_ID] = model_id
-            self.span = start_client_span_or_trace(
-                self.mlflow_client,
+            self.span = start_detached_span(
                 name=f"{self.instance.__class__.__name__}.{self.original.__name__}",
                 span_type=_get_span_type(self.original.__name__),
                 inputs=self.inputs,
@@ -100,7 +98,6 @@ class TracingSession:
             _set_chat_message_attribute(self.span, self.inputs, self.output)
 
             start_detached_span(
-                self.mlflow_client,
                 self.span,
                 status=status,
                 outputs=self.output,

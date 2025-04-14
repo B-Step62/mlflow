@@ -12,10 +12,10 @@ from mlflow.bedrock.chat import convert_message_to_mlflow_chat, convert_tool_to_
 from mlflow.bedrock.stream import ConverseStreamWrapper, InvokeModelStreamWrapper
 from mlflow.bedrock.utils import skip_if_trace_disabled
 from mlflow.entities import SpanType
+from mlflow.tracing.core import start_detached_span
 from mlflow.tracing.utils import (
     set_span_chat_messages,
     set_span_chat_tools,
-    start_client_span_or_trace,
 )
 from mlflow.utils.autologging_utils import safe_patch
 
@@ -85,10 +85,7 @@ def _patched_invoke_model(original, self, *args, **kwargs):
 
 @skip_if_trace_disabled
 def _patched_invoke_model_with_response_stream(original, self, *args, **kwargs):
-    client = mlflow.MlflowClient()
-
-    span = start_client_span_or_trace(
-        client=client,
+    span = start_detached_span(
         name=f"{_BEDROCK_SPAN_PREFIX}{original.__name__}",
         # NB: Since we don't inspect the response body for this method, the span type is unknown.
         # We assume it is LLM as using streaming for embedding is not common.
@@ -159,9 +156,7 @@ def _patched_converse_stream(original, self, *args, **kwargs):
     # NB: Do not use fluent API to create a span for streaming response. If we do so,
     # the span context will remain active until the stream is fully exhausted, which
     # can lead to super hard-to-debug issues.
-    client = mlflow.MlflowClient()
-    span = start_client_span_or_trace(
-        client=client,
+    span = start_detached_span(
         name=f"{_BEDROCK_SPAN_PREFIX}{original.__name__}",
         span_type=SpanType.CHAT_MODEL,
         inputs=kwargs,

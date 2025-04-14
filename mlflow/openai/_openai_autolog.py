@@ -13,19 +13,18 @@ from mlflow.entities.span_status import SpanStatusCode
 from mlflow.ml_package_versions import _ML_PACKAGE_VERSIONS
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.openai.utils.chat_schema import set_span_chat_attributes
-from mlflow.tracing.assessment import MlflowClient
 from mlflow.tracing.constant import (
     STREAM_CHUNK_EVENT_NAME_FORMAT,
     STREAM_CHUNK_EVENT_VALUE_KEY,
     SpanAttributeKey,
     TraceMetadataKey,
 )
-from mlflow.tracing.trace_manager import InMemoryTraceManager
-from mlflow.tracing.utils import (
-    TraceJSONEncoder,
-    end_client_span_or_trace,
-    start_client_span_or_trace,
+from mlflow.tracing.core import (
+    end_span,
+    start_detached_span,
 )
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.utils import TraceJSONEncoder
 from mlflow.utils.autologging_utils.config import AutoLoggingConfig
 
 MIN_REQ_VERSION = Version(_ML_PACKAGE_VERSIONS["openai"]["autologging"]["minimum"])
@@ -90,7 +89,6 @@ def patched_call(original, self, *args, **kwargs):
     config = AutoLoggingConfig.init(flavor_name=mlflow.openai.FLAVOR_NAME)
     active_run = mlflow.active_run()
     run_id = active_run.info.run_id if active_run else None
-    mlflow_client = mlflow.MlflowClient()
 
     model_id = None
     task = mlflow.openai._get_task_name(self.__class__)
@@ -104,18 +102,18 @@ def patched_call(original, self, *args, **kwargs):
             _MODEL_TRACKER.set(model_identity, logged_model.model_id)
             model_id = logged_model.model_id
 
-        span = _start_span(mlflow_client, self, kwargs, run_id, model_id)
+        span = _start_span(self, kwargs, run_id, model_id)
 
     # Execute the original function
     try:
         raw_result = original(self, *args, **kwargs)
     except Exception as e:
         if config.log_traces:
-            _end_span_on_exception(mlflow_client, span, e)
+            _end_span_on_exception(span, e)
         raise
 
     if config.log_traces:
-        _end_span_on_success(mlflow_client, span, kwargs, raw_result)
+        _end_span_on_success(span, kwargs, raw_result)
 
     return raw_result
 
@@ -124,7 +122,6 @@ async def async_patched_call(original, self, *args, **kwargs):
     config = AutoLoggingConfig.init(flavor_name=mlflow.openai.FLAVOR_NAME)
     active_run = mlflow.active_run()
     run_id = active_run.info.run_id if active_run else None
-    mlflow_client = mlflow.MlflowClient()
 
     task = mlflow.openai._get_task_name(self.__class__)
     model_dict = {"task": task, **kwargs}
@@ -136,24 +133,23 @@ async def async_patched_call(original, self, *args, **kwargs):
             logged_model = mlflow.create_external_model(name="openai", params=params)
             _MODEL_TRACKER.set(model_identity, logged_model.model_id)
             model_id = logged_model.model_id
-        span = _start_span(mlflow_client, self, kwargs, run_id, model_id)
+        span = _start_span(self, kwargs, run_id, model_id)
 
     # Execute the original function
     try:
         raw_result = await original(self, *args, **kwargs)
     except Exception as e:
         if config.log_traces:
-            _end_span_on_exception(mlflow_client, span, e)
+            _end_span_on_exception(span, e)
         raise
 
     if config.log_traces:
-        _end_span_on_success(mlflow_client, span, kwargs, raw_result)
+        _end_span_on_success(span, kwargs, raw_result)
 
     return raw_result
 
 
 def _start_span(
-    mlflow_client: MlflowClient,
     instance: Any,
     inputs: dict[str, Any],
     run_id: str,
@@ -163,8 +159,7 @@ def _start_span(
     attributes = {k: v for k, v in inputs.items() if k != "messages"}
 
     # If there is an active span, create a child span under it, otherwise create a new trace
-    span = start_client_span_or_trace(
-        mlflow_client,
+    span = start_detached_span(
         name=instance.__class__.__name__,
         span_type=_get_span_type(instance.__class__),
         inputs=inputs,
@@ -182,7 +177,7 @@ def _start_span(
 
 
 def _end_span_on_success(
-    mlflow_client: MlflowClient, span: LiveSpan, inputs: dict[str, Any], raw_result: Any
+    span: LiveSpan, inputs: dict[str, Any], raw_result: Any
 ):
     from openai import AsyncStream, Stream
 
@@ -196,7 +191,7 @@ def _end_span_on_success(
             for i, chunk in enumerate(stream):
                 output.append(_process_chunk(span, i, chunk))
                 yield chunk
-            _end_span_on_success(mlflow_client, span, inputs, "".join(output))
+            _end_span_on_success(span, inputs, "".join(output))
 
         result._iterator = _stream_output_logging_hook(result._iterator)
     elif isinstance(result, AsyncStream):
@@ -206,21 +201,21 @@ def _end_span_on_success(
             async for chunk in stream:
                 output.append(_process_chunk(span, len(output), chunk))
                 yield chunk
-            _end_span_on_success(mlflow_client, span, inputs, "".join(output))
+            _end_span_on_success(span, inputs, "".join(output))
 
         result._iterator = _stream_output_logging_hook(result._iterator)
     else:
         try:
             set_span_chat_attributes(span, inputs, result)
-            end_client_span_or_trace(mlflow_client, span, outputs=result)
+            end_span(span, outputs=result)
         except Exception as e:
             _logger.warning(f"Encountered unexpected error when ending trace: {e}")
 
 
-def _end_span_on_exception(mlflow_client: MlflowClient, span: LiveSpan, e: Exception):
+def _end_span_on_exception(span: LiveSpan, e: Exception):
     try:
         span.add_event(SpanEvent.from_exception(e))
-        mlflow_client.end_span(span.request_id, span.span_id, status=SpanStatusCode.ERROR)
+        end_span(span=span, status=SpanStatusCode.ERROR)
     except Exception as inner_e:
         _logger.warning(f"Encountered unexpected error when ending trace: {inner_e}")
 

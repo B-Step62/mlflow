@@ -18,7 +18,7 @@ from mlflow.tracing.export.mlflow import MlflowSpanExporter
 from mlflow.tracing.processor.databricks import DatabricksSpanProcessor
 from mlflow.tracing.processor.inference_table import InferenceTableSpanProcessor
 from mlflow.tracing.processor.mlflow import MlflowSpanProcessor
-from mlflow.tracing.provider import (
+from mlflow.tracing.core.provider import (
     _get_tracer,
     _setup_tracer_provider,
     is_tracing_enabled,

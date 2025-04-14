@@ -84,10 +84,9 @@ from mlflow.tracing.constant import (
     TRACE_REQUEST_ID_PREFIX,
     SpanAttributeKey,
 )
-from mlflow.tracing.core.detached import start_detached_span, end_detached_span
+from mlflow.tracing.core.detached import start_detached_span, end_span
 from mlflow.tracing.display import get_display_handler
-from mlflow.tracing.trace_manager import InMemoryTraceManager
-from mlflow.tracing.utils import exclude_immutable_tags, get_otel_attribute
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking._model_registry import utils as registry_utils
 from mlflow.tracking._model_registry.client import ModelRegistryClient
@@ -1079,7 +1078,7 @@ class MlflowClient:
                     error_code=INVALID_PARAMETER_VALUE,
                 )
 
-        end_detached_span(request_id, root_span_id, outputs, attributes, status, end_time_ns)
+        end_span(request_id, root_span_id, outputs, attributes, status, end_time_ns)
 
     @experimental
     def _log_trace(self, trace: Trace) -> str:
@@ -1302,7 +1301,7 @@ class MlflowClient:
             end_time_ns: The end time of the span in nano seconds since the UNIX epoch.
                 If not provided, the current time will be used.
         """
-        end_detached_span(
+        end_span(
             request_id=request_id,
             span_id=span_id,
             outputs=outputs,

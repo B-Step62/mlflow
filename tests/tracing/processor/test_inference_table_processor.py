@@ -11,7 +11,7 @@ from mlflow.tracing.processor.inference_table import (
     _HEADER_REQUEST_ID_KEY,
     InferenceTableSpanProcessor,
 )
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 

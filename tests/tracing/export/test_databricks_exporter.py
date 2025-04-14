@@ -8,7 +8,7 @@ import pytest
 import mlflow
 from mlflow.entities.span_event import SpanEvent
 from mlflow.tracing.destination import Databricks
-from mlflow.tracing.provider import _get_trace_exporter
+from mlflow.tracing.core.provider import _get_trace_exporter
 
 _EXPERIMENT_ID = "dummy-experiment-id"
 

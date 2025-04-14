@@ -5,7 +5,7 @@ import cloudpickle
 from mlflow.models import Model
 from mlflow.models.dependencies_schemas import _get_dependencies_schema_from_model
 from mlflow.models.model import _MODEL_TRACKER
-from mlflow.tracing.provider import trace_disabled
+from mlflow.tracing.core.provider import trace_disabled
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
 from mlflow.utils.annotations import experimental
 from mlflow.utils.autologging_utils import disable_autologging_globally

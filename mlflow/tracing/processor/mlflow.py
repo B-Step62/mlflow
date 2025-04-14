@@ -19,7 +19,7 @@ from mlflow.tracing.constant import (
     TraceMetadataKey,
     TraceTagKey,
 )
-from mlflow.tracing.trace_manager import InMemoryTraceManager, _Trace
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager, _Trace
 from mlflow.tracing.utils import (
     deduplicate_span_names_in_place,
     get_otel_attribute,

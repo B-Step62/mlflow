@@ -32,7 +32,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.langchain import _LangChainModelWrapper
 from mlflow.langchain.langchain_tracer import MlflowLangchainTracer
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.provider import trace_disabled
+from mlflow.tracing.core.provider import trace_disabled
 
 from tests.tracing.helper import get_traces
 

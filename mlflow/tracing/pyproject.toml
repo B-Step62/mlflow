@@ -53,7 +53,7 @@ repository = "https://github.com/mlflow/mlflow"
 
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = [".."]
 include = ["mlflow", "mlflow.*"]
 exclude = ["tests", "tests.*"]
 

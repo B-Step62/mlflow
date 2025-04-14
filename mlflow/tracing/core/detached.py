@@ -1,13 +1,20 @@
+import json
+import logging
+from mlflow.tracing.core.provider import _get_tracer
+from opentelemetry import trace
 
-from mlflow.entities import LiveSpan, Span, SpanType, SpanStatus, SpanStatusCode
-from mlflow.entities.span import SpanAttributeKey, NO_OP_SPAN_REQUEST_ID
+from mlflow.entities import LiveSpan, Span, SpanType, SpanStatus
+from mlflow.entities.span import NoOpSpan, SpanAttributeKey, NO_OP_SPAN_REQUEST_ID, create_mlflow_span
 from mlflow.exceptions import MlflowException
-from mlflow.tracing.apis.tracking import get_otel_attribute
-from mlflow.tracing.constant import NO_OP_SPAN_REQUEST_ID
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
+from mlflow.tracing.utils import exclude_immutable_tags, get_otel_attribute
+
+
+_logger = logging.getLogger(__name__)
 
 def start_detached_span(
     name: str,
@@ -51,7 +58,7 @@ def start_detached_span(
         mlflow_span.set_attributes(attributes or {})
 
         trace_manager = InMemoryTraceManager.get_instance()
-        if tags := exclude_immutable_tags(tags or {})
+        if tags := exclude_immutable_tags(tags or {}):
             # Update trace tags for trace in in-memory trace manager
             with trace_manager.get_trace(request_id) as trace:
                 trace.info.tags.update(tags)
@@ -70,19 +77,17 @@ def start_detached_span(
 
 
 def end_span(
-    request_id: str,
-    span_id: str,
+    span: LiveSpan,
     outputs: Optional[Any] = None,
     attributes: Optional[dict[str, Any]] = None,
     status: Union[SpanStatus, str] = "OK",
     end_time_ns: Optional[int] = None,
 ):
     """
-    End the span with the given trace ID and span ID.
+    End the span.
 
     Args:
-        request_id: The ID of the trace to end.
-        span_id: The ID of the span to end.
+        span: The span to end. This should be a LiveSpan object.
         outputs: Outputs to set on the span.
         attributes: A dictionary of attributes to set on the span. If the span already has
             attributes, the new attributes will be merged with the existing ones. If the same
@@ -95,17 +100,9 @@ def end_span(
         end_time_ns: The end time of the span in nano seconds since the UNIX epoch.
             If not provided, the current time will be used.
     """
-    if request_id == NO_OP_SPAN_REQUEST_ID:
+    if span.request_id == NO_OP_SPAN_REQUEST_ID:
         return
 
-    trace_manager = InMemoryTraceManager.get_instance()
-    span = trace_manager.get_span_from_id(request_id, span_id)
-
-    if span is None:
-        raise MlflowException(
-            f"Span with ID {span_id} is not found or already finished.",
-            error_code=RESOURCE_DOES_NOT_EXIST,
-        )
     span.set_attributes(attributes or {})
     if outputs is not None:
         span.set_outputs(outputs)
@@ -115,7 +112,7 @@ def end_span(
         span.end(end_time=end_time_ns)
     except Exception as e:
         _logger.warning(
-            f"Failed to end span {span_id}: {e}. "
+            f"Failed to end span {span.span_id}: {e}. "
             "For full traceback, set logging level to debug.",
             exc_info=_logger.isEnabledFor(logging.DEBUG),
         )

@@ -8,7 +8,7 @@ from mlflow.tracing.export.inference_table import (
     _initialize_trace_buffer,
     pop_trace,
 )
-from mlflow.tracing.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import encode_span_id, encode_trace_id
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info

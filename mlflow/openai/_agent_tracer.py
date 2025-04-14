@@ -10,13 +10,12 @@ from agents._run_impl import TraceCtxManager
 from agents.tracing.setup import GLOBAL_TRACE_PROVIDER
 from pydantic import BaseModel
 
-from mlflow import MlflowClient
 from mlflow.entities.span import LiveSpan, SpanType
 from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatus, SpanStatusCode
 from mlflow.openai import FLAVOR_NAME
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.utils import end_client_span_or_trace, start_client_span_or_trace
+from mlflow.tracing.core import end_span, start_detached_span
 from mlflow.types.chat import (
     ChatMessage,
     ChatTool,
@@ -80,7 +79,6 @@ class MlflowOpenAgentTracingProcessor(oai.TracingProcessor):
         super().__init__(**kwargs)
         self._span_id_to_mlflow_span: dict[str, LiveSpan] = {}
         self._project_name = project_name
-        self._mlflow_client = MlflowClient()
 
         # Patch TraceCtxManager to handle exceptions from the agent properly
         # The original implementation does not propagate exception to the root span,
@@ -105,8 +103,7 @@ class MlflowOpenAgentTracingProcessor(oai.TracingProcessor):
 
     def on_trace_start(self, trace: oai.Trace) -> None:
         try:
-            mlflow_span = start_client_span_or_trace(
-                client=self._mlflow_client,
+            mlflow_span = start_detached_span(
                 name=trace.name,
                 span_type=SpanType.AGENT,
                 # TODO: Trace object doesn't contain input/output. Can we get it somehow?
@@ -143,8 +140,7 @@ class MlflowOpenAgentTracingProcessor(oai.TracingProcessor):
     def on_trace_end(self, trace: oai.Trace) -> None:
         try:
             mlflow_span = self._span_id_to_mlflow_span.pop(trace.trace_id, None)
-            end_client_span_or_trace(
-                client=self._mlflow_client,
+            end_span(
                 span=mlflow_span,
                 status=mlflow_span.status,
                 outputs="",
@@ -162,8 +158,7 @@ class MlflowOpenAgentTracingProcessor(oai.TracingProcessor):
 
             inputs, _, attributes = _parse_span_data(span.span_data)
 
-            mlflow_span = start_client_span_or_trace(
-                client=self._mlflow_client,
+            mlflow_span = start_detached_span(
                 name=_get_span_name(span.span_data),
                 span_type=_SPAN_TYPE_MAP.get(span.span_data.type, SpanType.CHAIN),
                 parent_span=parent_mlflow_span,
@@ -203,11 +198,7 @@ class MlflowOpenAgentTracingProcessor(oai.TracingProcessor):
             else:
                 status = SpanStatusCode.OK
 
-            end_client_span_or_trace(
-                client=self._mlflow_client,
-                span=mlflow_span,
-                status=status,
-            )
+            end_span(span=mlflow_span, status=status)
         except Exception:
             _logger.debug("Failed to end MLflow span", exc_info=True)
 
