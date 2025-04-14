@@ -99,10 +99,10 @@ and the <APILink fn="mlflow.client.MlflowClient.delete_trace_tag">`MlflowClient.
 
 ```python
 # Set a tag on a trace
-client.set_trace_tag(request_id=request_id, key="tag_key", value="tag_value")
+client.set_trace_tag(trace_id=trace_id, key="tag_key", value="tag_value")
 
 # Delete a tag from a trace
-client.delete_trace_tag(request_id=request_id, key="tag_key")
+client.delete_trace_tag(trace_id=trace_id, key="tag_key")
 ```
 
 ### Setting Tags via the MLflow UI

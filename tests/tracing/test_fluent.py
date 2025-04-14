@@ -483,13 +483,8 @@ def test_trace_handle_exception_during_prediction(sync):
         model.predict(2, 5) if sync else asyncio.run(model.predict(2, 5))
 
     # Trace should be logged even if the function fails, with status code ERROR
-<<<<<<< HEAD
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
-    assert trace.info.request_id is not None
-=======
-    trace = mlflow.get_last_active_trace()
     assert trace.info.trace_id is not None
->>>>>>> 049099bd4 (Update request_id to trace_id)
     assert trace.info.status == TraceStatus.ERROR
     assert trace.info.request_metadata[TraceMetadataKey.INPUTS] == '{"x": 2, "y": 5}'
     assert trace.info.request_metadata[TraceMetadataKey.OUTPUTS] == ""
@@ -802,19 +797,8 @@ def test_get_trace(mock_get_display_handler):
     model = DefaultTestModel()
     model.predict(2, 5)
 
-<<<<<<< HEAD
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
-    request_id = trace.info.request_id
-=======
-    trace = mlflow.get_last_active_trace()
-    trace_id = trace.info.trace_id
->>>>>>> 049099bd4 (Update request_id to trace_id)
     mock_get_display_handler.reset_mock()
-
-    # Fetch trace from in-memory buffer
-    trace_in_memory = mlflow.get_trace(trace_id)
-    assert trace.info.trace_id == trace_in_memory.info.trace_id
-    mock_get_display_handler.assert_not_called()
 
     # Fetch trace from backend
     trace_from_backend = mlflow.get_trace(trace_id)
@@ -1294,14 +1278,9 @@ def test_get_last_active_trace_id():
     predict(2, 5)
     predict(3, 6)
 
-<<<<<<< HEAD
     trace_id = mlflow.get_last_active_trace_id()
     trace = mlflow.get_trace(trace_id)
     assert trace.info.request_id is not None
-=======
-    trace = mlflow.get_last_active_trace()
-    assert trace.info.trace_id is not None
->>>>>>> 049099bd4 (Update request_id to trace_id)
     assert trace.data.request == '{"x": 3, "y": 6}'
 
     # Mutation of the copy should not affect the original trace logged in the backend
@@ -1500,20 +1479,13 @@ def test_add_trace():
 
     # If we call add_trace, the trace from the remote service should be merged
     predict(add_trace=True)
-<<<<<<< HEAD
     trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
-    request_id = trace.info.request_id
-    assert request_id is not None
-=======
-    trace = mlflow.get_last_active_trace()
-    trace_id = trace.info.trace_id
-    assert trace_id is not None
->>>>>>> 049099bd4 (Update request_id to trace_id)
+    assert trace.info.trace_id is not None
     assert trace.data.request == '{"add_trace": true}'
     assert trace.data.response == "1"
     # Remote spans should be merged
     assert len(trace.data.spans) == 3
-    assert all(span.trace_id == trace_id for span in trace.data.spans)
+    assert all(span.trace_id == trace.info.trace_id for span in trace.data.spans)
     parent_span, child_span, grandchild_span = trace.data.spans
     assert child_span.parent_id == parent_span.span_id
     assert child_span._otel_trace_id == parent_span._otel_trace_id
