@@ -466,6 +466,7 @@ class LiveSpan(Span):
 
         :meta private:
         """
+        from mlflow.tracing.core.api import _start_detached_otel_span
         from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 
         trace_manager = InMemoryTraceManager.get_instance()
@@ -473,7 +474,7 @@ class LiveSpan(Span):
         parent_span = trace_manager.get_span_from_id(request_id, parent_span_id)
 
         # Create a new span with the same name, parent, and start time
-        otel_span = mlflow.tracing.provider.start_detached_span(
+        otel_span = _start_detached_otel_span(
             name=span.name,
             parent=parent_span._span if parent_span else None,
             start_time_ns=span.start_time_ns,

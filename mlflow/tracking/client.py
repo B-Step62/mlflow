@@ -1077,7 +1077,8 @@ class MlflowClient:
                     error_code=INVALID_PARAMETER_VALUE,
                 )
 
-        end_span(request_id, root_span_id, outputs, attributes, status, end_time_ns)
+        root_span = trace_manager.get_span_from_id(request_id, root_span_id)
+        end_span(root_span, outputs, attributes, status, end_time_ns)
 
     @experimental
     def _log_trace(self, trace: Trace) -> str:

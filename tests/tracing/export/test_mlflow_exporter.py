@@ -47,7 +47,7 @@ def test_export(async_logging_enabled):
     assert len(exporter._trace_manager._traces) == 0
 
     # The last active trace should be recorded
-    from mlflow.tracing.fluent import (
+    from mlflow.tracing.core.api import (
         _LAST_ACTIVE_TRACE_ID_GLOBAL,
         _LAST_ACTIVE_TRACE_ID_THREAD_LOCAL,
     )

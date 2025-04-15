@@ -33,7 +33,7 @@ from tests.tracing.helper import get_traces, purge_traces
 def mock_setup_tracer_provider():
     # To count the number of times _setup_tracer_provider is called
     with mock.patch(
-        "mlflow.tracing.provider._setup_tracer_provider", side_effect=_setup_tracer_provider
+        "mlflow.tracing.core.provider._setup_tracer_provider", side_effect=_setup_tracer_provider
     ) as setup_mock:
         yield setup_mock
 
@@ -160,7 +160,7 @@ def test_disable_enable_tracing():
 
     # enable() / disable() should only raise MlflowTracingException
     with mock.patch(
-        "mlflow.tracing.provider.is_tracing_enabled", side_effect=ValueError("error")
+        "mlflow.tracing.core.provider.is_tracing_enabled", side_effect=ValueError("error")
     ) as is_enabled_mock:
         with pytest.raises(MlflowTracingException, match="error"):
             mlflow.tracing.disable()
@@ -210,14 +210,14 @@ def test_trace_disabled_decorator(enabled_initially):
     # @trace_disabled should not block the decorated function even
     # if it fails to disable tracing
     with mock.patch(
-        "mlflow.tracing.provider.disable", side_effect=MlflowTracingException("error")
+        "mlflow.tracing.core.provider.disable", side_effect=MlflowTracingException("error")
     ) as disable_mock:
         assert test_fn() == 0
         assert call_count == 3
         assert disable_mock.call_count == (1 if enabled_initially else 0)
 
     with mock.patch(
-        "mlflow.tracing.provider.enable", side_effect=MlflowTracingException("error")
+        "mlflow.tracing.core.provider.enable", side_effect=MlflowTracingException("error")
     ) as enable_mock:
         assert test_fn() == 0
         assert call_count == 4
@@ -269,7 +269,7 @@ def test_is_tracing_enabled():
 
     # is_tracing_enabled() should only raise MlflowTracingException
     with mock.patch(
-        "mlflow.tracing.provider._get_tracer", side_effect=ValueError("error")
+        "mlflow.tracing.core.provider._get_tracer", side_effect=ValueError("error")
     ) as get_tracer_mock:
         with pytest.raises(MlflowTracingException, match="error"):
             assert is_tracing_enabled() is False
