@@ -19,10 +19,7 @@ from mlflow.tracing.constant import (
     SpanAttributeKey,
     TraceMetadataKey,
 )
-from mlflow.tracing.core import (
-    end_span,
-    start_detached_span,
-)
+from mlflow.tracing.core.api import end_span, start_detached_span
 from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import TraceJSONEncoder
 from mlflow.utils.autologging_utils.config import AutoLoggingConfig

@@ -50,7 +50,7 @@ from mlflow.entities.assessment import (
 from mlflow.entities.assessment_source import AssessmentSource
 from mlflow.entities.model_registry import ModelVersion, Prompt, RegisteredModel
 from mlflow.entities.model_registry.model_version_stages import ALL_STAGES
-from mlflow.entities.span import NO_OP_SPAN_REQUEST_ID, NoOpSpan, create_mlflow_span
+from mlflow.entities.span import NO_OP_SPAN_REQUEST_ID, NoOpSpan
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_LOGGING
 from mlflow.exceptions import MlflowException
@@ -82,9 +82,8 @@ from mlflow.store.model_registry import (
 from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT, SEARCH_TRACES_DEFAULT_MAX_RESULTS
 from mlflow.tracing.constant import (
     TRACE_REQUEST_ID_PREFIX,
-    SpanAttributeKey,
 )
-from mlflow.tracing.core.detached import start_detached_span, end_span
+from mlflow.tracing.core.api import start_detached_span, end_span
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS

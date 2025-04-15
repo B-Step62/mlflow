@@ -150,8 +150,6 @@ if TYPE_CHECKING:
 if MLFLOW_CONFIGURE_LOGGING.get() is True:
     _configure_mlflow_loggers(root_module_name=__name__)
 
-MlflowClient = lazy_load = LazyLoader("mlflow.client", globals(), "mlflow.client.MlflowClient")
-
 # For backward compatibility, we expose the following functions and classes at the top level in
 # addition to `mlflow.config`.
 
@@ -164,8 +162,12 @@ def safe_import_functions(base_module: str, functions: list[str]):
             globals()[function] = getattr(importlib.import_module(base_module), function)
             __all__.append(function)
         except ImportError:
-            pass
+            raise
 
+safe_import_functions(
+    base_module="mlflow.client",
+    functions=["MlflowClient"],
+)
 
 safe_import_functions(
     base_module="mlflow.config",
@@ -211,17 +213,19 @@ safe_import_functions(
 )
 
 safe_import_functions(
-    base_module="mlflow.tracing.apis.core",
+    base_module="mlflow.tracing.core.api",
     functions=[
         "get_current_active_span",
         "start_span",
         "trace",
         "update_current_trace",
+        "end_span",
+        "start_detached_span",
     ]
 )
 
 safe_import_functions(
-    base_module="mlflow.tracing.apis.tracking",
+    base_module="mlflow.tracing.tracking",
     functions=[
         "add_trace",
         "get_last_active_trace",

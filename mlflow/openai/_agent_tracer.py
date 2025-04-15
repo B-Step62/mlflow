@@ -15,7 +15,7 @@ from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatus, SpanStatusCode
 from mlflow.openai import FLAVOR_NAME
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.core import end_span, start_detached_span
+from mlflow.tracing.core.api import end_span, start_detached_span
 from mlflow.types.chat import (
     ChatMessage,
     ChatTool,
