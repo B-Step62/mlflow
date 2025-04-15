@@ -55,9 +55,9 @@ from mlflow.store.tracking import (
     SEARCH_LOGGED_MODEL_MAX_RESULTS_DEFAULT,
     SEARCH_MAX_RESULTS_DEFAULT,
     SEARCH_MAX_RESULTS_THRESHOLD,
-    SEARCH_TRACES_DEFAULT_MAX_RESULTS,
 )
 from mlflow.store.tracking.abstract_store import AbstractStore
+from mlflow.tracing.constant import SEARCH_TRACES_DEFAULT_MAX_RESULTS
 from mlflow.tracing.utils import generate_request_id
 from mlflow.utils import get_results_from_paginated_fn
 from mlflow.utils.file_utils import (
@@ -72,12 +72,14 @@ from mlflow.utils.file_utils import (
     make_containing_dirs,
     mkdir,
     mv,
-    overwrite_yaml,
     path_to_local_file_uri,
     read_file,
     read_file_lines,
-    read_yaml,
     write_to,
+)
+from mlflow.utils.yaml_utils import (
+    overwrite_yaml,
+    read_yaml,
     write_yaml,
 )
 from mlflow.utils.mlflow_tags import (

@@ -3,6 +3,7 @@ import logging
 import time
 from typing import Optional
 
+from mlflow.tracing.core.client import TracingClient
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.sdk.trace import Span as OTelSpan
@@ -27,12 +28,11 @@ from mlflow.tracing.utils import (
     maybe_get_logged_model_id,
     maybe_get_request_id,
 )
-from mlflow.tracking.client import MlflowClient
-from mlflow.tracking.context.databricks_repo_context import DatabricksRepoRunContext
-from mlflow.tracking.context.git_context import GitRunContext
-from mlflow.tracking.context.registry import resolve_tags
-from mlflow.tracking.default_experiment import DEFAULT_EXPERIMENT_ID
-from mlflow.tracking.fluent import _get_experiment_id
+#from mlflow.tracking.context.databricks_repo_context import DatabricksRepoRunContext
+#from mlflow.tracking.context.git_context import GitRunContext
+#from mlflow.tracking.context.registry import resolve_tags
+#from mlflow.tracking.default_experiment import DEFAULT_EXPERIMENT_ID
+#from mlflow.tracking.fluent import _get_experiment_id
 from mlflow.utils.mlflow_tags import TRACE_RESOLVE_TAGS_ALLOWLIST
 
 _logger = logging.getLogger(__name__)

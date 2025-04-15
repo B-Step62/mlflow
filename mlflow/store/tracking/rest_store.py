@@ -70,7 +70,7 @@ from mlflow.protos.service_pb2 import (
     UpdateRun,
 )
 from mlflow.store.entities.paged_list import PagedList
-from mlflow.store.tracking import SEARCH_TRACES_DEFAULT_MAX_RESULTS
+from mlflow.tracing.constant import SEARCH_TRACES_DEFAULT_MAX_RESULTS
 from mlflow.store.tracking.abstract_store import AbstractStore
 from mlflow.utils.proto_json_utils import message_to_json, set_pb_value
 from mlflow.utils.rest_utils import (

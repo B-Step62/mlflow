@@ -47,6 +47,8 @@ from mlflow.tracking._tracking_service.utils import _use_tracking_uri
 from mlflow.utils.file_utils import (
     TempDir,
     path_to_local_file_uri,
+)
+from mlflow.utils.yaml_utils import (
     read_yaml,
     write_yaml,
 )

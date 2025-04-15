@@ -6,27 +6,18 @@ import logging
 from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 
-from mlflow import MlflowClient
 from mlflow.entities import Trace
-from mlflow.entities.span import LiveSpan
-from mlflow.entities.trace_status import TraceStatus
 from mlflow.exceptions import MlflowException
-from mlflow.store.tracking import SEARCH_TRACES_DEFAULT_MAX_RESULTS
-from mlflow.tracing.core import provider
+from mlflow.tracing.constant import SEARCH_TRACES_DEFAULT_MAX_RESULTS
 from mlflow.tracing.constant import (
     SpanAttributeKey,
 )
-from mlflow.tracing.core.api import (
-    _EVAL_REQUEST_ID_TO_TRACE_ID,
-    get_current_active_span,
-)
-from mlflow.tracing.core.provider import is_tracing_enabled
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.core.api import _EVAL_REQUEST_ID_TO_TRACE_ID
 from mlflow.tracing.utils import SPANS_COLUMN_NAME
 from mlflow.tracing.utils.search import extract_span_inputs_outputs, traces_to_df
 from mlflow.tracking.fluent import _get_experiment_id
 from mlflow.utils import get_results_from_paginated_fn
-from mlflow.utils.annotations import deprecated, experimental
+from mlflow.utils.annotations import experimental
 
 _logger = logging.getLogger(__name__)
 

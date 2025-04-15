@@ -16,8 +16,7 @@ from mlflow.entities import (
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.exceptions import MlflowException
 from mlflow.store.entities.paged_list import PagedList
-from mlflow.store.tracking import SEARCH_TRACES_DEFAULT_MAX_RESULTS
-from mlflow.tracing.constant import TraceTagKey
+from mlflow.tracing.constant import SEARCH_TRACES_DEFAULT_MAX_RESULTS, TraceTagKey
 from tests.tracing.helper import create_test_trace_info, get_traces
 
 

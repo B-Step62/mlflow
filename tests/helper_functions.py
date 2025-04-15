@@ -29,7 +29,7 @@ from mlflow.utils.environment import (
     _generate_mlflow_version_pinning,
     _get_pip_deps,
 )
-from mlflow.utils.file_utils import read_yaml, write_yaml
+from mlflow.utils.yaml_utils import read_yaml, write_yaml
 from mlflow.utils.os import is_windows
 
 AWS_METADATA_IP = "169.254.169.254"  # Used to fetch AWS Instance and User metadata.

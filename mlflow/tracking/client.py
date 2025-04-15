@@ -79,9 +79,9 @@ from mlflow.store.model_registry import (
     SEARCH_MODEL_VERSION_MAX_RESULTS_DEFAULT,
     SEARCH_REGISTERED_MODEL_MAX_RESULTS_DEFAULT,
 )
-from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT, SEARCH_TRACES_DEFAULT_MAX_RESULTS
+from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
 from mlflow.tracing.constant import (
-    TRACE_REQUEST_ID_PREFIX,
+    SEARCH_TRACES_DEFAULT_MAX_RESULTS, TRACE_REQUEST_ID_PREFIX,
 )
 from mlflow.tracing.core.api import start_detached_span, end_span
 from mlflow.tracing.display import get_display_handler

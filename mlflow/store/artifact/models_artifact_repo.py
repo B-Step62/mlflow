@@ -19,7 +19,7 @@ from mlflow.store.artifact.utils.models import (
     get_model_name_and_version,
     is_using_databricks_registry,
 )
-from mlflow.utils.file_utils import write_yaml
+from mlflow.utils.yaml_utils import write_yaml
 from mlflow.utils.uri import (
     add_databricks_profile_info_to_artifact_uri,
     get_databricks_profile_uri_from_artifact_uri,

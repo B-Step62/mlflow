@@ -55,10 +55,12 @@ from mlflow.utils.file_utils import (
     local_file_uri_to_path,
     make_containing_dirs,
     mkdir,
-    overwrite_yaml,
     read_file,
-    read_yaml,
     write_to,
+)
+from mlflow.utils.yaml_utils import (
+    overwrite_yaml,
+    read_yaml,
     write_yaml,
 )
 from mlflow.utils.search_utils import SearchModelUtils, SearchModelVersionUtils, SearchUtils
