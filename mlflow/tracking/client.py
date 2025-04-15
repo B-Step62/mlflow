@@ -161,6 +161,8 @@ class MlflowClient:
         final_tracking_uri = utils._resolve_tracking_uri(tracking_uri)
         self._registry_uri = registry_utils._resolve_registry_uri(registry_uri, tracking_uri)
         self._tracking_client = TrackingServiceClient(final_tracking_uri)
+
+        self._tracing_client = TracingClient(tracking_uri)
         # `MlflowClient` also references a `ModelRegistryClient` instance that is provided by the
         # `MlflowClient._get_registry_client()` method. This `ModelRegistryClient` is not explicitly
         # defined as an instance variable in the `MlflowClient` constructor; an instance variable
@@ -782,7 +784,7 @@ class MlflowClient:
     ##### Tracing #####
 
     def _upload_trace_data(self, trace_info: TraceInfo, trace_data: TraceData) -> None:
-        return self._tracking_client._upload_trace_data(trace_info, trace_data)
+        return self._tracing_client._upload_trace_data(trace_info, trace_data)
 
     def delete_traces(
         self,
@@ -834,7 +836,7 @@ class MlflowClient:
             # Delete traces based on request_ids
             client.delete_traces(experiment_id="0", request_ids=["id_1", "id_2"])
         """
-        return self._tracking_client.delete_traces(
+        return self._tracing_client.delete_traces(
             experiment_id=experiment_id,
             max_timestamp_millis=max_timestamp_millis,
             max_traces=max_traces,
@@ -867,7 +869,7 @@ class MlflowClient:
                 "the search_traces() API."
             )
 
-        trace = self._tracking_client.get_trace(request_id)
+        trace = self._tracing_client.get_trace(request_id)
         if display:
             get_display_handler().display_traces([trace])
         return trace
@@ -924,7 +926,7 @@ class MlflowClient:
                 else None
             )
 
-        return self._tracking_client.search_traces(
+        return self._tracing_client.search_traces(
             experiment_ids=experiment_ids,
             filter_string=filter_string,
             max_results=max_results,
@@ -1104,13 +1106,13 @@ class MlflowClient:
         # Create trace info entry in the backend
         # Note that the backend generates a new request ID for the trace. Currently there is
         # no way to insert the trace with a specific request ID given by the user.
-        new_info = self._tracking_client.start_trace(
+        new_info = self._tracing_client.start_trace(
             experiment_id=experiment_id,
             timestamp_ms=trace.info.timestamp_ms,
             request_metadata={},
             tags={},
         )
-        self._tracking_client.end_trace(
+        self._tracing_client.end_trace(
             request_id=new_info.request_id,
             # Compute the end time of the original trace
             timestamp_ms=trace.info.timestamp_ms + trace.info.execution_time_ms,
@@ -1310,33 +1312,6 @@ class MlflowClient:
             end_time_ns=end_time_ns,
         )
 
-    def _start_tracked_trace(
-        self,
-        experiment_id: str,
-        timestamp_ms: int,
-        request_metadata: Optional[dict[str, str]] = None,
-        tags: Optional[dict[str, str]] = None,
-    ) -> TraceInfo:
-        """
-        Start an initial TraceInfo object in the backend store.
-
-        Args:
-            experiment_id: String id of the experiment for this run.
-            timestamp_ms: Start time of the trace, in milliseconds since the UNIX epoch.
-            request_metadata: Metadata of the trace.
-            tags: Tags of the trace.
-
-        Returns:
-            The created TraceInfo object.
-        """
-        # Some tags like mlflow.runName are immutable once logged in tracking server.
-        return self._tracking_client.start_trace(
-            experiment_id=experiment_id,
-            timestamp_ms=timestamp_ms,
-            request_metadata=request_metadata or {},
-            tags=tags or {},
-        )
-
     def _upload_ended_trace_info(
         self,
         trace_info: TraceInfo,
@@ -1350,7 +1325,7 @@ class MlflowClient:
         Returns:
             The updated TraceInfo object.
         """
-        return self._tracking_client.end_trace(
+        return self._tracing_client.end_trace(
             request_id=trace_info.request_id,
             timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
             status=trace_info.status,
@@ -1398,7 +1373,7 @@ class MlflowClient:
                 return
 
         # If the trace is not active, try to set the tag on the trace in the backend
-        self._tracking_client.set_trace_tag(request_id, key, value)
+        self._tracing_client.set_trace_tag(request_id, key, value)
 
     def delete_trace_tag(self, request_id: str, key: str) -> None:
         """
@@ -1437,7 +1412,7 @@ class MlflowClient:
                     )
 
         # If the trace is not active, try to delete the tag on the trace in the backend
-        self._tracking_client.delete_trace_tag(request_id, key)
+        self._tracing_client.delete_trace_tag(request_id, key)
 
     def log_assessment(
         self,
@@ -1467,7 +1442,7 @@ class MlflowClient:
             metadata=metadata,
             span_id=span_id,
         )
-        return self._tracking_client.create_assessment(assessment)
+        return self._tracing_client.create_assessment(assessment)
 
     def update_assessment(
         self,
@@ -1479,7 +1454,7 @@ class MlflowClient:
         rationale: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> Assessment:
-        return self._tracking_client.update_assessment(
+        return self._tracing_client.update_assessment(
             trace_id=trace_id,
             assessment_id=assessment_id,
             name=name,
@@ -1490,7 +1465,7 @@ class MlflowClient:
         )
 
     def delete_assessment(self, trace_id: str, assessment_id: str) -> None:
-        return self._tracking_client.delete_assessment(trace_id, assessment_id)
+        return self._tracing_client.delete_assessment(trace_id, assessment_id)
 
     def search_experiments(
         self,
@@ -1602,7 +1577,7 @@ class MlflowClient:
             experiments = client.search_experiments(order_by=["experiment_id DESC"])
             assert_experiment_names_equal(experiments, ["bb", "ab", "b", "a"])
         """
-        return self._tracking_client.search_experiments(
+        return self._tracing_client.search_experiments(
             view_type=view_type,
             max_results=max_results,
             filter_string=filter_string,

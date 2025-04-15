@@ -7,7 +7,6 @@ import subprocess
 import sys
 import threading
 
-import click
 import pytest
 
 from mlflow.environment_variables import _MLFLOW_TESTING, MLFLOW_TRACKING_URI
@@ -90,6 +89,8 @@ def pytest_cmdline_main(config):
 
 
 def pytest_sessionstart(session):
+    import click
+
     if uri := MLFLOW_TRACKING_URI.get():
         click.echo(
             click.style(

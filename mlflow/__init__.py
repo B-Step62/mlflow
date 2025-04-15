@@ -162,7 +162,7 @@ def safe_import_functions(base_module: str, functions: list[str]):
             globals()[function] = getattr(importlib.import_module(base_module), function)
             __all__.append(function)
         except ImportError:
-            raise
+            pass
 
 safe_import_functions(
     base_module="mlflow.client",

@@ -9,21 +9,18 @@ import pytest
 from opentelemetry import trace as trace_api
 
 import mlflow
-from mlflow.models.model import _MODEL_TRACKER
 from mlflow.tracing.display.display_handler import IPythonTraceDisplayHandler
 from mlflow.tracing.export.inference_table import _TRACE_BUFFER
 from mlflow.tracing.core.api import _set_last_active_trace_id
 from mlflow.tracing.core.trace_manager import InMemoryTraceManager
-from mlflow.tracking._tracking_service.utils import _use_tracking_uri
-from mlflow.tracking.fluent import _last_active_run_id, _reset_last_logged_model_id
-from mlflow.utils.file_utils import path_to_local_sqlite_uri
 from mlflow.utils.os import is_windows
-
-from tests.autologging.fixtures import enable_test_mode
 
 
 @pytest.fixture(autouse=True)
 def tracking_uri_mock(tmp_path, request):
+    from mlflow.tracking._tracking_service.utils import _use_tracking_uri
+    from mlflow.utils.file_utils import path_to_local_sqlite_uri
+
     if "notrackingurimock" not in request.keywords:
         tracking_uri = path_to_local_sqlite_uri(tmp_path / f"{uuid.uuid4().hex}.sqlite")
         with _use_tracking_uri(tracking_uri):
@@ -99,6 +96,8 @@ def enable_test_mode_by_default_for_autologging_integrations():
     are raised and detected. For more information about autologging test mode, see the docstring
     for :py:func:`mlflow.utils.autologging_utils._is_testing()`.
     """
+    from tests.autologging.fixtures import enable_test_mode
+
     yield from enable_test_mode()
 
 
@@ -178,11 +177,15 @@ def clean_up_last_logged_model_id():
     """
     Clean up the last logged model ID stored in a thread local var.
     """
+    from mlflow.tracking.fluent import _reset_last_logged_model_id
+
     _reset_last_logged_model_id()
 
 
 @pytest.fixture(autouse=True)
 def clean_up_last_active_run():
+    from mlflow.tracking.fluent import _last_active_run_id
+
     _last_active_run_id.set(None)
 
 
@@ -245,4 +248,6 @@ def mock_is_in_databricks(request):
 
 @pytest.fixture(autouse=True)
 def reset_model_tracker():
+    from mlflow.models.model import _MODEL_TRACKER
+
     _MODEL_TRACKER.clear()

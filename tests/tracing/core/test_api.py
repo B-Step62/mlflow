@@ -38,6 +38,13 @@ from mlflow.utils.os import is_windows
 from tests.tracing.helper import get_traces
 
 
+@pytest.fixture(autouse=True)
+def backend():
+    mlflow.set_tracking_uri("localhost:5000")
+    mlflow.set_experiment("trace-unit-test")
+
+    yield
+
 class DefaultTestModel:
     @mlflow.trace()
     def predict(self, x, y):
