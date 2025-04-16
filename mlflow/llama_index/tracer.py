@@ -40,7 +40,7 @@ from mlflow.entities.span_status import SpanStatusCode
 from mlflow.llama_index.chat import get_chat_messages_from_event
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.core.provider import detach_span_from_context, set_span_in_context
+from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
 from mlflow.tracing.utils import set_span_chat_messages, set_span_chat_tools
 from mlflow.tracking.client import MlflowClient
 from mlflow.utils.autologging_utils.config import AutoLoggingConfig

@@ -10,7 +10,7 @@ from mlflow.entities.assessment import (
 )
 from mlflow.entities.assessment_source import AssessmentSource
 from mlflow.exceptions import MlflowException
-from mlflow.tracing.core.client import TracingClient
+from mlflow.tracing.client import TracingClient
 
 
 @experimental

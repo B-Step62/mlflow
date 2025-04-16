@@ -9,7 +9,7 @@ from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatusCode
 from mlflow.pyfunc.context import Context, set_prediction_context
 from mlflow.tracing.export.inference_table import _TRACE_BUFFER, pop_trace
-from mlflow.tracing.core.trace_manager import _Trace
+from mlflow.tracing.trace_manager import _Trace
 from mlflow.tracing.utils.timeout import MlflowTraceTimeoutCache
 
 from tests.tracing.helper import get_traces

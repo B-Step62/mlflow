@@ -12,8 +12,8 @@ from opentelemetry import trace as trace_api
 import mlflow
 from mlflow.tracing.display.display_handler import IPythonTraceDisplayHandler
 from mlflow.tracing.export.inference_table import _TRACE_BUFFER
-from mlflow.tracing.core.api import _set_last_active_trace_id
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.api import _set_last_active_trace_id
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.utils.os import is_windows
 from tests.tracing.helper import purge_traces
 

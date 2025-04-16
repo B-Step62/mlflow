@@ -57,7 +57,7 @@ from mlflow.models.utils import (
     _save_example,
 )
 from mlflow.pyfunc import FLAVOR_NAME as PYFUNC_FLAVOR_NAME
-from mlflow.tracing.core.provider import trace_disabled
+from mlflow.tracing.provider import trace_disabled
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
 from mlflow.types.schema import ColSpec, DataType, Schema

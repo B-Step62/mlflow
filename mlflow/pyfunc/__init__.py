@@ -499,7 +499,7 @@ from mlflow.pyfunc.model import (
     get_default_conda_env,  # noqa: F401
     get_default_pip_requirements,
 )
-from mlflow.tracing.core.provider import trace_disabled
+from mlflow.tracing.provider import trace_disabled
 from mlflow.tracing.utils import _try_get_prediction_context
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri

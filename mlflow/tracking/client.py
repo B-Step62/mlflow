@@ -83,10 +83,10 @@ from mlflow.store.tracking import SEARCH_MAX_RESULTS_DEFAULT
 from mlflow.tracing.constant import (
     SEARCH_TRACES_DEFAULT_MAX_RESULTS, TRACE_REQUEST_ID_PREFIX,
 )
-from mlflow.tracing.core.api import start_detached_span, end_span
-from mlflow.tracing.core.client import TracingClient
+from mlflow.tracing.api import start_detached_span, end_span
+from mlflow.tracing.client import TracingClient
 from mlflow.tracing.display import get_display_handler
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking._model_registry import utils as registry_utils
 from mlflow.tracking._model_registry.client import ModelRegistryClient

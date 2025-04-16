@@ -158,10 +158,13 @@ if MLFLOW_CONFIGURE_LOGGING.get() is True:
 
 assert is_mlflow_skinny_installed() is False
 
-from mlflow.tracing.core.api import (
+from mlflow.tracing.api import (
     add_trace,
     get_current_active_span,
     get_last_active_trace_id,
+    get_trace,
+    log_trace,
+    search_traces,
     start_span,
     trace,
     update_current_trace,
@@ -202,6 +205,9 @@ __all__ = [
     "start_span",
     "trace",
     "add_trace",
+    "get_trace",
+    "search_traces",
+    "log_trace",
     "update_current_trace",
     "start_detached_span",
     # Assessment APIs
@@ -231,11 +237,6 @@ if is_mlflow_skinny_installed():
     from mlflow.models import evaluate
     from mlflow.models.evaluation.validation import validate_evaluation_results
     from mlflow.projects import run
-    from mlflow.tracing.tracking import (
-        get_trace,
-        log_trace,
-        search_traces,
-    )
     from mlflow.tracking._model_registry.fluent import (
         delete_prompt,
         delete_prompt_alias,
@@ -343,10 +344,6 @@ if is_mlflow_skinny_installed():
         "start_run",
         "validate_evaluation_results",
         "Image",
-        # Tracing Tracking APIs
-        "get_trace",
-        "search_traces",
-        "log_trace",
         # Prompt Registry APIs
         "delete_prompt",
         "load_prompt",

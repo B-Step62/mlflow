@@ -11,7 +11,7 @@ from mlflow.entities.span_event import SpanEvent
 from mlflow.entities.span_status import SpanStatusCode
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.core.api import start_detached_span
+from mlflow.tracing.api import start_detached_span
 from mlflow.tracing.utils import (
     construct_full_inputs,
     set_span_chat_messages,

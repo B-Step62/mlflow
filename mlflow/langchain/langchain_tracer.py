@@ -30,7 +30,7 @@ from mlflow.langchain.utils.chat import (
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.pyfunc.context import Context, maybe_set_prediction_context
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.core.provider import detach_span_from_context, set_span_in_context
+from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
 from mlflow.tracing.utils import set_span_chat_messages, set_span_chat_tools
 from mlflow.tracing.utils.token import SpanWithToken
 from mlflow.types.chat import ChatMessage, ChatTool, FunctionToolDefinition

@@ -18,7 +18,7 @@ from mlflow.models.utils import (
     _save_example,
     _validate_and_get_model_code_path,
 )
-from mlflow.tracing.core.provider import trace_disabled
+from mlflow.tracing.provider import trace_disabled
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
 from mlflow.utils.annotations import experimental

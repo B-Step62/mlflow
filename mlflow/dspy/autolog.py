@@ -5,7 +5,7 @@ from packaging.version import Version
 import mlflow
 from mlflow.dspy.save import FLAVOR_NAME
 from mlflow.models.model import _MODEL_TRACKER
-from mlflow.tracing.core.provider import trace_disabled
+from mlflow.tracing.provider import trace_disabled
 from mlflow.tracing.utils import construct_full_inputs
 from mlflow.utils.annotations import experimental
 from mlflow.utils.autologging_utils import (

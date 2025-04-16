@@ -12,7 +12,7 @@ from mlflow.bedrock.chat import convert_message_to_mlflow_chat, convert_tool_to_
 from mlflow.bedrock.stream import ConverseStreamWrapper, InvokeModelStreamWrapper
 from mlflow.bedrock.utils import skip_if_trace_disabled
 from mlflow.entities import SpanType
-from mlflow.tracing.core.api import start_detached_span
+from mlflow.tracing.api import start_detached_span
 from mlflow.tracing.utils import (
     set_span_chat_messages,
     set_span_chat_tools,

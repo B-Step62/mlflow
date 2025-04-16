@@ -12,8 +12,8 @@ from mlflow.environment_variables import (
 )
 from mlflow.protos.databricks_trace_server_pb2 import CreateTrace, DatabricksTracingServerService
 from mlflow.tracing.export.async_export_queue import AsyncTraceExportQueue, Task
-from mlflow.tracing.core.api import _set_last_active_trace_id
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.api import _set_last_active_trace_id
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.utils.databricks_utils import get_databricks_host_creds
 from mlflow.utils.rest_utils import (
     _REST_API_PATH_PREFIX,

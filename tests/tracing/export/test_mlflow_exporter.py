@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from mlflow.entities import LiveSpan
 from mlflow.tracing.export.mlflow import MlflowSpanExporter
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 
 from tests.tracing.helper import create_mock_otel_span, create_test_trace_info
 
@@ -47,7 +47,7 @@ def test_export(async_logging_enabled):
     assert len(exporter._trace_manager._traces) == 0
 
     # The last active trace should be recorded
-    from mlflow.tracing.core.api import (
+    from mlflow.tracing.api import (
         _LAST_ACTIVE_TRACE_ID_GLOBAL,
         _LAST_ACTIVE_TRACE_ID_THREAD_LOCAL,
     )

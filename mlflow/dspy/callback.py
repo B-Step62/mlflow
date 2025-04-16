@@ -17,8 +17,8 @@ from mlflow.exceptions import MlflowException
 from mlflow.models.model import _MODEL_TRACKER
 from mlflow.pyfunc.context import get_prediction_context, maybe_set_prediction_context
 from mlflow.tracing.constant import SpanAttributeKey
-from mlflow.tracing.core.provider import detach_span_from_context, set_span_in_context
-from mlflow.tracing.core.api import (
+from mlflow.tracing.provider import detach_span_from_context, set_span_in_context
+from mlflow.tracing.api import (
     detach_span_from_context,
     end_span,
     set_span_in_context,

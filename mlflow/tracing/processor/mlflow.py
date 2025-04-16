@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Optional
 
-from mlflow.tracing.core.client import TracingClient
+from mlflow.tracing.client import TracingClient
 from mlflow.tracking.context.databricks_repo_context import DatabricksRepoRunContext
 from mlflow.tracking.context.git_context import GitRunContext
 from mlflow.tracking.context.registry import resolve_tags
@@ -25,7 +25,7 @@ from mlflow.tracing.constant import (
     TraceMetadataKey,
     TraceTagKey,
 )
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager, _Trace
+from mlflow.tracing.trace_manager import InMemoryTraceManager, _Trace
 from mlflow.tracing.utils import (
     deduplicate_span_names_in_place,
     get_otel_attribute,

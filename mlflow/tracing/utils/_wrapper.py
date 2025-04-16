@@ -14,8 +14,8 @@ from mlflow.tracing.constant import (
     STREAM_CHUNK_EVENT_VALUE_KEY,
     SpanAttributeKey,
 )
-from mlflow.tracing.core.api import get_current_active_span, start_span, start_detached_span
-from mlflow.tracing.core.provider import safe_set_span_in_context
+from mlflow.tracing.api import get_current_active_span, start_span, start_detached_span
+from mlflow.tracing.provider import safe_set_span_in_context
 from mlflow.tracing.utils import (
     TraceJSONEncoder,
     capture_function_input_args,

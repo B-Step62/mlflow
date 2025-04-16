@@ -9,8 +9,8 @@ from mlflow.environment_variables import (
     MLFLOW_TRACE_BUFFER_MAX_SIZE,
     MLFLOW_TRACE_BUFFER_TTL_SECONDS,
 )
-from mlflow.tracing.core.api import _set_last_active_trace_id
-from mlflow.tracing.core.trace_manager import InMemoryTraceManager
+from mlflow.tracing.api import _set_last_active_trace_id
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 
 _logger = logging.getLogger(__name__)
 

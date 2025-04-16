@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 from unittest import mock
 
-from mlflow.tracing.core.client import TracingClient
+from mlflow.tracing.client import TracingClient
 from mlflow.tracking.fluent import _get_experiment_id
 import opentelemetry.trace as trace_api
 import pytest
@@ -19,7 +19,7 @@ from mlflow.entities.trace_status import TraceStatus
 from mlflow.ml_package_versions import FLAVOR_TO_MODULE_NAME
 from mlflow.tracing.export.inference_table import pop_trace
 from mlflow.tracing.processor.mlflow import MlflowSpanProcessor
-from mlflow.tracing.core.provider import _get_tracer
+from mlflow.tracing.provider import _get_tracer
 from mlflow.tracking.default_experiment import DEFAULT_EXPERIMENT_ID
 from mlflow.utils.autologging_utils import AUTOLOGGING_INTEGRATIONS, get_autolog_function
 from mlflow.utils.autologging_utils.safety import revert_patches

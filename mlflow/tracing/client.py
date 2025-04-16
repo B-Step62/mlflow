@@ -8,11 +8,12 @@ from mlflow.entities.trace_data import TraceData
 from mlflow.entities.trace_info import TraceInfo
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.exceptions import MlflowException, MlflowTraceDataCorrupted, MlflowTraceDataException, MlflowTraceDataNotFound
-from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE
+from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
 from mlflow.protos.service_pb2 import Assessment
 from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
 from mlflow.store.entities.paged_list import PagedList
 from mlflow.tracing.constant import SEARCH_TRACES_DEFAULT_MAX_RESULTS, TraceMetadataKey
+from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import TraceJSONEncoder, exclude_immutable_tags
 from mlflow.tracing.utils.artifact_utils import get_artifact_uri_for_trace
 from mlflow.tracking._tracking_service.utils import _get_store, _resolve_tracking_uri
@@ -313,13 +314,50 @@ class TracingClient:
 
     def set_trace_tag(self, request_id, key, value):
         """
-        Set a tag on the trace with the given request_id.
+        Set a tag on the trace with the given trace ID.
+
+        The trace can be an active one or the one that has already ended and recorded in the
+        backend. Below is an example of setting a tag on an active trace. You can replace the
+        ``request_id`` parameter to set a tag on an already ended trace.
 
         Args:
-            request_id: The ID of the trace.
-            key: The string key of the tag.
-            value: The string value of the tag.
+            request_id: The ID of the trace to set the tag on.
+            key: The string key of the tag. Must be at most 250 characters long, otherwise
+                it will be truncated when stored.
+            value: The string value of the tag. Must be at most 250 characters long, otherwise
+                it will be truncated when stored.
+
+        .. code-block:: python
+            :test:
+
+            from mlflow import MlflowClient
+
+            client = MlflowClient()
+
+            root_span = client.start_trace("my_trace")
+            client.set_trace_tag(root_span.request_id, "key", "value")
+            client.end_trace(root_span.request_id)
+
         """
+        if key.startswith("mlflow."):
+            raise MlflowException(
+                f"Tags starting with 'mlflow.' are reserved and cannot be set. "
+                f"Attempted to set tag with key '{key}' on trace with ID '{request_id}'.",
+                error_code=INVALID_PARAMETER_VALUE,
+            )
+
+        if not isinstance(value, str):
+            _logger.warning(
+                "Received non-string value for trace tag. Please note that non-string tag values"
+                "will automatically be stringified when the trace is logged."
+            )
+
+        # Trying to set the tag on the active trace first
+        with InMemoryTraceManager.get_instance().get_trace(request_id) as trace:
+            if trace:
+                trace.info.tags[key] = str(value)
+                return
+
         if key in IMMUTABLE_TAGS:
             _logger.warning(f"Tag '{key}' is immutable and cannot be set on a trace.")
         else:
@@ -327,16 +365,45 @@ class TracingClient:
 
     def delete_trace_tag(self, request_id, key):
         """
-        Delete a tag from the trace with the given request_id.
+        Delete a tag on the trace with the given trace ID.
+
+        The trace can be an active one or the one that has already ended and recorded in the
+        backend. Below is an example of deleting a tag on an active trace. You can replace the
+        ``request_id`` parameter to delete a tag on an already ended trace.
 
         Args:
-            request_id: The ID of the trace.
-            key: The string key of the tag.
+            request_id: The ID of the trace to delete the tag from.
+            key: The string key of the tag. Must be at most 250 characters long, otherwise
+                it will be truncated when stored.
+
+        .. code-block:: python
+            :test:
+
+            from mlflow import MlflowClient
+
+            client = MlflowClient()
+
+            root_span = client.start_trace("my_trace", tags={"key": "value"})
+            client.delete_trace_tag(root_span.request_id, "key")
+            client.end_trace(root_span.request_id)
         """
+        # Trying to delete the tag on the active trace first
+        with InMemoryTraceManager.get_instance().get_trace(request_id) as trace:
+            if trace:
+                if key in trace.info.tags:
+                    trace.info.tags.pop(key)
+                    return
+                else:
+                    raise MlflowException(
+                        f"Tag with key {key} not found in trace with ID {request_id}.",
+                        error_code=RESOURCE_DOES_NOT_EXIST,
+                    )
+
         if key in IMMUTABLE_TAGS:
             _logger.warning(f"Tag '{key}' is immutable and cannot be deleted on a trace.")
         else:
             self.store.delete_trace_tag(request_id, key)
+
 
     def create_assessment(self, assessment: Assessment):
         """

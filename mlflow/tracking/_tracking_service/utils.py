@@ -10,7 +10,7 @@ from mlflow.environment_variables import MLFLOW_TRACKING_URI
 from mlflow.store.db.db_types import DATABASE_ENGINES
 from mlflow.store.tracking import DEFAULT_LOCAL_FILE_AND_ARTIFACT_PATH
 from mlflow.store.tracking.rest_store import RestStore
-from mlflow.tracing.core.provider import reset
+from mlflow.tracing.provider import reset
 from mlflow.tracking._tracking_service.registry import TrackingStoreRegistry
 from mlflow.utils.credentials import get_default_host_creds
 from mlflow.utils.databricks_utils import get_databricks_host_creds

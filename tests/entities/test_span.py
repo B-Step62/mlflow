@@ -9,7 +9,7 @@ import mlflow
 from mlflow.entities import LiveSpan, Span, SpanEvent, SpanStatus, SpanStatusCode, SpanType
 from mlflow.entities.span import NoOpSpan, create_mlflow_span
 from mlflow.exceptions import MlflowException
-from mlflow.tracing.core.provider import _get_tracer, trace_disabled
+from mlflow.tracing.provider import _get_tracer, trace_disabled
 from mlflow.tracing.utils import encode_span_id, encode_trace_id
 
 
