@@ -28,10 +28,9 @@ For a lower level API, see the :py:mod:`mlflow.client` module.
 """
 
 import contextlib
-import importlib
 from typing import TYPE_CHECKING
 
-from mlflow.version import VERSION
+from mlflow.version import VERSION, is_mlflow_skinny_installed
 
 __version__ = VERSION
 
@@ -153,128 +152,165 @@ if MLFLOW_CONFIGURE_LOGGING.get() is True:
 # For backward compatibility, we expose the following functions and classes at the top level in
 # addition to `mlflow.config`.
 
-__all__ = []
+# Only import following modules if the full mlflow/mlflow-skinny is installed
 
-def safe_import_functions(base_module: str, functions: list[str]):
-    """Import functions from a module and add them to the exported functions list."""
-    for function in functions:
-        try:
-            globals()[function] = getattr(importlib.import_module(base_module), function)
-            __all__.append(function)
-        except ImportError:
-            pass
+# Check if the `mlflow` package is installed
 
-safe_import_functions(
-    base_module="mlflow.client",
-    functions=["MlflowClient"],
+assert is_mlflow_skinny_installed() is False
+
+from mlflow.tracing.core.api import (
+    add_trace,
+    get_current_active_span,
+    get_last_active_trace_id,
+    start_span,
+    trace,
+    update_current_trace,
+    start_detached_span
 )
-
-safe_import_functions(
-    base_module="mlflow.config",
-    functions=[
-        "disable_system_metrics_logging",
-        "enable_system_metrics_logging",
-        "get_registry_uri",
-        "get_tracking_uri",
-        "is_tracking_uri_set",
-        "set_registry_uri",
-        "set_system_metrics_node_id",
-        "set_system_metrics_samples_before_logging",
-        "set_system_metrics_sampling_interval",
-        "set_tracking_uri",
-    ]
+from mlflow.tracing.assessment import (
+    delete_expectation,
+    delete_feedback,
+    log_expectation,
+    log_feedback,
+    update_expectation,
+    update_feedback,
 )
-
-safe_import_functions(
-    base_module="mlflow.models",
-    functions=["evaluate"],
+from mlflow.tracking import (
+    set_tracking_uri,
+    get_tracking_uri,
+    is_tracking_uri_set,
 )
+from mlflow.tracking.fluent import flush_trace_async_logging
+from mlflow.tracking.fluent import set_experiment
 
-safe_import_functions(
-    base_module="mlflow.models.evaluation.validation",
-    functions=["validate_evaluation_results"],
-)
 
-safe_import_functions(
-    base_module="mlflow.projects",
-    functions=["run"],
-)
+# These are minimal set of APIs to be exposed via `mlflow-trace` package.
+# APIs listed here must not depend on dependencies that are not part of `mlflow-trace` package.
+__all__ = [
+    "MlflowException",
+    "autolog",
+    # Minimal tracking APIs required for tracing core functionality
+    "get_tracking_uri",
+    "is_tracking_uri_set",
+    "set_experiment",
+    "set_tracking_uri",
+    # Tracing APIs
+    "flush_trace_async_logging",
+    "get_last_active_trace",
+    "get_last_active_trace_id",
+    "get_current_active_span",
+    "start_span",
+    "trace",
+    "add_trace",
+    "update_current_trace",
+    "start_detached_span",
+    # Assessment APIs
+    "delete_expectation",
+    "delete_feedback",
+    "log_expectation",
+    "log_feedback",
+    "update_expectation",
+    "update_feedback",
+]
 
-safe_import_functions(
-    base_module="mlflow.tracing.assessment",
-    functions=[
-        "delete_expectation",
-        "delete_feedback",
-        "log_expectation",
-        "log_feedback",
-        "update_expectation",
-        "update_feedback",
-    ],
-)
+if is_mlflow_skinny_installed():
+    from mlflow.client import MlflowClient
 
-safe_import_functions(
-    base_module="mlflow.tracing.core.api",
-    functions=[
-        "add_trace",
-        "get_current_active_span",
-        "get_last_active_trace_id",
-        "start_span",
-        "trace",
-        "update_current_trace",
-        "end_span",
-        "start_detached_span",
-    ]
-)
+    # For backward compatibility, we expose the following functions and classes at the top level in
+    # addition to `mlflow.config`.
+    from mlflow.config import (
+        disable_system_metrics_logging,
+        enable_system_metrics_logging,
+        get_registry_uri,
+        set_registry_uri,
+        set_system_metrics_node_id,
+        set_system_metrics_samples_before_logging,
+        set_system_metrics_sampling_interval,
+    )
+    from mlflow.exceptions import MlflowException
+    from mlflow.models import evaluate
+    from mlflow.models.evaluation.validation import validate_evaluation_results
+    from mlflow.projects import run
+    from mlflow.tracing.tracking import (
+        get_trace,
+        log_trace,
+        search_traces,
+    )
+    from mlflow.tracking._model_registry.fluent import (
+        delete_prompt,
+        delete_prompt_alias,
+        load_prompt,
+        register_model,
+        register_prompt,
+        search_model_versions,
+        search_registered_models,
+        set_prompt_alias,
+    )
+    from mlflow.tracking.fluent import (
+        ActiveRun,
+        active_run,
+        create_experiment,
+        delete_experiment,
+        delete_run,
+        delete_tag,
+        end_run,
+        flush_artifact_async_logging,
+        flush_async_logging,
+        get_artifact_uri,
+        get_experiment,
+        get_experiment_by_name,
+        get_parent_run,
+        get_run,
+        last_active_run,
+        load_table,
+        log_artifact,
+        log_artifacts,
+        log_dict,
+        log_figure,
+        log_image,
+        log_input,
+        log_metric,
+        log_metrics,
+        log_param,
+        log_params,
+        log_table,
+        log_text,
+        search_experiments,
+        search_runs,
+        set_experiment_tag,
+        set_experiment_tags,
+        set_tag,
+        set_tags,
+        start_run,
+    )
+    from mlflow.tracking.multimedia import Image
+    from mlflow.utils.async_logging.run_operations import RunOperations  # noqa: F401
+    from mlflow.utils.credentials import login
+    from mlflow.utils.doctor import doctor
 
-safe_import_functions(
-    base_module="mlflow.tracing.tracking",
-    functions=[
-        "get_trace",
-        "log_trace",
-        "search_traces",
-    ]
-)
-
-safe_import_functions(
-    base_module="mlflow.tracking._model_registry.fluent",
-    functions=[
-        "delete_prompt",
-        "delete_prompt_alias",
-        "load_prompt",
-        "register_model",
-        "register_prompt",
-        "search_model_versions",
-        "search_registered_models",
-        "set_prompt_alias",
-    ]
-)
-
-safe_import_functions(
-    base_module="mlflow.tracking.fluent",
-    functions=[
+    __all__.extend([
         "ActiveRun",
+        "MlflowClient",
         "active_run",
-        "autolog",
         "create_experiment",
-        "create_external_model",
         "delete_experiment",
-        "delete_logged_model_tag",
         "delete_run",
         "delete_tag",
+        "disable_system_metrics_logging",
+        "doctor",
+        "enable_system_metrics_logging",
         "end_run",
-        "finalize_logged_model",
-        "flush_artifact_async_logging",
+        "evaluate",
         "flush_async_logging",
-        "flush_trace_async_logging",
+        "flush_artifact_async_logging",
         "get_artifact_uri",
         "get_experiment",
         "get_experiment_by_name",
-        "get_logged_model",
         "get_parent_run",
+        "get_registry_uri",
         "get_run",
-        "initialize_logged_model",
+        "is_tracking_uri_set",
         "last_active_run",
-        "last_logged_model",
         "load_table",
         "log_artifact",
         "log_artifacts",
@@ -282,40 +318,43 @@ safe_import_functions(
         "log_figure",
         "log_image",
         "log_input",
-        "log_inputs",
         "log_metric",
         "log_metrics",
         "log_param",
         "log_params",
         "log_table",
         "log_text",
+        "login",
+        "pyfunc",
+        "register_model",
+        "run",
         "search_experiments",
-        "search_logged_models",
+        "search_model_versions",
+        "search_registered_models",
         "search_runs",
-        "set_experiment",
         "set_experiment_tag",
         "set_experiment_tags",
-        "set_logged_model_tags",
+        "set_registry_uri",
+        "set_system_metrics_node_id",
+        "set_system_metrics_samples_before_logging",
+        "set_system_metrics_sampling_interval",
         "set_tag",
         "set_tags",
         "start_run",
-    ],
-)
+        "validate_evaluation_results",
+        "Image",
+        # Tracing Tracking APIs
+        "get_trace",
+        "search_traces",
+        "log_trace",
+        # Prompt Registry APIs
+        "delete_prompt",
+        "load_prompt",
+        "register_prompt",
+        "set_prompt_alias",
+        "delete_prompt_alias",
+    ])
 
-safe_import_functions(
-    base_module="mlflow.tracking.multimedia",
-    functions=["Image"],
-)
-
-safe_import_functions(
-    base_module="mlflow.utils.credentials",
-    functions=["login"],
-)
-
-safe_import_functions(
-    base_module="mlflow.utils.doctor",
-    functions=["doctor"],
-)
 
 # `mlflow.gateway` depends on optional dependencies such as pydantic, psutil, and has version
 # restrictions for dependencies. Importing this module fails if they are not installed or

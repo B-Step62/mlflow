@@ -15,6 +15,7 @@ from mlflow.store.entities.paged_list import PagedList
 from mlflow.tracing.constant import SEARCH_TRACES_DEFAULT_MAX_RESULTS, TraceMetadataKey
 from mlflow.tracing.utils import TraceJSONEncoder, exclude_immutable_tags
 from mlflow.tracing.utils.artifact_utils import get_artifact_uri_for_trace
+from mlflow.tracking._tracking_service.utils import _get_store, _resolve_tracking_uri
 from mlflow.utils import is_uuid
 from mlflow.utils.mlflow_tags import IMMUTABLE_TAGS
 from mlflow.utils.uri import add_databricks_profile_info_to_artifact_uri, is_databricks_uri
@@ -28,12 +29,12 @@ class TracingClient:
     Client of an MLflow Tracking Server that creates and manages experiments and runs.
     """
 
-    def __init__(self, tracking_uri):
+    def __init__(self, tracking_uri: Optional[str] = None):
         """
         Args:
             tracking_uri: Address of local or remote tracking server.
         """
-        self.tracking_uri = tracking_uri
+        self.tracking_uri = _resolve_tracking_uri(tracking_uri)
         # NB: Fetch the tracking store (`self.store`) upon client initialization to ensure that
         # the tracking URI is valid and the store can be properly resolved. We define `store` as a
         # property method to ensure that the client is serializable, even if the store is not
@@ -45,7 +46,7 @@ class TracingClient:
         # TODO: Implement light-weight version of _get_store so that tracing client
         # doesn't hard-depend on
         # tracking dependencies
-        return utils._get_store(self.tracking_uri)
+        return _get_store(self.tracking_uri)
 
     def start_trace(
         self,
@@ -420,3 +421,24 @@ class TracingClient:
         artifact_repo = self._get_artifact_repo_for_trace(trace_info)
         trace_data_json = json.dumps(trace_data.to_dict(), cls=TraceJSONEncoder, ensure_ascii=False)
         return artifact_repo.upload_trace_data(trace_data_json)
+
+    def _upload_ended_trace_info(
+        self,
+        trace_info: TraceInfo,
+    ) -> TraceInfo:
+        """
+        Update the TraceInfo object in the backend store with the completed trace info.
+
+        Args:
+            trace_info: Updated TraceInfo object to be stored in the backend store.
+
+        Returns:
+            The updated TraceInfo object.
+        """
+        return self.end_trace(
+            request_id=trace_info.request_id,
+            timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
+            status=trace_info.status,
+            request_metadata=trace_info.request_metadata,
+            tags=trace_info.tags or {},
+        )

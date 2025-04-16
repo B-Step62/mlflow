@@ -5,26 +5,34 @@ and runs. This is a lower level API that directly translates to MLflow
 For a higher level API for managing an "active run", use the :py:mod:`mlflow` module.
 """
 
-from mlflow.tracking._model_registry.utils import (
-    get_registry_uri,
-    set_registry_uri,
-)
+from mlflow.version import is_mlflow_skinny_installed
 from mlflow.tracking._tracking_service.utils import (
-    _get_artifact_repo,
     _get_store,
     get_tracking_uri,
     is_tracking_uri_set,
     set_tracking_uri,
 )
-from mlflow.tracking.client import MlflowClient
 
 __all__ = [
-    "MlflowClient",
     "get_tracking_uri",
     "set_tracking_uri",
     "is_tracking_uri_set",
     "_get_store",
-    "get_registry_uri",
-    "set_registry_uri",
-    "_get_artifact_repo",
 ]
+
+if is_mlflow_skinny_installed():
+    from mlflow.tracking._model_registry.utils import (
+        get_registry_uri,
+        set_registry_uri,
+    )
+    from mlflow.tracking._tracking_service.utils import (
+        _get_artifact_repo,
+    )
+    from mlflow.tracking.client import MlflowClient
+
+    __all__.extend([
+        "get_registry_uri",
+        "set_registry_uri",
+        "_get_artifact_repo",
+        "MlflowClient",
+    ])

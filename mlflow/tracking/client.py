@@ -18,7 +18,7 @@ import uuid
 import warnings
 from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
 
-import yaml
+#import yaml
 
 import mlflow
 from mlflow.entities import (
@@ -84,6 +84,7 @@ from mlflow.tracing.constant import (
     SEARCH_TRACES_DEFAULT_MAX_RESULTS, TRACE_REQUEST_ID_PREFIX,
 )
 from mlflow.tracing.core.api import start_detached_span, end_span
+from mlflow.tracing.core.client import TracingClient
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.tracking._model_registry import DEFAULT_AWAIT_MAX_SLEEP_SECONDS
@@ -1303,34 +1304,12 @@ class MlflowClient:
             end_time_ns: The end time of the span in nano seconds since the UNIX epoch.
                 If not provided, the current time will be used.
         """
-        end_span(
-            request_id=request_id,
-            span_id=span_id,
+        span = InMemoryTraceManager.get_instance().get_span_from_id(request_id, span_id)
+        span.end(
             outputs=outputs,
             attributes=attributes,
             status=status,
             end_time_ns=end_time_ns,
-        )
-
-    def _upload_ended_trace_info(
-        self,
-        trace_info: TraceInfo,
-    ) -> TraceInfo:
-        """
-        Update the TraceInfo object in the backend store with the completed trace info.
-
-        Args:
-            trace_info: Updated TraceInfo object to be stored in the backend store.
-
-        Returns:
-            The updated TraceInfo object.
-        """
-        return self._tracing_client.end_trace(
-            request_id=trace_info.request_id,
-            timestamp_ms=trace_info.timestamp_ms + trace_info.execution_time_ms,
-            status=trace_info.status,
-            request_metadata=trace_info.request_metadata,
-            tags=trace_info.tags or {},
         )
 
     def set_trace_tag(self, request_id: str, key: str, value: str):

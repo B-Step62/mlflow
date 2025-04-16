@@ -1,3 +1,4 @@
+from math import e
 import os
 import time
 import uuid
@@ -6,6 +7,8 @@ from dataclasses import dataclass
 from typing import Optional
 from unittest import mock
 
+from mlflow.tracing.core.client import TracingClient
+from mlflow.tracking.fluent import _get_experiment_id
 import opentelemetry.trace as trace_api
 import pytest
 from opentelemetry.sdk.trace import Event, ReadableSpan
@@ -123,15 +126,17 @@ def create_test_trace_info(
     )
 
 
-def get_traces(experiment_id=DEFAULT_EXPERIMENT_ID) -> list[Trace]:
+def get_traces() -> list[Trace]:
     # Get all traces from the backend
-    return mlflow.MlflowClient().search_traces(experiment_ids=[experiment_id])
+    return TracingClient().search_traces(experiment_ids=[_get_experiment_id()])
 
 
-def purge_traces(experiment_id=DEFAULT_EXPERIMENT_ID):
+def purge_traces(experiment_id: Optional[str] = None):
     # Delete all traces from the backend
-    mlflow.tracking.MlflowClient().delete_traces(
-        experiment_id=experiment_id, max_traces=1000, max_timestamp_millis=0
+    TracingClient().delete_traces(
+        experiment_id=experiment_id or _get_experiment_id(),
+        max_traces=1000,
+        max_timestamp_millis=int(time.time() * 1000)
     )
 
 

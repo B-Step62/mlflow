@@ -296,48 +296,6 @@ def start_detached_span(
     return NoOpSpan()
 
 
-def end_span(
-    span: LiveSpan,
-    outputs: Optional[Any] = None,
-    attributes: Optional[dict[str, Any]] = None,
-    status: Union[SpanStatus, str] = "OK",
-    end_time_ns: Optional[int] = None,
-):
-    """
-    End the span manually.
-
-    Args:
-        span: The span to end. This should be a LiveSpan object.
-        outputs: Outputs to set on the span.
-        attributes: A dictionary of attributes to set on the span. If the span already has
-            attributes, the new attributes will be merged with the existing ones. If the same
-            key already exists, the new value will overwrite the old one.
-        status: The status of the span. This can be a
-            :py:class:`SpanStatus <mlflow.entities.SpanStatus>` object or a string
-            representing the status code defined in
-            :py:class:`SpanStatusCode <mlflow.entities.SpanStatusCode>`
-            e.g. ``"OK"``, ``"ERROR"``. The default status is OK.
-        end_time_ns: The end time of the span in nano seconds since the UNIX epoch.
-            If not provided, the current time will be used.
-    """
-    if span.request_id == NO_OP_SPAN_REQUEST_ID:
-        return
-
-    span.set_attributes(attributes or {})
-    if outputs is not None:
-        span.set_outputs(outputs)
-    span.set_status(status)
-
-    try:
-        span.end(end_time=end_time_ns)
-    except Exception as e:
-        _logger.warning(
-            f"Failed to end span {span.span_id}: {e}. "
-            "For full traceback, set logging level to debug.",
-            exc_info=_logger.isEnabledFor(logging.DEBUG),
-        )
-
-
 def get_current_active_span() -> Optional[LiveSpan]:
     """
     Get the current active span in the global context.
@@ -584,13 +542,11 @@ def add_trace(trace: Union[Trace, dict[str, Any]], target: Optional[LiveSpan] = 
             target_request_id=span.request_id,
             target_parent_span_id=span.span_id,
         )
-        end_span(
-            span=span,
+        span.end(
             status=trace.info.status,
             outputs=remote_root_span.outputs,
-            end_time_ns=remote_root_span.end_time_ns,
+            end_time=remote_root_span.end_time_ns,
         )
-
 
 
 def _merge_trace(

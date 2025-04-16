@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from unittest import mock
 
+from mlflow.version import is_mlflow_skinny_installed
 import pytest
 from opentelemetry import trace as trace_api
 
@@ -14,9 +15,10 @@ from mlflow.tracing.export.inference_table import _TRACE_BUFFER
 from mlflow.tracing.core.api import _set_last_active_trace_id
 from mlflow.tracing.core.trace_manager import InMemoryTraceManager
 from mlflow.utils.os import is_windows
+from tests.tracing.helper import purge_traces
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=is_mlflow_skinny_installed())
 def tracking_uri_mock(tmp_path, request):
     from mlflow.tracking._tracking_service.utils import _use_tracking_uri
     from mlflow.utils.file_utils import path_to_local_sqlite_uri
@@ -101,7 +103,7 @@ def enable_test_mode_by_default_for_autologging_integrations():
     yield from enable_test_mode()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=is_mlflow_skinny_installed())
 def clean_up_leaked_runs():
     """
     Certain test cases validate safety API behavior when runs are leaked. Leaked runs that
@@ -128,7 +130,7 @@ def _called_in_save_model():
     return False
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=is_mlflow_skinny_installed())
 def prevent_infer_pip_requirements_fallback(request):
     """
     Prevents `mlflow.models.infer_pip_requirements` from falling back in `mlflow.*.save_model`
@@ -172,7 +174,7 @@ def clean_up_mlruns_directory(request):
             subprocess.run(["sudo", "rm", "-rf", mlruns_dir], check=True)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=is_mlflow_skinny_installed())
 def clean_up_last_logged_model_id():
     """
     Clean up the last logged model ID stored in a thread local var.
@@ -182,7 +184,7 @@ def clean_up_last_logged_model_id():
     _reset_last_logged_model_id()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=is_mlflow_skinny_installed())
 def clean_up_last_active_run():
     from mlflow.tracking.fluent import _last_active_run_id
 
@@ -246,7 +248,7 @@ def mock_is_in_databricks(request):
         yield mock_databricks
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=is_mlflow_skinny_installed())
 def reset_model_tracker():
     from mlflow.models.model import _MODEL_TRACKER
 

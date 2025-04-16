@@ -14,7 +14,7 @@ from mlflow.tracing.constant import (
     STREAM_CHUNK_EVENT_VALUE_KEY,
     SpanAttributeKey,
 )
-from mlflow.tracing.core.api import end_span, get_current_active_span, start_span, start_detached_span
+from mlflow.tracing.core.api import get_current_active_span, start_span, start_detached_span
 from mlflow.tracing.core.provider import safe_set_span_in_context
 from mlflow.tracing.utils import (
     TraceJSONEncoder,
@@ -136,7 +136,7 @@ def wrap_generator(
     ):
         if error:
             span.add_event(SpanEvent.from_exception(error))
-            end_span(span, status=SpanStatusCode.ERROR)
+            span.end(status=SpanStatusCode.ERROR)
             return
 
         if output_reducer:
@@ -144,7 +144,7 @@ def wrap_generator(
                 outputs = output_reducer(outputs)
             except Exception as e:
                 _logger.debug(f"Failed to reduce outputs from stream: {e}")
-        end_span(span, outputs=outputs)
+        span.end(outputs=outputs)
 
     def _record_chunk_event(span: LiveSpan, chunk: Any, chunk_index: int):
         try:

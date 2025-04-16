@@ -30,6 +30,7 @@ class Task:
         try:
             self.handler(*self.args)
         except Exception as e:
+            raise
             _logger.warning(
                 f"{self.error_msg} Error: {e}.",
                 exc_info=_logger.isEnabledFor(logging.DEBUG),

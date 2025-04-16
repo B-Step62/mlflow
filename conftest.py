@@ -11,7 +11,7 @@ import pytest
 
 from mlflow.environment_variables import _MLFLOW_TESTING, MLFLOW_TRACKING_URI
 from mlflow.utils.os import is_windows
-from mlflow.version import VERSION
+from mlflow.version import VERSION, is_mlflow_skinny_installed
 
 
 def pytest_addoption(parser):
@@ -86,21 +86,6 @@ def pytest_cmdline_main(config):
         raise pytest.UsageError("`--group` must be between 1 and {splits}")
 
     return None
-
-
-def pytest_sessionstart(session):
-    import click
-
-    if uri := MLFLOW_TRACKING_URI.get():
-        click.echo(
-            click.style(
-                (
-                    f"Environment variable {MLFLOW_TRACKING_URI} is set to {uri!r}, "
-                    "which may interfere with tests."
-                ),
-                fg="red",
-            )
-        )
 
 
 def pytest_runtest_setup(item):
@@ -327,7 +312,7 @@ def enable_mlflow_testing():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session", autouse=is_mlflow_skinny_installed())
 def serve_wheel(request, tmp_path_factory):
     """
     Models logged during tests have a dependency on the dev version of MLflow built from

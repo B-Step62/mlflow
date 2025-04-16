@@ -4,6 +4,11 @@ import time
 from typing import Optional
 
 from mlflow.tracing.core.client import TracingClient
+from mlflow.tracking.context.databricks_repo_context import DatabricksRepoRunContext
+from mlflow.tracking.context.git_context import GitRunContext
+from mlflow.tracking.context.registry import resolve_tags
+from mlflow.tracking.default_experiment import DEFAULT_EXPERIMENT_ID
+from mlflow.tracking.fluent import _get_experiment_id
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.sdk.trace import Span as OTelSpan
@@ -114,7 +119,6 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
         # all threads and set it as the tracing source run.
         if run := _get_latest_active_run():
             metadata[TraceMetadataKey.SOURCE_RUN] = run.info.run_id
-
         if model_id := maybe_get_logged_model_id():
             metadata[TraceMetadataKey.MODEL_ID] = model_id
 
