@@ -1,7 +1,9 @@
+from typing import Optional
 from unittest import mock
 
 import mlflow
 from mlflow.entities import LiveSpan, Trace
+from mlflow.entities.trace_info_v3 import TraceInfoV3
 from mlflow.tracing.export.inference_table import (
     _TRACE_BUFFER,
     InferenceTableSpanExporter,
@@ -119,9 +121,49 @@ def test_export_trace_buffer_not_exceeds_max_size(monkeypatch):
     assert pop_trace(_REQUEST_ID_2) is not None
 
 
-def _register_span_and_trace(span: LiveSpan):
+def test_export_dual_write_enabled(monkeypatch):
+    monkeypatch.setenv("ENABLE_TRACE_DUAL_WRITE_IN_DB_MODEL_SERVING", "true")
+    monkeypatch.setenv("DATABRICKS_HOST", "dummy-host")
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dummy-token")
+
+    otel_span = create_mock_otel_span(
+        name="root",
+        trace_id=_TRACE_ID,
+        span_id=1,
+        parent_id=None,
+        start_time=0,
+        end_time=1_000_000,  # 1 millisecond
+    )
+    span = LiveSpan(otel_span, request_id=_REQUEST_ID)
+    _register_span_and_trace(span, experiment_id="123")
+
+
+    mock_client = mock.MagicMock()
+    with mock.patch("mlflow.tracing.export.databricks.MlflowClient",
+                    return_value=mock_client):
+        exporter = InferenceTableSpanExporter()
+
+    exporter.export([otel_span])
+    exporter.flush()
+
+    mock_client._start_trace_v3.assert_called_once()
+    mock_client._upload_trace_data.assert_called_once()
+    trace = mock_client._start_trace_v3.call_args[0][0]
+    assert isinstance(trace, Trace)
+    assert trace.info.trace_location.mlflow_experiment.experiment_id == "123"
+
+    # Trace should be also added to the in-memory buffer and can be extracted
+    assert len(_TRACE_BUFFER) == 1
+    trace_dict = pop_trace(_REQUEST_ID)
+    trace_info = trace_dict["info"]
+    assert trace_info["trace_location"]["mlflow_experiment"]["experiment_id"] == "123"
+
+    assert mlflow.get_last_active_trace_id() == _REQUEST_ID
+
+
+def _register_span_and_trace(span: LiveSpan, experiment_id: Optional[str] = None):
     trace_manager = InMemoryTraceManager.get_instance()
     if span.parent_id is None:
-        trace_info = create_test_trace_info(span.request_id, "0")
+        trace_info = create_test_trace_info(span.request_id, experiment_id or "0")
         trace_manager.register_trace(span._span.context.trace_id, trace_info)
     trace_manager.register_span(span)

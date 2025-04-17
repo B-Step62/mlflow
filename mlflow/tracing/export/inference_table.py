@@ -6,9 +6,11 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter
 
 from mlflow.environment_variables import (
+    _ENABLE_TRACE_DUAL_WRITE_IN_DB_MODEL_SERVING,
     MLFLOW_TRACE_BUFFER_MAX_SIZE,
     MLFLOW_TRACE_BUFFER_TTL_SECONDS,
 )
+from mlflow.tracing.export.databricks import DatabricksSpanExporter
 from mlflow.tracing.fluent import _set_last_active_trace_id
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 
@@ -50,6 +52,12 @@ class InferenceTableSpanExporter(SpanExporter):
     def __init__(self):
         self._trace_manager = InMemoryTraceManager.get_instance()
 
+        # NB: When this env var is set to true, MLflow will export traces to both
+        #  inference table and the MLflow backend for better propagation latency.
+        self._is_dual_write_enabled = _ENABLE_TRACE_DUAL_WRITE_IN_DB_MODEL_SERVING.get()
+        if self._is_dual_write_enabled:
+            self._databricks_exporter = DatabricksSpanExporter()
+
     def export(self, spans: Sequence[ReadableSpan]):
         """
         Export the spans to Inference Table via the TTLCache buffer.
@@ -72,3 +80,18 @@ class InferenceTableSpanExporter(SpanExporter):
 
             # Add the trace to the in-memory buffer so it can be retrieved by upstream
             _TRACE_BUFFER[trace.info.request_id] = trace.to_dict()
+
+            if self._is_dual_write_enabled:
+                if trace.info.experiment_id is None:
+                    _logger.debug(
+                        "Dual write is enabled, but experiment ID is not set "
+                        "for the trace. Skipping trace server export."
+                    )
+                    continue
+                self._databricks_exporter._log_trace_async(trace)
+
+
+    def flush(self, terminate: bool = False):
+        """Flushes the exporter if async logging is enabled."""
+        if self._is_dual_write_enabled:
+            self._databricks_exporter.flush(terminate=terminate)
