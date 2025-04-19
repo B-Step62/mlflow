@@ -280,3 +280,19 @@ def mock_is_in_databricks(request):
 @pytest.fixture(autouse=IS_MLFLOW_SKINNY_INSTALLED)
 def reset_active_model_id():
     _reset_active_model_id()
+
+
+# A fixture only used for testing mlflow-trace package integration.
+@pytest.fixture(autouse=not IS_MLFLOW_SKINNY_INSTALLED)
+def remote_backend(monkeypatch):
+    # TODO: show some message in test so it is clear that the tracing test is running
+    # against the remote backend and requires the backend to be running.
+    mlflow.set_tracking_uri("http://localhost:5000")
+    experiment = mlflow.set_experiment("trace-unit-test")
+
+    monkeypatch.setenv("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "0")
+
+    yield
+
+    # Remove all traces in the backend
+    purge_traces(experiment_id=experiment.experiment_id)
