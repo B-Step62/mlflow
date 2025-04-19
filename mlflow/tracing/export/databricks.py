@@ -58,7 +58,7 @@ class DatabricksSpanExporter(SpanExporter):
                 _logger.debug(f"Trace for span {span} not found. Skipping export.")
                 continue
 
-            _set_last_active_trace_id(trace.info.request_id)
+            _set_last_active_trace_id(trace.info.trace_id)
 
             if self._is_async:
                 self._async_queue.put(

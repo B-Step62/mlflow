@@ -73,7 +73,7 @@ def _validate_trace_json_serialization(trace):
         for i in range(len(trace.data.spans)):
             for attr in [
                 "name",
-                "request_id",
+                "trace_id",
                 "span_id",
                 "start_time_ns",
                 "end_time_ns",

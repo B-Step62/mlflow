@@ -82,7 +82,7 @@ class TraceInfos(NamedTuple):
     trace_infos: list[TraceInfo]
     store: FileStore
     exp_id: str
-    request_ids: list[str]
+    trace_ids: list[str]
     timestamps: list[int]
 
 
@@ -91,7 +91,7 @@ def generate_trace_infos(store):
     exp_id = store.create_experiment("test")
     timestamps = list(range(0, 100, 10))
     trace_infos = []
-    request_ids = []
+    trace_ids = []
     for i, timestamp in enumerate(timestamps):
         trace_info = store.start_trace(
             exp_id,
@@ -100,8 +100,8 @@ def generate_trace_infos(store):
             {TraceTagKey.TRACE_NAME: f"trace_{i}", "test_tag": f"tag_{i}"},
         )
         trace_infos.append(trace_info)
-        request_ids.append(trace_info.request_id)
-    return TraceInfos(trace_infos, store, exp_id, request_ids, timestamps)
+        trace_ids.append(trace_info.trace_id)
+    return TraceInfos(trace_infos, store, exp_id, trace_ids, timestamps)
 
 
 def create_experiments(store, experiment_names):
@@ -2879,7 +2879,7 @@ def test_start_trace(store):
     timestamp_ms = get_current_time_millis()
     tags = {"some_key": "test"}
     trace_info = store.start_trace(exp_id, timestamp_ms, {}, tags)
-    assert trace_info.request_id is not None
+    assert trace_info.trace_id is not None
     assert trace_info.experiment_id == exp_id
     assert trace_info.timestamp_ms == timestamp_ms
     assert trace_info.execution_time_ms is None
@@ -2900,29 +2900,29 @@ def test_end_trace(store_and_trace_info):
     }
     tags = {TraceTagKey.TRACE_NAME: "mlflow_trace"}
     trace_info = store.end_trace(
-        trace.request_id, timestamp_ms, TraceStatus.OK, request_metadata, tags
+        trace.trace_id, timestamp_ms, TraceStatus.OK, request_metadata, tags
     )
-    assert trace_info.request_id == trace.request_id
+    assert trace_info.trace_id == trace.trace_id
     assert trace_info.timestamp_ms == trace.timestamp_ms
     assert trace_info.execution_time_ms == timestamp_ms - trace.timestamp_ms
     assert trace_info.status == TraceStatus.OK
     assert trace_info.request_metadata == {**trace.request_metadata, **request_metadata}
     assert trace_info.tags == {**trace.tags, **tags}
 
-    with pytest.raises(MlflowException, match=r"Trace with request ID 'fake_request_id' not found"):
-        store.end_trace("fake_request_id", timestamp_ms, TraceStatus.OK, request_metadata, tags)
+    with pytest.raises(MlflowException, match=r"Trace with ID 'fake_trace_id' not found"):
+        store.end_trace("fake_trace_id", timestamp_ms, TraceStatus.OK, request_metadata, tags)
 
 
 def test_get_trace_info(store_and_trace_info):
     store, trace = store_and_trace_info
-    trace_info = store.get_trace_info(trace.request_id)
+    trace_info = store.get_trace_info(trace.trace_id)
     assert trace_info == trace
 
-    with pytest.raises(MlflowException, match=r"Trace with request ID 'fake_request_id' not found"):
-        store.get_trace_info("fake_request_id")
+    with pytest.raises(MlflowException, match=r"Trace with ID 'fake_trace_id' not found"):
+        store.get_trace_info("fake_trace_id")
 
     mock_trace_info = deepcopy(trace_info)
-    mock_trace_info.request_id = "invalid_request_id"
+    mock_trace_info.trace_id = "invalid_trace_id"
     with (
         mock.patch(
             "mlflow.store.tracking.file_store.FileStore._get_trace_info_from_dir",
@@ -2930,53 +2930,53 @@ def test_get_trace_info(store_and_trace_info):
         ),
         pytest.raises(
             MlflowException,
-            match=rf"Trace with request ID '{trace.request_id}' metadata is in invalid state.",
+            match=rf"Trace with request ID '{trace.trace_id}' metadata is in invalid state.",
         ),
     ):
-        store.get_trace_info(trace.request_id)
+        store.get_trace_info(trace.trace_id)
 
 
 def test_set_trace_tag(store_and_trace_info):
     store, trace = store_and_trace_info
-    store.set_trace_tag(trace.request_id, "some_key", "a")
-    trace_info = store.get_trace_info(trace.request_id)
+    store.set_trace_tag(trace.trace_id, "some_key", "a")
+    trace_info = store.get_trace_info(trace.trace_id)
     assert trace_info.tags["some_key"] == "a"
 
     # test overwrite
-    store.set_trace_tag(trace.request_id, "some_key", "test")
-    trace_info = store.get_trace_info(trace.request_id)
+    store.set_trace_tag(trace.trace_id, "some_key", "test")
+    trace_info = store.get_trace_info(trace.trace_id)
     assert trace_info.tags["some_key"] == "test"
 
     # test value written as string
-    store.set_trace_tag(trace.request_id, "int_key", 1234)
-    trace_info = store.get_trace_info(trace.request_id)
+    store.set_trace_tag(trace.trace_id, "int_key", 1234)
+    trace_info = store.get_trace_info(trace.trace_id)
     assert trace_info.tags["int_key"] == "1234"
 
     with pytest.raises(MlflowException, match=r"Missing value for required parameter \'key\'"):
-        store.set_trace_tag(trace.request_id, None, "test")
+        store.set_trace_tag(trace.trace_id, None, "test")
 
 
 def test_delete_trace_tag(store_and_trace_info):
     store, trace = store_and_trace_info
-    store.set_trace_tag(trace.request_id, "some_key", "a")
-    store.delete_trace_tag(trace.request_id, "some_key")
-    trace_info = store.get_trace_info(trace.request_id)
+    store.set_trace_tag(trace.trace_id, "some_key", "a")
+    store.delete_trace_tag(trace.trace_id, "some_key")
+    trace_info = store.get_trace_info(trace.trace_id)
     assert "some_key" not in trace_info.tags
 
     with pytest.raises(
         MlflowException,
-        match=rf"No tag with name: invalid_key in trace with request_id {trace.request_id}.",
+        match=rf"No tag with name: invalid_key in trace with trace_id {trace.trace_id}.",
     ):
-        store.delete_trace_tag(trace.request_id, "invalid_key")
+        store.delete_trace_tag(trace.trace_id, "invalid_key")
 
 
 def test_delete_traces(store):
     exp_id = store.create_experiment("test")
-    request_ids = []
+    trace_ids = []
     timestamps = list(range(90, -1, -10))
     for i in range(10):
         trace_info = store.start_trace(exp_id, timestamps[i], {}, {})
-        request_ids.append(trace_info.request_id)
+        trace_ids.append(trace_info.trace_id)
 
     # delete with max_timestamp_millis
     # if max_traces < number of traces with timestamp < max_timestamp_millis,
@@ -2986,29 +2986,29 @@ def test_delete_traces(store):
     assert store.delete_traces(exp_id, max_timestamp_millis=50) == 4
     assert len(store.search_traces([exp_id])[0]) == 4
 
-    # delete with request_ids
-    assert store.delete_traces(exp_id, request_ids=[request_ids[3]]) == 1
+    # delete with trace_ids
+    assert store.delete_traces(exp_id, trace_ids=[trace_ids[3]]) == 1
     assert len(store.search_traces([exp_id])[0]) == 3
-    assert store.delete_traces(exp_id, request_ids=["non_existing_request_id"]) == 0
+    assert store.delete_traces(exp_id, trace_ids=["non_existing_trace_id"]) == 0
     assert len(store.search_traces([exp_id])[0]) == 3
-    assert store.delete_traces(exp_id, request_ids=request_ids) == 3
+    assert store.delete_traces(exp_id, trace_ids=trace_ids) == 3
     assert len(store.search_traces([exp_id])[0]) == 0
 
     with pytest.raises(
         MlflowException,
-        match=r"Either `max_timestamp_millis` or `request_ids` must be specified.",
+        match=r"Either `max_timestamp_millis` or `trace_ids` must be specified.",
     ):
         store.delete_traces(exp_id)
     with pytest.raises(
         MlflowException,
-        match=r"Only one of `max_timestamp_millis` and `request_ids` can be specified.",
+        match=r"Only one of `max_timestamp_millis` and `trace_ids` can be specified.",
     ):
-        store.delete_traces(exp_id, max_timestamp_millis=100, request_ids=request_ids)
+        store.delete_traces(exp_id, max_timestamp_millis=100, trace_ids=trace_ids)
     with pytest.raises(
         MlflowException,
-        match=r"`max_traces` can't be specified if `request_ids` is specified.",
+        match=r"`max_traces` can't be specified if `trace_ids` is specified.",
     ):
-        store.delete_traces(exp_id, max_traces=2, request_ids=request_ids)
+        store.delete_traces(exp_id, max_traces=2, trace_ids=trace_ids)
     with pytest.raises(
         MlflowException, match=r"`max_traces` must be a positive integer, received 0"
     ):
@@ -3031,10 +3031,10 @@ def test_search_traces_filter(generate_trace_infos):
     trace_infos = generate_trace_infos.trace_infos
     store = generate_trace_infos.store
     exp_id = generate_trace_infos.exp_id
-    request_ids = generate_trace_infos.request_ids
+    trace_ids = generate_trace_infos.trace_ids
     timestamps = generate_trace_infos.timestamps
 
-    # by default sort by timestamp_ms DESC, request_id ASC
+    # by default sort by timestamp_ms DESC, trace_id ASC
     _validate_search_traces(store, [exp_id], None, trace_infos[::-1])
     _validate_search_traces(store, [exp_id], "", trace_infos[::-1])
 
@@ -3046,10 +3046,10 @@ def test_search_traces_filter(generate_trace_infos):
     _validate_search_traces(store, [exp_id], "status = 'IN_PROGRESS'", trace_infos[::-1])
     _validate_search_traces(store, [exp_id], "status != 'IN_PROGRESS'", [])
     for i in range(2):
-        trace_infos[i] = store.end_trace(request_ids[i], timestamps[i] + 10, TraceStatus.OK, {}, {})
+        trace_infos[i] = store.end_trace(trace_ids[i], timestamps[i] + 10, TraceStatus.OK, {}, {})
     for i in range(2, 5):
         trace_infos[i] = store.end_trace(
-            request_ids[i], timestamps[i] + 20, TraceStatus.ERROR, {}, {}
+            trace_ids[i], timestamps[i] + 20, TraceStatus.ERROR, {}, {}
         )
     _validate_search_traces(
         store,
@@ -3084,18 +3084,18 @@ def test_search_traces_filter(generate_trace_infos):
         _validate_search_traces(store, [exp_id], f"{timestamp_key} = 100", [])
         _validate_search_traces(store, [exp_id], f"{timestamp_key} != 100", trace_infos[::-1])
 
-    # filter by request_id
-    _validate_search_traces(store, [exp_id], f"request_id = '{request_ids[0]}'", [trace_infos[0]])
+    # filter by trace_id
+    _validate_search_traces(store, [exp_id], f"trace_id = '{trace_ids[0]}'", [trace_infos[0]])
     _validate_search_traces(
-        store, [exp_id], f"request_id != '{request_ids[0]}'", trace_infos[1:][::-1]
+        store, [exp_id], f"trace_id != '{trace_ids[0]}'", trace_infos[1:][::-1]
     )
     _validate_search_traces(
-        store, [exp_id], f"request_id IN ('{request_ids[0]}')", [trace_infos[0]]
+        store, [exp_id], f"trace_id IN ('{trace_ids[0]}')", [trace_infos[0]]
     )
     _validate_search_traces(
         store,
         [exp_id],
-        f"request_id NOT IN ('{request_ids[0]}')",
+        f"trace_id NOT IN ('{trace_ids[0]}')",
         trace_infos[1:][::-1],
     )
 
@@ -3122,7 +3122,7 @@ def test_search_traces_filter(generate_trace_infos):
     # filter by run_id
     for i in range(5, 10):
         trace_infos[i] = store.end_trace(
-            request_ids[i],
+            trace_ids[i],
             timestamps[i] + 30,
             TraceStatus.ERROR,
             {TraceMetadataKey.SOURCE_RUN: f"run_{i}"},
@@ -3248,7 +3248,7 @@ def test_search_traces_order(generate_trace_infos):
     trace_infos = generate_trace_infos.trace_infos
     store = generate_trace_infos.store
     exp_id = generate_trace_infos.exp_id
-    request_ids = generate_trace_infos.request_ids
+    trace_ids = generate_trace_infos.trace_ids
     timestamps = generate_trace_infos.timestamps
     # order by timestamp
     for timestamp_key in ["timestamp", "timestamp_ms"]:
@@ -3259,10 +3259,10 @@ def test_search_traces_order(generate_trace_infos):
 
     # order by execution time
     for i in range(5):
-        trace_infos[i] = store.end_trace(request_ids[i], timestamps[i] + 10, TraceStatus.OK, {}, {})
+        trace_infos[i] = store.end_trace(trace_ids[i], timestamps[i] + 10, TraceStatus.OK, {}, {})
     for i in range(5, 10):
         trace_infos[i] = store.end_trace(
-            request_ids[i], timestamps[i] + 20, TraceStatus.ERROR, {}, {}
+            trace_ids[i], timestamps[i] + 20, TraceStatus.ERROR, {}, {}
         )
     for execution_time_key in ["execution_time", "execution_time_ms"]:
         _validate_search_traces(
@@ -3290,11 +3290,11 @@ def test_search_traces_order(generate_trace_infos):
     )
     _validate_search_traces(store, [exp_id], "", trace_infos[::-1], order_by=["status ASC"])
 
-    # order by request_id
-    expected_trace_infos = sorted(trace_infos, key=lambda x: x.request_id)
-    _validate_search_traces(store, [exp_id], "", expected_trace_infos, order_by=["request_id ASC"])
-    expected_trace_infos = sorted(trace_infos, key=lambda x: x.request_id, reverse=True)
-    _validate_search_traces(store, [exp_id], "", expected_trace_infos, order_by=["request_id DESC"])
+    # order by trace_id
+    expected_trace_infos = sorted(trace_infos, key=lambda x: x.trace_id)
+    _validate_search_traces(store, [exp_id], "", expected_trace_infos, order_by=["trace_id ASC"])
+    expected_trace_infos = sorted(trace_infos, key=lambda x: x.trace_id, reverse=True)
+    _validate_search_traces(store, [exp_id], "", expected_trace_infos, order_by=["trace_id DESC"])
 
     # order by experiment_id
     exp_id2 = store.create_experiment("test2")
@@ -3317,8 +3317,8 @@ def test_search_traces_order(generate_trace_infos):
 
     for i in range(10):
         trace_infos.append(store.start_trace(exp_id2, timestamps[i], {}, {}))
-    # by default sort by timestamp DESC, request_id ASC
-    expected_trace_infos = sorted(trace_infos, key=lambda x: (-x.timestamp_ms, x.request_id))
+    # by default sort by timestamp DESC, trace_id ASC
+    expected_trace_infos = sorted(trace_infos, key=lambda x: (-x.timestamp_ms, x.trace_id))
     _validate_search_traces(
         store,
         [exp_id, exp_id2],

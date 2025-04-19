@@ -157,7 +157,7 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
             if parent:
                 span = self._mlflow_client.start_span(
                     name=span_name,
-                    request_id=parent.request_id,
+                    trace_id=parent.trace_id,
                     parent_id=parent.span_id,
                     span_type=span_type,
                     inputs=inputs,
@@ -177,7 +177,7 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
                     attributes=attributes,
                     tags=dependencies_schemas,
                 )
-                if span.request_id == NO_OP_SPAN_REQUEST_ID:
+                if span.trace_id == NO_OP_SPAN_REQUEST_ID:
                     _logger.debug("No Op span was created, the trace will not be recorded.")
 
             # Attach the span to the current context to mark it "active"
@@ -210,7 +210,7 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
         try:
             with maybe_set_prediction_context(self._prediction_context):
                 self._mlflow_client.end_span(
-                    request_id=span.request_id,
+                    trace_id=span.trace_id,
                     span_id=span.span_id,
                     outputs=outputs,
                     attributes=attributes,

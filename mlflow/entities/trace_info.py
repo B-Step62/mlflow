@@ -52,6 +52,13 @@ class TraceInfo(_MlflowObject):
             return self.__dict__ == other.__dict__
         return False
 
+    @property
+    def trace_id(self):
+        """Return the trace ID."""
+        # NB: "request_id" is renamed to "trace_id" in the V3 schema.
+        # Alias it in V2 entity as well for easier code migration.
+        return self.request_id
+
     def to_proto(self):
         proto = ProtoTraceInfo()
         proto.request_id = self.request_id

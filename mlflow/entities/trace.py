@@ -36,7 +36,7 @@ class Trace(_MlflowObject):
             self.info = self.info.to_v3(request=self.data.request, response=self.data.response)
 
     def __repr__(self) -> str:
-        return f"Trace(request_id={self.info.request_id})"
+        return f"Trace(trace_id={self.info.trace_id})"
 
     def to_dict(self) -> dict[str, Any]:
         return {"info": self.info.to_dict(), "data": self.data.to_dict()}
@@ -77,7 +77,7 @@ class Trace(_MlflowObject):
         # databricks notebooks will use the request ID to
         # fetch the trace from the backend. including the
         # full JSON can cause notebooks to exceed size limits
-        return json.dumps(self.info.request_id)
+        return json.dumps(self.info.trace_id)
 
     def _repr_mimebundle_(self, include=None, exclude=None):
         """
@@ -108,7 +108,9 @@ class Trace(_MlflowObject):
 
     def to_pandas_dataframe_row(self) -> dict[str, Any]:
         return {
-            "request_id": self.info.request_id,
+            # TODO: This column should be updated to "trace_id" once the evaluation set is migrated
+            # https://docs.databricks.com/aws/en/generative-ai/agent-evaluation/evaluation-schema
+            "request_id": self.info.trace_id,
             "trace": self,
             "timestamp_ms": self.info.timestamp_ms,
             "status": self.info.status,

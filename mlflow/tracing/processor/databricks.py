@@ -50,8 +50,8 @@ class DatabricksSpanProcessor(SimpleSpanProcessor):
                 rely on it.
         """
 
-        request_id = self._create_or_get_request_id(span)
-        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(request_id))
+        trace_id = self._create_or_get_trace_id(span)
+        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(trace_id))
 
         tags = {}
         if dependencies_schema := maybe_get_dependencies_schemas():
@@ -59,7 +59,7 @@ class DatabricksSpanProcessor(SimpleSpanProcessor):
 
         if span._parent is None:
             trace_info = TraceInfo(
-                request_id=request_id,
+                request_id=trace_id,
                 experiment_id=self._experiment_id or _get_experiment_id(),
                 timestamp_ms=span.start_time // 1_000_000,  # nanosecond to millisecond
                 execution_time_ms=None,
@@ -69,11 +69,11 @@ class DatabricksSpanProcessor(SimpleSpanProcessor):
             )
             self._trace_manager.register_trace(span.context.trace_id, trace_info)
 
-    def _create_or_get_request_id(self, span: OTelSpan) -> str:
+    def _create_or_get_trace_id(self, span: OTelSpan) -> str:
         if span._parent is None:
-            return str(span.context.trace_id)  # Use otel-generated trace_id as request_id
+            return str(span.context.trace_id)  # Use otel-generated trace_id as trace_id
         else:
-            return self._trace_manager.get_request_id_from_trace_id(span.context.trace_id)
+            return self._trace_manager.get_trace_id_from_trace_id(span.context.trace_id)
 
     def on_end(self, span: OTelReadableSpan) -> None:
         """
@@ -84,10 +84,10 @@ class DatabricksSpanProcessor(SimpleSpanProcessor):
         """
         # Processing the trace only when it is a root span.
         if span._parent is None:
-            request_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
-            with self._trace_manager.get_trace(request_id) as trace:
+            trace_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
+            with self._trace_manager.get_trace(trace_id) as trace:
                 if trace is None:
-                    _logger.debug(f"Trace data with request ID {request_id} not found.")
+                    _logger.debug(f"Trace data with trace ID {trace_id} not found.")
                     return
 
                 trace.info.execution_time_ms = (span.end_time - span.start_time) // 1_000_000

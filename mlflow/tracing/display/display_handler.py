@@ -79,7 +79,7 @@ def _get_query_string_for_traces(traces: list["Trace"]):
     query_params = []
 
     for trace in traces:
-        query_params.append(("trace_id", trace.info.request_id))
+        query_params.append(("trace_id", trace.info.trace_id))
         query_params.append(("experiment_id", trace.info.experiment_id))
 
     return urlencode(query_params)
@@ -190,7 +190,7 @@ class IPythonTraceDisplayHandler:
             if len(traces) == 0:
                 return
 
-            traces_dict = {trace.info.request_id: trace for trace in traces}
+            traces_dict = {trace.info.trace_id: trace for trace in traces}
             self.traces_to_display.update(traces_dict)
         except Exception:
             _logger.debug("Failed to update traces", exc_info=True)

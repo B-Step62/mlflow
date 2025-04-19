@@ -40,9 +40,9 @@ class OtelSpanProcessor(BatchSpanProcessor):
         # Generate a random request ID and trace info just for the sake of consistency
         # with other tracing destinations. Doing this makes it much easier to handle
         # multiple tracing destinations.
-        request_id = uuid.uuid4().hex
+        trace_id = uuid.uuid4().hex
         trace_info = TraceInfo(
-            request_id=request_id,
+            request_id=trace_id,
             experiment_id=None,
             timestamp_ms=span.start_time // 1_000_000,  # nanosecond to millisecond
             execution_time_ms=None,
@@ -50,7 +50,7 @@ class OtelSpanProcessor(BatchSpanProcessor):
             request_metadata={TRACE_SCHEMA_VERSION_KEY: str(TRACE_SCHEMA_VERSION)},
             tags={},
         )
-        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(request_id))
+        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(trace_id))
 
         self._trace_manager.register_trace(span.context.trace_id, trace_info)
 

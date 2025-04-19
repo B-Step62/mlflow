@@ -68,7 +68,7 @@ class InferenceTableSpanExporter(SpanExporter):
                 _logger.debug(f"Trace for span {span} not found. Skipping export.")
                 continue
 
-            _set_last_active_trace_id(trace.info.request_id)
+            _set_last_active_trace_id(trace.info.trace_id)
 
             # Add the trace to the in-memory buffer so it can be retrieved by upstream
-            _TRACE_BUFFER[trace.info.request_id] = trace.to_dict()
+            _TRACE_BUFFER[trace.info.trace_id] = trace.to_dict()

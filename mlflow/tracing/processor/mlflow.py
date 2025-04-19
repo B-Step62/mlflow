@@ -74,22 +74,22 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
                 is obtained from the global context, it won't be passed here so we should not rely
                 on it.
         """
-        request_id = self._trace_manager.get_request_id_from_trace_id(span.context.trace_id)
+        trace_id = self._trace_manager.get_mlflow_id_from_otel_id(span.context.trace_id)
 
-        if not request_id and span.parent is not None:
+        if not trace_id and span.parent is not None:
             _logger.debug(
                 "Received a non-root span but the request ID is not found."
                 "The trace has likely been halted due to a timeout expiration."
             )
             return
 
-        if not request_id:
+        if not trace_id:
             # If the user started trace/span with fixed start time, this attribute is set
             start_time_ns = get_otel_attribute(span, SpanAttributeKey.START_TIME_NS)
 
             trace_info = self._start_trace(span, start_time_ns)
             self._trace_manager.register_trace(span.context.trace_id, trace_info)
-            request_id = trace_info.request_id
+            trace_id = trace_info.trace_id
 
             # NB: This is a workaround to exclude the latency of backend StartTrace API call (within
             #   _create_trace_info()) from the execution time of the span. The API call takes ~1 sec
@@ -97,7 +97,7 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
             if not start_time_ns:
                 span._start_time = time.time_ns()
 
-        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(request_id))
+        span.set_attribute(SpanAttributeKey.REQUEST_ID, json.dumps(trace_id))
 
     def _start_trace(self, span: OTelSpan, start_time_ns: Optional[int]) -> TraceInfo:
         from mlflow.tracking.fluent import _get_latest_active_run
@@ -170,12 +170,12 @@ class MlflowSpanProcessor(SimpleSpanProcessor):
         if span._parent is not None:
             return
 
-        request_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
+        trace_id = get_otel_attribute(span, SpanAttributeKey.REQUEST_ID)
         # TODO: We should remove the model ID from the span attributes
         model_id = get_otel_attribute(span, SpanAttributeKey.MODEL_ID)
-        with self._trace_manager.get_trace(request_id) as trace:
+        with self._trace_manager.get_trace(trace_id) as trace:
             if trace is None:
-                _logger.debug(f"Trace data with request ID {request_id} not found.")
+                _logger.debug(f"Trace data with trace ID {trace_id} not found.")
                 return
 
             self._update_trace_info(trace, span, model_id)
