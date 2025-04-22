@@ -25,7 +25,6 @@ from mlflow.tracing.utils import (
     encode_span_id,
     encode_trace_id,
 )
-from mlflow.utils.annotations import deprecated
 
 _logger = logging.getLogger(__name__)
 
