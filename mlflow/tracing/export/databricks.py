@@ -10,7 +10,6 @@ from mlflow.tracing.export.async_export_queue import AsyncTraceExportQueue, Task
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracking.client import MlflowClient
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -67,7 +66,6 @@ class DatabricksSpanExporter(SpanExporter):
         2. Upload the trace data to blob storage using the returned trace info.
         """
         try:
-            print(self._client)
             returned_trace = self._client._start_trace_v3(trace)
             self._client._upload_trace_data(returned_trace.info, trace.data)
         except Exception as e:

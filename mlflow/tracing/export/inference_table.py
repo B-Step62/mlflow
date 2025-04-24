@@ -90,7 +90,6 @@ class InferenceTableSpanExporter(SpanExporter):
                     continue
                 self._databricks_exporter._log_trace_async(trace)
 
-
     def flush(self, terminate: bool = False):
         """Flushes the exporter if async logging is enabled."""
         if self._is_dual_write_enabled:

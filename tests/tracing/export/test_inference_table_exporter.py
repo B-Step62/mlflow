@@ -3,7 +3,6 @@ from unittest import mock
 
 import mlflow
 from mlflow.entities import LiveSpan, Trace
-from mlflow.entities.trace_info_v3 import TraceInfoV3
 from mlflow.tracing.export.inference_table import (
     _TRACE_BUFFER,
     InferenceTableSpanExporter,
@@ -137,10 +136,8 @@ def test_export_dual_write_enabled(monkeypatch):
     span = LiveSpan(otel_span, request_id=_REQUEST_ID)
     _register_span_and_trace(span, experiment_id="123")
 
-
     mock_client = mock.MagicMock()
-    with mock.patch("mlflow.tracing.export.databricks.MlflowClient",
-                    return_value=mock_client):
+    with mock.patch("mlflow.tracing.export.databricks.MlflowClient", return_value=mock_client):
         exporter = InferenceTableSpanExporter()
 
     exporter.export([otel_span])
