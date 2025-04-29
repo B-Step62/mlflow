@@ -177,11 +177,13 @@ class TrackingServiceClient:
 
     def start_trace(
         self,
-        experiment_id: str,
+        experiment_id: Optional[str],
         timestamp_ms: int,
         request_metadata: dict[str, str],
         tags: dict[str, str],
     ):
+        if experiment_id is None:
+            experiment_id = mlflow.tracking.fluent._get_experiment_id()
         """
         Start an initial TraceInfo object in the backend store.
 
