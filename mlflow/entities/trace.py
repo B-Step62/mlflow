@@ -108,7 +108,7 @@ class Trace(_MlflowObject):
     def to_pandas_dataframe_row(self) -> dict[str, Any]:
         return {
             "trace_id": self.info.trace_id,
-            "trace": self,
+            "trace": self.to_dict(),
             "timestamp_ms": self.info.timestamp_ms,
             "status": self.info.status,
             "execution_time_ms": self.info.execution_time_ms,

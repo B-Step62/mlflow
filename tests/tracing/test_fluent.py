@@ -959,7 +959,7 @@ def test_search_traces_yields_expected_dataframe_contents(monkeypatch):
     ]
     for idx, trace in enumerate(expected_traces):
         assert df.iloc[idx].trace_id == trace.info.trace_id
-        assert df.iloc[idx].trace.info.trace_id == trace.info.trace_id
+        assert df.iloc[idx].trace["info"]["trace_id"] == trace.info.trace_id
         assert df.iloc[idx].timestamp_ms == trace.info.timestamp_ms
         assert df.iloc[idx].status == trace.info.status
         assert df.iloc[idx].execution_time_ms == trace.info.execution_time_ms
@@ -978,7 +978,7 @@ def test_search_traces_handles_missing_response_tags_and_metadata(monkeypatch):
             return [
                 Trace(
                     info=TraceInfo(
-                        request_id=5,
+                        request_id="5",
                         experiment_id="test",
                         timestamp_ms=1,
                         execution_time_ms=2,
