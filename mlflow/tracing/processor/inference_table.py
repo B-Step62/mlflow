@@ -86,6 +86,7 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
             tags.update(dependencies_schema)
 
         if span._parent is None:
+            print(f"Setting client request ID: {databricks_request_id}")
             trace_info = TraceInfo(
                 request_id=trace_id,
                 client_request_id=databricks_request_id,

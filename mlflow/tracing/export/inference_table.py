@@ -85,6 +85,7 @@ class InferenceTableSpanExporter(SpanExporter):
 
             # Add the trace to the in-memory buffer so it can be retrieved by upstream
             # The key is Databricks request ID.
+            print(f"Adding trace to buffer: {trace.info.client_request_id}: {trace.to_dict()}")
             _TRACE_BUFFER[trace.info.client_request_id] = trace.to_dict()
 
             if self._should_write_to_mlflow_backend:
