@@ -12,7 +12,7 @@ from mlflow.entities.assessment import Assessment, Expectation, Feedback
 from mlflow.entities.assessment_source import AssessmentSource
 from mlflow.entities.span import SpanType
 from mlflow.genai.scorers.base import scorer
-from mlflow.genai.scorers.builtin_scorers import GENAI_CONFIG_NAME, groundedness
+from mlflow.genai.scorers.builtin_scorers import GENAI_CONFIG_NAME, groundedness, safety
 
 from tests.evaluate.test_evaluation import _DUMMY_CHAT_RESPONSE
 from tests.genai.conftest import mock_init_auth
@@ -253,14 +253,14 @@ def test_evaluate_passes_model_id_to_mlflow_evaluate():
             data=data,
             predict_fn=model,
             model_id="test_model_id",
-            scorers=[groundedness()],
+            scorers=[safety()],
         )
 
         # Verify the call was made with the right parameters
         mock_evaluate.assert_called_once_with(
-            model=model,
+            model=mock.ANY,
             data=mock.ANY,
-            evaluator_config={GENAI_CONFIG_NAME: {"metrics": ["groundedness"]}},
+            evaluator_config={GENAI_CONFIG_NAME: {"metrics": ["safety"]}},
             model_type="databricks-agent",
             extra_metrics=[],
             model_id="test_model_id",

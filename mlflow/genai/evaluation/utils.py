@@ -79,6 +79,17 @@ def _convert_to_legacy_eval_set(data: "EvaluationDatasetTypes") -> "pd.DataFrame
             "Either `inputs` or `trace` column is required in the dataset. Please provide inputs "
             "for every datapoint or provide a trace."
         )
+    # Verify format of the input using the first row
+    sample_row = df.iloc[0]
+    if "inputs" in sample_row and not isinstance(sample_row["inputs"], dict):
+        raise MlflowException.invalid_parameter_value(
+            "The 'inputs' column must be a dictionary. If you want to pass a single "
+            "argument to the `predict_fn`, use the argument name as the key in the "
+            "dictionary. If you don't pass a `predict_fn`, you can use any string "
+            "key to wrap the value into a dictionary."
+        )
+
+    renamed_df = df.rename(columns=column_mapping)
 
     df = df.rename(columns=column_mapping)
     df = _extract_request_from_trace(df)

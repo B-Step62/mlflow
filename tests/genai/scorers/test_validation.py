@@ -69,7 +69,7 @@ def test_validate_scorers_builtin_scorer_passed_as_function():
 def test_validate_data():
     data = pd.DataFrame(
         {
-            "inputs": ["input1", "input2"],
+            "inputs": [{"question": "input1"}, {"question": "input2"}],
             "outputs": ["output1", "output2"],
             "retrieved_context": ["context1", "context2"],
         }
@@ -190,7 +190,7 @@ def test_validate_data_with_trace():
 
 
 def test_validate_data_with_predict_fn():
-    data = pd.DataFrame({"inputs": ["input1", "input2"]})
+    data = pd.DataFrame({"inputs": [{"question": "input1"}, {"question": "input2"}]})
 
     converted_date = _convert_to_legacy_eval_set(data)
 
