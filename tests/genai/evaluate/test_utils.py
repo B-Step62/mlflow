@@ -5,7 +5,7 @@ from typing import Any, Literal
 from unittest.mock import patch
 
 import pandas as pd
-from mlflow.genai.scorers.builtin_scorers import groundedness
+from mlflow.genai.scorers.builtin_scorers import groundedness, safety
 import pytest
 
 import mlflow
@@ -30,7 +30,7 @@ if importlib.util.find_spec("databricks.agents") is None:
 def sample_dict_data_single():
     return [
         {
-            "inputs": "What is the difference between reduceByKey and groupByKey in Spark?",
+            "inputs": {"question": "What is Spark?"},
             "outputs": "actual response for first question",
             "expectations": {"expected_response": "expected response for first question"},
         },
@@ -41,9 +41,9 @@ def sample_dict_data_single():
 def sample_dict_data_multiple():
     return [
         {
-            "inputs": "What is the difference between reduceByKey and groupByKey in Spark?",
+            "inputs": {"question": "What is Spark?"},
             "outputs": "actual response for first question",
-            "expectations": {"expected_response": "expected response for first question"},
+            "expectations": "expected response for first question",
             # Additional columns required by the judges
             "retrieved_context": [
                 {
@@ -55,16 +55,15 @@ def sample_dict_data_multiple():
                     "doc_uri": "doc_uri_6_extra",
                 },
             ],
+            "expectations": {"expected_response": "expected response for first question"},
+
         },
         {
-            "inputs": {
-                "messages": [
-                    {"role": "user", "content": "How can you minimize data shuffling in Spark?"}
-                ]
-            },
+            "inputs": {"question": "How can you minimize data shuffling in Spark?"},
             "outputs": "actual response for second question",
-            "expectations": {"expected_response": "expected response for second question"},
+            "expectations": "expected response for second question",
             "retrieved_context": [],
+            "expectations": {"expected_response": "expected response for second question"},
         },
     ]
 
@@ -73,7 +72,7 @@ def sample_dict_data_multiple():
 def sample_dict_data_multiple_with_custom_expectations():
     return [
         {
-            "inputs": "What is the difference between reduceByKey and groupByKey in Spark?",
+            "inputs": {"question": "What is Spark?"},
             "outputs": "actual response for first question",
             "expectations": {
                 "expected_response": "expected response for first question",
@@ -81,7 +80,7 @@ def sample_dict_data_multiple_with_custom_expectations():
             },
         },
         {
-            "inputs": "How can you minimize data shuffling in Spark?",
+            "inputs": {"question": "How can you minimize data shuffling in Spark?"},
             "outputs": "actual response for second question",
             "expectations": {
                 "expected_response": "expected response for second question",
@@ -199,6 +198,11 @@ def test_convert_to_legacy_eval_set_has_no_errors(data_fixture, request):
     assert "expected_response" in transformed_data.columns
 
 
+def test_convert_to_legacy_eval_set_invalid_inputs():
+    with pytest.raises(MlflowException, match="The 'inputs' column must be a dictionary"):
+        _convert_to_legacy_eval_set([{"inputs": "not a dict"}])
+
+
 @pytest.mark.parametrize("data_fixture", _ALL_DATA_FIXTURES)
 def test_scorer_receives_correct_data(data_fixture, request):
     sample_data = request.getfixturevalue(data_fixture)
@@ -207,11 +211,7 @@ def test_scorer_receives_correct_data(data_fixture, request):
 
     @scorer
     def dummy_scorer(inputs, outputs, expectations):
-        # TODO: Agent eval harness wraps string input to chat message format. Therefore
-        #   we unwrap it here. This implicit conversion should be removed to avoid confusion.
-        inputs = inputs["messages"][0]["content"]
-        expectations = expectations["expected_response"]
-        received_args.append((inputs, outputs, expectations))
+        received_args.append((inputs["question"], outputs, expectations["expected_response"]))
         return 0
 
     with patch("databricks.sdk.config.Config.init_auth", new=mock_init_auth):
@@ -220,24 +220,23 @@ def test_scorer_receives_correct_data(data_fixture, request):
             scorers=[dummy_scorer],
         )
 
-    all_inputs, all_outputs, all_expectations = zip(*received_args)
+        all_inputs, all_outputs, all_expectations = zip(*received_args)
+        expected_inputs = [
+            "What is Spark?",
+            "How can you minimize data shuffling in Spark?",
+        ][: len(sample_data)]
+        expected_outputs = [
+            "actual response for first question",
+            "actual response for second question",
+        ][: len(sample_data)]
+        expected_expectations = [
+            "expected response for first question",
+            "expected response for second question",
+        ][: len(sample_data)]
 
-    expected_inputs = [
-        "What is the difference between reduceByKey and groupByKey in Spark?",
-        "How can you minimize data shuffling in Spark?",
-    ][: len(sample_data)]
-    expected_outputs = [
-        "actual response for first question",
-        "actual response for second question",
-    ][: len(sample_data)]
-    expected_expectations = [
-        "expected response for first question",
-        "expected response for second question",
-    ][: len(sample_data)]
-
-    assert set(all_inputs) == set(expected_inputs)
-    assert set(all_outputs) == set(expected_outputs)
-    assert set(all_expectations) == set(expected_expectations)
+        assert set(all_inputs) == set(expected_inputs)
+        assert set(all_outputs) == set(expected_outputs)
+        assert set(all_expectations) == set(expected_expectations)
 
 
 def test_input_is_required_if_trace_is_not_provided():
@@ -245,14 +244,14 @@ def test_input_is_required_if_trace_is_not_provided():
         with pytest.raises(MlflowException, match="inputs.*required"):
             mlflow.genai.evaluate(
                 data=pd.DataFrame({"outputs": ["Paris"]}),
-                scorers=[groundedness()],
+                scorers=[safety()],
             )
 
         mock_evaluate.assert_not_called()
 
         mlflow.genai.evaluate(
-            data=pd.DataFrame({"inputs": ["What is the capital of France?"], "outputs": ["Paris"]}),
-            scorers=[groundedness()],
+            data=pd.DataFrame({"inputs": [{"question": "What is Spark?"}], "outputs": ["Paris"]}),
+            scorers=[safety()],
         )
         mock_evaluate.assert_called_once()
 
@@ -305,23 +304,18 @@ def test_predict_fn_receives_correct_data(data_fixture, request):
 
     received_args = []
 
-    def predict_fn(inputs):
-        received_args.append(inputs)
-        return inputs
+    def predict_fn(question: str):
+        received_args.append(question)
+        return question
 
     with patch("databricks.sdk.config.Config.init_auth", new=mock_init_auth):
         mlflow.genai.evaluate(
             predict_fn=predict_fn,
             data=sample_data,
-            scorers=[groundedness()],
+            scorers=[safety()],
         )
-
-    received_args.pop(0)  # Remove the one-time prediction to check if a model is traced
-    assert len(received_args) == len(sample_data)
-    received_contents = [arg["messages"][0]["content"] for arg in received_args]
-    expected_contents = [
-        "What is the difference between reduceByKey and groupByKey in Spark?",
-        "How can you minimize data shuffling in Spark?",
-    ][: len(sample_data)]
-    # Using set because eval harness runs predict_fn in parallel
-    assert set(received_contents) == set(expected_contents)
+        received_args.pop(0)  # Remove the one-time prediction to check if a model is traced
+        assert len(received_args) == len(sample_data)
+        expected_contents = ["What is Spark?", "How can you minimize data shuffling in Spark?"]
+        # Using set because eval harness runs predict_fn in parallel
+        assert set(received_args) == set(expected_contents[: len(sample_data)])
