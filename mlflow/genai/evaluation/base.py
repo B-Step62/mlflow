@@ -7,8 +7,9 @@ from mlflow.genai.evaluation.utils import (
     _convert_scorer_to_legacy_metric,
     _convert_to_legacy_eval_set,
 )
-from mlflow.genai.scorers import BuiltInScorer, Scorer
+from mlflow.genai.scorers import Scorer
 from mlflow.genai.scorers.builtin_scorers import GENAI_CONFIG_NAME
+from mlflow.genai.scorers.validation import valid_data_for_builtin_scorers, validate_scorers
 from mlflow.genai.utils.trace_utils import is_model_traced
 from mlflow.models.evaluation.base import (
     _get_model_from_deployment_endpoint_uri,
@@ -99,7 +100,7 @@ def evaluate(
                ```
     """
     try:
-        from databricks.rag_eval.evaluation.metrics import Metric as DBAgentsMetric
+        import databricks.agents  # noqa: F401
     except ImportError:
         raise ImportError(
             "The `databricks-agents` package is required to use mlflow.genai.evaluate() "
@@ -112,27 +113,7 @@ def evaluate(
             "Please set the tracking URI to Databricks."
         )
 
-    builtin_scorers = []
-    custom_scorers = []
-
-    for scorer in scorers or []:
-        if isinstance(scorer, BuiltInScorer):
-            builtin_scorers.append(scorer)
-        elif isinstance(scorer, Scorer):
-            custom_scorers.append(scorer)
-        elif isinstance(scorer, DBAgentsMetric):
-            logger.warning(
-                f"{scorer} is a legacy metric and will soon be deprecated in future releases. "
-                "Please use the @scorer decorator or use builtin scorers instead."
-            )
-            custom_scorers.append(scorer)
-        else:
-            raise TypeError(
-                (
-                    f"Scorer {scorer} is not a valid scorer. Please use the @scorer decorator ",
-                    "to convert a function into a scorer or inherit from the Scorer class",
-                )
-            )
+    builtin_scorers, custom_scorers = validate_scorers(scorers or [])
 
     evaluation_config = {}
     for _scorer in builtin_scorers:
@@ -144,6 +125,8 @@ def evaluate(
 
     # convert into a pandas dataframe with current evaluation set schema
     data = _convert_to_legacy_eval_set(data)
+
+    valid_data_for_builtin_scorers(data, builtin_scorers, predict_fn)
 
     if predict_fn:
         sample_input = data.iloc[0]["request"]
