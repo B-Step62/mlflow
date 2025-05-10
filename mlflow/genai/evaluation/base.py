@@ -134,14 +134,17 @@ def evaluate(
             logger.info("Annotating predict_fn with tracing since it is not already traced.")
             predict_fn = mlflow.trace(predict_fn)
 
-    result = mlflow.evaluate(
-        model=predict_fn,
-        data=data,
-        evaluator_config=evaluation_config,
-        extra_metrics=extra_metrics,
-        model_type=GENAI_CONFIG_NAME,
-        model_id=model_id,
-    )
+    # NB: Traces should not be logged asynchronously during evaluation, because
+    # some evaluation metrics may require traces immediately.
+    with mlflow.tracing.configure(wait_for_logging=True):
+        result = mlflow.evaluate(
+            model=predict_fn,
+            data=data,
+            evaluator_config=evaluation_config,
+            extra_metrics=extra_metrics,
+            model_type=GENAI_CONFIG_NAME,
+            model_id=model_id,
+        )
 
     return EvaluationResult(
         run_id=result._run_id,
