@@ -1775,19 +1775,22 @@ def evaluate(  # noqa: D417
             predictions_expected_in_model_output = predictions if model is not None else None
 
             try:
-                evaluate_result = _evaluate(
-                    model=model,
-                    model_type=model_type,
-                    model_id=model_id,
-                    dataset=dataset,
-                    run_id=run_id,
-                    evaluator_name_list=evaluator_name_list,
-                    evaluator_name_to_conf_map=evaluator_name_to_conf_map,
-                    extra_metrics=extra_metrics,
-                    custom_artifacts=custom_artifacts,
-                    predictions=predictions_expected_in_model_output,
-                    evaluators=evaluators,
-                )
+                # NB: Traces should not be logged asynchronously during evaluation, because
+                # some evaluation metrics may require traces immediately.
+                with mlflow.tracing.configure(wait_for_logging=True):
+                    evaluate_result = _evaluate(
+                        model=model,
+                        model_type=model_type,
+                        model_id=model_id,
+                        dataset=dataset,
+                        run_id=run_id,
+                        evaluator_name_list=evaluator_name_list,
+                        evaluator_name_to_conf_map=evaluator_name_to_conf_map,
+                        extra_metrics=extra_metrics,
+                        custom_artifacts=custom_artifacts,
+                        predictions=predictions_expected_in_model_output,
+                        evaluators=evaluators,
+                    )
             finally:
                 if isinstance(model, _ServedPyFuncModel):
                     os.kill(model.pid, signal.SIGTERM)

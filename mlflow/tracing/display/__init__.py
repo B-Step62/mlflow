@@ -3,6 +3,7 @@ from mlflow.tracing.display.display_handler import (
     get_notebook_iframe_html,
     is_using_tracking_server,
 )
+from mlflow.utils.annotations import deprecated
 
 __all__ = [
     "IPythonTraceDisplayHandler",
@@ -16,6 +17,7 @@ def get_display_handler() -> IPythonTraceDisplayHandler:
     return IPythonTraceDisplayHandler.get_instance()
 
 
+@deprecated(alternative="mlflow.tracing.configure", since="3.0.0")
 def disable_notebook_display():
     """
     Disables displaying the MLflow Trace UI in notebook output cells.
@@ -24,6 +26,7 @@ def disable_notebook_display():
     IPythonTraceDisplayHandler.disable()
 
 
+@deprecated(alternative="mlflow.tracing.configure", since="3.0.0")
 def enable_notebook_display():
     """
     Enables the MLflow Trace UI in notebook output cells. The display is on

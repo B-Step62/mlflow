@@ -195,8 +195,8 @@ __all__ = [
     "set_tracking_uri",
     "get_tracking_uri",
     "is_tracking_uri_set",
+    "configure",
     # NB: Tracing SDK doesn't support using Runs, however, active_run is used heavily within
-    # the autologging code base.
     "active_run",
     # Tracing APIs
     "add_trace",

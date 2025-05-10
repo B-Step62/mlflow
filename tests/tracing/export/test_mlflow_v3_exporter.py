@@ -15,6 +15,7 @@ from mlflow.entities.trace_location import (
     TraceLocationType,
 )
 from mlflow.entities.trace_state import TraceState
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_TRACE_LOGGING
 from mlflow.protos import service_pb2 as pb
 from mlflow.tracing.destination import Databricks
 from mlflow.tracing.export.mlflow_v3 import MlflowV3SpanExporter
@@ -32,6 +33,14 @@ def _predict(x: str) -> str:
     return x + "!"
 
 
+@pytest.fixture
+def mock_client():
+    mock_client = mock.MagicMock()
+
+    with mock.patch("mlflow.tracing.client.TracingClient", return_value=mock.MagicMock()):
+        yield mock_client
+
+
 def _flush_async_logging():
     exporter = _get_trace_exporter()
     assert hasattr(exporter, "_async_queue"), "Async queue is not initialized"
@@ -40,7 +49,7 @@ def _flush_async_logging():
 
 @pytest.mark.parametrize("is_async", [True, False], ids=["async", "sync"])
 @pytest.mark.parametrize("experiment_id", [None, _EXPERIMENT_ID])
-def test_export(experiment_id, is_async, monkeypatch):
+def test_export(experiment_id, is_async, mock_client, monkeypatch):
     monkeypatch.setenv("DATABRICKS_HOST", "dummy-host")
     monkeypatch.setenv("DATABRICKS_TOKEN", "dummy-token")
     monkeypatch.setenv("MLFLOW_ENABLE_ASYNC_TRACE_LOGGING", str(is_async))
@@ -71,9 +80,6 @@ def test_export(experiment_id, is_async, monkeypatch):
         mock.patch(
             "mlflow.store.tracking.rest_store.call_endpoint", return_value=mock_response
         ) as mock_call_endpoint,
-        mock.patch(
-            "mlflow.tracing.client.TracingClient._upload_trace_data", return_value=None
-        ) as mock_upload_trace_data,
     ):
         _predict("hello")
 
@@ -82,7 +88,7 @@ def test_export(experiment_id, is_async, monkeypatch):
 
     # Verify client methods were called correctly
     mock_call_endpoint.assert_called_once()
-    mock_upload_trace_data.assert_called_once()
+    mock_client.mock_upload_trace_data.assert_called_once()
 
     # Access the trace that was passed to _start_trace_v3
     endpoint = mock_call_endpoint.call_args.args[1]
@@ -94,7 +100,7 @@ def test_export(experiment_id, is_async, monkeypatch):
     assert trace["trace_info"]["trace_id"] is not None
 
     # Validate the data was passed to upload_trace_data
-    call_args = mock_upload_trace_data.call_args
+    call_args = mock_client.upload_trace_data.call_args
     assert isinstance(call_args.args[0], TraceInfo)
     assert call_args.args[0].trace_id == "12345"
 
@@ -144,7 +150,7 @@ def test_export_catch_failure(is_async, monkeypatch):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Flaky on Windows")
-def test_async_bulk_export(monkeypatch):
+def test_async_bulk_export(monkeypatch, mock_client):
     monkeypatch.setenv("DATABRICKS_HOST", "dummy-host")
     monkeypatch.setenv("DATABRICKS_TOKEN", "dummy-token")
     monkeypatch.setenv("MLFLOW_ENABLE_ASYNC_TRACE_LOGGING", "True")
@@ -160,25 +166,40 @@ def test_async_bulk_export(monkeypatch):
         mock_trace.info = mock.MagicMock()
         return mock_trace
 
-    with (
-        mock.patch(
-            "mlflow.tracing.client.TracingClient.start_trace_v3", side_effect=_mock_client_method
-        ) as mock_start_trace,
-        mock.patch(
-            "mlflow.tracing.client.TracingClient._upload_trace_data", return_value=None
-        ) as mock_upload_trace_data,
-    ):
-        # Log many traces
-        start_time = time.time()
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            for _ in range(100):
-                executor.submit(_predict, "hello")
+    mock_client.start_trace_v3.side_effect = _mock_client_method
 
-        # Trace logging should not block the main thread
-        assert time.time() - start_time < 5
+    # Log many traces
+    start_time = time.time()
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for _ in range(100):
+            executor.submit(_predict, "hello")
 
-        _flush_async_logging()
+    # Trace logging should not block the main thread
+    assert time.time() - start_time < 5
+
+    _flush_async_logging()
 
     # Verify the client methods were called the expected number of times
-    assert mock_start_trace.call_count == 100
-    assert mock_upload_trace_data.call_count == 100
+    assert mock_client.mock_start_trace.call_count == 100
+    assert mock_client.mock_upload_trace_data.call_count == 100
+
+
+@pytest.mark.parametrize("env_var_value", [True, False])
+def test_export_sync_when_configured(mock_client, monkeypatch, env_var_value):
+    monkeypatch.setenv(MLFLOW_ENABLE_ASYNC_TRACE_LOGGING.name, str(env_var_value))
+
+    exporter = MlflowV3SpanExporter(tracking_uri="databricks")
+
+    # Default follows the environment variable
+    assert exporter._should_log_async() is not env_var_value
+
+    # Configuration set via mlflow.tracing.configure takes precedence
+    mlflow.tracing.configure(wait_for_logging=True)
+    exporter = MlflowV3SpanExporter(tracking_uri="databricks")
+    assert exporter._should_log_async()
+
+    with mlflow.tracing.configure(wait_for_logging=False):
+        exporter = MlflowV3SpanExporter(tracking_uri="databricks")
+        assert not exporter._should_log_async()
+
+    assert exporter._should_log_async()
