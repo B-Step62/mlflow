@@ -5,10 +5,9 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter
 
 from mlflow.entities.trace import Trace
-from mlflow.environment_variables import (
-    MLFLOW_ENABLE_ASYNC_TRACE_LOGGING,
-)
+from mlflow.environment_variables import MLFLOW_ENABLE_ASYNC_TRACE_LOGGING
 from mlflow.tracing.client import TracingClient
+from mlflow.tracing.config import get_config
 from mlflow.tracing.constant import TraceTagKey
 from mlflow.tracing.display import get_display_handler
 from mlflow.tracing.export.async_export_queue import AsyncTraceExportQueue, Task
@@ -110,7 +109,4 @@ class MlflowV3SpanExporter(SpanExporter):
     def _should_log_async(self):
         # During evaluate, the eval harness relies on the generated trace objects,
         # so we should not log traces asynchronously.
-        if maybe_get_request_id(is_evaluate=True):
-            return False
-
-        return self._is_async_enabled
+        return not get_config().wait_for_logging
