@@ -66,6 +66,8 @@ class MlflowV3SpanExporter(SpanExporter):
                 self._display_handler.display_traces([trace])
 
             if self._should_log_async():
+                import time
+                print("async logging", time.time())
                 self._async_queue.put(
                     task=Task(
                         handler=self._log_trace,

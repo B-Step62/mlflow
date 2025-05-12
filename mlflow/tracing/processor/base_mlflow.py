@@ -46,7 +46,12 @@ class BaseMlflowSpanProcessor(SimpleSpanProcessor):
         self.span_exporter = span_exporter
         self._experiment_id = experiment_id
         self._trace_manager = InMemoryTraceManager.get_instance()
+
+        import time
+
+        start_time = time.time()
         self._env_metadata = resolve_env_metadata()
+        print(f"Resolve env metadata took {time.time() - start_time} seconds")
 
     def on_start(self, span: OTelSpan, parent_context: Optional[Context] = None):
         """
