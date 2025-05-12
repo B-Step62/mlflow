@@ -2,6 +2,9 @@ import json
 import logging
 from typing import Optional
 
+from mlflow.entities.trace import Trace
+from mlflow.pyfunc.context import get_prediction_context
+from mlflow.utils.mlflow_tags import MLFLOW_DATABRICKS_MODEL_SERVING_ENDPOINT_NAME
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.sdk.trace import Span as OTelSpan
@@ -97,7 +100,7 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
                 timestamp_ms=span.start_time // 1_000_000,  # nanosecond to millisecond
                 execution_time_ms=None,
                 status=TraceStatus.IN_PROGRESS,
-                request_metadata={TRACE_SCHEMA_VERSION_KEY: str(TRACE_SCHEMA_VERSION)},
+                request_metadata=self._get_trace_metadata(),
                 tags=tags,
             )
             self._trace_manager.register_trace(span.context.trace_id, trace_info)
@@ -124,3 +127,11 @@ class InferenceTableSpanProcessor(SimpleSpanProcessor):
             deduplicate_span_names_in_place(list(trace.span_dict.values()))
 
         super().on_end(span)
+
+
+    def _get_trace_metadata(self) -> dict[str, str]:
+        metadata = {TRACE_SCHEMA_VERSION_KEY: str(TRACE_SCHEMA_VERSION)}
+        print(f"context: {get_prediction_context()}")
+        if context := get_prediction_context():
+            metadata[MLFLOW_DATABRICKS_MODEL_SERVING_ENDPOINT_NAME] = context.endpoint_name or ""
+        return metadata
