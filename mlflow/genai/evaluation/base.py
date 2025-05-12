@@ -63,8 +63,10 @@ def evaluate(
               - outputs (optional): A column that contains a single output from the
                    target model/app. If the predict_fn is provided, this is generated
                    by MLflow so not required.
-              - expectations (optional): A column that contains a ground truth, or a
-                   dictionary of ground truths for individual output fields.
+              - expectations (optional): A column that contains a dictionary of ground
+                   truths for individual output fields. The dictionary must be in the
+                   format of [name of expectation]: [value], e.g.,
+                   `{"expectations": {"expected_response": "..."}}`
               - trace (optional): A column that contains a single trace object
                    corresponding to the prediction for the row. Only required when
                    any of scorers requires a trace in order to compute
