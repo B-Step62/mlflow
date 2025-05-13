@@ -13,6 +13,7 @@ from mlflow.genai.scorers.builtin_scorers import (
     correctness,
     global_guideline_adherence,
     groundedness,
+    guideline_adherence,
 )
 from mlflow.genai.scorers.validation import valid_data_for_builtin_scorers, validate_scorers
 
@@ -103,6 +104,26 @@ def test_validate_data_with_expectations():
             chunk_relevance(),
             context_sufficiency(),  # requires expected_response
         ],
+    )
+
+
+def test_validate_data_with_guidelines():
+    data = pd.DataFrame(
+        {
+            "inputs": [{"question": "input1"}, {"question": "input2"}],
+            "outputs": ["output1", "output2"],
+            "retrieved_context": ["context1", "context2"],
+            "expectations": [
+                {"guidelines": ["Be polite", "Be kind"]},
+                {"guidelines": ["Be nice"]},
+            ],
+        }
+    )
+
+    converted_date = _convert_to_legacy_eval_set(data)
+    valid_data_for_builtin_scorers(
+        data=converted_date,
+        builtin_scorers=[guideline_adherence()],
     )
 
 

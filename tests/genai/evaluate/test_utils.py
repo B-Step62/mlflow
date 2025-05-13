@@ -145,14 +145,21 @@ def get_test_traces(type=Literal["pandas", "list"]):
                 trace_id=trace.info.trace_id,
                 expectation=Expectation(value=["fact1", "fact2"]),
             ),
-            # 3. Expectation with custom name "ground_truth"
+            # 3. Expectation with reserved name "guidelines"
+            Assessment(
+                name="guidelines",
+                source=source,
+                trace_id=trace.info.trace_id,
+                expectation=Expectation(value=["Be polite", "Be kind"]),
+            ),
+            # 4. Expectation with custom name "ground_truth"
             Assessment(
                 name="my_custom_expectation",
                 source=source,
                 trace_id=trace.info.trace_id,
                 expectation=Expectation(value="custom expectation for the first question"),
             ),
-            # 4. Non-expectation assessment
+            # 5. Non-expectation assessment
             Assessment(
                 name="feedback",
                 source=source,
@@ -177,6 +184,7 @@ def test_convert_to_legacy_eval_traces(input_type):
 
     assert data["expected_response"][0] == "expected response for first question"
     assert data["expected_facts"][0] == ["fact1", "fact2"]
+    assert data["guidelines"][0] == ["Be polite", "Be kind"]
     assert data["custom_expected"][0] == {
         "my_custom_expectation": "custom expectation for the first question"
     }

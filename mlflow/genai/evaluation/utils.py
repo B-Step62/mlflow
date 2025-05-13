@@ -28,6 +28,7 @@ AGENT_EVAL_RESERVED_EXPECTATION_KEYS = {
     "expected_response",
     "expected_retrieved_context",
     "expected_facts",
+    "guidelines",
 }
 AGENT_EVAL_CUSTOM_EXPECTATION_KEY = "custom_expected"
 
