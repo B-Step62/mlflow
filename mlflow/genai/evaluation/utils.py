@@ -1,4 +1,3 @@
-import inspect
 import json
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -96,7 +95,6 @@ def _convert_to_legacy_eval_set(data: "EvaluationDatasetTypes") -> "pd.DataFrame
     df = _extract_expectations_from_trace(df)
     df = _convert_expectations_to_legacy_columns(df)
     return df  # noqa: RET504
-
 
 
 def _extract_request_from_trace(df: "pd.DataFrame") -> "pd.DataFrame":
@@ -222,10 +220,7 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
             "tool_calls": tool_calls,
             **kwargs,
         }
-        # Filter to only the parameters the scorer actually expects
-        sig = inspect.signature(scorer)
-        filtered = {k: v for k, v in merged.items() if k in sig.parameters}
-        return scorer(**filtered)
+        return scorer.run(**merged)
 
     return metric(
         eval_fn=eval_fn,

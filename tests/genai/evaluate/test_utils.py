@@ -1,24 +1,22 @@
 import importlib
-from unittest.mock import MagicMock, patch
 import os
 from typing import Any, Literal
 from unittest.mock import patch
 
 import pandas as pd
-from mlflow.genai.scorers.builtin_scorers import groundedness, safety
 import pytest
 
 import mlflow
-from mlflow.exceptions import MlflowException
 from mlflow.entities.assessment import Assessment, Expectation, Feedback
 from mlflow.entities.assessment_source import AssessmentSource
 from mlflow.entities.span import SpanType
 from mlflow.entities.trace import Trace
+from mlflow.exceptions import MlflowException
 from mlflow.genai import scorer
 from mlflow.genai.evaluation.utils import (
     _convert_to_legacy_eval_set,
 )
-from mlflow.genai.scorers.builtin_scorers import groundedness
+from mlflow.genai.scorers.builtin_scorers import groundedness, safety
 
 from tests.genai.conftest import mock_init_auth
 
@@ -56,7 +54,6 @@ def sample_dict_data_multiple():
                 },
             ],
             "expectations": {"expected_response": "expected response for first question"},
-
         },
         {
             "inputs": {"question": "How can you minimize data shuffling in Spark?"},
@@ -296,6 +293,31 @@ def test_scorer_receives_correct_data_with_trace_data(input_type):
         "my_custom_expectation": "custom expectation for the first question",
     }
     assert isinstance(trace, Trace)
+
+
+def test_scorer_receives_extra_arguments():
+    received_args = []
+
+    @scorer
+    def dummy_scorer(inputs, outputs, retrieved_context) -> float:
+        received_args.append((inputs, outputs, retrieved_context))
+        return 0
+
+    mlflow.genai.evaluate(
+        data=[
+            {
+                "inputs": {"question": "What is Spark?"},
+                "outputs": "actual response for first question",
+                "retrieved_context": [{"doc_uri": "document_1", "content": "test"}],
+            },
+        ],
+        scorers=[dummy_scorer],
+    )
+
+    inputs, outputs, retrieved_context = received_args[0]
+    assert inputs == {"question": "What is Spark?"}
+    assert outputs == "actual response for first question"
+    assert retrieved_context == [{"doc_uri": "document_1", "content": "test"}]
 
 
 @pytest.mark.parametrize("data_fixture", _ALL_DATA_FIXTURES)

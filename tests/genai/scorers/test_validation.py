@@ -1,11 +1,9 @@
 from unittest import mock
 
 import pandas as pd
-import mlflow
 import pytest
 
-from mlflow.entities.trace import Trace
-from mlflow.entities.trace_data import TraceData
+import mlflow
 from mlflow.exceptions import MlflowException
 from mlflow.genai.evaluation.utils import _convert_to_legacy_eval_set
 from mlflow.genai.scorers.base import BuiltInScorer, Scorer, scorer
@@ -17,8 +15,6 @@ from mlflow.genai.scorers.builtin_scorers import (
     groundedness,
 )
 from mlflow.genai.scorers.validation import valid_data_for_builtin_scorers, validate_scorers
-
-from tests.tracing.helper import create_test_trace_info_v3
 
 
 def test_validate_scorers_valid():

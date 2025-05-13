@@ -7,12 +7,12 @@ import pytest
 from packaging.version import Version
 
 import mlflow
-from mlflow.exceptions import MlflowException
 from mlflow.entities.assessment import Assessment, Expectation, Feedback
 from mlflow.entities.assessment_source import AssessmentSource
 from mlflow.entities.span import SpanType
+from mlflow.exceptions import MlflowException
 from mlflow.genai.scorers.base import scorer
-from mlflow.genai.scorers.builtin_scorers import GENAI_CONFIG_NAME, groundedness, safety
+from mlflow.genai.scorers.builtin_scorers import GENAI_CONFIG_NAME, safety
 
 from tests.evaluate.test_evaluation import _DUMMY_CHAT_RESPONSE
 from tests.genai.conftest import mock_init_auth
