@@ -298,6 +298,31 @@ def test_scorer_receives_correct_data_with_trace_data(input_type):
     assert isinstance(trace, Trace)
 
 
+def test_scorer_receives_extra_arguments():
+    received_args = []
+
+    @scorer
+    def dummy_scorer(inputs, outputs, retrieved_context) -> float:
+        received_args.append((inputs, outputs, retrieved_context))
+        return 0
+
+    mlflow.genai.evaluate(
+        data=[
+            {
+                "inputs": {"question": "What is Spark?"},
+                "outputs": "actual response for first question",
+                "retrieved_context": [{'doc_uri': 'document_1', 'content': "test"}],
+            },
+        ],
+        scorers=[dummy_scorer],
+    )
+
+    inputs, outputs, retrieved_context = received_args[0]
+    assert inputs == {"question": "What is Spark?"}
+    assert outputs == "actual response for first question"
+    assert retrieved_context == [{'doc_uri': 'document_1', 'content': "test"}]
+
+
 @pytest.mark.parametrize("data_fixture", _ALL_DATA_FIXTURES)
 def test_predict_fn_receives_correct_data(data_fixture, request):
     sample_data = request.getfixturevalue(data_fixture)
