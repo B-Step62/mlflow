@@ -149,10 +149,10 @@ class _Groundedness(_BaseBuiltInScorer):
     name: str = "groundedness"
 
     def __call__(
-        self, *, inputs: Any, outputs: Any, retrieved_context: list[dict[str, Any]]
+        self, *, inputs: Any, output: Any, retrieved_context: list[dict[str, Any]]
     ) -> Assessment:
         """Evaluate groundedness of response against context."""
-        return super().__call__(inputs=inputs, outputs=outputs, retrieved_context=retrieved_context)
+        return super().__call__(inputs=inputs, output=output, retrieved_context=retrieved_context)
 
 
 def groundedness():
@@ -172,7 +172,7 @@ def groundedness():
 
         assessment = groundedness()(
             inputs={"question": "What is the capital of France?"},
-            outputs="The capital of France is Paris.",
+            output="The capital of France is Paris.",
             retrieved_context=[{"content": "Paris is the capital city of France."}],
         )
         print(assessment)
@@ -186,7 +186,7 @@ def groundedness():
         data = [
             {
                 "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
+                "output": "The capital of France is Paris.",
                 "retrieved_context": [{"content": "Paris is the capital city of France."}],
             }
         ]
@@ -203,14 +203,14 @@ class _GuidelineAdherence(_BaseBuiltInScorer):
         self,
         *,
         inputs: Any,
-        outputs: Any,
+        output: Any,
         guidelines: dict[str, list[str]],
         guidelines_context: dict[str, Any],
     ) -> Assessment:
         """Evaluate adherence to specified guidelines."""
         return super().__call__(
             inputs=inputs,
-            outputs=outputs,
+            output=output,
             guidelines=guidelines,
             guidelines_context=guidelines_context,
         )
@@ -239,7 +239,7 @@ def guideline_adherence():
 
         assessment = guideline_adherence()(
             inputs={"question": "What is the capital of France?"},
-            outputs="The capital of France is Paris.",
+            output="The capital of France is Paris.",
             guidelines={
                 "english": ["The response must be in English"],
             },
@@ -258,7 +258,7 @@ def guideline_adherence():
         data = [
             {
                 "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
+                "output": "The capital of France is Paris.",
                 "guidelines": {
                     "english": ["The response must be in English"],
                     "clarity": ["The response must be clear, coherent, and concise"],
@@ -293,9 +293,9 @@ class _GlobalGuidelineAdherence(_GuidelineAdherence):
         config[GENAI_CONFIG_NAME]["global_guidelines"] = global_guidelines
         return config
 
-    def __call__(self, *, inputs: Any, outputs: Any) -> Assessment:
+    def __call__(self, *, inputs: Any, output: Any) -> Assessment:
         """Evaluate adherence to global guidelines."""
-        return super().__call__(inputs=inputs, outputs=outputs)
+        return super().__call__(inputs=inputs, output=output)
 
 
 def global_guideline_adherence(
@@ -327,7 +327,7 @@ def global_guideline_adherence(
         )
         assessment = english()(
             inputs={"question": "What is the capital of France?"},
-            outputs="The capital of France is Paris.",
+            output="The capital of France is Paris.",
         )
         print(assessment)
 
@@ -351,11 +351,11 @@ def global_guideline_adherence(
         data = [
             {
                 "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
+                "output": "The capital of France is Paris.",
             },
             {
                 "inputs": {"question": "What is the capital of Germany?"},
-                "outputs": "The capital of Germany is Berlin.",
+                "output": "The capital of Germany is Berlin.",
             },
         ]
         result = mlflow.genai.evaluate(
@@ -370,9 +370,9 @@ def global_guideline_adherence(
 class _RelevanceToQuery(_BaseBuiltInScorer):
     name: str = "relevance_to_query"
 
-    def __call__(self, *, inputs: Any, outputs: Any) -> Assessment:
+    def __call__(self, *, inputs: Any, output: Any) -> Assessment:
         """Evaluate relevance to the user's query."""
-        return super().__call__(inputs=inputs, outputs=outputs)
+        return super().__call__(inputs=inputs, output=output)
 
 
 def relevance_to_query():
@@ -392,7 +392,7 @@ def relevance_to_query():
 
         assessment = relevance_to_query()(
             inputs={"question": "What is the capital of France?"},
-            outputs="The capital of France is Paris.",
+            output="The capital of France is Paris.",
         )
         print(assessment)
 
@@ -406,7 +406,7 @@ def relevance_to_query():
         data = [
             {
                 "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
+                "output": "The capital of France is Paris.",
             }
         ]
         result = mlflow.genai.evaluate(data=data, scorers=[relevance_to_query()])
@@ -418,9 +418,9 @@ def relevance_to_query():
 class _Safety(_BaseBuiltInScorer):
     name: str = "safety"
 
-    def __call__(self, *, inputs: Any, outputs: Any) -> Assessment:
+    def __call__(self, *, inputs: Any, output: Any) -> Assessment:
         """Evaluate safety of the response."""
-        return super().__call__(inputs=inputs, outputs=outputs)
+        return super().__call__(inputs=inputs, output=output)
 
 
 def safety():
@@ -439,7 +439,7 @@ def safety():
 
         assessment = safety()(
             inputs={"question": "What is the capital of France?"},
-            outputs="The capital of France is Paris.",
+            output="The capital of France is Paris.",
         )
         print(assessment)
 
@@ -453,7 +453,7 @@ def safety():
         data = [
             {
                 "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
+                "output": "The capital of France is Paris.",
             }
         ]
         result = mlflow.genai.evaluate(data=data, scorers=[safety()])
@@ -465,9 +465,9 @@ def safety():
 class _Correctness(_BaseBuiltInScorer):
     name: str = "correctness"
 
-    def __call__(self, *, inputs: Any, outputs: Any, expectations: list[str]) -> Assessment:
+    def __call__(self, *, inputs: Any, output: Any, expectations: list[str]) -> Assessment:
         """Evaluate correctness of the response against expectations."""
-        return super().__call__(inputs=inputs, outputs=outputs, expectations=expectations)
+        return super().__call__(inputs=inputs, output=output, expectations=expectations)
 
 
 def correctness():
@@ -488,7 +488,7 @@ def correctness():
             inputs={
                 "question": "What is the difference between reduceByKey and groupByKey in Spark?"
             },
-            outputs=(
+            output=(
                 "reduceByKey aggregates data before shuffling, whereas groupByKey "
                 "shuffles all data, making reduceByKey more efficient."
             ),
@@ -513,7 +513,7 @@ def correctness():
                         "What is the difference between reduceByKey and groupByKey in Spark?"
                     )
                 },
-                "outputs": (
+                "output": (
                     "reduceByKey aggregates data before shuffling, whereas groupByKey "
                     "shuffles all data, making reduceByKey more efficient."
                 ),
@@ -545,7 +545,7 @@ def rag_scorers() -> list[BuiltInScorer]:
         data = [
             {
                 "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
+                "output": "The capital of France is Paris.",
                 "retrieved_context": [
                     {"content": "Paris is the capital city of France."},
                 ],

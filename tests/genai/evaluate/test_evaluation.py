@@ -76,8 +76,8 @@ def test_evaluate_passes_model_id_to_mlflow_evaluate():
     # Tracking URI = databricks is required to use mlflow.genai.evaluate()
     mlflow.set_tracking_uri("databricks")
     data = [
-        {"inputs": {"foo": "bar"}, "outputs": "response from model"},
-        {"inputs": {"baz": "qux"}, "outputs": "response from model"},
+        {"inputs": {"foo": "bar"}},
+        {"inputs": {"baz": "qux"}},
     ]
 
     with mock.patch("mlflow.evaluate") as mock_evaluate:
@@ -107,7 +107,7 @@ def test_evaluate_passes_model_id_to_mlflow_evaluate():
 @patch("mlflow.get_tracking_uri", return_value="databricks")
 def test_no_scorers(mock_get_tracking_uri):
     with pytest.raises(TypeError, match=r"evaluate\(\) missing 1 required positional"):
-        mlflow.genai.evaluate(data=[{"inputs": "Hello", "outputs": "Hi"}])
+        mlflow.genai.evaluate(data=[{"inputs": "Hello", "output": "Hi"}])
 
     with pytest.raises(MlflowException, match=r"At least one scorer is required"):
-        mlflow.genai.evaluate(data=[{"inputs": "Hello", "outputs": "Hi"}], scorers=[])
+        mlflow.genai.evaluate(data=[{"inputs": "Hello", "output": "Hi"}], scorers=[])

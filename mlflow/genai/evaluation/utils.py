@@ -24,7 +24,10 @@ if TYPE_CHECKING:
         EvaluationDatasetTypes = Union[pd.DataFrame, list[dict], EvaluationDataset]
 
 
-def _convert_to_legacy_eval_set(data: "EvaluationDatasetTypes") -> "pd.DataFrame":
+def _convert_to_legacy_eval_set(
+    data: "EvaluationDatasetTypes",
+    has_predict_fn: bool = False,
+) -> "pd.DataFrame":
     """
     Takes in a dataset in the format that mlflow.genai.evaluate() expects and converts it into
     to the current eval-set schema that Agent Evaluation takes in. The transformed schema should
@@ -34,7 +37,7 @@ def _convert_to_legacy_eval_set(data: "EvaluationDatasetTypes") -> "pd.DataFrame
     """
     column_mapping = {
         "inputs": "request",
-        "outputs": "response",
+        "output": "response",
     }
 
     if isinstance(data, list):
@@ -70,13 +73,19 @@ def _convert_to_legacy_eval_set(data: "EvaluationDatasetTypes") -> "pd.DataFrame
                 "Please install it with `pip install pyspark`."
             )
 
-    renamed_df = df.rename(columns=column_mapping)
-
-    if "trace" not in renamed_df.columns and column_mapping["inputs"] not in renamed_df.columns:
+    if "trace" not in df.columns and "inputs" not in df.columns:
         raise MlflowException.invalid_parameter_value(
             "Either `inputs` or `trace` column is required in the dataset. Please provide inputs "
             "for every datapoint or provide a trace."
         )
+
+    if "output" in df.columns and has_predict_fn:
+        raise MlflowException.invalid_parameter_value(
+            "When `predict_fn` is provided, the dataset should not contain `output` column. "
+            "MLflow will generate output by running the `predict_fn` on the inputs."
+        )
+
+    renamed_df = df.rename(columns=column_mapping)
 
     # expand out expectations into separate columns
     if "expectations" in df.columns:
@@ -132,7 +141,7 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
         # TODO: scorer.aggregations require a refactor on the agents side
         merged = {
             "inputs": request,
-            "outputs": response,
+            "output": response,
             "expectations": expected_response,
             "trace": trace,
             "guidelines": guidelines,

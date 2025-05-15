@@ -63,7 +63,7 @@ def evaluate(
 
             - inputs (optional): A column that contains a single input. This is required
               unless trace is provided.
-            - outputs (optional): A column that contains a single output from the
+            - output (optional): A column that contains a single output from the
               target model/app. If the predict_fn is provided, this is generated
               by MLflow so not required.
             - expectations (optional): A column that contains a ground truth, or a
@@ -77,11 +77,11 @@ def evaluate(
             following the above schema.
 
         scorers: A list of Scorer objects that produces evaluation scores from
-            inputs, outputs, and other additional contexts. MLflow provides pre-defined
+            inputs, output, and other additional contexts. MLflow provides pre-defined
             scorers, but you can also define custom ones.
 
         predict_fn: The target function to be evaluated. The specified function will be
-            executed for each row in the input dataset, and outputs will be used for
+            executed for each row in the input dataset, and the output will be used for
             scoring.
 
             The function must emit a single trace per call. If it doesn't, decorate
@@ -155,7 +155,7 @@ def evaluate(
         extra_metrics.append(_convert_scorer_to_legacy_metric(_scorer))
 
     # convert into a pandas dataframe with current evaluation set schema
-    data = _convert_to_legacy_eval_set(data)
+    data = _convert_to_legacy_eval_set(data, has_predict_fn=predict_fn is not None)
 
     if predict_fn:
         sample_input = data.iloc[0]["request"]

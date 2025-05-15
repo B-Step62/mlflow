@@ -27,12 +27,12 @@ def mock_init_auth(config_instance):
     config_instance._header_factory = lambda: {}
 
 
-def always_yes(inputs, outputs, expectations, trace):
+def always_yes(inputs, output, expectations, trace):
     return "yes"
 
 
 class AlwaysYesScorer(Scorer):
-    def __call__(self, inputs, outputs, expectations, trace):
+    def __call__(self, inputs, output, expectations, trace):
         return "yes"
 
 
@@ -73,7 +73,7 @@ def sample_new_data():
                     ]
                 },
             ],
-            "outputs": [
+            "output": [
                 {"choices": [{"message": {"content": "actual response for first question"}}]},
                 {"choices": [{"message": {"content": "actual response for second question"}}]},
             ],
@@ -122,11 +122,11 @@ def test_scorer_is_called_with_correct_arguments(sample_data):
     actual_call_args_list = []
 
     @scorer
-    def dummy_scorer(inputs, outputs, expectations, trace) -> float:
+    def dummy_scorer(inputs, output, expectations, trace) -> float:
         actual_call_args_list.append(
             {
                 "inputs": inputs,
-                "outputs": outputs,
+                "output": output,
                 "expectations": expectations,
             }
         )
@@ -147,7 +147,7 @@ def test_scorer_is_called_with_correct_arguments(sample_data):
     sample_data_set = defaultdict(set)
     for i in range(len(sample_data)):
         sample_data_set["inputs"].add(str(sample_data["request"][i]))
-        sample_data_set["outputs"].add(str(sample_data["response"][i]))
+        sample_data_set["output"].add(str(sample_data["response"][i]))
         sample_data_set["expectations"].add(str(sample_data["expected_response"][i]))
 
     for actual_args in actual_call_args_list:
@@ -156,7 +156,7 @@ def test_scorer_is_called_with_correct_arguments(sample_data):
             sample_data_input in str(actual_args["inputs"])
             for sample_data_input in sample_data_set["inputs"]
         )
-        assert str(actual_args["outputs"]) in sample_data_set["outputs"]
+        assert str(actual_args["output"]) in sample_data_set["output"]
         assert str(actual_args["expectations"]) in sample_data_set["expectations"]
 
 
@@ -168,11 +168,11 @@ def test_trace_passed_correctly():
     actual_call_args_list = []
 
     @scorer
-    def dummy_scorer(inputs, outputs, expectations, trace):
+    def dummy_scorer(inputs, output, expectations, trace):
         actual_call_args_list.append(
             {
                 "inputs": inputs,
-                "outputs": outputs,
+                "output": output,
                 "trace": trace,
             }
         )
@@ -247,7 +247,7 @@ def test_scorer_on_genai_evaluate(sample_new_data, scorer_return):
         pytest.skip("Skipping test for assessment return type")
 
     @scorer
-    def dummy_scorer(inputs, outputs):
+    def dummy_scorer(inputs, output):
         return scorer_return
 
     with patch("mlflow.get_tracking_uri", return_value="databricks"):
@@ -286,7 +286,7 @@ def test_builtin_scorers_are_callable():
     with patch("databricks.agents.evals.judges.safety") as mock_safety:
         safety()(
             inputs={"question": "What is the capital of France?"},
-            outputs="The capital of France is Paris.",
+            output="The capital of France is Paris.",
         )
 
         mock_safety.assert_called_once_with(

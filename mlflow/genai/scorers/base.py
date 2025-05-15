@@ -15,8 +15,8 @@ class Scorer(BaseModel):
     def __call__(
         self,
         *,
-        inputs: Any = None,
-        outputs: Any = None,
+        inputs: Optional[dict[str, Any]] = None,
+        output: Any = None,
         expectations: Optional[dict[str, Any]] = None,
         trace: Optional[Trace] = None,
         **kwargs,
@@ -51,7 +51,7 @@ class Scorer(BaseModel):
               - Source
 
             * - ``inputs``
-              - A single input to the target model/app.
+              - A dictionary of input parameters to the target model/app.
               - Derived from either dataset or trace.
 
                 * When the dataset contains ``inputs`` column, the value will be
@@ -60,16 +60,16 @@ class Scorer(BaseModel):
                   from the ``inputs`` field of the trace (i.e. inputs captured as the
                   root span of the trace).
 
-            * - ``outputs``
+            * - ``output``
               - A single output from the target model/app.
               - Derived from either dataset, trace, or output of ``predict_fn``.
 
-                * When the dataset contains ``outputs`` column, the value will be
+                * When the dataset contains ``output`` column, the value will be
                   passed as is.
                 * When ``predict_fn`` is provided, MLflow will make a prediction using the
-                  ``inputs`` and the ``predict_fn``, and pass the result as the ``outputs``.
+                  ``inputs`` and the ``predict_fn``, and pass the result as the ``output``.
                 * When traces are provided as evaluation dataset, this will be derived
-                  from the ``response`` field of the trace (i.e. outputs captured as the
+                  from the ``response`` field of the trace (i.e. output captured as the
                   root span of the trace).
 
             * - ``expectations``
@@ -97,15 +97,15 @@ class Scorer(BaseModel):
                 class NotEmpty(BaseScorer):
                     name = "not_empty"
 
-                    def __call__(self, *, outputs) -> bool:
-                        return outputs != ""
+                    def __call__(self, *, output) -> bool:
+                        return output != ""
 
 
                 class ExactMatch(BaseScorer):
                     name = "exact_match"
 
-                    def __call__(self, *, outputs, expectations) -> bool:
-                        return outputs == expectations["expected_response"]
+                    def __call__(self, *, output, expectations) -> bool:
+                        return output == expectations["expected_response"]
 
 
                 class NumToolCalls(BaseScorer):
@@ -158,7 +158,7 @@ def scorer(
           - Source
 
         * - ``inputs``
-          - A single input to the target model/app.
+          - A dictionary of input parameters to the target model/app.
           - Derived from either dataset or trace.
 
             * When the dataset contains ``inputs`` column, the value will be passed as is.
@@ -166,15 +166,15 @@ def scorer(
               from the ``inputs`` field of the trace (i.e. inputs captured as the
               root span of the trace).
 
-        * - ``outputs``
+        * - ``output``
           - A single output from the target model/app.
           - Derived from either dataset, trace, or output of ``predict_fn``.
 
-            * When the dataset contains ``outputs`` column, the value will be passed as is.
+            * When the dataset contains ``output`` column, the value will be passed as is.
             * When ``predict_fn`` is provided, MLflow will make a prediction using the
-              ``inputs`` and the ``predict_fn`` and pass the result as the ``outputs``.
+              ``inputs`` and the ``predict_fn`` and pass the result as the ``output``.
             * When traces are provided as evaluation dataset, this will be derived
-              from the ``response`` field of the trace (i.e. outputs captured as the
+              from the ``response`` field of the trace (i.e. output captured as the
               root span of the trace).
 
         * - ``expectations``
@@ -202,13 +202,13 @@ def scorer(
 
 
             @scorer
-            def not_empty(outputs) -> bool:
-                return outputs != ""
+            def not_empty(output) -> bool:
+                return output != ""
 
 
             @scorer
-            def exact_match(outputs, expectations) -> bool:
-                return outputs == expectations["expected_response"]
+            def exact_match(output, expectations) -> bool:
+                return output == expectations["expected_response"]
 
 
             @scorer
@@ -228,10 +228,10 @@ def scorer(
         return functools.partial(scorer, name=name, aggregations=aggregations)
 
     class CustomScorer(Scorer):
-        def __call__(self, *, inputs=None, outputs=None, expectations=None, trace=None, **kwargs):
+        def __call__(self, *, inputs=None, output=None, expectations=None, trace=None, **kwargs):
             merged = {
                 "inputs": inputs,
-                "outputs": outputs,
+                "output": output,
                 "expectations": expectations,
                 "trace": trace,
                 **kwargs,

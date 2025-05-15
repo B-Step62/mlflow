@@ -46,9 +46,7 @@ def sample_dict_data_single():
     return [
         {
             "inputs": "What is the difference between reduceByKey and groupByKey in Spark?",
-            "outputs": {
-                "choices": [{"message": {"content": "actual response for first question"}}]
-            },
+            "output": {"choices": [{"message": {"content": "actual response for first question"}}]},
             "expectations": "expected response for first question",
         },
     ]
@@ -59,9 +57,7 @@ def sample_dict_data_multiple():
     return [
         {
             "inputs": "What is the difference between reduceByKey and groupByKey in Spark?",
-            "outputs": {
-                "choices": [{"message": {"content": "actual response for first question"}}]
-            },
+            "output": {"choices": [{"message": {"content": "actual response for first question"}}]},
             "expectations": "expected response for first question",
             # Additional columns required by the judges
             "retrieved_context": [
@@ -81,7 +77,7 @@ def sample_dict_data_multiple():
                     {"role": "user", "content": "How can you minimize data shuffling in Spark?"}
                 ]
             },
-            "outputs": {
+            "output": {
                 "choices": [{"message": {"content": "actual response for second question"}}]
             },
             "expectations": "expected response for second question",
@@ -117,6 +113,19 @@ def test_convert_to_legacy_eval_set_has_no_errors(data_fixture, request):
     assert "expected_response" in transformed_data.columns
 
 
+def test_convert_to_legacy_eval_set_errors_when_both_output_and_predict_fn():
+    sample_data = [
+        {
+            "inputs": "What is the capital of France?",
+            "output": "Paris",
+            "expectations": "Paris",
+        },
+    ]
+
+    with pytest.raises(MlflowException, match="When `predict_fn` is provided, the dataset"):
+        _convert_to_legacy_eval_set(sample_data, has_predict_fn=True)
+
+
 @pytest.mark.parametrize(
     "data_fixture",
     ["sample_dict_data_single", "sample_dict_data_multiple", "sample_pd_data", "sample_spark_data"],
@@ -127,11 +136,11 @@ def test_scorer_receives_correct_data(data_fixture, request):
     received_args = []
 
     @scorer
-    def dummy_scorer(inputs, outputs, expectations):
+    def dummy_scorer(inputs, output, expectations):
         received_args.append(
             {
                 "inputs": inputs,
-                "outputs": outputs,
+                "output": output,
                 "expectations": expectations,
             }
         )
@@ -144,19 +153,19 @@ def test_scorer_receives_correct_data(data_fixture, request):
         )
 
         assert len(received_args) == len(sample_data)
-        assert set(received_args[0].keys()) == set({"inputs", "outputs", "expectations"})
+        assert set(received_args[0].keys()) == set({"inputs", "output", "expectations"})
 
-        all_inputs, all_outputs, all_expectations = [], [], []
+        all_inputs, all_output, all_expectations = [], [], []
         for arg in received_args:
             all_inputs.append(arg["inputs"]["messages"][0]["content"])
-            all_outputs.append(arg["outputs"]["choices"][0]["message"]["content"])
+            all_output.append(arg["output"]["choices"][0]["message"]["content"])
             all_expectations.append(arg["expectations"])
 
         expected_inputs = [
             "What is the difference between reduceByKey and groupByKey in Spark?",
             "How can you minimize data shuffling in Spark?",
         ][: len(sample_data)]
-        expected_outputs = [
+        expected_output = [
             "actual response for first question",
             "actual response for second question",
         ][: len(sample_data)]
@@ -166,7 +175,7 @@ def test_scorer_receives_correct_data(data_fixture, request):
         ][: len(sample_data)]
 
         assert set(all_inputs) == set(expected_inputs)
-        assert set(all_outputs) == set(expected_outputs)
+        assert set(all_output) == set(expected_output)
         assert set(all_expectations) == set(expected_expectations)
 
 
@@ -174,14 +183,14 @@ def test_input_is_required_if_trace_is_not_provided():
     with patch("mlflow.evaluate") as mock_evaluate:
         with pytest.raises(MlflowException, match="inputs.*required"):
             mlflow.genai.evaluate(
-                data=pd.DataFrame({"outputs": ["Paris"]}),
+                data=pd.DataFrame({"output": ["Paris"]}),
                 scorers=[groundedness()],
             )
 
         mock_evaluate.assert_not_called()
 
         mlflow.genai.evaluate(
-            data=pd.DataFrame({"inputs": ["What is the capital of France?"], "outputs": ["Paris"]}),
+            data=pd.DataFrame({"inputs": ["What is the capital of France?"], "output": ["Paris"]}),
             scorers=[groundedness()],
         )
         mock_evaluate.assert_called_once()
@@ -190,7 +199,7 @@ def test_input_is_required_if_trace_is_not_provided():
 def test_input_is_optional_if_trace_is_provided():
     with patch("mlflow.evaluate") as mock_evaluate:
         mlflow.genai.evaluate(
-            data=pd.DataFrame({"outputs": ["Paris"], "trace": [MagicMock()]}),
+            data=pd.DataFrame({"output": ["Paris"], "trace": [MagicMock()]}),
             scorers=[groundedness()],
         )
 
@@ -203,6 +212,12 @@ def test_input_is_optional_if_trace_is_provided():
 )
 def test_predict_fn_receives_correct_data(data_fixture, request):
     sample_data = request.getfixturevalue(data_fixture)
+
+    # Drop 'output' column from the dataset as we pass `predict_fn`
+    if isinstance(sample_data, list):
+        sample_data = [{k: v for k, v in item.items() if k != "output"} for item in sample_data]
+    else:
+        sample_data.drop(columns=["output"], inplace=True)
 
     received_args = []
 
