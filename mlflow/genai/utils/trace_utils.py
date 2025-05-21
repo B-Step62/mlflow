@@ -45,9 +45,9 @@ class NoOpTracerPatcher:
     def __enter__(self):
         self.original = NoOpTracer.start_span
 
-        def _patched_start_span(_self, *args, **kwargs):
+        def _patched_start_span(*args, **kwargs):
             self.count += 1
-            return self.original(_self, *args, **kwargs)
+            return self.original(*args, **kwargs)
 
         NoOpTracer.start_span = _patched_start_span
         return self
