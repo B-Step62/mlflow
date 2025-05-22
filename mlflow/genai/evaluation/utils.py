@@ -147,10 +147,19 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
 
     def eval_fn(
         request_id: str,
-        request: ChatCompletionRequest,
+        request: Union[ChatCompletionRequest, str],
         response: Optional[Any],
         expected_response: Optional[Any],
         trace: Optional[Trace],
+        retrieved_context: Optional[list[dict[str, str]]] = None,
+        guidelines: Optional[Union[list[str], dict[str, list[str]]]] = None,
+        expected_facts: Optional[list[str]] = None,
+        expected_retrieved_context: Optional[list[dict[str, str]]] = None,
+        custom_expected: Optional[dict[str, Any]] = None,
+        custom_inputs: Optional[dict[str, Any]] = None,
+        custom_outputs: Optional[dict[str, Any]] = None,
+        tool_calls: Optional[list[Any]] = None,
+        **kwargs,
     ) -> Union[int, float, bool, str, Assessment, list[Assessment]]:
         return scorer.run(
             inputs=request,
