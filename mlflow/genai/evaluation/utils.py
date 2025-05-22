@@ -151,14 +151,14 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
         response: Optional[Any],
         expected_response: Optional[Any],
         trace: Optional[Trace],
-        retrieved_context: Optional[list[dict[str, str]]] = None,
-        guidelines: Optional[Union[list[str], dict[str, list[str]]]] = None,
-        expected_facts: Optional[list[str]] = None,
-        expected_retrieved_context: Optional[list[dict[str, str]]] = None,
-        custom_expected: Optional[dict[str, Any]] = None,
-        custom_inputs: Optional[dict[str, Any]] = None,
-        custom_outputs: Optional[dict[str, Any]] = None,
-        tool_calls: Optional[list[Any]] = None,
+        retrieved_context: Optional[list[dict[str, str]]],
+        guidelines: Optional[Union[list[str], dict[str, list[str]]]],
+        expected_facts: Optional[list[str]],
+        expected_retrieved_context: Optional[list[dict[str, str]]],
+        custom_expected: Optional[dict[str, Any]],
+        custom_inputs: Optional[dict[str, Any]],
+        custom_outputs: Optional[dict[str, Any]],
+        tool_calls: Optional[list[Any]],
         **kwargs,
     ) -> Union[int, float, bool, str, Assessment, list[Assessment]]:
         # Condense all expectations into a single dict
@@ -179,7 +179,7 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
         return scorer.run(
             inputs=request,
             outputs=response,
-            expectations=expectations if expectations else None,
+            expectations=expectations,
             trace=trace,
         )
 
