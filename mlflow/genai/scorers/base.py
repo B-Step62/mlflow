@@ -74,7 +74,12 @@ class Scorer(BaseModel):
         """
         Implement the custom scorer's logic here.
 
+
         The scorer will be called for each row in the input evaluation dataset.
+
+        Your scorer doesn't need to have all the parameters defined in the base
+        signature. You can define a custom scorer with only the parameters you need.
+        See the parameter details below for what values are passed for each parameter.
 
         .. list-table::
             :widths: 20 20 20
