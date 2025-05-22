@@ -119,7 +119,7 @@ def evaluate(
 
         mlflow.genai.evaluate(
             data=data,
-            scorers=[correctness()],
+            scorers=[correctness],
         )
 
     **3. Pass `predict_fn` and input samples (and optionally expectations).**
@@ -196,10 +196,6 @@ def evaluate(
                   If this column is present, `predict_fn` must not be provided.
 
                 - expectations (optional): Column containing a dictionary of ground truths.
-
-            The input dataframe can contain extra columns that will be directly passed to
-            the scorers. For example, you can pass a dataframe with `retrieved_context`
-            column to use a scorer that takes `retrieved_context` as a parameter.
 
             For list of dictionaries, each dict should follow the above schema.
 
