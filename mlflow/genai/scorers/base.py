@@ -15,20 +15,16 @@ class Scorer(BaseModel):
     name: str
     aggregations: Optional[list] = None
 
-    def run(self, *, inputs=None, outputs=None, expectations=None, trace=None, **kwargs):
+    def run(self, *, inputs=None, outputs=None, expectations=None, trace=None):
         from mlflow.evaluation import Assessment as LegacyAssessment
 
-        merged = {
-            "inputs": inputs,
-            "outputs": outputs,
-            "expectations": expectations,
-            "trace": trace,
-            **kwargs,
-        }
-        # Filter to only the parameters the function actually expects
-        sig = inspect.signature(self.__call__)
-        filtered = {k: v for k, v in merged.items() if k in sig.parameters}
-        result = self(**filtered)
+        result = self(
+            inputs=inputs,
+            outputs=outputs,
+            expectations=expectations,
+            trace=trace,
+        )
+
         if not (
             # TODO: Replace 'Assessment' with 'Feedback' once we migrate from the agent eval harness
             isinstance(result, (int, float, bool, str, Assessment, LegacyAssessment))
@@ -74,28 +70,11 @@ class Scorer(BaseModel):
         outputs: Any = None,
         expectations: Optional[dict[str, Any]] = None,
         trace: Optional[Trace] = None,
-        **kwargs,
     ) -> Union[int, float, bool, str, Feedback, list[Feedback]]:
-        # TODO: make sure scorer's signature is simply equal to whatever keys are
-        # in the eval dataset once we migrate from the agent eval harness
-        # Currently, the evaluation harness only passes the following reserved
-        # extra keyword arguments. This will be fully flexible once we migrate off
-        # the agent eval harness.
-        # - retrieved_context (optional): Retrieved context, can be from your
-        #   input eval dataset or from trace
-        # - custom_expected (optional): Custom expected results from input eval dataset
-        # - custom_inputs (optional): Custom inputs from your input eval dataset
-        # - custom_outputs (optional): Custom outputs from the agent's response
-        # - tool_calls (optional): Tool calls from the agent's response.
         """
         Implement the custom scorer's logic here.
 
-
         The scorer will be called for each row in the input evaluation dataset.
-
-        Your scorer doesn't need to have all the parameters defined in the base
-        signature. You can define a custom scorer with only the parameters you need.
-        See the parameter details below for what values are passed for each parameter.
 
         .. list-table::
             :widths: 20 20 20
@@ -140,10 +119,6 @@ class Scorer(BaseModel):
             * - ``trace``
               - A trace object corresponding to the prediction for the row.
               - Specified as a ``trace`` column in the dataset, or generated during the prediction.
-
-            * - ``**kwargs``
-              - Additional keyword arguments passed to the scorer.
-              - Must be specified as extra columns in the input dataset.
 
         Example:
 
@@ -246,10 +221,6 @@ def scorer(
           - A trace object corresponding to the prediction for the row.
           - Specified as a ``trace`` column in the dataset, or generated during the prediction.
 
-        * - ``**kwargs``
-          - Additional keyword arguments passed to the scorer.
-          - Must be specified as extra columns in the input dataset.
-
     The scorer function should return one of the following:
 
     * A boolean value
@@ -336,17 +307,31 @@ def scorer(
         return functools.partial(scorer, name=name, aggregations=aggregations)
 
     class CustomScorer(Scorer):
-        def __call__(self, *args, **kwargs):
-            return func(*args, **kwargs)
+        # The __call__ method of the generated Scorer must also have the fixed signature.
+        def __call__(self, inputs=None, outputs=None, expectations=None, trace=None):
+            # We need to inspect the decorated user function (func) and only pass
+            # the subset of the arguments (inputs, outputs, expectations, trace) that it actually
+            # expects.
+            func_sig = inspect.signature(func)
+            func_params = func_sig.parameters
 
-    # Update the __call__ method's signature to match the original function
-    # but add 'self' as the first parameter. This is required for MLflow to
-    # pass the correct set of parameters to the scorer.
-    signature = inspect.signature(func)
-    params = list(signature.parameters.values())
-    new_params = [inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)] + params
-    new_signature = signature.replace(parameters=new_params)
-    CustomScorer.__call__.__signature__ = new_signature
+            args_to_pass = {}
+            if "inputs" in func_params:
+                args_to_pass["inputs"] = inputs
+            if "outputs" in func_params:
+                args_to_pass["outputs"] = outputs
+            if "expectations" in func_params:
+                args_to_pass["expectations"] = expectations
+            if "trace" in func_params:
+                args_to_pass["trace"] = trace
+
+            return func(**args_to_pass)
+
+    # Update the __call__ method's signature of CustomScorer to match the base Scorer's __call__
+    # This ensures consistency and proper behavior with signature inspection mechanisms.
+    # The actual user function `func` can have a subset of these.
+    base_scorer_call_sig = inspect.signature(Scorer.__call__)
+    CustomScorer.__call__.__signature__ = base_scorer_call_sig
 
     return CustomScorer(
         name=name or func.__name__,

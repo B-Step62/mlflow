@@ -72,7 +72,7 @@ class _ChunkRelevance(_BaseBuiltInScorer):
 
 @_builtin_scorer
 @experimental
-def chunk_relevance():
+def _chunk_relevance():
     """
     Chunk relevance measures whether each chunk is relevant to the input request.
 
@@ -126,7 +126,7 @@ class _ContextSufficiency(_BaseBuiltInScorer):
 
 @_builtin_scorer
 @experimental
-def context_sufficiency():
+def _context_sufficiency():
     """
     Context sufficiency evaluates whether the retrieved documents provide all necessary
     information to generate the expected response.
@@ -177,7 +177,7 @@ class _Groundedness(_BaseBuiltInScorer):
 
 @_builtin_scorer
 @experimental
-def groundedness():
+def _groundedness():
     """
     Groundedness assesses whether the agent's response is aligned with the information provided
     in the retrieved context.
@@ -266,7 +266,7 @@ class _GuidelineAdherence(_BaseBuiltInScorer):
 
 @_builtin_scorer
 @experimental
-def guideline_adherence(
+def _guideline_adherence(
     global_guidelines: Optional[list[str]] = None,
     name: str = "guideline_adherence",
 ):
@@ -554,8 +554,9 @@ def correctness():
 @experimental
 def rag_scorers() -> list[BuiltInScorer]:
     """
-    Returns a list of built-in scorers for evaluating RAG models. Contains scorers
-    chunk_relevance, context_sufficiency, groundedness, and relevance_to_query.
+    Returns a list of built-in scorers for evaluating RAG models.
+    Currently only includes relevance_to_query as other RAG scorers
+    require non-standard parameters.
 
     Example:
 
@@ -568,17 +569,14 @@ def rag_scorers() -> list[BuiltInScorer]:
             {
                 "inputs": {"question": "What is the capital of France?"},
                 "outputs": "The capital of France is Paris.",
-                "retrieved_context": [
-                    {"content": "Paris is the capital city of France."},
-                ],
             }
         ]
         result = mlflow.genai.evaluate(data=data, scorers=rag_scorers())
     """
     return [
-        chunk_relevance(),
-        context_sufficiency(),
-        groundedness(),
+        # _chunk_relevance(),
+        # _context_sufficiency(),
+        # _groundedness(),
         relevance_to_query(),
     ]
 
@@ -587,7 +585,8 @@ def rag_scorers() -> list[BuiltInScorer]:
 @experimental
 def all_scorers() -> list[BuiltInScorer]:
     """
-    Returns a list of all built-in scorers.
+    Returns a list of all built-in scorers that can be used with
+    standard parameters (inputs, outputs, expectations, trace).
 
     Example:
 
@@ -600,15 +599,12 @@ def all_scorers() -> list[BuiltInScorer]:
             {
                 "inputs": {"question": "What is the capital of France?"},
                 "outputs": "The capital of France is Paris.",
-                "retrieved_context": [
-                    {"content": "Paris is the capital city of France."},
-                ],
             }
         ]
         result = mlflow.genai.evaluate(data=data, scorers=all_scorers())
     """
-    return rag_scorers() + [
-        guideline_adherence(),
+    return [
+        relevance_to_query(),
         safety(),
         correctness(),
     ]

@@ -106,31 +106,6 @@ def test_scorer_is_called_with_correct_arguments(sample_data):
         )
 
 
-def test_scorer_receives_extra_arguments():
-    received_args = []
-
-    @scorer
-    def dummy_scorer(inputs, outputs, retrieved_context) -> float:
-        received_args.append((inputs, outputs, retrieved_context))
-        return 0
-
-    mlflow.genai.evaluate(
-        data=[
-            {
-                "inputs": {"question": "What is Spark?"},
-                "outputs": "actual response for first question",
-                "retrieved_context": [{"doc_uri": "document_1", "content": "test"}],
-            },
-        ],
-        scorers=[dummy_scorer],
-    )
-
-    inputs, outputs, retrieved_context = received_args[0]
-    assert inputs == {"question": "What is Spark?"}
-    assert outputs == "actual response for first question"
-    assert retrieved_context == [{"doc_uri": "document_1", "content": "test"}]
-
-
 def test_trace_passed_correctly():
     @mlflow.trace
     def predict_fn(question):
@@ -301,3 +276,38 @@ def test_custom_scorer_does_not_overwrite_feedback_name_when_returning_list():
     )
     assert feedbacks[0].name == "big_question"
     assert feedbacks[1].name == "small_question"
+
+
+def test_scorer_ignores_unspecified_extra_arguments():
+    """Tests that scorers ignore extra columns not in their fixed __call__ signature."""
+    was_called = False
+    received_call_args = {}
+
+    @scorer
+    def simple_scorer_fixed_sig(inputs, outputs) -> float:
+        nonlocal was_called, received_call_args
+        was_called = True
+        # Capture only the arguments actually defined and received by the scorer
+        received_call_args = {"inputs": inputs, "outputs": outputs}
+        return 0.0
+
+    mlflow.genai.evaluate(
+        data=[
+            {
+                "inputs": {"question": "What is MLflow?"},
+                "outputs": "MLflow is a platform.",
+                "extra_field_in_data": "this_should_be_ignored",
+                "another_extra": 123,
+            },
+        ],
+        scorers=[simple_scorer_fixed_sig],
+    )
+
+    assert was_called, "Scorer was not called"
+    assert received_call_args.get("inputs") == {"question": "What is MLflow?"}
+    assert received_call_args.get("outputs") == "MLflow is a platform."
+    # Assert that the extra fields were not passed to the scorer
+    assert "extra_field_in_data" not in received_call_args
+    assert "another_extra" not in received_call_args
+    assert "expectations" not in received_call_args  # Not provided in data, not received
+    assert "trace" not in received_call_args  # Not provided in data, not received
