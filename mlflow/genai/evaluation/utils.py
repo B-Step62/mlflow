@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Union
 
 from mlflow.data.evaluation_dataset import EvaluationDataset
 from mlflow.entities import Assessment, Trace
@@ -148,17 +148,17 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
     def eval_fn(
         request_id: str,
         request: Union[ChatCompletionRequest, str],
-        response: Optional[Any],
-        expected_response: Optional[Any],
-        trace: Optional[Trace],
-        retrieved_context: Optional[list[dict[str, str]]],
-        guidelines: Optional[Union[list[str], dict[str, list[str]]]],
-        expected_facts: Optional[list[str]],
-        expected_retrieved_context: Optional[list[dict[str, str]]],
-        custom_expected: Optional[dict[str, Any]],
-        custom_inputs: Optional[dict[str, Any]],
-        custom_outputs: Optional[dict[str, Any]],
-        tool_calls: Optional[list[Any]],
+        response: Any,
+        expected_response: Any,
+        trace: Trace,
+        retrieved_context: list[dict[str, str]],
+        guidelines: Union[list[str], dict[str, list[str]]],
+        expected_facts: list[str],
+        expected_retrieved_context: list[dict[str, str]],
+        custom_expected: dict[str, Any],
+        custom_inputs: dict[str, Any],
+        custom_outputs: dict[str, Any],
+        tool_calls: list[Any],
         **kwargs,
     ) -> Union[int, float, bool, str, Assessment, list[Assessment]]:
         # Condense all expectations into a single dict

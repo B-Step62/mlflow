@@ -56,15 +56,15 @@ expected = {
         + [
             _guideline_adherence(name="politeness", global_guidelines=["Be polite", "Be kind"]),
             _guideline_adherence(),
-            correctness(),
-            safety(),
+            correctness,
+            safety,
         ],
         [*rag_scorers()]
         + [
             _guideline_adherence(name="politeness", global_guidelines=["Be polite", "Be kind"]),
             _guideline_adherence(),
-            correctness(),
-            safety(),
+            correctness,
+            safety,
         ],
     ],
 )
@@ -81,11 +81,11 @@ def test_scorers_and_rag_scorers_config(scorers):
     [
         (_chunk_relevance(), "chunk_relevance"),
         (_context_sufficiency(), "context_sufficiency"),
-        (correctness(), "correctness"),
+        (correctness, "correctness"),
         (_groundedness(), "groundedness"),
         (_guideline_adherence(), "guideline_adherence"),
-        (relevance_to_query(), "relevance_to_query"),
-        (safety(), "safety"),
+        (relevance_to_query, "relevance_to_query"),
+        (safety, "safety"),
     ],
 )
 def test_individual_scorers(scorer, expected_metric):

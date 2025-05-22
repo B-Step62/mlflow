@@ -700,15 +700,14 @@ def get_rag_scorers() -> list[BuiltInScorer]:
         # _chunk_relevance(),
         # _context_sufficiency(),
         # _groundedness(),
-        relevance_to_query(),
+        relevance_to_query,
     ]
 
 
 @experimental
 def get_all_scorers() -> list[BuiltInScorer]:
     """
-    Returns a list of all built-in scorers that can be used with
-    standard parameters (inputs, outputs, expectations, trace).
+    Returns a list of all built-in scorers.
 
     Example:
 
@@ -726,9 +725,9 @@ def get_all_scorers() -> list[BuiltInScorer]:
         result = mlflow.genai.evaluate(data=data, scorers=get_all_scorers())
     """
     return get_rag_scorers() + [
-        relevance_to_query(),
-        safety(),
-        correctness(),
+        relevance_to_query,
+        safety,
+        correctness,
         # _guideline_adherence,
     ]
 
