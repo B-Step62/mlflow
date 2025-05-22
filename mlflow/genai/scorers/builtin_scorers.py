@@ -697,9 +697,9 @@ def get_rag_scorers() -> list[BuiltInScorer]:
         result = mlflow.genai.evaluate(data=data, scorers=get_rag_scorers())
     """
     return [
-        # _chunk_relevance(),
-        # _context_sufficiency(),
-        # _groundedness(),
+        # _chunk_relevance,
+        # _context_sufficiency,
+        # _groundedness,
         relevance_to_query,
     ]
 
