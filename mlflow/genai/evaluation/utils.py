@@ -161,12 +161,25 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
         tool_calls: Optional[list[Any]] = None,
         **kwargs,
     ) -> Union[int, float, bool, str, Assessment, list[Assessment]]:
+        # Condense all expectations into a single dict
+        expectations = {}
+        if expected_response is not None:
+            expectations[AgentEvaluationReserverKey.EXPECTED_RESPONSE] = expected_response
+        if expected_facts is not None:
+            expectations[AgentEvaluationReserverKey.EXPECTED_FACTS] = expected_facts
+        if expected_retrieved_context is not None:
+            expectations[AgentEvaluationReserverKey.EXPECTED_RETRIEVED_CONTEXT] = (
+                expected_retrieved_context
+            )
+        if guidelines is not None:
+            expectations[AgentEvaluationReserverKey.GUIDELINES] = guidelines
+        if custom_expected is not None:
+            expectations.update(custom_expected)
+
         return scorer.run(
             inputs=request,
             outputs=response,
-            expectations={AgentEvaluationReserverKey.EXPECTED_RESPONSE: expected_response}
-            if expected_response is not None
-            else None,
+            expectations=expectations if expectations else None,
             trace=trace,
         )
 
