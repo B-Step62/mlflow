@@ -1,5 +1,6 @@
 import pytest
 
+from mlflow.exceptions import MlflowException
 from mlflow.genai.scorers import (
     correctness,
     rag_scorers,
@@ -174,3 +175,38 @@ def test_guideline_adherence_scorers(scorers):
     }
 
     assert normalize_config(evaluation_config) == normalize_config(expected_conf)
+
+
+def test_builtin_scorer_block_mutations():
+    """Test that the built-in scorers are immutable."""
+    with pytest.raises(MlflowException, match=r"Built-in scorer fields are immutable"):
+        _chunk_relevance.name = "new_name"
+
+
+@pytest.mark.parametrize(
+    ("scorer", "updates"),
+    [
+        (_chunk_relevance, {"name": "custom_name"}),
+        (_context_sufficiency, {"name": "custom_name"}),
+        (_groundedness, {"name": "custom_name"}),
+        (relevance_to_query, {"name": "custom_name"}),
+        (safety, {"name": "custom_name"}),
+        (correctness, {"name": "custom_name"}),
+        (
+            _guideline_adherence,
+            {"name": "custom_name", "global_guidelines": ["Be polite", "Be kind"]},
+        ),
+    ],
+    ids=lambda x: x.__class__.__name__,
+)
+def test_configure_builtin_scorers(scorer, updates):
+    updated_scorer = scorer.with_config(**updates)
+
+    assert updated_scorer is not scorer  # with_config() should return a new instance
+    assert isinstance(updated_scorer, scorer.__class__)
+    for key, value in updates.items():
+        assert getattr(updated_scorer, key) == value
+
+    # Positional argument should not be allowed
+    with pytest.raises(TypeError, match=rf"{scorer.__class__.__name__}.with_config\(\) takes"):
+        scorer.with_config("custom_name")
