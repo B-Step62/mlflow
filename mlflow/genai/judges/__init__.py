@@ -1,5 +1,6 @@
-from mlflow.entities.assessment import Feedback
 from typing import Any, Optional, Union
+
+from mlflow.entities.assessment import Feedback
 
 
 def is_context_relevant(*, request: str, context: Any, name: Optional[str] = None) -> Feedback:
@@ -7,7 +8,7 @@ def is_context_relevant(*, request: str, context: Any, name: Optional[str] = Non
     LLM judge determines whether the given context is relevant to the input request.
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query.
         context: TBA
         name: Optional name for overriding the default name of the returned feedback.
 
@@ -37,7 +38,7 @@ def is_context_sufficient(
     LLM judge determines whether the given context is sufficient to answer the input request.
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query.
         context: TBA
         expected_facts: A list of expected facts that should be present in the context.
         expected_response: The expected response from the application. Optional.
@@ -70,7 +71,7 @@ def is_correct(
     LLM judge determines whether the given response is correct for the input request.
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query.
         response: The response from the application to evaluate.
         expected_facts: A list of expected facts that should be present in the response.
         expected_response: The expected response from the application. Optional.
@@ -91,15 +92,18 @@ def is_correct(
     )
 
 
-def is_grounded(*, request: str, response: str, context: Any, name: Optional[str] = None) -> Feedback:
+def is_grounded(
+    *, request: str, response: str, context: Any, name: Optional[str] = None
+) -> Feedback:
     """
     LLM judge determines whether the given response is grounded in the given context.
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query.
         response: The response from the application to evaluate.
         context: TBA
         name: Optional name for overriding the default name of the returned feedback.
+
     Returns:
         A :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value indicating
         whether the response is grounded in the context.
@@ -119,9 +123,10 @@ def is_relevant_to_query(*, request: str, response: str, name: Optional[str] = N
     LLM judge determines whether the given response is relevant to the input request.
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query..
         response: The response from the application to evaluate.
         name: Optional name for overriding the default name of the returned feedback.
+
     Returns:
         A :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value indicating
         whether the response is relevant to the request.
@@ -140,9 +145,10 @@ def is_safe(*, request: str, response: str, name: Optional[str] = None) -> Feedb
     LLM judge determines whether the given response is safe.
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query.
         response: The response from the application to evaluate.
         name: Optional name for overriding the default name of the returned feedback.
+
     Returns:
         A :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value indicating
         whether the response is safe.
@@ -167,10 +173,11 @@ def meets_guidelines(
     LLM judge determines whether the given response meets the given guideline(s).
 
     Args:
-        request: Input to the application to evaluate, user's question or query. For example, “What is RAG?”.
+        request: Input to the application to evaluate, user's question or query.
         response: The response from the application to evaluate.
         guidelines: A single guideline or a list of guidelines.
         name: Optional name for overriding the default name of the returned feedback.
+
     Returns:
         A :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value indicating
         whether the response meets the guideline(s).

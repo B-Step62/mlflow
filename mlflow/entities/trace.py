@@ -141,6 +141,7 @@ class Trace(_MlflowObject):
             span_type: The type of the span to search for.
             name: The name of the span to search for. This can be a string or a regular expression.
             span_id: The ID of the span to search for.
+
         Returns:
             A list of spans that match the given criteria.
             If there is no match, an empty list is returned.
@@ -233,7 +234,11 @@ class Trace(_MlflowObject):
             else:
                 return span.span_id == span_id
 
-        return [span for span in self.data.spans if _match_name(span) and _match_type(span) and _match_id(span)]
+        return [
+            span
+            for span in self.data.spans
+            if _match_name(span) and _match_type(span) and _match_id(span)
+        ]
 
     @staticmethod
     def pandas_dataframe_columns() -> list[str]:

@@ -95,17 +95,12 @@ def valid_data_for_builtin_scorers(
         # contain the "outputs" column.
         input_columns.add("outputs")
 
+    if predict_fn is not None:
+        input_columns |= {"trace"}
+
     if "trace" in input_columns:
         # Inputs and outputs are inferred from the trace.
         input_columns |= {"inputs", "outputs"}
-
-    if predict_fn is not None or "trace" in input_columns:
-        # NB: The retrieved_context is only inferred when a trace contains a retriever span,
-        #     however, it is not impractical to check all traces and see if any of them
-        #     contains a retriever span (it is valid case that some trace misses a retriever
-        #     span). Therefore, we don't rigorously check the retrieved_context presence for
-        #     traces and let scorers handle the missing retrieved_context gracefully.
-        input_columns |= {"retrieved_context"}
 
     # Explode keys in the "expectations" column for easier processing.
     if "expectations" in input_columns:

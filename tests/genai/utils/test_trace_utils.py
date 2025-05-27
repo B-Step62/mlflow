@@ -1,17 +1,16 @@
+import json
+from typing import Any
 from unittest import mock
 
 import httpx
-import json
-from mlflow.entities.trace import Trace
-from mlflow.entities.trace_data import TraceData
-from mlflow.entities.trace_info import TraceInfo
 import openai
 import pytest
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
-from typing import Any
 
 import mlflow
 from mlflow.entities.span import Span, SpanType
+from mlflow.entities.trace import Trace
+from mlflow.entities.trace_data import TraceData
 from mlflow.genai.utils.trace_utils import convert_predict_fn, extract_retrieval_context_from_trace
 from mlflow.tracing.utils import build_otel_context
 
@@ -132,7 +131,7 @@ def create_span(
 
 
 @pytest.mark.parametrize(
-    "spans, expected_retrieval_context",
+    ("spans", "expected_retrieval_context"),
     [
         # multiple retrieval steps - only take the last top-level one
         (
@@ -147,7 +146,7 @@ def create_span(
                 create_span(
                     span_id=2,
                     parent_id=1,
-                    inputs="This should be ignored because it's not the last top-level retrieval span",
+                    inputs="This should be ignored",
                     outputs=[
                         {
                             "page_content": "document content 3",
@@ -210,7 +209,7 @@ def create_span(
                     "doc_uri": "uri2",
                     "content": "document content 2",
                 },
-            ]
+            ],
         ),
         # one retrieval step
         (
@@ -268,7 +267,7 @@ def create_span(
                 {
                     "content": "document content 4",
                 },
-            ]
+            ],
         ),
         # one retrieval step - empty retrieval span outputs
         (

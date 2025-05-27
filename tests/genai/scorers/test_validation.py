@@ -9,9 +9,11 @@ from mlflow.genai.scorers.base import BuiltInScorer, Scorer, scorer
 from mlflow.genai.scorers.builtin_scorers import (
     correctness,
     guideline_adherence,
+    relevance_to_query,
     retrieval_groundedness,
     retrieval_relevance,
     retrieval_sufficiency,
+    safety,
 )
 from mlflow.genai.scorers.validation import valid_data_for_builtin_scorers, validate_scorers
 
@@ -67,7 +69,6 @@ def test_validate_data(mock_logger):
         {
             "inputs": [{"question": "input1"}, {"question": "input2"}],
             "outputs": ["output1", "output2"],
-            "retrieved_context": [{"context": "context1"}, {"context": "context2"}],
         }
     )
 
@@ -75,9 +76,9 @@ def test_validate_data(mock_logger):
     valid_data_for_builtin_scorers(
         data=converted_date,
         builtin_scorers=[
+            safety,
+            relevance_to_query,
             guideline_adherence.with_config(global_guidelines=["Be polite", "Be kind"]),
-            retrieval_groundedness,
-            retrieval_relevance,
         ],
     )
     mock_logger.info.assert_not_called()
@@ -89,7 +90,7 @@ def test_validate_data_with_expectations(mock_logger):
         {
             "inputs": [{"question": "input1"}, {"question": "input2"}],
             "outputs": ["output1", "output2"],
-            "retrieved_context": ["context1", "context2"],
+            "trace": [mock.MagicMock(), mock.MagicMock()],
             "expectations": [
                 {"expected_response": "response1", "guidelines": ["Be polite", "Be kind"]},
                 {"expected_response": "response2", "guidelines": ["Be nice", "Be strong"]},
@@ -104,24 +105,6 @@ def test_validate_data_with_expectations(mock_logger):
             retrieval_relevance,
             retrieval_sufficiency,  # requires expected_response in expectations
             guideline_adherence,  # requires guidelines in expectations
-        ],
-    )
-    mock_logger.info.assert_not_called()
-
-
-def test_global_guideline_adherence_does_not_require_expectations(mock_logger):
-    """Test that expectations are unwrapped and validated properly"""
-    data = pd.DataFrame(
-        {
-            "inputs": [{"question": "input1"}, {"question": "input2"}],
-            "outputs": ["output1", "output2"],
-        }
-    )
-    converted_date = _convert_to_legacy_eval_set(data)
-    valid_data_for_builtin_scorers(
-        data=converted_date,
-        builtin_scorers=[
-            guideline_adherence.with_config(global_guidelines=["Be polite", "Be kind"])
         ],
     )
     mock_logger.info.assert_not_called()
@@ -176,8 +159,8 @@ def test_validate_data_missing_columns(mock_logger):
 
     mock_logger.info.assert_called_once()
     msg = mock_logger.info.call_args[0][0]
-    assert " - `outputs` column is required by [retrieval_groundedness, guideline_adherence]." in msg
-    assert " - `retrieved_context` column is required by [retrieval_relevance, retrieval_groundedness]." in msg
+    assert " - `outputs` column is required by [guideline_adherence]." in msg
+    assert " - `trace` column is required by [retrieval_relevance, retrieval_groundedness]." in msg
 
 
 def test_validate_data_with_trace(mock_logger):
@@ -213,7 +196,7 @@ def test_validate_data_with_predict_fn(mock_logger):
         builtin_scorers=[
             # Requires "outputs" but predict_fn will provide it
             guideline_adherence.with_config(global_guidelines=["Be polite", "Be kind"]),
-            # Requires "retrieved_context" but predict_fn will provide it
+            # Requires "trace" but predict_fn will provide it
             retrieval_relevance,
         ],
     )

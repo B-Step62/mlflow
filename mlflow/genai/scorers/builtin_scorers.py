@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from copy import deepcopy
 from typing import Any, Optional, Union
 
 import mlflow
@@ -25,7 +24,7 @@ class _BaseBuiltInScorer(BuiltInScorer):
 
     # Avoid direct mutation of built-in scorer fields like name. Overriding the default setting must
     # be done through the `with_config` method. This is because the short-hand syntax like
-    # `mlflow.genai.scorers.retrieval_relevance` returns a single instance rather than a new instance.
+    # `mlflow.genai.scorers.correctness` returns a single instance rather than a new instance.
     def __setattr__(self, name: str, value: Any) -> None:
         raise MlflowException(
             "Built-in scorer fields are immutable. Please use the `with_config` method to "
@@ -77,20 +76,12 @@ class RetrievalRelevance(_BaseBuiltInScorer):
 
         import mlflow
 
-        data = [
-            {
-                "inputs": {"question": "What is the capital of France?"},
-                "retrieved_context": [
-                    {"content": "Paris is the capital city of France."},
-                    {"content": "The chicken crossed the road."},
-                ],
-            }
-        ]
+        data = mlflow.search_traces(...)
         result = mlflow.genai.evaluate(data=data, scorers=[retrieval_relevance])
     """
 
     name: str = "retrieval_relevance"
-    required_columns: set[str] = {"inputs", "retrieved_context"}
+    required_columns: set[str] = {"inputs", "trace"}
 
     def __call__(self, *, trace: Trace) -> list[Assessment]:
         """
@@ -149,17 +140,12 @@ class RetrievalSufficiency(_BaseBuiltInScorer):
 
         import mlflow
 
-        data = [
-            {
-                "inputs": {"question": "What is the capital of France?"},
-                "retrieved_context": [{"content": "Paris is the capital city of France."}],
-            }
-        ]
+        data = mlflow.search_traces(...)
         result = mlflow.genai.evaluate(data=data, scorers=[retrieval_sufficiency])
     """
 
     name: str = "retrieval_sufficiency"
-    required_columns: set[str] = {"inputs", "retrieved_context"}
+    required_columns: set[str] = {"inputs", "trace"}
 
     def validate_columns(self, columns: set[str]) -> None:
         super().validate_columns(columns)
@@ -215,8 +201,8 @@ class RetrievalSufficiency(_BaseBuiltInScorer):
 @experimental
 class RetrievalGroundedness(_BaseBuiltInScorer):
     """
-    RetrievalGroundedness assesses whether the agent's response is aligned with the information provided
-    in the retrieved context.
+    RetrievalGroundedness assesses whether the agent's response is aligned with the information
+    provided in the retrieved context.
 
     You can invoke the scorer directly with a single input for testing, or pass it to
     `mlflow.genai.evaluate` for running full evaluation on a dataset.
@@ -241,18 +227,12 @@ class RetrievalGroundedness(_BaseBuiltInScorer):
 
         import mlflow
 
-        data = [
-            {
-                "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
-                "retrieved_context": [{"content": "Paris is the capital city of France."}],
-            }
-        ]
+        data = mlflow.search_traces(...)
         result = mlflow.genai.evaluate(data=data, scorers=[retrieval_groundedness])
     """
 
     name: str = "retrieval_groundedness"
-    required_columns: set[str] = {"inputs", "outputs", "retrieved_context"}
+    required_columns: set[str] = {"inputs", "trace"}
 
     def __call__(self, *, trace: Trace) -> Feedback:
         """
@@ -417,7 +397,7 @@ class GuidelineAdherence(_BaseBuiltInScorer):
             outputs: The response from the model, e.g. "The capital of France is Paris."
             expectations: A dictionary of expectations for the response. This must contain either
                 `guidelines` key, which is used to evaluate the response against the guidelines
-                specified in the `guidelines` field of the `expectations` column of the input dataset.
+                specified in the `guidelines` field of the `expectations` column of the dataset.
                 E.g., {"guidelines": ["The response must be factual and concise"]}
 
         Returns:
@@ -531,7 +511,6 @@ class RelevanceToQuery(_BaseBuiltInScorer):
             request=request, response=response, name=self.name
         )
 
-
     def with_config(self, *, name: str = "relevance_to_query") -> "RelevanceToQuery":
         """
         Get a new scorer instance with a specified name.
@@ -599,9 +578,7 @@ class Safety(_BaseBuiltInScorer):
         """
         request = parse_inputs_to_str(inputs)
         response = outputs
-        return mlflow.genai.judges.is_safe(
-            request=request, response=response, name=self.name
-        )
+        return mlflow.genai.judges.is_safe(request=request, response=response, name=self.name)
 
     def with_config(self, *, name: str = "safety") -> "Safety":
         """
@@ -690,7 +667,9 @@ class Correctness(_BaseBuiltInScorer):
                 self.name, ["expectations/expected_response or expectations/expected_facts"]
             )
 
-    def __call__(self, *, inputs: dict[str, Any], outputs: Any, expectations: dict[str, Any]) -> Feedback:
+    def __call__(
+        self, *, inputs: dict[str, Any], outputs: Any, expectations: dict[str, Any]
+    ) -> Feedback:
         """
         Evaluate correctness of the response against expectations.
 
@@ -759,15 +738,7 @@ def get_rag_scorers() -> list[BuiltInScorer]:
         import mlflow
         from mlflow.genai.scorers import get_rag_scorers
 
-        data = [
-            {
-                "inputs": {"question": "What is the capital of France?"},
-                "outputs": "The capital of France is Paris.",
-                "retrieved_context": [
-                    {"content": "Paris is the capital city of France."},
-                ],
-            }
-        ]
+        data = mlflow.search_traces(...)
         result = mlflow.genai.evaluate(data=data, scorers=get_rag_scorers())
     """
     return [
@@ -794,8 +765,8 @@ def get_all_scorers() -> list[BuiltInScorer]:
             {
                 "inputs": {"question": "What is the capital of France?"},
                 "outputs": "The capital of France is Paris.",
-                "retrieved_context": [
-                    {"content": "Paris is the capital city of France."},
+                "expectations": [
+                    {"expected_response": "Paris is the capital city of France."},
                 ],
             }
         ]

@@ -1,8 +1,7 @@
 import warnings
 
+from mlflow.genai import judges, scorers
 from mlflow.genai.evaluation import evaluate, to_predict_fn
-from mlflow.genai import judges
-from mlflow.genai import scorers
 from mlflow.genai.scorers import Scorer, scorer
 
 try:
@@ -25,12 +24,12 @@ except ImportError:
     # Silently fail if the databricks-agents package is not installed
     pass
 
+from mlflow.genai import judges, scorers
 from mlflow.genai.datasets import (
     create_dataset,
     delete_dataset,
     get_dataset,
 )
-
 
 __all__ = [
     "evaluate",

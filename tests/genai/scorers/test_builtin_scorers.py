@@ -1,4 +1,5 @@
 from unittest.mock import patch
+
 import pytest
 
 from mlflow.exceptions import MlflowException
@@ -102,7 +103,7 @@ def test_guideline_adherence():
         guideline_adherence(
             inputs={"question": "query"},
             outputs="answer",
-            expectations={"guidelines": ["guideline1", "guideline2"]}
+            expectations={"guidelines": ["guideline1", "guideline2"]},
         )
 
     mock_guideline_adherence.assert_called_once_with(
@@ -165,7 +166,7 @@ def test_correctness():
         correctness(
             inputs={"question": "query"},
             outputs="answer",
-            expectations={"expected_facts": ["fact1", "fact2"]}
+            expectations={"expected_facts": ["fact1", "fact2"]},
         )
 
     mock_correctness.assert_called_once_with(

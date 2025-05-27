@@ -2,14 +2,13 @@ import json
 import logging
 from typing import Any, Callable, Optional
 
-from mlflow.entities.span import Span, SpanType
-from mlflow.entities.trace import Trace
-from mlflow.exceptions import MlflowException
-from mlflow.tracing.utils import TraceJSONEncoder
 from opentelemetry.trace import NoOpTracer
 
 import mlflow
+from mlflow.entities.span import Span, SpanType
+from mlflow.entities.trace import Trace
 from mlflow.genai.utils.data_validation import check_model_prediction
+from mlflow.tracing.utils import TraceJSONEncoder
 
 _logger = logging.getLogger(__name__)
 
@@ -93,7 +92,6 @@ def extract_retrieval_context_from_trace(trace: Optional[Trace]) -> Optional[lis
 
     # Only consider the top-level retrieval spans
     top_level_retrieval_spans = _get_top_level_retrieval_spans(trace)
-    print(f"top_level_retrieval_spans: {top_level_retrieval_spans}")
     if len(top_level_retrieval_spans) == 0:
         return None
     # Only consider the last top-level retrieval span
@@ -103,14 +101,13 @@ def extract_retrieval_context_from_trace(trace: Optional[Trace]) -> Optional[lis
         contexts = [_parse_chunk(chunk) for chunk in retrieval_span.outputs or []]
         return [c for c in contexts if c is not None]
     except Exception as e:
-        raise
         _logger.debug(f"Fail to get retrieval context from span: {retrieval_span}. Error: {e!r}")
 
 
 def _get_top_level_retrieval_spans(trace: Trace) -> list[Span]:
     """
     Get the top-level retrieval spans in the trace.
-    Top-level retrieval spans are the retrieval spans that are not children of other retrieval spans.
+    Top-level retrieval spans are retrieval spans that are not children of other retrieval spans.
 
     For example, given the following spans:
     - Span A (Chain)
@@ -120,9 +117,11 @@ def _get_top_level_retrieval_spans(trace: Trace) -> list[Span]:
         - Span E (LLM)
           - Span F (Retriever)
     Span B and Span D are top-level retrieval spans.
-    Span C and Span F are NOT top-level retrieval spans because they are children of other retrieval spans.
+    Span C and Span F are NOT top-level because they are children of other retrieval spans.
     """
-    retrieval_spans = {span.span_id: span for span in trace.search_spans(span_type=SpanType.RETRIEVER)}
+    retrieval_spans = {
+        span.span_id: span for span in trace.search_spans(span_type=SpanType.RETRIEVER)
+    }
 
     top_level_retrieval_spans = []
 

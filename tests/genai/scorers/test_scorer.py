@@ -11,8 +11,13 @@ from mlflow.entities import Assessment, AssessmentSource, AssessmentSourceType, 
 from mlflow.entities.assessment import FeedbackValue
 from mlflow.entities.assessment_error import AssessmentError
 from mlflow.evaluation import Assessment as LegacyAssessment
-from mlflow.genai.evaluation.base import _evaluate
-from mlflow.genai.scorers import Scorer, scorer, correctness, guideline_adherence, retrieval_groundedness
+from mlflow.genai.scorers import (
+    Scorer,
+    correctness,
+    guideline_adherence,
+    retrieval_groundedness,
+    scorer,
+)
 
 if importlib.util.find_spec("databricks.agents") is None:
     pytest.skip(reason="databricks-agents is not installed", allow_module_level=True)
@@ -70,55 +75,63 @@ def test_scorer_name_works(sample_data, dummy_scorer):
 
 def test_builtin_scorers_are_called_with_correct_arguments(sample_data):
     with (
-        patch("databricks.agents.evals.judges.correctness",
-              return_value=Feedback(name="correctness", value="yes")) as mock_correctness,
-        patch("databricks.agents.evals.judges.guideline_adherence",
-              return_value=Feedback(name="guideline_adherence", value="yes")) as mock_guideline,
+        patch(
+            "databricks.agents.evals.judges.correctness",
+            return_value=Feedback(name="correctness", value="yes"),
+        ) as mock_correctness,
+        patch(
+            "databricks.agents.evals.judges.guideline_adherence",
+            return_value=Feedback(name="guideline_adherence", value="yes"),
+        ) as mock_guideline,
     ):
-        _evaluate(
+        mlflow.genai.evaluate(
             data=sample_data,
             scorers=[
                 correctness,
                 guideline_adherence.with_config(
                     name="english", global_guidelines=["write in english"]
                 ),
-            ]
+            ],
         )
 
     assert mock_correctness.call_count == len(sample_data)
     assert mock_guideline.call_count == len(sample_data)
 
-    mock_correctness.has_calls([
-        call(
-            request=sample_data["inputs"][0],
-            response=sample_data["outputs"][0],
-            expected_facts=["fact1", "fact2"],
-            expected_response=None,
-            name=None,
-        ),
-        call(
-            request=sample_data["inputs"][1],
-            response=sample_data["outputs"][1],
-            expected_facts=["fact3", "fact4"],
-            expected_response=None,
-            name=None,
-        ),
-    ])
+    mock_correctness.has_calls(
+        [
+            call(
+                request=sample_data["inputs"][0],
+                response=sample_data["outputs"][0],
+                expected_facts=["fact1", "fact2"],
+                expected_response=None,
+                name=None,
+            ),
+            call(
+                request=sample_data["inputs"][1],
+                response=sample_data["outputs"][1],
+                expected_facts=["fact3", "fact4"],
+                expected_response=None,
+                name=None,
+            ),
+        ]
+    )
 
-    mock_guideline.has_calls([
-        call(
-            request=sample_data["inputs"][0],
-            response=sample_data["outputs"][0],
-            guidelines=["write in english"],
-            name=None,
-        ),
-        call(
-            request=sample_data["inputs"][1],
-            response=sample_data["outputs"][1],
-            guidelines=["write in english"],
-            name=None,
-        ),
-    ])
+    mock_guideline.has_calls(
+        [
+            call(
+                request=sample_data["inputs"][0],
+                response=sample_data["outputs"][0],
+                guidelines=["write in english"],
+                name=None,
+            ),
+            call(
+                request=sample_data["inputs"][1],
+                response=sample_data["outputs"][1],
+                guidelines=["write in english"],
+                name=None,
+            ),
+        ]
+    )
 
 
 def test_custom_scorer_is_called_with_correct_arguments(sample_data):
@@ -143,9 +156,7 @@ def test_custom_scorer_is_called_with_correct_arguments(sample_data):
     for i in range(len(sample_data)):
         sample_data_set["inputs"].add(str(sample_data["inputs"][i]))
         sample_data_set["outputs"].add(str(sample_data["outputs"][i]))
-        sample_data_set["expectations"].add(
-            str(sample_data["expectations"][i]["expected_facts"])
-        )
+        sample_data_set["expectations"].add(str(sample_data["expectations"][i]["expected_facts"]))
 
     for actual_args in actual_call_args_list:
         # do any check since actual passed input could be reformatted and larger than sample input
@@ -154,23 +165,31 @@ def test_custom_scorer_is_called_with_correct_arguments(sample_data):
             for sample_data_input in sample_data_set["inputs"]
         )
         assert str(actual_args["outputs"]) in sample_data_set["outputs"]
-        assert (
-            str(actual_args["expectations"]["expected_facts"]) in sample_data_set["expectations"]
-        )
+        assert str(actual_args["expectations"]["expected_facts"]) in sample_data_set["expectations"]
 
 
 def test_trace_passed_to_builtin_scorers_correctly(sample_rag_trace):
     with (
-        patch("databricks.agents.evals.judges.correctness",
-              return_value=Feedback(name="correctness", value="yes")) as mock_correctness,
-        patch("databricks.agents.evals.judges.guideline_adherence",
-              return_value=Feedback(name="guideline_adherence", value="yes")) as mock_guideline,
-        patch("databricks.agents.evals.judges.groundedness",
-              return_value=Feedback(name="groundedness", value="yes")) as mock_groundedness,
+        patch(
+            "databricks.agents.evals.judges.correctness",
+            return_value=Feedback(name="correctness", value="yes"),
+        ) as mock_correctness,
+        patch(
+            "databricks.agents.evals.judges.guideline_adherence",
+            return_value=Feedback(name="guideline_adherence", value="yes"),
+        ) as mock_guideline,
+        patch(
+            "databricks.agents.evals.judges.groundedness",
+            return_value=Feedback(name="groundedness", value="yes"),
+        ) as mock_groundedness,
     ):
-        _evaluate(
+        mlflow.genai.evaluate(
             data=pd.DataFrame({"trace": [sample_rag_trace]}),
-            scorers=[retrieval_groundedness, correctness, guideline_adherence.with_config(name="english")],
+            scorers=[
+                retrieval_groundedness,
+                correctness,
+                guideline_adherence.with_config(name="english"),
+            ],
         )
 
     assert mock_correctness.call_count == 1

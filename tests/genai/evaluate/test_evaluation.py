@@ -2,7 +2,6 @@ from importlib import import_module
 from unittest import mock
 from unittest.mock import patch
 
-from mlflow.genai.evaluation.utils import _convert_scorer_to_legacy_metric
 import pytest
 from packaging.version import Version
 

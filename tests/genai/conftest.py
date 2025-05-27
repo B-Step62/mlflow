@@ -1,12 +1,12 @@
 from unittest import mock
 
+import pytest
+
 import mlflow
+from mlflow.entities import TraceInfoV2
 from mlflow.entities.assessment import Expectation
 from mlflow.entities.document import Document
 from mlflow.entities.span import SpanType
-import pytest
-
-from mlflow.entities import TraceInfoV2
 
 
 # TODO: Remove this fixture once `databricks-agents` releases a new version that's compatible with
@@ -39,7 +39,6 @@ def spoof_tracking_uri_check():
 
 @pytest.fixture
 def sample_rag_trace():
-
     @mlflow.trace(span_type=SpanType.AGENT)
     def _predict(question):
         _retrieve(question)
@@ -56,9 +55,7 @@ def sample_rag_trace():
                 page_content="content_2",
                 metadata={"doc_uri": "url_2"},
             ),
-            Document(
-                page_content="content_3"
-            )
+            Document(page_content="content_3"),
         ]
 
     _predict("query")
