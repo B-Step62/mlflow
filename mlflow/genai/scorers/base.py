@@ -15,7 +15,7 @@ class Scorer(BaseModel):
     name: str
     aggregations: Optional[list] = None
 
-    def run(self, *, inputs=None, outputs=None, expectations=None, trace=None, **kwargs):
+    def run(self, *, inputs=None, outputs=None, expectations=None, trace=None):
         from mlflow.evaluation import Assessment as LegacyAssessment
 
         merged = {
@@ -23,7 +23,6 @@ class Scorer(BaseModel):
             "outputs": outputs,
             "expectations": expectations,
             "trace": trace,
-            **kwargs,
         }
         # Filter to only the parameters the function actually expects
         sig = inspect.signature(self.__call__)
@@ -74,7 +73,6 @@ class Scorer(BaseModel):
         outputs: Any = None,
         expectations: Optional[dict[str, Any]] = None,
         trace: Optional[Trace] = None,
-        **kwargs,
     ) -> Union[int, float, bool, str, Feedback, list[Feedback]]:
         # TODO: make sure scorer's signature is simply equal to whatever keys are
         # in the eval dataset once we migrate from the agent eval harness
@@ -140,10 +138,6 @@ class Scorer(BaseModel):
             * - ``trace``
               - A trace object corresponding to the prediction for the row.
               - Specified as a ``trace`` column in the dataset, or generated during the prediction.
-
-            * - ``**kwargs``
-              - Additional keyword arguments passed to the scorer.
-              - Must be specified as extra columns in the input dataset.
 
         Example:
 
@@ -245,10 +239,6 @@ def scorer(
         * - ``trace``
           - A trace object corresponding to the prediction for the row.
           - Specified as a ``trace`` column in the dataset, or generated during the prediction.
-
-        * - ``**kwargs``
-          - Additional keyword arguments passed to the scorer.
-          - Must be specified as extra columns in the input dataset.
 
     The scorer function should return one of the following:
 

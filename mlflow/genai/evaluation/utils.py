@@ -182,15 +182,6 @@ def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
             "outputs": response,
             "expectations": expectations,
             "trace": trace,
-            "guidelines": guidelines,
-            "retrieved_context": retrieved_context,
-            "expected_facts": expected_facts,
-            "expected_retrieved_context": expected_retrieved_context,
-            "custom_expected": custom_expected,
-            "custom_inputs": custom_inputs,
-            "custom_outputs": custom_outputs,
-            "tool_calls": tool_calls,
-            **kwargs,
         }
         return scorer.run(**merged)
 
