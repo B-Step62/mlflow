@@ -8,7 +8,7 @@ from mlflow.entities.assessment import Feedback
 from mlflow.entities.trace import Trace
 from mlflow.exceptions import MlflowException
 from mlflow.genai.scorers import BuiltInScorer
-from mlflow.genai.utils.trace_utils import extract_request_str_from_inputs, extract_retrieval_context_from_trace
+from mlflow.genai.utils.trace_utils import extract_retrieval_context_from_trace, parse_inputs_to_str
 from mlflow.protos.databricks_pb2 import BAD_REQUEST
 from mlflow.utils.annotations import experimental
 
@@ -41,13 +41,6 @@ class _BaseBuiltInScorer(BuiltInScorer):
         Override this method with the appropriate config keys. This method must return the scorer
         instance itself with the updated configuration.
         """
-
-    def update_evaluation_config(self, evaluation_config) -> dict:
-        config = deepcopy(evaluation_config)
-        metrics = config.setdefault(GENAI_CONFIG_NAME, {}).setdefault("metrics", [])
-        if self.name not in metrics:
-            metrics.append(self.name)
-        return config
 
     def validate_columns(self, columns: set[str]) -> None:
         missing_columns = self.required_columns - columns
@@ -111,9 +104,11 @@ class RetrievalRelevance(_BaseBuiltInScorer):
         Returns:
             A list of assessments evaluating the relevance of each context chunk.
         """
-        request = trace.data.request
+        request = parse_inputs_to_str(trace.data.spans[0].inputs)
         retrieved_context = extract_retrieval_context_from_trace(trace)
-        return mlflow.genai.judges.is_context_relevant(request=request, context=retrieved_context)
+        return mlflow.genai.judges.is_context_relevant(
+            request=request, context=retrieved_context, name=self.name
+        )
 
     def with_config(self, *, name: str = "retrieval_relevance") -> "RetrievalRelevance":
         """
@@ -188,7 +183,7 @@ class RetrievalSufficiency(_BaseBuiltInScorer):
                 label(s) by calling :py:func:`mlflow.log_expectation` API. The annotated label(s)
                 will be considered when computing the sufficiency of retrieved context.
         """
-        request = trace.data.request
+        request = parse_inputs_to_str(trace.data.spans[0].inputs)
         retrieved_context = extract_retrieval_context_from_trace(trace)
 
         expected_facts = None
@@ -204,6 +199,7 @@ class RetrievalSufficiency(_BaseBuiltInScorer):
             context=retrieved_context,
             expected_response=expected_response,
             expected_facts=expected_facts,
+            name=self.name,
         )
 
     def with_config(self, *, name: str = "retrieval_sufficiency") -> "RetrievalSufficiency":
@@ -271,10 +267,12 @@ class RetrievalGroundedness(_BaseBuiltInScorer):
             An :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value
             indicating the groundedness of the response.
         """
-        request = trace.data.request
-        response = trace.data.response
+        request = parse_inputs_to_str(trace.data.spans[0].inputs)
+        response = trace.data.spans[0].outputs
         retrieved_context = extract_retrieval_context_from_trace(trace)
-        return mlflow.genai.judges.is_grounded(request=request, response=response, context=retrieved_context)
+        return mlflow.genai.judges.is_grounded(
+            request=request, response=response, context=retrieved_context, name=self.name
+        )
 
     def with_config(self, *, name: str = "retrieval_groundedness") -> "RetrievalGroundedness":
         """
@@ -398,25 +396,6 @@ class GuidelineAdherence(_BaseBuiltInScorer):
     global_guidelines: Optional[Union[str, list[str]]] = None
     required_columns: set[str] = {"inputs", "outputs"}
 
-    def update_evaluation_config(self, evaluation_config) -> dict:
-        # Metric name should always be "guideline_adherence" regardless of the custom name
-        config = deepcopy(evaluation_config)
-        metrics = config.setdefault(GENAI_CONFIG_NAME, {}).setdefault("metrics", [])
-        if "guideline_adherence" not in metrics:
-            metrics.append("guideline_adherence")
-
-        # If global guidelines are specified, add it to the config
-        if self.global_guidelines:
-            # NB: The agent eval harness will take multiple global guidelines in a dictionary format
-            #   where the key is the name of the global guideline judge. Therefore, when multiple
-            #   judges are specified, we merge them into a single dictionary.
-            #   https://docs.databricks.com/aws/en/generative-ai/agent-evaluation/llm-judge-reference#examples
-            global_guidelines = config[GENAI_CONFIG_NAME].get("global_guidelines", {})
-            global_guidelines[self.name] = self.global_guidelines
-            config[GENAI_CONFIG_NAME]["global_guidelines"] = global_guidelines
-
-        return config
-
     def validate_columns(self, columns: set[str]) -> None:
         super().validate_columns(columns)
         # If no global guidelines are specified, the guidelines must exist in the input dataset
@@ -445,7 +424,7 @@ class GuidelineAdherence(_BaseBuiltInScorer):
             An :py:class:`mlflow.entities.assessment.Assessment~` object with a boolean value
             indicating the adherence to the specified guidelines.
         """
-        request = extract_request_str_from_inputs(inputs)
+        request = parse_inputs_to_str(inputs)
         response = outputs
         guidelines = (expectations or {}).get("guidelines", self.global_guidelines)
         if not guidelines:
@@ -454,7 +433,9 @@ class GuidelineAdherence(_BaseBuiltInScorer):
                 "by the :py:meth:`with_config` method of the scorer."
             )
 
-        return mlflow.genai.judges.meets_guidelines(request=request, response=response, guidelines=guidelines)
+        return mlflow.genai.judges.meets_guidelines(
+            request=request, response=response, guidelines=guidelines, name=self.name
+        )
 
     def with_config(
         self,
@@ -544,9 +525,11 @@ class RelevanceToQuery(_BaseBuiltInScorer):
             An :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value
             indicating the relevance of the response to the query.
         """
-        request = extract_request_str_from_inputs(inputs)
+        request = parse_inputs_to_str(inputs)
         response = outputs
-        return mlflow.genai.judges.is_relevant_to_query(request=request, response=response)
+        return mlflow.genai.judges.is_relevant_to_query(
+            request=request, response=response, name=self.name
+        )
 
 
     def with_config(self, *, name: str = "relevance_to_query") -> "RelevanceToQuery":
@@ -614,9 +597,11 @@ class Safety(_BaseBuiltInScorer):
             An :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value
             indicating the safety of the response.
         """
-        request = extract_request_str_from_inputs(inputs)
+        request = parse_inputs_to_str(inputs)
         response = outputs
-        return mlflow.genai.judges.is_safe(request=request, response=response)
+        return mlflow.genai.judges.is_safe(
+            request=request, response=response, name=self.name
+        )
 
     def with_config(self, *, name: str = "safety") -> "Safety":
         """
@@ -721,7 +706,7 @@ class Correctness(_BaseBuiltInScorer):
             An :py:class:`mlflow.entities.assessment.Feedback~` object with a boolean value
             indicating the correctness of the response.
         """
-        request = extract_request_str_from_inputs(inputs)
+        request = parse_inputs_to_str(inputs)
         response = outputs
         expected_facts = expectations.get("expected_facts")
         expected_response = expectations.get("expected_response")
@@ -737,6 +722,7 @@ class Correctness(_BaseBuiltInScorer):
             response=response,
             expected_response=expected_response,
             expected_facts=expected_facts,
+            name=self.name,
         )
 
     def with_config(self, *, name: str = "correctness") -> "Correctness":

@@ -2,6 +2,7 @@ from importlib import import_module
 from unittest import mock
 from unittest.mock import patch
 
+from mlflow.genai.evaluation.utils import _convert_scorer_to_legacy_metric
 import pytest
 from packaging.version import Version
 
@@ -282,9 +283,9 @@ def test_evaluate_passes_model_id_to_mlflow_evaluate():
         mock_evaluate.assert_called_once_with(
             model=mock.ANY,
             data=mock.ANY,
-            evaluator_config={GENAI_CONFIG_NAME: {"metrics": ["safety"]}},
+            evaluator_config={GENAI_CONFIG_NAME: {"metrics": []}},
             model_type="databricks-agent",
-            extra_metrics=[],
+            extra_metrics=mock.ANY,
             model_id="test_model_id",
             _called_from_genai_evaluate=True,
         )

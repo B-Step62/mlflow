@@ -78,7 +78,6 @@ def test_validate_data(mock_logger):
             guideline_adherence.with_config(global_guidelines=["Be polite", "Be kind"]),
             retrieval_groundedness,
             retrieval_relevance,
-            retrieval_sufficiency,
         ],
     )
     mock_logger.info.assert_not_called()

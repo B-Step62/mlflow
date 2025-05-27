@@ -1,5 +1,9 @@
 from unittest import mock
 
+import mlflow
+from mlflow.entities.assessment import Expectation
+from mlflow.entities.document import Document
+from mlflow.entities.span import SpanType
 import pytest
 
 from mlflow.entities import TraceInfoV2
@@ -31,3 +35,41 @@ def spoof_tracking_uri_check():
     # we spoof the check by patching the is_databricks_uri() function.
     with mock.patch("mlflow.genai.evaluation.base.is_databricks_uri", return_value=True):
         yield
+
+
+@pytest.fixture
+def sample_rag_trace():
+
+    @mlflow.trace(span_type=SpanType.AGENT)
+    def _predict(question):
+        _retrieve(question)
+        return "answer"
+
+    @mlflow.trace(span_type=SpanType.RETRIEVER)
+    def _retrieve(question):
+        return [
+            Document(
+                page_content="content_1",
+                metadata={"doc_uri": "url_1"},
+            ),
+            Document(
+                page_content="content_2",
+                metadata={"doc_uri": "url_2"},
+            ),
+            Document(
+                page_content="content_3"
+            )
+        ]
+
+    _predict("query")
+
+    trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
+
+    # Add expectations. Directly append to the trace info because OSS backend doesn't
+    # support assessment logging yet.
+    trace.info.assessments = [
+        Expectation(name="expected_response", value="expected answer"),
+        Expectation(name="expected_facts", value=["fact1", "fact2"]),
+        Expectation(name="guidelines", value=["write in english"]),
+    ]
+    return trace

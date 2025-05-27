@@ -1,9 +1,11 @@
+import json
 import logging
 from typing import Any, Callable, Optional
 
 from mlflow.entities.span import Span, SpanType
 from mlflow.entities.trace import Trace
 from mlflow.exceptions import MlflowException
+from mlflow.tracing.utils import TraceJSONEncoder
 from opentelemetry.trace import NoOpTracer
 
 import mlflow
@@ -59,16 +61,18 @@ class NoOpTracerPatcher:
         NoOpTracer.start_span = self.original
 
 
-def extract_request_str_from_inputs(inputs: dict[str, Any]) -> str:
-    """
-    Extract the request string from the inputs dictionary.
-    """
-    if not isinstance(inputs, dict) or len(inputs) != 1:
-        raise MlflowException.invalid_parameter_value(
-            f"The `inputs` must be a dictionary with a single key, e.g. `{{'question': 'What is MLflow?'}}`"
-        )
+def parse_inputs_to_str(inputs: Any) -> str:
+    """Parse the inputs to a request string compatible with the judges API"""
+    if isinstance(inputs, str):
+        return inputs
 
-    return inputs[list(inputs.keys())[0]]
+    # If it is a single key dictionary, return the value
+    if isinstance(inputs, dict) and len(inputs) == 1:
+        if len(inputs) == 1:
+            return inputs[list(inputs.keys())[0]]
+
+    # Otherwise, encode the inputs to a JSON string
+    return json.dumps(inputs, default=TraceJSONEncoder)
 
 
 def extract_retrieval_context_from_trace(trace: Optional[Trace]) -> Optional[list[dict[str, Any]]]:

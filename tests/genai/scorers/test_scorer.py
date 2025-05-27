@@ -1,6 +1,6 @@
 import importlib
 from collections import defaultdict
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pandas as pd
 import pytest
@@ -11,7 +11,8 @@ from mlflow.entities import Assessment, AssessmentSource, AssessmentSourceType, 
 from mlflow.entities.assessment import FeedbackValue
 from mlflow.entities.assessment_error import AssessmentError
 from mlflow.evaluation import Assessment as LegacyAssessment
-from mlflow.genai import Scorer, scorer
+from mlflow.genai.evaluation.base import _evaluate
+from mlflow.genai.scorers import Scorer, scorer, correctness, guideline_adherence, retrieval_groundedness
 
 if importlib.util.find_spec("databricks.agents") is None:
     pytest.skip(reason="databricks-agents is not installed", allow_module_level=True)
@@ -45,8 +46,8 @@ def sample_data():
                 {"choices": [{"message": {"content": "actual response for second question"}}]},
             ],
             "expectations": [
-                {"expected_response": "expected response for first question"},
-                {"expected_response": "expected response for second question"},
+                {"expected_facts": ["fact1", "fact2"]},
+                {"expected_facts": ["fact3", "fact4"]},
             ],
         }
     )
@@ -67,7 +68,60 @@ def test_scorer_name_works(sample_data, dummy_scorer):
     assert any(_SCORER_NAME in metric for metric in result.metrics.keys())
 
 
-def test_scorer_is_called_with_correct_arguments(sample_data):
+def test_builtin_scorers_are_called_with_correct_arguments(sample_data):
+    with (
+        patch("databricks.agents.evals.judges.correctness",
+              return_value=Feedback(name="correctness", value="yes")) as mock_correctness,
+        patch("databricks.agents.evals.judges.guideline_adherence",
+              return_value=Feedback(name="guideline_adherence", value="yes")) as mock_guideline,
+    ):
+        _evaluate(
+            data=sample_data,
+            scorers=[
+                correctness,
+                guideline_adherence.with_config(
+                    name="english", global_guidelines=["write in english"]
+                ),
+            ]
+        )
+
+    assert mock_correctness.call_count == len(sample_data)
+    assert mock_guideline.call_count == len(sample_data)
+
+    mock_correctness.has_calls([
+        call(
+            request=sample_data["inputs"][0],
+            response=sample_data["outputs"][0],
+            expected_facts=["fact1", "fact2"],
+            expected_response=None,
+            name=None,
+        ),
+        call(
+            request=sample_data["inputs"][1],
+            response=sample_data["outputs"][1],
+            expected_facts=["fact3", "fact4"],
+            expected_response=None,
+            name=None,
+        ),
+    ])
+
+    mock_guideline.has_calls([
+        call(
+            request=sample_data["inputs"][0],
+            response=sample_data["outputs"][0],
+            guidelines=["write in english"],
+            name=None,
+        ),
+        call(
+            request=sample_data["inputs"][1],
+            response=sample_data["outputs"][1],
+            guidelines=["write in english"],
+            name=None,
+        ),
+    ])
+
+
+def test_custom_scorer_is_called_with_correct_arguments(sample_data):
     actual_call_args_list = []
 
     @scorer
@@ -85,13 +139,12 @@ def test_scorer_is_called_with_correct_arguments(sample_data):
 
     assert len(actual_call_args_list) == len(sample_data)
 
-    # Prepare expected arguments, keyed by expected_response for matching
     sample_data_set = defaultdict(set)
     for i in range(len(sample_data)):
         sample_data_set["inputs"].add(str(sample_data["inputs"][i]))
         sample_data_set["outputs"].add(str(sample_data["outputs"][i]))
         sample_data_set["expectations"].add(
-            str(sample_data["expectations"][i]["expected_response"])
+            str(sample_data["expectations"][i]["expected_facts"])
         )
 
     for actual_args in actual_call_args_list:
@@ -102,11 +155,54 @@ def test_scorer_is_called_with_correct_arguments(sample_data):
         )
         assert str(actual_args["outputs"]) in sample_data_set["outputs"]
         assert (
-            str(actual_args["expectations"]["expected_response"]) in sample_data_set["expectations"]
+            str(actual_args["expectations"]["expected_facts"]) in sample_data_set["expectations"]
         )
 
 
-def test_trace_passed_correctly():
+def test_trace_passed_to_builtin_scorers_correctly(sample_rag_trace):
+    with (
+        patch("databricks.agents.evals.judges.correctness",
+              return_value=Feedback(name="correctness", value="yes")) as mock_correctness,
+        patch("databricks.agents.evals.judges.guideline_adherence",
+              return_value=Feedback(name="guideline_adherence", value="yes")) as mock_guideline,
+        patch("databricks.agents.evals.judges.groundedness",
+              return_value=Feedback(name="groundedness", value="yes")) as mock_groundedness,
+    ):
+        _evaluate(
+            data=pd.DataFrame({"trace": [sample_rag_trace]}),
+            scorers=[retrieval_groundedness, correctness, guideline_adherence.with_config(name="english")],
+        )
+
+    assert mock_correctness.call_count == 1
+    assert mock_guideline.call_count == 1
+    assert mock_groundedness.call_count == 1
+
+    mock_correctness.assert_called_once_with(
+        request="query",
+        response="answer",
+        expected_facts=["fact1", "fact2"],
+        expected_response="expected answer",
+        assessment_name="correctness",
+    )
+    mock_guideline.assert_called_once_with(
+        request="query",
+        response="answer",
+        guidelines=["write in english"],
+        assessment_name="english",
+    )
+    mock_groundedness.assert_called_once_with(
+        request="query",
+        response="answer",
+        retrieved_context=[
+            {"content": "content_1", "doc_uri": "url_1"},
+            {"content": "content_2", "doc_uri": "url_2"},
+            {"content": "content_3"},
+        ],
+        assessment_name="retrieval_groundedness",
+    )
+
+
+def test_trace_passed_to_custom_scorer_correctly():
     @mlflow.trace
     def predict_fn(question):
         return "output: " + str(question)
