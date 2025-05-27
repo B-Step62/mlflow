@@ -1,15 +1,17 @@
+from unittest.mock import patch
+import mlflow
 import pytest
 
 from mlflow.exceptions import MlflowException
 from mlflow.genai.scorers import (
-    chunk_relevance,
-    context_sufficiency,
     correctness,
     get_all_scorers,
     get_rag_scorers,
-    groundedness,
     guideline_adherence,
     relevance_to_query,
+    retrieval_groundedness,
+    retrieval_relevance,
+    retrieval_sufficiency,
     safety,
 )
 from mlflow.genai.scorers.builtin_scorers import GENAI_CONFIG_NAME
@@ -31,11 +33,11 @@ expected = {
     GENAI_CONFIG_NAME: {
         "metrics": [
             "correctness",
-            "chunk_relevance",
-            "context_sufficiency",
+            "retrieval_sufficiency",
             "groundedness",
             "guideline_adherence",
             "relevance_to_query",
+            "retrieval_relevance",
             "safety",
         ],
         "global_guidelines": {
@@ -72,10 +74,10 @@ def test_scorers_and_rag_scorers_config(scorers):
 @pytest.mark.parametrize(
     ("scorer", "expected_metric"),
     [
-        (chunk_relevance, "chunk_relevance"),
-        (context_sufficiency, "context_sufficiency"),
         (correctness, "correctness"),
-        (groundedness, "groundedness"),
+        (retrieval_sufficiency, "retrieval_sufficiency"),
+        (retrieval_groundedness, "retrieval_groundedness"),
+        (retrieval_relevance, "retrieval_relevance"),
         (guideline_adherence, "guideline_adherence"),
         (relevance_to_query, "relevance_to_query"),
         (safety, "safety"),
@@ -181,15 +183,15 @@ def test_guideline_adherence_scorers(scorers):
 def test_builtin_scorer_block_mutations():
     """Test that the built-in scorers are immutable."""
     with pytest.raises(MlflowException, match=r"Built-in scorer fields are immutable"):
-        chunk_relevance.name = "new_name"
+        retrieval_relevance.name = "new_name"
 
 
 @pytest.mark.parametrize(
     ("scorer", "updates"),
     [
-        (chunk_relevance, {"name": "custom_name"}),
-        (context_sufficiency, {"name": "custom_name"}),
-        (groundedness, {"name": "custom_name"}),
+        (retrieval_relevance, {"name": "custom_name"}),
+        (retrieval_sufficiency, {"name": "custom_name"}),
+        (retrieval_groundedness, {"name": "custom_name"}),
         (relevance_to_query, {"name": "custom_name"}),
         (safety, {"name": "custom_name"}),
         (correctness, {"name": "custom_name"}),
