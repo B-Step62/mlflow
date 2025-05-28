@@ -15,7 +15,6 @@ import pandas as pd
 
 import mlflow
 from mlflow import MlflowClient, MlflowException
-from mlflow.data.evaluation_dataset import EvaluationDataset
 from mlflow.entities.metric import Metric
 from mlflow.metrics.base import MetricValue
 from mlflow.models.evaluation.artifacts import (
@@ -26,6 +25,7 @@ from mlflow.models.evaluation.artifacts import (
     _infer_artifact_type_and_ext,
 )
 from mlflow.models.evaluation.base import EvaluationMetric, EvaluationResult, ModelEvaluator
+from mlflow.models.evaluation.evaluation_dataset import EvaluationDataset
 from mlflow.models.evaluation.utils.metric import MetricDefinition
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 from mlflow.pyfunc import _ServedPyFuncModel

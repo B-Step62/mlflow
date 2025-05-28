@@ -274,7 +274,7 @@ def evaluate(
         warnings.filterwarnings(
             "ignore",
             message=r"Creating an ndarray from ragged nested sequences",
-            module="mlflow.data.evaluation_dataset",
+            module="mlflow.models.evaluation.evaluation_dataset",
         )
 
         return mlflow.models.evaluate(

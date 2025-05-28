@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, Optional, Union
 
 from mlflow.data import Dataset
 from mlflow.data.digest_utils import compute_pandas_digest
-from mlflow.data.evaluation_dataset import EvaluationDataset as LegacyEvaluationDataset
 from mlflow.data.pyfunc_dataset_mixin import PyFuncConvertibleDatasetMixin
 from mlflow.data.spark_dataset_source import SparkDatasetSource
 from mlflow.entities import Dataset as DatasetEntity
+from mlflow.models.evaluation.evaluation_dataset import EvaluationDataset as LegacyEvaluationDataset
 
 if TYPE_CHECKING:
     import pandas as pd

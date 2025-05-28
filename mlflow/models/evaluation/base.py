@@ -16,14 +16,14 @@ from typing import Any, Optional, Union
 
 import mlflow
 from mlflow.data.dataset import Dataset
-from mlflow.data.evaluation_dataset import (
-    EvaluationDataset,
-    convert_data_to_mlflow_dataset,
-)
 from mlflow.entities.dataset_input import DatasetInput
 from mlflow.entities.input_tag import InputTag
 from mlflow.entities.logged_model_input import LoggedModelInput
 from mlflow.exceptions import MlflowException
+from mlflow.models.evaluation.evaluation_dataset import (
+    EvaluationDataset,
+    convert_data_to_mlflow_dataset,
+)
 from mlflow.models.evaluation.utils.trace import configure_autologging_for_evaluation
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 from mlflow.store.artifact.utils.models import _parse_model_id_if_present
