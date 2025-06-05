@@ -6,7 +6,21 @@ from opentelemetry.trace import NoOpTracer
 import mlflow
 from mlflow.entities.span import Span, SpanType
 from mlflow.entities.trace import Trace
+<<<<<<< HEAD
 from mlflow.genai.utils.data_validation import check_model_prediction
+=======
+from mlflow.entities.trace_data import TraceData
+from mlflow.entities.trace_info import TraceInfo
+from mlflow.entities.trace_location import TraceLocation
+from mlflow.genai.utils.data_validation import check_model_prediction
+from mlflow.tracing.constant import SpanAttributeKey, TraceTagKey
+from mlflow.tracing.processor.base_mlflow import get_basic_trace_metadata
+from mlflow.tracing.provider import _get_trace_exporter
+from mlflow.tracing.utils import generate_trace_id_v3, maybe_get_request_id
+from mlflow.tracing.utils.truncation import set_request_response_preview
+from mlflow.tracing.display.display_handler import IPythonTraceDisplayHandler
+from mlflow.tracking.client import MlflowClient
+>>>>>>> 4d52023be ([Consoliated] Fix tracing disablement conflict between predict_fn and scorers)
 
 _logger = logging.getLogger(__name__)
 
