@@ -28,7 +28,6 @@ from mlflow.version import IS_TRACING_SDK_ONLY
 
 _logger = logging.getLogger(__name__)
 
-SPANS_COLUMN_NAME = "spans"
 
 if TYPE_CHECKING:
     from mlflow.entities import LiveSpan, Trace
