@@ -1,5 +1,6 @@
 import json
 import logging
+import warnings
 from typing import Any, Optional, Union
 
 import mlflow
@@ -8,7 +9,10 @@ from mlflow.entities.model_registry import ModelVersion, Prompt, PromptVersion, 
 from mlflow.entities.run import Run
 from mlflow.environment_variables import MLFLOW_PRINT_MODEL_URLS_ON_CREATION
 from mlflow.exceptions import MlflowException
-from mlflow.prompt.registry_utils import parse_prompt_name_or_uri, require_prompt_registry
+from mlflow.prompt.registry_utils import (
+    parse_prompt_name_or_uri,
+    require_prompt_registry,
+)
 from mlflow.protos.databricks_pb2 import (
     ALREADY_EXISTS,
     NOT_FOUND,
@@ -38,6 +42,13 @@ from mlflow.utils.logging_utils import eprint
 from mlflow.utils.uri import is_databricks_unity_catalog_uri
 
 _logger = logging.getLogger(__name__)
+
+
+PROMPT_API_MIGRATION_MSG = (
+    "The `mlflow.{func_name}` API is moved to the `mlflow.genai` namespace. Please use "
+    "`mlflow.genai.{func_name}` instead. The original API will be removed in the "
+    "future release."
+)
 
 
 def register_model(
@@ -600,6 +611,8 @@ def register_prompt(
             version_metadata={"author": "Bob"},
         )
     """
+    warnings.warn(PROMPT_API_MIGRATION_MSG.format(func_name="register_prompt"), FutureWarning)
+
     return MlflowClient().register_prompt(
         name=name,
         template=template,
@@ -614,6 +627,8 @@ def search_prompts(
     filter_string: Optional[str] = None,
     max_results: Optional[int] = None,
 ) -> PagedList[Prompt]:
+    warnings.warn(PROMPT_API_MIGRATION_MSG.format(func_name="search_prompts"), FutureWarning)
+
     def pagination_wrapper_func(number_to_get, next_page_token):
         return MlflowClient().search_prompts(
             filter_string=filter_string, max_results=number_to_get, page_token=next_page_token
@@ -658,6 +673,8 @@ def load_prompt(
         prompt = mlflow.load_prompt("prompts:/my_prompt@production")
 
     """
+    warnings.warn(PROMPT_API_MIGRATION_MSG.format(func_name="load_prompt"), FutureWarning)
+
     client = MlflowClient()
 
     # Use utility to handle URI vs name+version parsing
@@ -707,6 +724,7 @@ def set_prompt_alias(name: str, alias: str, version: int) -> None:
         # Delete the alias
         mlflow.delete_prompt_alias(name="my_prompt", alias="production")
     """
+    warnings.warn(PROMPT_API_MIGRATION_MSG.format(func_name="set_prompt_alias"), FutureWarning)
 
     MlflowClient().set_prompt_alias(name=name, version=version, alias=alias)
 
@@ -721,4 +739,6 @@ def delete_prompt_alias(name: str, alias: str) -> None:
         name: The name of the prompt.
         alias: The alias to delete for the prompt.
     """
+    warnings.warn(PROMPT_API_MIGRATION_MSG.format(func_name="delete_prompt_alias"), FutureWarning)
+
     MlflowClient().delete_prompt_alias(name=name, alias=alias)
