@@ -1,5 +1,5 @@
 import { trace } from '@opentelemetry/api';
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
+import { BasicTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { Trace } from '../../../src/core/entities/trace';
 import { TraceInfo } from '../../../src/core/entities/trace_info';
 import { TraceData } from '../../../src/core/entities/trace_data';

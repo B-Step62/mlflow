@@ -1,5 +1,5 @@
 import { trace, context } from '@opentelemetry/api';
-import { Span as OTelSpan } from '@opentelemetry/sdk-trace-base';
+import { Span as OTelSpan } from '@opentelemetry/sdk-trace-node';
 import { SpanAttributeKey, SpanType } from "./constants";
 import { createMlflowSpan, LiveSpan, NoOpSpan } from "./entities/span";
 import { getTracer } from "./provider";
