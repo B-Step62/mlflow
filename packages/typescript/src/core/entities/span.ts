@@ -1,5 +1,5 @@
 import { HrTime, INVALID_SPANID, INVALID_TRACEID, SpanStatusCode as OTelSpanStatusCode } from '@opentelemetry/api';
-import type { Span as OTelSpan } from '@opentelemetry/sdk-trace-node';
+import type { Span as OTelSpan } from '@opentelemetry/sdk-trace-base';
 import { SpanAttributeKey, SpanType, NO_OP_SPAN_TRACE_ID } from '../constants';
 import { SpanEvent } from './span_event';
 import { SpanStatus, SpanStatusCode } from './span_status';
