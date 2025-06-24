@@ -10,16 +10,9 @@ import { createTraceLocationFromExperimentId } from '../core/entities/trace_loca
 import { fromOtelStatus, TraceState } from '../core/entities/trace_state';
 import { SpanAttributeKey, TRACE_ID_PREFIX } from '../core/constants';
 import { convertHrTimeToMs, deduplicateSpanNamesInPlace } from '../core/utils';
+import { MlflowClient } from '../client';
+import { getConfig } from '../core/config';
 
-
-// TODO: Remove these once we have a proper exporter.
-let _traces: Trace[] = [];
-export function getTraces(): Trace[] {
-  return _traces;
-}
-export function resetTraces(): void {
-  _traces = [];
-}
 
 /**
  * Generate a MLflow-compatible trace ID for the given span.
@@ -47,14 +40,14 @@ export class MlflowSpanProcessor implements SpanProcessor {
     const otelTraceId = span.spanContext().traceId;
 
     let traceId: string;
+    const experimentId = getConfig().experiment_id;
 
     if (!span.parentSpanContext?.spanId) {
       // This is a root span
       traceId = generateTraceId(span);
       const trace_info = new TraceInfo({
         traceId: traceId,
-        // TODO: Set correct experiment ID once we implement an API for setting trace destination
-        traceLocation: createTraceLocationFromExperimentId(null),
+        traceLocation: createTraceLocationFromExperimentId(experimentId),
         requestTime: convertHrTimeToMs(span.startTime),
         executionDuration: 0,
         state: TraceState.IN_PROGRESS,
@@ -137,6 +130,13 @@ export class MlflowSpanProcessor implements SpanProcessor {
 
 
 export class MlflowSpanExporter implements SpanExporter {
+  private _client: MlflowClient;
+  private _pendingExports: Record<string, Promise<void>> = {};  // traceId -> export promise
+
+  constructor(client: MlflowClient) {
+    this._client = client;
+  }
+
   export(
     spans: OTelReadableSpan[],
     _resultCallback: (result: ExportResult) => void
@@ -153,15 +153,51 @@ export class MlflowSpanExporter implements SpanExporter {
         continue;
       }
 
+      // TODO: Implement this so that users can get the last active trace ID
       // setLastActiveTraceId(trace.info.traceId);
 
-      // TODO: Implement the actual export logic to MLflow backend
-      _traces.push(trace);
+      // Export trace to backend and track the promise
+      const exportPromise = this.exportTraceToBackend(trace).catch((error) => {
+        console.error(`Failed to export trace ${trace.info.traceId}:`, error);
+      });
+      this._pendingExports[trace.info.traceId] = exportPromise;
     }
   }
 
-  shutdown(): Promise<void> {
-    // TODO: Implement this
-    return Promise.resolve();
+  /**
+   * Export a complete trace to the MLflow backend
+   * Step 1: Create trace metadata via StartTraceV3 endpoint
+   * Step 2: Upload trace data (spans) via artifact repository pattern
+   */
+  private async exportTraceToBackend(trace: Trace): Promise<void> {
+    try {
+      // Step 1: Create trace metadata in backend
+      const traceInfo = await this._client.createTrace(trace);
+      // Step 2: Upload trace data (spans) to artifact storage
+      await this._client.uploadTraceData(traceInfo, trace.data);
+    } catch (error) {
+      console.error(`Failed to export trace ${trace.info.traceId}:`, error);
+      throw error;
+    } finally {
+        // Remove the promise from the pending exports
+        delete this._pendingExports[trace.info.traceId];
+    }
+  }
+
+  /**
+   * Force flush all pending trace exports.
+   * Waits for all async export operations to complete.
+   */
+  async forceFlush(): Promise<void> {
+    await Promise.all(Object.values(this._pendingExports));
+    this._pendingExports = {};
+  }
+
+  /**
+   * Shutdown the exporter.
+   * Waits for all pending exports to complete before shutting down.
+   */
+  async shutdown(): Promise<void> {
+    await this.forceFlush();
   }
 }

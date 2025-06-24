@@ -33,7 +33,7 @@ withSpan()   LiveSpan    OTel Span    MlflowProcessor  MlflowClient  REST API
 
 ### Initialization Flow
 
-1. User calls `configure({ tracking_uri, experiment_id })`
+1. User calls `init({ tracking_uri, experiment_id })`
 2. SDK reads Databricks credentials from `~/.databrickscfg`
 3. OpenTelemetry tracer provider is initialized with MLflow processors
 4. MLflow span processor and exporter are attached to OTel pipeline

@@ -39,6 +39,10 @@ SIZE_BYTES: 'mlflow.trace.sizeBytes',
 SCHEMA_VERSION: 'mlflow.traceSchemaVersion'
 };
 
+export const TraceTagKey = {
+    MLFLOW_ARTIFACT_LOCATION: 'mlflow.artifactLocation'
+}
+
 /**
  * Current version of the MLflow trace schema
  */
