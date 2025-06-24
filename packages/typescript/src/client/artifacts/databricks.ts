@@ -1,5 +1,6 @@
 import { SerializedTraceData, TraceData } from "../../core/entities/trace_data";
 import { TraceInfo } from "../../core/entities/trace_info";
+import { JSONBig } from "../../core/utils/json";
 import { GetCredentialsForTraceDataDownload, GetCredentialsForTraceDataUpload } from "../spec";
 import { getRequestHeaders, makeRequest } from "../utils";
 import { ArtifactsClient } from "./base";
@@ -24,7 +25,7 @@ export class DatabricksArtifactsClient implements ArtifactsClient {
   async uploadTraceData(traceInfo: TraceInfo, traceData: TraceData): Promise<void> {
     try {
       const credentials = await this.getCredentialsForTraceDataUpload(traceInfo.traceId);
-      const traceDataJson = JSON.stringify(traceData.toJson());
+      const traceDataJson = JSONBig.stringify(traceData.toJson());
       await this.uploadToCloudStorage(credentials, traceDataJson);
     } catch (error) {
       console.error(`Trace data upload failed for ${traceInfo.traceId}:`, error);
@@ -170,7 +171,7 @@ export class DatabricksArtifactsClient implements ArtifactsClient {
 
       const textData = await response.text();
       try {
-        return JSON.parse(textData) as SerializedTraceData;
+        return JSONBig.parse(textData) as SerializedTraceData;
       } catch (parseError) {
         throw new Error(`Trace data corrupted: invalid JSON - ${(parseError as Error).message}`);
       }

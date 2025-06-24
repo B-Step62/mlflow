@@ -146,6 +146,14 @@ export class InMemoryTraceManager {
   }
 
   /**
+   * Get all traces. This should only be used for testing.
+   * @returns Array of all traces
+   */
+  getAllTraces(): Trace[] {
+    return Array.from(this._traces.values()).map(trace => trace.toMlflowTrace());
+  }
+
+  /**
    * Clear all the aggregated trace data. This should only be used for testing.
    */
   static reset(): void {

@@ -116,7 +116,7 @@ export class TraceInfo {
       request_preview: this.requestPreview,
       response_preview: this.responsePreview,
       request_time: new Date(this.requestTime).toISOString(),
-      execution_duration: this.executionDuration ? `${this.executionDuration / 1000}s` : undefined,
+      execution_duration: this.executionDuration != null ? `${this.executionDuration / 1000}s` : undefined,
       state: this.state,
       trace_metadata: this.traceMetadata,
       tags: this.tags,

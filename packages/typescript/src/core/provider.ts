@@ -31,10 +31,10 @@ function initializeSDK(): void {
   }
 }
 
-export function reinitializeSDK(): void {
+export async function reinitializeSDK(): Promise<void> {
   if (sdk) {
     try {
-      sdk.shutdown();
+      await sdk.shutdown();
     } catch (error) {
       console.warn('Error shutting down existing SDK:', error);
     }
@@ -57,9 +57,6 @@ export async function flush(): Promise<void> {
   if (sdk) {
     // Force flush the SDK to ensure all exports complete
     await sdk.shutdown();
-    // Reinitialize the SDK after flushing
-    sdkInitialized = false;
-    sdk = null;
-    initializeSDK();
+    await reinitializeSDK();
   }
 }

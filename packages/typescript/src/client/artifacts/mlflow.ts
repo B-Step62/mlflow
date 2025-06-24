@@ -1,7 +1,6 @@
 import { TraceTagKey } from "../../core/constants";
-import { TraceData } from "../../core/entities/trace_data";
+import { SerializedTraceData, TraceData } from "../../core/entities/trace_data";
 import { TraceInfo } from "../../core/entities/trace_info";
-import { JSONBig } from "../../core/utils/json";
 import { getRequestHeaders, makeRequest } from "../utils";
 import { ArtifactsClient } from "./base";
 
@@ -55,12 +54,11 @@ export class MlflowArtifactsClient implements ArtifactsClient {
     const artifactUrl = this.getArtifactUrlForTrace(traceInfo);
     const headers = getRequestHeaders(undefined);
 
-    const traceDataJson = await makeRequest<string>('GET', artifactUrl, headers);
+    const traceDataJson = await makeRequest<SerializedTraceData>('GET', artifactUrl, headers);
 
     // Parse JSON back to TraceData (equivalent to Python's try_read_trace_data)
     try {
-      const traceDataDict = JSONBig.parse(traceDataJson);
-      return TraceData.fromJson(traceDataDict);
+      return TraceData.fromJson(traceDataJson);
     } catch (error) {
       throw new Error(`Failed to parse trace data JSON: ${error}`);
     }

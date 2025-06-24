@@ -114,17 +114,16 @@ export class MlflowSpanProcessor implements SpanProcessor {
    * Shuts down the processor. Called when SDK is shut down. This is an
    * opportunity for processor to do any cleanup required.
    */
-  shutdown(): Promise<void> {
-    // TODO: Implement this
-    return Promise.resolve();
+  async shutdown() {
+    await this.forceFlush();
   }
 
   /**
    * Forces to export all finished spans
    */
-  forceFlush(): Promise<void> {
-    // TODO: Implement this
-    return Promise.resolve();
+  async forceFlush() {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    await this._exporter.forceFlush!();
   }
 }
 
@@ -189,6 +188,8 @@ export class MlflowSpanExporter implements SpanExporter {
    * Waits for all async export operations to complete.
    */
   async forceFlush(): Promise<void> {
+    // Wait for 0.1 seconds to make sure the span promise is created.
+    await new Promise(resolve => setTimeout(resolve, 100));
     await Promise.all(Object.values(this._pendingExports));
     this._pendingExports = {};
   }

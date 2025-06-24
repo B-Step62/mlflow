@@ -51,7 +51,8 @@ export async function makeRequest<T>(
         return {} as T;
       }
 
-      return await response.json() as T;
+      const responseText = await response.text();
+      return JSONBig.parse(responseText) as T;
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -72,7 +73,8 @@ export async function handleErrorResponse(response: Response): Promise<never> {
         const contentType = response.headers.get('content-type');
 
         if (contentType?.includes('application/json')) {
-        const errorBody = await response.json() as { message?: string, error_code?: string };
+        const errorText = await response.text();
+        const errorBody = JSONBig.parse(errorText) as { message?: string, error_code?: string };
         if (errorBody.message) {
             errorMessage = errorBody.message;
         } else if (errorBody.error_code) {
