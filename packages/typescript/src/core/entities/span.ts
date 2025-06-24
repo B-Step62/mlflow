@@ -152,7 +152,8 @@ export class Span implements ISpan {
     return {
       trace_id: encodeTraceIdToBase64(this.traceId),
       span_id: encodeSpanIdToBase64(this.spanId),
-      parent_span_id: this.parentId ? encodeSpanIdToBase64(this.parentId) : undefined,
+      // Use empty string for parent_span_id if it is not set, to be consistent with Python implementation.
+      parent_span_id: this.parentId ? encodeSpanIdToBase64(this.parentId) : '',
       name: this.name,
       start_time_unix_nano: convertHrTimeToNanoSeconds(this.startTime),
       end_time_unix_nano: this.endTime ? convertHrTimeToNanoSeconds(this.endTime) : null,
@@ -446,7 +447,7 @@ export class NoOpSpan implements ISpan {
     return {
       trace_id: NO_OP_SPAN_TRACE_ID,
       span_id: '',
-      parent_span_id: undefined,
+      parent_span_id: '',
       name: '',
       start_time_unix_nano: 0n,
       end_time_unix_nano: null,
@@ -461,7 +462,7 @@ export class NoOpSpan implements ISpan {
 export interface SerializedSpan {
   trace_id: string;
   span_id: string;
-  parent_span_id?: string;
+  parent_span_id: string;
   name: string;
   // Use bigint for nanosecond timestamps to maintain precision
   start_time_unix_nano: bigint;
