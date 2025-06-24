@@ -1,12 +1,12 @@
-import { MlflowClient } from '../../src/client';
-import { startSpan, withSpan } from '../../src/core/api';
-import { SpanType } from '../../src/core/constants';
-import { LiveSpan } from '../../src/core/entities/span';
-import { SpanStatus, SpanStatusCode } from '../../src/core/entities/span_status';
-import { TraceState } from '../../src/core/entities/trace_state';
-import { InMemoryTraceManager } from '../../src/core/trace_manager';
-import { convertHrTimeToMs } from '../../src/core/utils';
-import { flush } from '../../src/core/provider';
+import { MlflowClient } from '../../../src/client';
+import { startSpan, withSpan } from '../../../src/core/api';
+import { SpanType } from '../../../src/core/constants';
+import { LiveSpan } from '../../../src/core/entities/span';
+import { SpanStatus, SpanStatusCode } from '../../../src/core/entities/span_status';
+import { TraceState } from '../../../src/core/entities/trace_state';
+import { InMemoryTraceManager } from '../../../src/core/trace_manager';
+import { convertHrTimeToMs } from '../../../src/core/utils';
+import { flush } from '../../../src/core/provider';
 
 
 describe('API', () => {

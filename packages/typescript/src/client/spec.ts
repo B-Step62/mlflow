@@ -6,8 +6,8 @@
  */
 
 import type { TraceInfo } from '../core/entities/trace_info';
+import type { SerializedAssessment } from '../core/entities/feedback';
 import { ArtifactCredentialType } from './artifacts/databricks';
-
 
 
 /**
@@ -67,6 +67,21 @@ export namespace GetCredentialsForTraceDataDownload {
       type: ArtifactCredentialType;
       signed_uri: string;
     };
+  }
+}
+
+/**
+ * Create an assessment associated with a trace.
+ */
+export namespace CreateAssessment {
+  export const getEndpoint = (host: string, traceId: string) => `${host}/api/2.0/mlflow/traces/${traceId}/assessments`;
+
+  export interface Request {
+    assessment: SerializedAssessment;
+  }
+
+  export interface Response {
+    assessment: SerializedAssessment; // with assessment_id set.
   }
 }
 

@@ -1,9 +1,11 @@
 import { TraceInfo } from '../core/entities/trace_info';
 import { Trace } from '../core/entities/trace';
+import { Feedback, SerializedAssessment } from '../core/entities/feedback';
 import { getConfig, MLflowTracingConfig } from '../core/config';
 import {
   GetTraceInfoV3,
-  StartTraceV3
+  StartTraceV3,
+  CreateAssessment
 } from './spec';
 import { getRequestHeaders, makeRequest } from './utils';
 import { ArtifactsClient, getArtifactsClient } from './artifacts';
@@ -31,7 +33,6 @@ export class MlflowClient {
     this.token = config.token;
     this.artifactsClient = getArtifactsClient(config);
   }
-
 
 
   // === TRACE LIFECYCLE METHODS ===
@@ -83,5 +84,27 @@ export class MlflowClient {
    */
   async uploadTraceData(traceInfo: TraceInfo, traceData: TraceData): Promise<void> {
     await this.artifactsClient.uploadTraceData(traceInfo, traceData);
+  }
+
+  // === ASSESSMENT METHODS ===
+
+  /**
+   * Log a feedback assessment to a trace
+   * Endpoint: POST /api/3.0/mlflow/assessments
+   */
+  async logFeedback(traceId: string, feedback: Feedback): Promise<Feedback> {
+    const url = CreateAssessment.getEndpoint(this.host, traceId);
+    const payload: CreateAssessment.Request = {
+      assessment: feedback.toJson()
+    };
+    const response = await makeRequest<CreateAssessment.Response>(
+      'POST',
+      url,
+      getRequestHeaders(this.token),
+      payload
+    );
+
+    console.log('response', response);
+    return Feedback.fromJson(response.assessment as SerializedAssessment);
   }
 }

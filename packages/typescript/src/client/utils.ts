@@ -1,7 +1,6 @@
 import { JSONBig } from "../core/utils/json";
 
 
-
 /**
  * Get the request headers for the given token.
  *
@@ -27,7 +26,7 @@ export async function makeRequest<T>(
     headers: Record<string, string>,
     body?: any,
     timeout?: number,
-    handleError?: (response: Response) => Promise<never>,
+    handleError?: (response: Response) => Promise<never>
 ): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout ?? getDefaultTimeout());

@@ -13,7 +13,7 @@ beforeAll(async () => {
   // Configure tracing
   init({
     tracking_uri: 'http://localhost:5000',
-    experiment_id: '0',
+    experiment_id: '0'
   })
 });
 

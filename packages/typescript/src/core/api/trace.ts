@@ -1,10 +1,10 @@
 import { trace, context, Span as ApiSpan } from '@opentelemetry/api';
 import { Span as OTelSpan } from '@opentelemetry/sdk-trace-node';
-import { DEFAULT_SPAN_NAME, SpanType } from "./constants";
-import { createMlflowSpan, LiveSpan, NoOpSpan } from "./entities/span";
-import { flush, getTracer } from "./provider";
-import { InMemoryTraceManager } from "./trace_manager";
-import { convertNanoSecondsToHrTime } from './utils';
+import { DEFAULT_SPAN_NAME, SpanType } from "../constants";
+import { createMlflowSpan, LiveSpan, NoOpSpan } from "../entities/span";
+import { flush, getTracer } from "../provider";
+import { InMemoryTraceManager } from "../trace_manager";
+import { convertNanoSecondsToHrTime } from "../utils";
 
 
 /*
