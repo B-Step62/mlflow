@@ -29,6 +29,7 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
+    "test:artifacts": "jest -c jest.config.artifacts.js",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write .",

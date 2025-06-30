@@ -21,7 +21,7 @@ export class MlflowClient {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this.host = options.host!;
     this.token = options.token;
-    this.artifactsClient = getArtifactsClient(options.host);
+    this.artifactsClient = getArtifactsClient({ host: this.host, token: this.token });
   }
 
   // === TRACE LOGGING METHODS ===
