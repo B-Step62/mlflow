@@ -4,7 +4,7 @@ import { APILink } from "@site/src/components/APILink";
 import TabsWrapper from "@site/src/components/TabsWrapper";
 import TilesGrid from "@site/src/components/TilesGrid";
 import TileCard from "@site/src/components/TileCard";
-import { GitMerge } from "lucide-react";
+import { GitMerge, Heart, Zap, Puzzle, LifeBuoy, Users } from "lucide-react";
 
 # MLflow Tracing for LLM Observability
 
@@ -135,30 +135,45 @@ MLflow Tracing empowers you throughout the end-to-end lifecycle of a machine lea
 
 <div className="feature-highlights">
   <div className="highlight-item">
+    <div className="highlight-icon">
+      <Heart size={24} />
+    </div>
     <div className="highlight-content">
       <h4>Open Source</h4>
       <p>MLflow is open source and 100% FREE. You don't need to pay additional SaaS costs to add observability to your GenAI stack. Your trace data is hosted on your own infrastructure.</p>
     </div>
   </div>
   <div className="highlight-item">
+    <div className="highlight-icon">
+      <Zap size={24} />
+    </div>
     <div className="highlight-content">
       <h4>OpenTelemetry</h4>
       <p>MLflow Tracing is compatible with OpenTelemetry, making it free from vendor lock-in and easy to integrate with your existing observability stack.</p>
     </div>
   </div>
   <div className="highlight-item">
+    <div className="highlight-icon">
+      <Puzzle size={24} />
+    </div>
     <div className="highlight-content">
       <h4>Framework Agnostic</h4>
       <p>MLflow Tracing integrates with 20+ GenAI libraries, including OpenAI, LangChain, LlamaIndex, DSPy, Pydantic AI, allowing you to switch between frameworks with ease.</p>
     </div>
   </div>
   <div className="highlight-item">
+    <div className="highlight-icon">
+      <LifeBuoy size={24} />
+    </div>
     <div className="highlight-content">
       <h4>End-to-End Platform</h4>
       <p>MLflow Tracing empowers you throughout the end-to-end machine learning lifecycle, combined with its version tracking and evaluation capabilities.</p>
     </div>
   </div>
   <div className="highlight-item">
+    <div className="highlight-icon">
+      <Users size={24} />
+    </div>
     <div className="highlight-content">
       <h4>Strong Community</h4>
       <p>MLflow boasts a vibrant Open Source community as a part of the Linux Foundation, with 20K+ GitHub Stars and 20MM+ monthly downloads.</p>
@@ -204,7 +219,7 @@ MLflow Tracing is integrated with various GenAI libraries and provides one-line 
 ```python
 import mlflow
 
-mlflow.<library-name>.autolog()  # That's it!
+mlflow.library_name.autolog()  # That's it!
 ```
 
 | Frameworks | LLM Providers | Tools |

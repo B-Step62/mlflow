@@ -109,6 +109,7 @@ Span types are a way to categorize spans within a trace. MLflow provides a set o
         z = x + y
         span.set_outputs({"z": z})
 
+
     # You can also define a custom span type string
     @mlflow.trace(span_type="ROUTER")
     def route_request(request):
