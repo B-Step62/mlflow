@@ -33,7 +33,6 @@ MLflow Tracing empowers you throughout the end-to-end lifecycle of a machine lea
 
           [Learn more →](/genai/tracing/observe-with-traces)
 
-
         </div>
 
         <div class="flex-item padding-md">
@@ -48,9 +47,11 @@ MLflow Tracing empowers you throughout the end-to-end lifecycle of a machine lea
       <div class="flex-row">
         <div class="flex-item">
 
-        #### Tracking Human Feedbacks
+        #### Track Annotation and Human Feedbacks
 
-        
+        Human feedback is essential for building high-quality GenAI applications that meet user expectations. MLflow supports collecting, managing, and utilizing feedback from end-users and domain experts.
+
+        Feedbacks are attached to traces and recorded with metadata, including user, timestamp, revisions, etc.
 
         [Learn more →](/genai/tracing/collect-user-feedback)
 
@@ -110,7 +111,7 @@ MLflow Tracing empowers you throughout the end-to-end lifecycle of a machine lea
       <div class="flex-row">
         <div class="flex-item">
 
-        #### Create a High-Quality Dataset from Real User Traffic
+        #### Create a High-Quality Dataset from Real World Traffic
 
         Evaluating the performance of your GenAI application is crucial, but creating a reliable evaluation dataset is challenging.
 
@@ -196,19 +197,19 @@ MLflow Tracing empowers you throughout the end-to-end lifecycle of a machine lea
 </TilesGrid>
 
 
-## Automatic Tracing
+## One-line Auto Tracing Integrations
 
 MLflow Tracing is integrated with various GenAI libraries and provides one-line automatic tracing experience for each library (and combinations of them!):
 
 ```python
 import mlflow
 
-mlflow.<library-name>.autolog()  # That it!
+mlflow.<library-name>.autolog()  # That's it!
 ```
 
-| Agent Frameworks | LLM Providers | Specialized Tools |
+| Frameworks | LLM Providers | Tools |
 |-------------------|---------------|-------------------|
-| [OpenAI Agent](/genai/tracing/integrations/listing/openai-agent) • [LangChain](/genai/tracing/integrations/listing/langchain) • [LangGraph](/genai/tracing/integrations/listing/langgraph) • [LlamaIndex](/genai/tracing/integrations/listing/llama_index) • [DSPy](/genai/tracing/integrations/listing/dspy) • [PydanticAI](/genai/tracing/integrations/listing/pydantic_ai) • [AutoGen](/genai/tracing/integrations/listing/autogen) • [AG2](/genai/tracing/integrations/listing/ag2) • [CrewAI](/genai/tracing/integrations/listing/crewai) • [Smolagents](/genai/tracing/integrations/listing/smolagents) | [OpenAI](/genai/tracing/integrations/listing/openai) • [Anthropic](/genai/tracing/integrations/listing/anthropic) • [Bedrock](/genai/tracing/integrations/listing/bedrock) • [Gemini](/genai/tracing/integrations/listing/gemini) • [LiteLLM](/genai/tracing/integrations/listing/litellm) • [Ollama](/genai/tracing/integrations/listing/ollama) • [Groq](/genai/tracing/integrations/listing/groq) • [Mistral](/genai/tracing/integrations/listing/mistral) • [DeepSeek](/genai/tracing/integrations/listing/deepseek) | [Instructor](/genai/tracing/integrations/listing/instructor) • [txtai](/genai/tracing/integrations/listing/txtai) |
+| [LangChain](/genai/tracing/integrations/listing/langchain) • [LangGraph](/genai/tracing/integrations/listing/langgraph) • [LlamaIndex](/genai/tracing/integrations/listing/llama_index) • [DSPy](/genai/tracing/integrations/listing/dspy) • [PydanticAI](/genai/tracing/integrations/listing/pydantic_ai) • [AutoGen](/genai/tracing/integrations/listing/autogen) • [OpenAI Agent](/genai/tracing/integrations/listing/openai-agent) • [AG2](/genai/tracing/integrations/listing/ag2) • [CrewAI](/genai/tracing/integrations/listing/crewai) • [Smolagents](/genai/tracing/integrations/listing/smolagents) | [OpenAI](/genai/tracing/integrations/listing/openai) • [Anthropic](/genai/tracing/integrations/listing/anthropic) • [Bedrock](/genai/tracing/integrations/listing/bedrock) • [Gemini](/genai/tracing/integrations/listing/gemini) • [LiteLLM](/genai/tracing/integrations/listing/litellm) • [Ollama](/genai/tracing/integrations/listing/ollama) • [Groq](/genai/tracing/integrations/listing/groq) • [Mistral](/genai/tracing/integrations/listing/mistral) • [DeepSeek](/genai/tracing/integrations/listing/deepseek) | [Instructor](/genai/tracing/integrations/listing/instructor) • [txtai](/genai/tracing/integrations/listing/txtai) |
 
 For the complete list and detailed integration examples, see the [Automatic Tracing](/genai/tracing/app-instrumentation/automatic) documentation.
 
@@ -230,8 +231,8 @@ Refer to the [Tracing SDK Guide](/genai/tracing/app-instrumentation/manual-traci
 
 ## Production Readiness
 
-MLflow Tracing is production ready and provides comprehensive monitoring capabilities for your GenAI applications in production environments. The tracing system captures detailed execution information that can be integrated with your existing observability stack through OpenTelemetry standards.
+MLflow Tracing is production ready and provides comprehensive monitoring capabilities for your GenAI applications in production environments. By enabling [async logging](/genai/tracing/prod-tracing/#asynchronous-trace-logging), trace logging is done in the background and does not impact the performance of your application.
 
-For production deployments, consider using the [Lightweight Tracing SDK](/genai/tracing/lightweight-sdk) (`mlflow-tracing`) that is optimized for reducing the total installation size and minimizing dependencies while maintaining full tracing capabilities.
+For production deployments, it is recommended to use the [Lightweight Tracing SDK](/genai/tracing/lightweight-sdk) (`mlflow-tracing`) that is optimized for reducing the total installation size and minimizing dependencies while maintaining full tracing capabilities. Compared to the full `mlflow` package, the `mlflow-tracing` package requires 95% smaller footprint.
 
 Read [Production Monitoring](/genai/tracing/prod-tracing) for complete guidance on using MLflow Tracing for monitoring models in production and various backend configuration options.
