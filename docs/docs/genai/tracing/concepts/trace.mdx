@@ -4,13 +4,16 @@ import { APILink } from "@site/src/components/APILink";
 
 # Trace Concepts
 
-# TODO: Redirect from data-model page to this page
-
 This document provides a detailed overview of the MLflow Trace data model. Understanding this model is key to leveraging MLflow Tracing for observability and analysis of your Generative AI applications.
 
 MLflow Traces are designed to be **compatible with OpenTelemetry specifications**, a widely adopted industry standard for observability. This ensures interoperability and allows MLflow Traces to be exported and used with other OpenTelemetry-compatible systems. MLflow enhances the basic OpenTelemetry Span model by defining specific structures and attributes for Generative AI use cases, providing richer context and deeper insight into quality and performance.
 
-## Structure of Traces
+## What is Tracing?
+Tracing is an observability technique that captures the complete execution flow of a request through your application. Unlike traditional logging that captures discrete events, tracing creates a detailed map of how data flows through your system, recording every operation, transformation, and decision point.
+
+In the context of GenAI applications, tracing becomes essential because these systems involve complex, multi-step workflows that are difficult to debug and optimize without complete visibility into their execution.
+
+## Core Structure: Trace = TraceInfo + TraceData
 
 At a high level, an MLflow **Trace** is composed of two primary objects:
 
@@ -18,15 +21,13 @@ At a high level, an MLflow **Trace** is composed of two primary objects:
 
 **<APILink fn="mlflow.entities.TraceData">TraceData</APILink>**: The actual payload, which contains the instrumented <APILink fn="mlflow.entities.Span">Span</APILink> objects that capture your application's step-by-step execution from input to output.
 
-:::tip
-Check the API documentation for helper methods on these dataclass objects for more information on how to convert or extract data from them.
-:::
-
-![Trace Architecture](/images/llms/tracing/schema/trace_architecture.png)
+<div style={{display: 'flex', justifyContent: 'center'}}>
+  <img src="/images/llms/tracing/schema/trace_architecture.png" alt="Trace Architecture" style={{width: '70%'}} />
+</div>
 
 ## TraceInfo: Metadata and Context
 
-The `TraceInfo` within MLflow's tracing feature aims to provide a lightweight snapshot of critical data about the overall trace. `TraceInfo` is a dataclass object that contains metadata about the trace.
+The <APILink fn="mlflow.entities.TraceInfo">TraceInfo</APILink> within MLflow's tracing feature aims to provide a lightweight snapshot of critical data about the overall trace. In Python SDK, <APILink fn="mlflow.entities.TraceInfo">TraceInfo</APILink> is designed as a dataclass object that contains metadata about the trace.
 
 This metadata includes information about the trace's origin, status, and various other data that aids in retrieving and filtering traces when used with <APILink fn="mlflow.search_traces" /> and for navigation of traces within the MLflow UI.
 
@@ -61,42 +62,41 @@ This metadata includes information about the trace's origin, status, and various
   </TabItem>
 </Tabs>
 
-The data that is contained in the `TraceInfo` object is used to populate the trace view page within the MLflow tracking UI.
+### Storage Layout
 
-![TraceInfo as it is used in the MLflow UI](/images/llms/tracing/schema/trace_info_in_ui.png)
+The data that is contained in the `TraceInfo` object is used to populate the trace view page within the MLflow tracking UI. `TraceInfo` is a lightweight metadata object, hence can be stored directly in a relational database. For example, if you are running MLflow Tracking Server on SQL database such as PostgreSQL, `TraceInfo` is stored as a single row in the trace table and support efficient query with indexes.
 
-## Tags
+### Trace Tags
 
-# TODO: Link to tag concept page
+Tags are key-value pairs that can be used to annotate the trace. They are designed for mutable values, that can be updated after the trace is created via MLflow UI or API. Tags are stored in the `TraceInfo` object, so useful for grouping traces and efficiently querying them. Visit [Setting Trace Tags](/genai/tracing/attach-tags) for more details about the usage of tags.
 
-## TraceData: Execution Details
+## TraceData: Container of Spans
 
-The MLflow `TraceData` object, accessible via `Trace.data`, holds the core payload of the trace. It primarily contains the sequence of operations (spans) that occurred, along with the initial request that triggered the trace and the final response produced.
+The MLflow <APILink fn="mlflow.entities.TraceData">TraceData</APILink> object, accessible via `trace.data`, is a container of <APILink fn="mlflow.entities.Span">Span</APILink> object. This is where the actual execution details are stored, including the request and response data, latency of each step, input and output messages to LLMs, retrieved documents from vector stores, tool call parameters, etc.
 
-<Tabs>
-  <TabItem value="spans" label="Spans" default>
-    **`spans`** (List[<APILink fn="mlflow.entities.Span">Span</APILink>]): This is a list of Span objects (conforming to OpenTelemetry specifications) that represent the individual steps, operations, or function calls within the trace. Each span details a specific unit of work.
+Spans in a trace forms a hierarchy through parent-child connections. Each span details a specific unit of work.
 
-    Spans are organized hierarchically via `parent_id` to represent the execution flow.
+For example, the following picture illustrates a set of spans that are organized in a tree structure in a trace. Each line represents a span, where the tree-structure is formed by the curly edges between lines. For example, the root span is "agent", which links to three children spans: 2 LLm calls and 1 tool handling.
 
-    See the [Span Schema](#span-schema) section below for a detailed breakdown of a Span object.
+<img src="/images/llms/tracing/schema/span_architecture.png" alt="Span Architecture" style={{width: '80%'}} />
 
-  </TabItem>
-  <TabItem value="request-response" label="Request & Response">
-    **`request`** (str): A JSON-serialized string representing the input data for the root span of the trace. This is typically the end-user's request or the initial parameters that invoked the traced application or workflow.
+The corresponding pseudo Python object looks like this:
 
-    Example: `'{"query": "What is MLflow Tracing?", "user_id": "user123"}'`
+```python
+[
+    Span(name="agent", parent=None),
+    Span(name="o3-mini.chat.completions", parent="agent"),
+    Span(name="handle_tool_calls", parent="agent"),
+    Span(name="retriever_tool", parent="handle_tool_calls"),
+    Span(name="qdrant.query", parent="retriever_tool"),
+    Span(name="o3-mini.chat.completions", parent="agent"),
+]
+```
 
-    **`response`** (str): A JSON-serialized string representing the final output data from the root span of the traced application or workflow.
+### Storage Layout
 
-    Example: `'{"answer": "MLflow Tracing provides observability...", "confidence": 0.95}'`
+Spans are relatively large objects compared to `TraceInfo`, because it contains rich information about each execution step, such as the full message history input to an LLM call. Therefore, MLflow stores them in artifact storage rather than in the database. This allows you to handle large number of traces with cheaper costs and minimum impact to the performance of typical filtering and grouping operations for traces.
 
-    :::note
-    The `request` and `response` properties are preserved for backward compatibility. Their values are looked up from the respective `inputs` and `outputs` attribute of the root span and are not set directly by the user on the `TraceData` object.
-    :::
 
-  </TabItem>
-</Tabs>
-
-Understanding `TraceData` is key to programmatically analyzing the detailed execution path and the data transformations that occur throughout your GenAI application's lifecycle.
+To learn more about the span object and its schema, continue to the [Span Concepts](/genai/tracing/concepts/span) page.
 

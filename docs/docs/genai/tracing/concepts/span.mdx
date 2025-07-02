@@ -1,5 +1,6 @@
 import Tabs from "@theme/Tabs"
 import TabItem from "@theme/TabItem"
+import TabsWrapper from "@site/src/components/TabsWrapper";
 import { APILink } from "@site/src/components/APILink";
 
 # Spans
@@ -8,10 +9,11 @@ The Span object within MLflow's tracing feature provides detailed information ab
 
 Each Span object contains information about the step being instrumented, including the span_id, name, start_time, parent_id, status, inputs, outputs, attributes, and events.
 
-![Span Architecture](/images/llms/tracing/schema/span_architecture.png)
+<img src="/images/llms/tracing/schema/span_architecture.png" alt="Span Architecture" style={{width: '80%'}} />
 
 ## Core Span Properties
 
+<TabsWrapper>
 <Tabs>
   <TabItem value="identity" label="Identity & Hierarchy" default>
     **`span_id`** (str): A unique identifier that is generated for each span within a trace.
@@ -42,6 +44,7 @@ Each Span object contains information about the step being instrumented, includi
 
   </TabItem>
 </Tabs>
+</TabsWrapper>
 
 When you view your traces within the MLflow UI, you're looking at a collection of spans, as shown below:
 
@@ -65,10 +68,12 @@ span.set_attributes(
 )
 ```
 
+
 ## Span Types
 
 Span types are a way to categorize spans within a trace. MLflow provides a set of predefined span types for common use cases, while also allowing you to set custom span types.
 
+<TabsWrapper>
 <Tabs>
   <TabItem value="built-in" label="Built-in Types" default>
     | **Span Type**  | **Description**                                                                        |
@@ -112,12 +117,25 @@ Span types are a way to categorize spans within a trace. MLflow provides a set o
 
   </TabItem>
   <TabItem value="search" label="Search Spans by Type">
-    Span type is useful for searching and filtering spans in the MLflow UI and SDK.
+    Span type is useful for searching and filtering particular spans in a large trace. MLflow supports both UI and programmatic span search by span type.
 
-    TODO: Add API example and UI screenshot
+    **Searching spans by SDK:**
+
+    ```python
+    import mlflow
+    from mlflow.entities import SpanType
+
+    trace = mlflow.get_trace("<trace_id>")
+    retriever_spans = trace.search_spans(span_type=SpanType.RETRIEVER)
+    ```
+
+    **Searching spans on UI:**
+
+    ![Search Spans by Type](/images/llms/tracing/schema/search_spans_by_type.png)
 
   </TabItem>
 </Tabs>
+</TabsWrapper>
 
 ## Specialized Span Schemas
 

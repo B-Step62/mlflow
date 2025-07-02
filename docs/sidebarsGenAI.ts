@@ -189,16 +189,7 @@ const sidebarsGenAI: SidebarsConfig = {
               id: 'tracing/concepts/feedback',
               label: 'Feedback',
             },
-            {
-              type: 'doc',
-              id: 'tracing/concepts/tags',
-              label: 'Tags',
-            },
           ],
-          link: {
-            type: 'doc',
-            id: 'tracing/concepts/trace',
-          },
         },
         {
           type: 'category',
