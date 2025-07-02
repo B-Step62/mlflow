@@ -1,0 +1,66 @@
+
+# Trace Tags
+
+The `tags` property in MLflow's `TraceInfo` object is used to provide additional context for the trace. These tags can be used for searching, filtering, or providing additional information about the trace.
+
+The tags are key-value pairs, and they are mutable. This means that you can add, modify, or remove tags at any time, even after the trace has been logged to an experiment.
+
+## Standard Tags
+
+MLflow uses a set of standard tags for common contextual information about users, sessions and the environment, which enable enhanced filtering and grouping capabilities within the MLflow UI and SDK:
+
+**`mlflow.trace.session`**: Standard tag for session ID
+
+**`mlflow.trace.user`**: Standard tag for user ID
+
+**`mlflow.source.name`**: The entry point or script that generated the trace
+
+**`mlflow.source.git.commit`**: If run from a Git repository, the commit hash of the source code
+
+**`mlflow.source.type`**: The type of source that generated the trace, commonly `PROJECT` (for MLflow Project runs) or `NOTEBOOK` (if run from a notebook)
+
+## Custom Tags for Advanced Use Cases
+
+For enterprise and distributed applications, custom tags enable powerful filtering and organization:
+
+### Business Context Tags
+
+```python
+# Business-specific identification
+mlflow.update_current_trace(
+    tags={
+        "business.user_id": "user123",
+        "business.tenant_id": "tenant_456",
+        "business.cost_center": "engineering",
+        "business.department": "ai_platform",
+    }
+)
+```
+
+### Deployment and Environment Tags
+
+```python
+# Deployment context
+mlflow.update_current_trace(
+    tags={
+        "deployment.environment": "production",
+        "deployment.region": "us-west-2",
+        "deployment.service": "recommendation_engine",
+        "deployment.version": "v2.3.1",
+    }
+)
+```
+
+### Performance and Quality Tags
+
+```python
+# Performance monitoring
+mlflow.update_current_trace(
+    tags={
+        "performance.tier": "premium",
+        "quality.confidence_threshold": "0.8",
+        "feature.experimental": "true",
+        "monitoring.alert_level": "high",
+    }
+)
+```

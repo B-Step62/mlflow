@@ -1,0 +1,184 @@
+import Tabs from "@theme/Tabs"
+import TabItem from "@theme/TabItem"
+import { APILink } from "@site/src/components/APILink";
+
+# Spans
+
+The Span object within MLflow's tracing feature provides detailed information about the individual steps of the trace. It complies with the [OpenTelemetry Span spec](https://opentelemetry.io/docs/concepts/signals/traces#spans).
+
+Each Span object contains information about the step being instrumented, including the span_id, name, start_time, parent_id, status, inputs, outputs, attributes, and events.
+
+![Span Architecture](/images/llms/tracing/schema/span_architecture.png)
+
+## Core Span Properties
+
+<Tabs>
+  <TabItem value="identity" label="Identity & Hierarchy" default>
+    **`span_id`** (str): A unique identifier that is generated for each span within a trace.
+
+    **`trace_id`** (str): The unique identifier that links this span to its parent trace.
+
+    **`parent_id`** (Optional[str]): The identifier that establishes the hierarchical association of a given span with its parent span.
+
+    **`name`** (str): The name of the span, either user-defined or automatically generated based on the function or method being instrumented.
+
+  </TabItem>
+  <TabItem value="timing" label="Timing & Status">
+    **`start_time_ns`** (int): The unix timestamp (in nanoseconds) when the span was started.
+
+    **`end_time_ns`** (int): The unix timestamp (in nanoseconds) when the span was ended.
+
+    **`status`** (SpanStatus): The status of a span with values of OK, UNSET, or ERROR. The span status object contains an optional description if the status_code is reflecting an error that occurred.
+
+  </TabItem>
+  <TabItem value="data" label="Data & Context">
+    **`inputs`** (Optional[Any]): The inputs are stored as JSON-serialized data, representing the input data that is passed into the particular stage of your application.
+
+    **`outputs`** (Optional[Any]): The outputs are stored as JSON-serialized data, representing the output data that is passed out of the particular stage of your application.
+
+    **`attributes`** (Dict[str, Any]): Attributes are metadata that are associated with a given step within your application. These are key-value pairs that provide insight into behavioral modifications for function and method calls.
+
+    **`events`** (List[SpanEvent]): Events are a system-level property that is optionally applied to a span only if there was an issue during the execution of the span. These events contain information about exceptions that were thrown in the instrumented call, as well as the stack trace.
+
+  </TabItem>
+</Tabs>
+
+When you view your traces within the MLflow UI, you're looking at a collection of spans, as shown below:
+
+![Spans within the MLflow UI](/images/llms/tracing/schema/spans_in_mlflow_ui.png)
+
+## Span Attributes
+
+Span attributes are key-value pairs that provide insight into behavioral modifications for function and method calls.
+
+```python
+span.set_attributes(
+    {
+        "ai.model.name": "o3-mini",
+        "ai.model.version": "2024-01-01",
+        "ai.model.provider": "openai",
+        "ai.model.temperature": 0.7,
+        "ai.model.max_tokens": 1000,
+        "infrastructure.gpu.type": "A100",
+        "infrastructure.memory.used_mb": 2048,
+    }
+)
+```
+
+## Span Types
+
+Span types are a way to categorize spans within a trace. MLflow provides a set of predefined span types for common use cases, while also allowing you to set custom span types.
+
+<Tabs>
+  <TabItem value="built-in" label="Built-in Types" default>
+    | **Span Type**  | **Description**                                                                        |
+    | -------------- | -------------------------------------------------------------------------------------- |
+    | `"CHAT_MODEL"` | Represents a query to a chat model. This is a special case of an LLM interaction.      |
+    | `"CHAIN"`      | Represents a chain of operations.                                                      |
+    | `"AGENT"`      | Represents an autonomous agent operation.                                              |
+    | `"TOOL"`       | Represents a tool execution (typically by an agent), such as querying a search engine. |
+    | `"EMBEDDING"`  | Represents a text embedding operation.                                                 |
+    | `"RETRIEVER"`  | Represents a context retrieval operation, such as querying a vector database.          |
+    | `"PARSER"`     | Represents a parsing operation, transforming text into a structured format.            |
+    | `"RERANKER"`   | Represents a re-ranking operation, ordering the retrieved contexts based on relevance. |
+    | `"UNKNOWN"`    | A default span type that is used when no other span type is specified.                 |
+  </TabItem>
+  <TabItem value="usage" label="Setting Span Types">
+    When you are using [automatic tracing](/genai/tracing/app-instrumentation/automatic), the span type is automatically set by MLflow.
+    To set a span type for manually created spans, you can pass the `span_type` parameter to the <APILink fn="mlflow.trace" /> decorator or <APILink fn="mlflow.start_span" /> context manager. When you are using [automatic tracing](/genai/tracing/app-instrumentation/automatic), the span type is automatically set by MLflow.
+
+    ```python
+    import mlflow
+    from mlflow.entities import SpanType
+
+
+    # Setting a span type with the decorator
+    @mlflow.trace(span_type=SpanType.RETRIEVER)
+    def retrieve_documents(query: str):
+        ...
+
+
+    # Setting a span type with the context manager
+    with mlflow.start_span(name="add", span_type=SpanType.TOOL) as span:
+        span.set_inputs({"x": x, "y": y})
+        z = x + y
+        span.set_outputs({"z": z})
+
+    # You can also define a custom span type string
+    @mlflow.trace(span_type="ROUTER")
+    def route_request(request):
+        ...
+    ```
+
+  </TabItem>
+  <TabItem value="search" label="Search Spans by Type">
+    Span type is useful for searching and filtering spans in the MLflow UI and SDK.
+
+    TODO: Add API example and UI screenshot
+
+  </TabItem>
+</Tabs>
+
+## Specialized Span Schemas
+
+MLflow has predefined types of spans, and certain span types have properties that are required in order to enable additional functionality within the UI and downstream tasks such as evaluation.
+
+### Retriever Spans
+
+The `RETRIEVER` span type is used for operations involving retrieving data from a data store (for example, querying documents from a vector store). The output of a `RETRIEVER` span is expected to be a list of documents.
+
+Each document in the list should be a dictionary with the following structure:
+
+**`page_content`** (str): The text content of the retrieved document chunk.
+
+**`metadata`** (Optional[Dict[str, Any]]): A dictionary of additional metadata associated with the document. MLflow UI and evaluation metrics may specifically look for:
+
+- `doc_uri` (str): A string URI for the document source
+- `chunk_id` (str): A string identifier if the document is part of a larger chunked document
+
+**`id`** (Optional[str]): An optional unique identifier for the document chunk itself.
+
+#### Example Usage
+
+```python
+import mlflow
+from mlflow.entities import SpanType, Document
+
+
+def search_store(query: str) -> list[tuple[str, str]]:
+    # Simulate retrieving documents (e.g., from a vector database)
+    return [
+        (
+            "MLflow Tracing helps debug GenAI applications...",
+            "docs/mlflow/tracing_intro.md",
+        ),
+        (
+            "Key components of a trace include spans...",
+            "docs/mlflow/tracing_datamodel.md",
+        ),
+        ("MLflow provides automatic instrumentation...", "docs/mlflow/auto_trace.md"),
+    ]
+
+
+@mlflow.trace(span_type=SpanType.RETRIEVER)
+def retrieve_relevant_documents(query: str):
+    # Get documents from the search store
+    docs = search_store(query)
+
+    # Get the current active span (created by @mlflow.trace)
+    span = mlflow.get_current_active_span()
+
+    # Set the outputs of the span in accordance with the tracing schema
+    outputs = [
+        Document(page_content=doc, metadata={"doc_uri": uri}) for doc, uri in docs
+    ]
+    span.set_outputs(outputs)
+
+    # Return the original format for downstream usage
+    return docs
+
+
+# Example usage
+user_query = "MLflow Tracing benefits"
+retrieved_docs = retrieve_relevant_documents(user_query)
+```

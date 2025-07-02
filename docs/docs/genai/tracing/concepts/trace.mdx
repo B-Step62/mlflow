@@ -1,0 +1,102 @@
+import Tabs from "@theme/Tabs"
+import TabItem from "@theme/TabItem"
+import { APILink } from "@site/src/components/APILink";
+
+# Trace Concepts
+
+# TODO: Redirect from data-model page to this page
+
+This document provides a detailed overview of the MLflow Trace data model. Understanding this model is key to leveraging MLflow Tracing for observability and analysis of your Generative AI applications.
+
+MLflow Traces are designed to be **compatible with OpenTelemetry specifications**, a widely adopted industry standard for observability. This ensures interoperability and allows MLflow Traces to be exported and used with other OpenTelemetry-compatible systems. MLflow enhances the basic OpenTelemetry Span model by defining specific structures and attributes for Generative AI use cases, providing richer context and deeper insight into quality and performance.
+
+## Structure of Traces
+
+At a high level, an MLflow **Trace** is composed of two primary objects:
+
+**<APILink fn="mlflow.entities.TraceInfo">TraceInfo</APILink>**: Metadata that aids in explaining the origination of the trace, the status of the trace, information about the total execution time, etc. This includes tags that provide additional context for the trace, such as the user, session, and developer-provided key:value pairs. Tags can be used for searching or filtering traces.
+
+**<APILink fn="mlflow.entities.TraceData">TraceData</APILink>**: The actual payload, which contains the instrumented <APILink fn="mlflow.entities.Span">Span</APILink> objects that capture your application's step-by-step execution from input to output.
+
+:::tip
+Check the API documentation for helper methods on these dataclass objects for more information on how to convert or extract data from them.
+:::
+
+![Trace Architecture](/images/llms/tracing/schema/trace_architecture.png)
+
+## TraceInfo: Metadata and Context
+
+The `TraceInfo` within MLflow's tracing feature aims to provide a lightweight snapshot of critical data about the overall trace. `TraceInfo` is a dataclass object that contains metadata about the trace.
+
+This metadata includes information about the trace's origin, status, and various other data that aids in retrieving and filtering traces when used with <APILink fn="mlflow.search_traces" /> and for navigation of traces within the MLflow UI.
+
+<Tabs>
+  <TabItem value="core-fields" label="Core Fields" default>
+    **`trace_id`** (str): The primary identifier for the trace.
+
+    **`trace_location`** (TraceLocation): The location where the trace is stored, represented as a TraceLocation object. MLflow currently supports MLflow Experiment as a trace location.
+
+    **`request_time`** (int): Start time of the trace, in milliseconds.
+
+    **`state`** (TraceState): State of the trace, represented as a TraceState enum. Can be one of [`OK`, `ERROR`, `IN_PROGRESS`, `STATE_UNSPECIFIED`].
+
+    **`execution_duration`** (Optional[int]): Duration of the trace, in milliseconds.
+
+  </TabItem>
+  <TabItem value="preview-fields" label="Request & Response">
+    **`request_preview`** (Optional[str]): Request to the model/agent, equivalent to the input of the root span but JSON-encoded and can be truncated.
+
+    **`response_preview`** (Optional[str]): Response from the model/agent, equivalent to the output of the root span but JSON-encoded and can be truncated.
+
+    These preview fields provide a quick overview of what the trace processed without needing to examine the detailed span data.
+
+  </TabItem>
+  <TabItem value="metadata-fields" label="Metadata & Organization">
+    **`client_request_id`** (Optional[str]): Client supplied request ID associated with the trace. This could be used to identify the trace/request from an external system that produced the trace, e.g., a session ID in a web application.
+
+    **`trace_metadata`** (dict[str, str]): Key-value pairs associated with the trace. They are designed for immutable values like run ID associated with the trace.
+
+    **`tags`** (dict[str, str]): Tags associated with the trace. They are designed for mutable values, that can be updated after the trace is created via MLflow UI or API.
+
+  </TabItem>
+</Tabs>
+
+The data that is contained in the `TraceInfo` object is used to populate the trace view page within the MLflow tracking UI.
+
+![TraceInfo as it is used in the MLflow UI](/images/llms/tracing/schema/trace_info_in_ui.png)
+
+## Tags
+
+# TODO: Link to tag concept page
+
+## TraceData: Execution Details
+
+The MLflow `TraceData` object, accessible via `Trace.data`, holds the core payload of the trace. It primarily contains the sequence of operations (spans) that occurred, along with the initial request that triggered the trace and the final response produced.
+
+<Tabs>
+  <TabItem value="spans" label="Spans" default>
+    **`spans`** (List[<APILink fn="mlflow.entities.Span">Span</APILink>]): This is a list of Span objects (conforming to OpenTelemetry specifications) that represent the individual steps, operations, or function calls within the trace. Each span details a specific unit of work.
+
+    Spans are organized hierarchically via `parent_id` to represent the execution flow.
+
+    See the [Span Schema](#span-schema) section below for a detailed breakdown of a Span object.
+
+  </TabItem>
+  <TabItem value="request-response" label="Request & Response">
+    **`request`** (str): A JSON-serialized string representing the input data for the root span of the trace. This is typically the end-user's request or the initial parameters that invoked the traced application or workflow.
+
+    Example: `'{"query": "What is MLflow Tracing?", "user_id": "user123"}'`
+
+    **`response`** (str): A JSON-serialized string representing the final output data from the root span of the traced application or workflow.
+
+    Example: `'{"answer": "MLflow Tracing provides observability...", "confidence": 0.95}'`
+
+    :::note
+    The `request` and `response` properties are preserved for backward compatibility. Their values are looked up from the respective `inputs` and `outputs` attribute of the root span and are not set directly by the user on the `TraceData` object.
+    :::
+
+  </TabItem>
+</Tabs>
+
+Understanding `TraceData` is key to programmatically analyzing the detailed execution path and the data transformations that occur throughout your GenAI application's lifecycle.
+
