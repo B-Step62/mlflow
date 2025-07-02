@@ -1,6 +1,6 @@
 .wrapper {
   padding: var(--padding-lg);
-  border: 1px solid var(--ifm-color-emphasis-300);
+  border: 1px solid var(--ifm-color-gray-400);
   border-radius: 12px;
   margin: var(--padding-lg) 0;
   background: var(--ifm-background-surface-color);
