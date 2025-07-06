@@ -65,3 +65,8 @@ export const DEFAULT_SPAN_NAME = 'span';
  * Trace ID for no-op spans
  */
 export const NO_OP_SPAN_TRACE_ID = 'no-op-span-trace-id';
+
+/**
+ * Maximum length for request/response preview in OSS deployment
+ */
+export const TRACE_REQUEST_RESPONSE_PREVIEW_MAX_LENGTH = 1000;

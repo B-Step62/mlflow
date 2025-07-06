@@ -138,3 +138,5 @@ export function deduplicateSpanNamesInPlace(spans: LiveSpan[]): void {
     }
   }
 }
+
+export { setRequestResponsePreview } from './truncation';

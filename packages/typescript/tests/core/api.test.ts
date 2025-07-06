@@ -56,6 +56,8 @@ describe('API', () => {
       expect(trace.info.executionDuration).toBeCloseTo(
         convertHrTimeToMs(span.endTime!) - convertHrTimeToMs(span.startTime)
       );
+      expect(trace.info.requestPreview).toBe('{"prompt":"Hello, world!"}');
+      expect(trace.info.responsePreview).toBe('{"response":"Hello, world!"}');
 
       expect(trace.data.spans.length).toBe(1);
       const loggedSpan = trace.data.spans[0];
