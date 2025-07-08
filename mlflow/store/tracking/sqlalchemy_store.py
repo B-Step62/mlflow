@@ -2409,7 +2409,6 @@ class SqlAlchemyStore(AbstractStore):
         Returns:
             The created Assessment object with backend-generated metadata.
         """
-
         with self.ManagedSessionMaker() as session:
             self._get_sql_trace_info(session, assessment.trace_id)
             sql_assessment = SqlAssessments.from_mlflow_entity(assessment)
