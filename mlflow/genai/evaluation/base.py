@@ -1,11 +1,16 @@
+from contextlib import nullcontext
 import logging
 import time
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import mlflow
+from mlflow.data.evaluation_dataset import convert_data_to_mlflow_dataset
+from mlflow.entities.dataset_input import DatasetInput
+from mlflow.entities.logged_model_input import LoggedModelInput
 from mlflow.exceptions import MlflowException
 from mlflow.genai.datasets import EvaluationDataset
+from mlflow.genai.evaluation import harness
 from mlflow.genai.evaluation.utils import (
     _convert_scorer_to_legacy_metric,
     _convert_to_legacy_eval_set,
@@ -19,7 +24,9 @@ from mlflow.genai.utils.trace_utils import (
 )
 from mlflow.models.evaluation.base import (
     EvaluationResult,
+    _evaluate,
     _is_model_deployment_endpoint_uri,
+    _start_run_or_reuse_active_run,
 )
 from mlflow.tracing.constant import (
     DATABRICKS_OPTIONS_KEY,
@@ -27,6 +34,8 @@ from mlflow.tracing.constant import (
     RETURN_TRACE_OPTION_KEY,
 )
 from mlflow.tracing.utils.copy import copy_trace_to_experiment
+from mlflow.tracking.client import MlflowClient
+from mlflow.tracking.fluent import _set_active_model
 from mlflow.utils.annotations import experimental
 from mlflow.utils.uri import is_databricks_uri
 
@@ -234,7 +243,7 @@ def _evaluate_oss(data, scorers, predict_fn, model_id):
 
     scorers = validate_scorers(scorers)
     # convert into a pandas dataframe with current evaluation set schema
-    df = data.to_df() if is_managed_dataset else _convert_to_legacy_eval_set(data)
+    df = _convert_to_legacy_eval_set(data)
 
     builtin_scorers = [scorer for scorer in scorers if isinstance(scorer, BuiltInScorer)]
     valid_data_for_builtin_scorers(df, builtin_scorers, predict_fn)
@@ -254,32 +263,31 @@ def _evaluate_oss(data, scorers, predict_fn, model_id):
         predict_fn = convert_predict_fn(predict_fn=predict_fn, sample_input=sample_input)
 
     with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"Hint: Inferred schema contains integer column\(s\).*",
-            category=UserWarning,
-        )
-        # Suppress numpy warning about ragged nested sequences. This is raised when passing
-        # a dataset that contains complex object to mlflow.evaluate(). MLflow converts data
-        # into numpy array to compute dataset digest, which triggers the warning.
-        warnings.filterwarnings(
-            "ignore",
-            message=r"Creating an ndarray from ragged nested sequences",
-            module="mlflow.data.evaluation_dataset",
-        )
-
         eval_start_time = int(time.time() * 1000)
-        result = mlflow.models.evaluate(
-            model=predict_fn,
+        with _start_run_or_reuse_active_run() as run_id:
+            # Log the dataset to the run
+            client = MlflowClient()
             # If the input dataset is a managed dataset, we pass the original dataset
             # to the evaluate function to preserve metadata like dataset name.
-            data=data if is_managed_dataset else df,
-            # Scorers are passed to the eval harness as extra metrics
-            extra_metrics=scorers,
-            model_type="genai",
-            model_id=model_id,
-            _called_from_genai_evaluate=True,
-        )
+            data = convert_data_to_mlflow_dataset(data=data if is_managed_dataset else df)
+            dataset_input = DatasetInput(dataset=data._to_mlflow_entity())
+            client.log_inputs(
+                run_id,
+                [dataset_input],
+                models=[LoggedModelInput(model_id)] if model_id else None,
+            )
+
+            with _set_active_model(model_id=model_id) if model_id else nullcontext():
+                result = harness.run(
+                    predict_fn=predict_fn,
+                    dataset=df,
+                    scorers=scorers,
+                    run_id=run_id,
+                )
+
+            # if model_id is specified log metrics to the eval run and logged model
+            if model_id is not None:
+                mlflow.log_metrics(metrics=result.metrics, dataset=data, model_id=model_id)
 
         # Clean up noisy traces generated during evaluation
         clean_up_extra_traces(result.run_id, eval_start_time)
@@ -288,6 +296,9 @@ def _evaluate_oss(data, scorers, predict_fn, model_id):
 
 
 def _evaluate_dbx(data, scorers, predict_fn, model_id):
+    """In Databricks, we run GenAI evaluation using databricks-agents package and mlflow.evaluate() function.
+    This is a temporary migration state and we will eventually unify this into OSS flow.
+    TODO: Add more description."""
     is_managed_dataset = isinstance(data, EvaluationDataset)
 
     scorers = validate_scorers(scorers)

@@ -150,7 +150,6 @@ class TrackingServiceClient:
             :py:class:`mlflow.entities.Run` that was created.
 
         """
-
         tags = tags if tags else {}
 
         # Extract user from tags

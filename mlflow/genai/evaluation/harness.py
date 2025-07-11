@@ -4,28 +4,29 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partialmethod
-from typing import List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple
+import warnings
+
+import pandas as pd
+from tqdm.auto import tqdm
 
 import mlflow
-from mlflow.genai.evaluation.dataset import EvaluationDataframe
+from mlflow.entities.assessment import Assessment
+from mlflow.entities.trace import Trace
+from mlflow.entities.trace_location import MlflowExperimentLocation
+from mlflow.genai.evaluation.entities import EvalItem, EvalResult
 from mlflow.genai.evaluation.metrics import compute_eval_scores
-from mlflow.genai.evaluation.models import ModelResult, invoke_model
-from mlflow.genai.evaluation.rate_limit import RateLimitConfig, RateLimiter
-from mlflow.genai.evaluation.trace import extract_model_output_from_trace, extract_tool_calls
-from mlflow.genai.evaluation.trace_utils import clone_trace_to_reupload, create_minimal_trace, inject_experiment_run_id_to_trace
+from mlflow.genai.evaluation.models import invoke_predict_fn_and_set_result
+from mlflow.genai.scorers.aggregation import compute_aggregated_metrics
 from mlflow.genai.scorers.base import Scorer
-from mlflow.genai.utils import input_output_utils
-from mlflow.genai.utils.trace_utils import _get_top_level_retrieval_spans, extract_retrieval_context_from_trace
-from mlflow.pyfunc import PyFuncModel
+from mlflow.models.evaluation.base import EvaluationResult
 import mlflow.tracing.constant as tracing_constant
-from mlflow import entities as mlflow_entities
-from tqdm.auto import tqdm
-from mlflow.genai.evaluation import context, entities
+from mlflow.genai.evaluation import context
+from mlflow.tracing.utils.copy import copy_trace_to_experiment, create_minimal_trace
 
 
 _logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ _FAIL_TO_GET_TRACE_WARNING_MSG = re.compile(
     r"Failed to get trace from the tracking store"
 )
 
-EvalResults = List[entities.EvalResult]
+EvalResults = List[EvalResult]
 
 
 def _get_current_time() -> float:
@@ -47,11 +48,60 @@ def _get_current_time() -> float:
     return time.perf_counter()
 
 
+@context.eval_context
 def run(
     *,
-    eval_dataset: Union[EvaluationDataframe, List[entities.EvalItem]],
+    dataset: pd.DataFrame,
+    predict_fn=None,
+    scorers=None,
+    run_id,
+):
+    """
+    Runs Databricks RAG evaluation on the provided dataset.
+
+    The following arguments are supported:
+    - model_type: Must be the same as evaluator_plugin.MODEL_TYPE
+    - dataset
+    - run_id
+
+    For more details, see parent class docstring.
+    """
+    eval_items = [EvalItem.from_dict(row) for row in dataset.to_dict(orient="records")]
+
+    eval_results = _run_prediction_and_scoring(
+        predict_fn=predict_fn,
+        eval_items=eval_items,
+        scorers=scorers,
+    )
+
+    aggregated_metrics = compute_aggregated_metrics(eval_results, scorers=scorers)
+    mlflow.log_metrics(aggregated_metrics)
+
+    # Check for failed scorers and log a warning
+    failed_scorers = set()
+    for result in eval_results:
+        for metric in result.metric_results:
+            if metric.metric_value.error is not None:
+                failed_scorers.add(metric.metric_value.name)
+
+    if failed_scorers:
+        failed_scorers_str = ", ".join(sorted(failed_scorers))
+        warnings.warn(
+            f"Some scorers failed during evaluation: {failed_scorers_str}. "
+            f"Please check the evaluation result page for more details."
+        )
+
+    # _display_summary_and_usage_instructions(run_id)
+
+    trace_df = mlflow.search_traces(run_id=run_id)
+    return EvaluationResult(metrics=aggregated_metrics, artifacts=[trace_df])
+
+
+def _run_prediction_and_scoring(
+    *,
+    eval_items: list[EvalItem],
     scorers: list[Scorer],
-    model=None,
+    predict_fn=None,
 ) -> EvalResults:
     """
     Run the logic of the eval harness.
@@ -63,12 +113,6 @@ def run(
     :param model: Optional model to use for generating responses and traces
     :return: EvalResults
     """
-    eval_items = (
-        eval_dataset.eval_items
-        if isinstance(eval_dataset, EvaluationDataframe)
-        else eval_dataset
-    )
-
     # Disable tqdm progress bar by default so that the progress bars inside MLflow eval_fn do not show
     tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
@@ -88,7 +132,7 @@ def run(
                 _run_single,
                 eval_item=eval_item,
                 scorers=scorers,
-                model=model,
+                predict_fn=predict_fn,
                 experiment_id=experiment_id,
                 run_id=run_id,
             )
@@ -144,13 +188,12 @@ class EvalTimes:
 
 
 def _run_single(
-    eval_item: entities.EvalItem,
+    eval_item: EvalItem,
     scorers: list[Scorer],
     experiment_id: Optional[str],
     run_id: Optional[str],
-    model: Optional[PyFuncModel] = None,
-   # current_session: Optional[session.Session] = None,
-) -> Tuple[entities.EvalResult, EvalTimes]:
+    predict_fn: Optional[Callable[..., Any]] = None,
+) -> Tuple[EvalResult, EvalTimes]:
     """
     Run the logic of the eval harness for a single eval item.
 
@@ -160,7 +203,6 @@ def _run_single(
     :param mlflow_run_id: MLflow run ID to use for this evaluation
     :return: EvalResult, EvalTimes) where EvalTimes is a dataclass with agent_invocation_time and metric_computation_time
     """
-    #session.set_session(current_session)
     # Set the MLflow run ID in the context for this thread
     if run_id:
         # Manually set the mlflow_run_id for this context to be the same as was set in the parent thread.
@@ -168,52 +210,41 @@ def _run_single(
         ctx = context.get_context()
         ctx.set_mlflow_run_id(run_id)
 
-    trace_error_message = None
     model_invocation_time = None
-    if model:
+    if predict_fn:
         start_time = _get_current_time()
-        eval_item = _populate_model_result_to_eval_item(
-            eval_item=eval_item,
-            model_result=invoke_model(model, eval_item),
-        )
+        invoke_predict_fn_and_set_result(predict_fn, eval_item)
         model_invocation_time = _get_current_time() - start_time
     elif eval_item.trace is not None:
         # Catch any issues with malformed traces
         try:
-            # If logging to MLflow is disabled, we don't need to clone the trace
             if _should_clone_trace(eval_item.trace, experiment_id):
-                prepared_trace = clone_trace_to_reupload(eval_item.trace)
-                cloned_trace = inject_experiment_run_id_to_trace(
-                    prepared_trace, experiment_id, run_id
-                )
+                cloned_trace_id = copy_trace_to_experiment(eval_item.trace.to_dict(), experiment_id)
+                cloned_trace = mlflow.get_trace(cloned_trace_id)
                 eval_item.trace = cloned_trace
             elif _should_link_trace_to_run(eval_item.trace, run_id):
                 context.get_context().build_mlflow_client().link_traces_to_run(
                     run_id=run_id,
                     trace_ids=[eval_item.trace.info.trace_id],
                 )
-                # We forego retrieving the fresh trace here as it is retrieved later when logging the assessments.
-            eval_item = _populate_eval_item_with_trace(eval_item)
         except Exception as e:
-            trace_error_message = str(e)
+            eval_item.error_message = str(e)
     else:
-        minimal_trace = _create_minimal_trace(eval_item)
+        minimal_trace = create_minimal_trace(eval_item.request, eval_item.response)
         eval_item.trace = minimal_trace
-        eval_item = _populate_eval_item_with_trace(eval_item)
 
     # Skip the evaluation if invoking the model failed or there's a malformed trace
-    eval_item_error_message = eval_item.model_error_message or trace_error_message
-    if eval_item_error_message:
-        eval_result = entities.EvalResult(
+    if eval_item.error_message:
+        eval_result = EvalResult(
             eval_item=eval_item,
-            eval_error=eval_item_error_message,
+            eval_error=eval_item.error_message,
         )
         metric_computation_time = 0.0
     else:
         start_time = _get_current_time()
         metric_results = compute_eval_scores(eval_item=eval_item, scorers=scorers)
         metric_computation_time = _get_current_time() - start_time
-        eval_result = entities.EvalResult(eval_item=eval_item, metric_results=metric_results)
+        eval_result = EvalResult(eval_item=eval_item, metric_results=metric_results)
 
     try:
         logged_trace = log_traces_and_assessments(
@@ -233,9 +264,7 @@ def _run_single(
     )
 
 
-def _should_clone_trace(
-    trace: Optional[mlflow_entities.Trace], experiment_id: str
-) -> bool:
+def _should_clone_trace(trace: Optional[Trace], experiment_id: str) -> bool:
     """
     Determine if we should clone the trace.
 
@@ -252,9 +281,7 @@ def _should_clone_trace(
     return not is_trace_from_same_exp
 
 
-def _should_link_trace_to_run(
-    trace: Optional[mlflow_entities.Trace], run_id: Optional[str]
-) -> bool:
+def _should_link_trace_to_run(trace: Optional[Trace], run_id: Optional[str]) -> bool:
     """
     Determine if we should link the trace to the run.
 
@@ -273,66 +300,12 @@ def _should_link_trace_to_run(
     return trace_run_id is None or trace_run_id != run_id
 
 
-def _populate_model_result_to_eval_item(
-    eval_item: entities.EvalItem, model_result: ModelResult
-) -> entities.EvalItem:
-    """
-    Populate the model result to the eval item in place.
-
-    :param eval_item: The eval item to populate the model result
-    :param model_result: The model result to populate
-    :return: The populated eval item
-    """
-    eval_item.response = model_result.raw_model_output
-    eval_item.retrieval_context = model_result.retrieval_context
-    eval_item.tool_calls = model_result.tool_calls
-    eval_item.trace = model_result.trace
-    eval_item.model_error_message = model_result.error_message
-    return eval_item
-
-
-def _create_minimal_trace(eval_item: entities.EvalItem) -> mlflow_entities.Trace:
-    return create_minimal_trace(
-        input_output_utils.to_dict(eval_item.request),
-        input_output_utils.to_dict(eval_item.response),
-    )
-
-
-def _populate_eval_item_with_trace(eval_item: entities.EvalItem) -> entities.EvalItem:
-    """
-    Populate the eval item in place by extracting additional information from the trace.
-
-    Keep the existing values in the eval item if they already exist.
-    """
-    # Skip if the trace is None
-    if eval_item.trace is None:
-        return eval_item
-
-    eval_item.raw_response = input_output_utils.to_dict(
-        extract_model_output_from_trace(eval_item.trace)
-    )
-
-    eval_item.retrieval_context = (
-        extract_retrieval_context_from_trace(eval_item.trace)
-        if eval_item.retrieval_context is None
-        else eval_item.retrieval_context
-    )
-
-    # Extract tool calls from the trace, or response if trace is not available.
-    eval_item.tool_calls = extract_tool_calls(
-        response=input_output_utils.to_dict(eval_item.raw_response),
-        trace=eval_item.trace,
-    )
-
-    return eval_item
-
-
 def log_traces_and_assessments(
     experiment_id: Optional[str],
     run_id: Optional[str],
-    trace: mlflow_entities.Trace,
-    assessments: List[mlflow_entities.Assessment],
-) -> mlflow_entities.Trace:
+    trace: Trace,
+    assessments: List[Assessment],
+) -> Trace:
     """
     Log the trace and assessments to MLflow. We do this to ensure that MLFlow has a trace for every
     eval row, storing the computed assessments/metrics.
@@ -354,21 +327,7 @@ def log_traces_and_assessments(
         # Ensure that every trace is logged in MLflow, regardless of where it came from.
         # Specifically, if the trace is present in MLflow, do nothing. Otherwise, log the trace.
         if trace.info.trace_id is None or mlflow.get_trace(trace.info.trace_id) is None:
-            if trace.info.trace_location.mlflow_experiment is not None:
-                trace.info.trace_location.mlflow_experiment.experiment_id = (
-                    experiment_id
-                )
-            else:
-                trace.info.trace_location.mlflow_experiment = (
-                    mlflow_entities.MlflowExperimentLocation(
-                        experiment_id=experiment_id
-                    )
-                )
-
-            if run_id is not None:
-                trace.info.trace_metadata[
-                    tracing_constant.TraceMetadataKey.SOURCE_RUN
-                ] = run_id
+            trace.info.trace_location.mlflow_experiment = MlflowExperimentLocation(experiment_id)
 
             mlflow_client = mlflow.tracking.MlflowClient()
             try:
@@ -379,6 +338,7 @@ def log_traces_and_assessments(
                 return trace
 
         # Create the assessments
+        print(assessments, "assessments")
         for assessment in assessments:
             # Ensure that if we created a new trace, that the updated trace_id is reflected in
             # the assessments.
@@ -399,8 +359,8 @@ def log_traces_and_assessments(
 
 
 def _log_assessment_to_mlflow(
-    assessment: mlflow_entities.Assessment,
-) -> Optional[mlflow_entities.Assessment]:
+    assessment: Assessment,
+) -> Optional[Assessment]:
     """
     Creates the given assessment in MLflow.
     """

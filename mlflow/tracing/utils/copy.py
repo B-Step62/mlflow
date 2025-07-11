@@ -1,6 +1,9 @@
 from typing import Any, Optional
+import uuid
 
-from mlflow.entities.span import LiveSpan, Span
+import mlflow
+from mlflow.entities.span import LiveSpan, Span, SpanType
+from mlflow.entities.trace import Trace
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE
 from mlflow.tracing.trace_manager import InMemoryTraceManager
@@ -53,3 +56,33 @@ def copy_trace_to_experiment(
     # Close the root span triggers the trace export.
     new_root_span.end(end_time_ns=spans[0].end_time_ns)
     return new_trace_id
+
+
+def create_minimal_trace(
+    request: dict[str, Any],
+    response: Any,
+    status: Optional[str] = "OK",
+) -> Trace:
+    """
+    Create a minimal trace object with a single span, based on given request/response. If
+    retrieval context is provided, a retrieval span is added.
+
+    :param request: The request object. This is expected to be a JSON-serializable object
+    :param response: The response object. This is expected to be a JSON-serializable object, but we cannot guarantee this
+    :param retrieval_context: Optional list of documents retrieved during processing
+    :param status: The status of the trace
+    :return: A trace object.
+    """
+    from mlflow.pyfunc.context import Context, set_prediction_context
+
+    # Set the context so that the trace is logged synchronously
+    context_id = str(uuid.uuid4())
+    with set_prediction_context(
+        Context(context_id, is_evaluate=True)
+    ):
+        with mlflow.start_span(name="root_span", span_type=SpanType.CHAIN) as root_span:
+            root_span.set_inputs(request)
+            root_span.set_outputs(response)
+            root_span.set_status(status)
+        return mlflow.get_trace(root_span.trace_id)
+

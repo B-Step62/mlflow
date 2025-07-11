@@ -2,27 +2,39 @@
 
 import collections
 from dataclasses import dataclass
+import logging
+import numpy as np
 from typing import Callable, Dict, List, Union
 
 from mlflow.genai.evaluation import entities
-from mlflow.genai.evaluation.agent_utils import get_aggregate_results
 from mlflow.genai.judges.databricks import CategoricalRating
 from mlflow.genai.scorers.base import Scorer
 
+_logger = logging.getLogger(__name__)
+
 RunMetrics = Dict[str, float]
+
+
+_AGGREGATION_TO_AGGREGATE_FUNCTION = {
+    "min": np.min,
+    "max": np.max,
+    "mean": np.mean,
+    "median": np.median,
+    "variance": np.var,
+    "p90": lambda x: np.percentile(x, 90) if x else None,
+}
 
 
 @dataclass
 class MetricAggregateData:
     """Data class to store aggregate information for a metric."""
-
     count: int
     aggregations: RunMetrics
 
 
-def generate_per_run_metrics(
+def compute_aggregated_metrics(
     eval_results: List[entities.EvalResult],
-    custom_metrics: list[Scorer],
+    scorers: list[Scorer],
 ) -> RunMetrics:
     """
     Generates per-run MLflow metrics.
@@ -33,17 +45,17 @@ def generate_per_run_metrics(
     """
     # Create mapping of metric function names to their aggregation configs from custom metrics
     # Add "mean" as default aggregation for all metrics
-    metric_aggregations = {}
-    for metric in custom_metrics or []:
+    scorer_aggregations = {}
+    for scorer in scorers:
         # Note the name here is not the full metric name, but the name of the custom metric function
-        metric_aggregations[metric.name] = (
-            ["mean"] if metric.aggregations is None else metric.aggregations
+        scorer_aggregations[scorer.name] = (
+            ["mean"] if scorer.aggregations is None else scorer.aggregations
         )
 
     # Extract all aggregation metrics
     result = {}
-    for metric_name, metric_data in compute_aggregate_metric_results(
-        eval_results, metric_aggregations
+    for metric_name, metric_data in _compute_aggregate_metric_results(
+        eval_results, scorer_aggregations
     ).items():
         for agg_name, agg_value in metric_data.aggregations.items():
             result[f"{metric_name}/{agg_name}"] = agg_value
@@ -51,7 +63,7 @@ def generate_per_run_metrics(
     return result
 
 
-def compute_aggregate_metric_results(
+def _compute_aggregate_metric_results(
     eval_results: List[entities.EvalResult],
     metric_aggregations: Dict[str, List[Union[str, Callable]]],
 ) -> Dict[str, MetricAggregateData]:
@@ -100,9 +112,42 @@ def compute_aggregate_metric_results(
             aggregations = metric_aggregations.get(metric_function_name, ["mean"])
             result[metric_name] = MetricAggregateData(
                 count=metric_counts[metric_name],
-                aggregations=get_aggregate_results(
+                aggregations=_get_aggregate_results(
                     metric_values[metric_name], aggregations
                 ),
             )
 
     return result
+
+def _get_aggregate_results(
+    scores: list[float], aggregations: list[Union[str, Callable]]
+) -> dict[str, float]:
+    """Compute aggregate statistics for a list of scores based on specified aggregations.
+
+    Args:
+        scores: List of numeric scores to aggregate
+        aggregations: List of aggregation types to compute (e.g. ["min", "max", "mean"])
+
+    Returns:
+        Dictionary mapping aggregation names to computed values
+    """
+    scores_for_aggregation = [score for score in scores if score is not None]
+    if not scores_for_aggregation:
+        return {}
+
+    results = {}
+    for aggregation in aggregations:
+        if isinstance(aggregation, str):
+            if aggregation not in _AGGREGATION_TO_AGGREGATE_FUNCTION:
+                raise ValueError(f"Invalid aggregation: {aggregation}")
+            results[aggregation] = _AGGREGATION_TO_AGGREGATE_FUNCTION[aggregation](
+                scores_for_aggregation
+            )
+        else:
+            try:
+                results[aggregation.__name__] = aggregation(scores_for_aggregation)
+            except Exception as e:
+                _logger.error(f"Error computing aggregation {aggregation} due to: {e}")
+                continue
+
+    return results

@@ -2,48 +2,16 @@
 Introduces main Context class and the framework to specify different specialized
 contexts.
 """
-
-from __future__ import annotations
-
 import functools
-import logging
-import uuid
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import mlflow
-from mlflow.tracking import fluent
-
-_logger = logging.getLogger(__name__)
-
-
 class Context(ABC):
     """
     Abstract class for execution context.
     Context is stateless and should NOT be used to store information related to specific eval run.
     """
-
-    @abstractmethod
-    def display_html(self, html: str) -> None:
-        """
-        Displays HTML in the current execution context.
-        """
-        pass
-
-    @abstractmethod
-    def get_job_id(self) -> Optional[str]:
-        """
-        Get the current job ID.
-        """
-        pass
-
-    @abstractmethod
-    def get_job_run_id(self) -> Optional[str]:
-        """
-        Get the current job run ID.
-        """
-        pass
-
     @abstractmethod
     def get_mlflow_experiment_id(self) -> Optional[str]:
         """
@@ -70,22 +38,6 @@ class NoneContext(Context):
     """
     A context that does nothing.
     """
-
-    def display_html(self, html: str) -> None:
-        raise AssertionError("Context is not set")
-
-    def build_managed_evals_client(self) -> "managed_evals_client.ManagedEvalsClient":
-        raise AssertionError("Context is not set")
-
-    def build_mlflow_client(self) -> "mlflow_client.MLFlowClient":
-        raise AssertionError("Context is not set")
-
-    def get_job_id(self) -> Optional[str]:
-        raise AssertionError("Context is not set")
-
-    def get_job_run_id(self) -> Optional[str]:
-        raise AssertionError("Context is not set")
-
     def get_mlflow_experiment_id(self) -> Optional[str]:
         raise AssertionError("Context is not set")
 
@@ -128,28 +80,9 @@ class RealContext(Context):
         except Exception:
             self._notebook_context = None
 
-        # Set MLflow model registry to Unity Catalog
-        mlflow.set_registry_uri("databricks-uc")
-
-    def display_html(self, html) -> None:
-        # pylint: disable=protected-access
-        self._dbutils.notebook.displayHTML(html)
-
-    def get_job_id(self) -> Optional[str]:
-        try:
-            return self._notebook_context.jobId().get()
-        except Exception:
-            return None
-
-    def get_job_run_id(self) -> Optional[str]:
-        try:
-            return self._notebook_context.parentRunId().get()
-        except Exception:
-            return None
-
     def get_mlflow_experiment_id(self) -> Optional[str]:
         # Note `_get_experiment_id` is thread-safe
-        return fluent._get_experiment_id()
+        return mlflow.tracking.fluent._get_experiment_id()
 
     def get_mlflow_run_id(self) -> Optional[str]:
         """
@@ -219,7 +152,6 @@ def eval_context(func):
     :param func: eval function to wrap
     :return: return value of func
     """
-
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # Set up the context singleton if it doesn't exist
@@ -227,28 +159,6 @@ def eval_context(func):
             global _context_singleton
             _context_singleton = RealContext()
 
-        # if session.current_session() is None:
-        #     # Initialize the session
-        #     session.init_session(str(uuid.uuid4()))
-        #     root_call = True
-        # else:
-        #     root_call = False
-
-        error = None
-        result = None
-
-        try:
-            result = func(*args, **kwargs)
-        except Exception as e:  # pylint: disable=broad-except
-            error = e
-        finally:
-            # # Clear the session if this is a root call
-            # if root_call:
-            #     session.clear_session()
-            # Raise the original error if there was one, otherwise return
-            if error is not None:
-                raise error
-            else:
-                return result  # pylint: disable=lost-exception
+        return func(*args, **kwargs)
 
     return wrapper
