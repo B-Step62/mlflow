@@ -11,8 +11,7 @@ from typing import Any, Iterable, List, Mapping, Set
 import pandas as pd
 
 from mlflow.genai.evaluation import entities, schemas
-from mlflow.genai.evaluation.agent_utils import ValidationError
-from mlflow.genai.evaluation.collection_utils import convert_ndarray_to_list
+from mlflow.genai.utils.collection_utils import convert_ndarray_to_list
 
 
 
@@ -268,14 +267,10 @@ class _GuidelinesCol(_InputColumn):
                     f"Got '{value}' at row: {index}."
                 )
 
-            try:
-                if is_valid_iterable:
-                    check_guidelines_iterable_exceeds_limit(value)
-                elif is_valid_mapping:
-                    check_guidelines_mapping_exceeds_limit(value)
-            except ValidationError as e:
-                raise ValueError(f"Error at row {index}: {e}")
-
+            if is_valid_iterable:
+                check_guidelines_iterable_exceeds_limit(value)
+            elif is_valid_mapping:
+                check_guidelines_mapping_exceeds_limit(value)
 
 class _TraceCol(_InputColumn):
     name = schemas.TRACE_COL

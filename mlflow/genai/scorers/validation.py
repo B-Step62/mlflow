@@ -29,8 +29,6 @@ def validate_scorers(scorers: list[Any]) -> list[Scorer]:
     Returns:
         A list of valid scorers.
     """
-    from databricks.rag_eval.evaluation.metrics import Metric
-
     if not isinstance(scorers, list) or len(scorers) == 0:
         raise MlflowException.invalid_parameter_value(
             "The `scorers` argument must be a list of scorers with at least one scorer. "
@@ -39,14 +37,28 @@ def validate_scorers(scorers: list[Any]) -> list[Scorer]:
             "available built-in scorers."
         )
 
+    # Exclude legacy metrics
     valid_scorers = []
-    legacy_metrics = []
+    try:
+        from databricks.rag_eval.evaluation.metrics import Metric
+
+        legacy_metrics = [scorer for scorer in scorers if isinstance(scorer, Metric)]
+        scorers = [scorer for scorer in scorers if not isinstance(scorer, Metric)]
+
+        if legacy_metrics:
+            valid_scorers += legacy_metrics
+            legacy_metric_names = [metric.name for metric in legacy_metrics]
+            _logger.warning(
+                f"Scorers {legacy_metric_names} are legacy metrics and will soon be deprecated "
+                "in future releases. Please use the builtin scorers defined in `mlflow.genai.scorers` "
+                "or custom scorers defined with the @scorer decorator instead."
+            )
+    except ImportError:
+        pass
+
 
     for scorer in scorers:
         if isinstance(scorer, Scorer):
-            valid_scorers.append(scorer)
-        elif isinstance(scorer, Metric):
-            legacy_metrics.append(scorer)
             valid_scorers.append(scorer)
         else:
             # Show helpful error message for common mistakes
@@ -77,14 +89,6 @@ def validate_scorers(scorers: list[Any]) -> list[Scorer]:
                 f"list contains an invalid item with type: {type(scorer).__name__}."
                 f"{hint}"
             )
-
-    if legacy_metrics:
-        legacy_metric_names = [metric.name for metric in legacy_metrics]
-        _logger.warning(
-            f"Scorers {legacy_metric_names} are legacy metrics and will soon be deprecated "
-            "in future releases. Please use the builtin scorers defined in `mlflow.genai.scorers` "
-            "or custom scorers defined with the @scorer decorator instead."
-        )
 
     return valid_scorers
 

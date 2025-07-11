@@ -8,9 +8,8 @@ from typing import Any, Dict, List, Mapping, Optional, Set, Union
 
 import yaml
 
+from mlflow.exceptions import MlflowException
 from mlflow.genai.evaluation import schemas
-from mlflow.genai.evaluation.custom_metrics import CustomMetric
-from mlflow.genai.evaluation.agent_utils import ValidationError
 from mlflow.models.evaluation.base import EvaluationMetric
 
 BUILTIN_ASSESSMENTS_KEY = "builtin_assessments"
@@ -33,7 +32,7 @@ JSON_STR__GLOBAL_GUIDELINES_KEY = "global_guidelines"
 @dataclass
 class _BaseEvaluationConfig:
     is_default_config: bool
-    custom_metrics: List[CustomMetric] = field(
+    custom_metrics: List["CustomMetric"] = field(
         default_factory=list
     )
     global_guidelines: Optional[Dict[str, List[str]]] = None
@@ -67,14 +66,14 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
 
         # At most one of global_assessment_configs or per_item_assessment_configs can be non-empty.
         if self.global_assessment_configs and self.per_item_assessments:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 "GlobalEvaluationConfig cannot have both global and per-item assessment configs."
             )
 
     @classmethod
     def _from_dict(cls, config_dict: Mapping[str, Any]):
         if BUILTIN_ASSESSMENTS_KEY not in config_dict:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"Invalid config {config_dict}: `{BUILTIN_ASSESSMENTS_KEY}` required."
             )
 
@@ -101,7 +100,7 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
                 )
             )
         except (TypeError, KeyError, ValueError) as error:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"Invalid config `{config_dict[BUILTIN_ASSESSMENTS_KEY]}`: {error}"
             )
         # Handle errors internally as we don't want to surface that
@@ -120,11 +119,13 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
         ]
         dups = {name for name in all_names if all_names.count(name) > 1}
         if dups:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"Invalid config `{config_dict}`: assessment names must be unique. Found duplicate assessment names: {dups}"
             )
 
         # Custom metrics
+        from mlflow.genai.evaluation.custom_metrics import CustomMetric
+
         custom_metrics = [
             metric
             for metric in extra_metrics or []
@@ -133,7 +134,7 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
         seen_custom_metric_names = set()
         for metric in custom_metrics:
             if metric.name in seen_custom_metric_names:
-                raise ValidationError(
+                raise MlflowException.invalid_parameter_value(
                     f"Invalid config `{config_dict}`: custom metric names must be unique. Found duplicate custom metric name: {metric.name}"
                 )
             seen_custom_metric_names.add(metric.name)
@@ -146,7 +147,7 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
                 global_guidelines=global_guidelines,
             )
         except (TypeError, KeyError, ValueError) as error:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"Invalid config `{config_dict}`: {error}"
             )
 
@@ -164,7 +165,7 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
 
         invalid_keys = set(evaluator_config.keys()) - ALLOWED_EVALUATOR_CONFIG_KEYS
         if invalid_keys:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"Invalid keys in evaluator config: {', '.join(invalid_keys)}. "
                 f"Allowed keys: {ALLOWED_EVALUATOR_CONFIG_KEYS}"
             )
@@ -174,7 +175,7 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
             if not isinstance(metrics_list, list) or not all(
                 isinstance(metric, str) for metric in metrics_list
             ):
-                raise ValidationError(
+                raise MlflowException.invalid_parameter_value(
                     f"Invalid metrics: {metrics_list}. "
                     f"Must be a list of metric names."
                 )
@@ -248,7 +249,7 @@ class GlobalEvaluationConfig(_BaseEvaluationConfig):
             assessment_configs = self.global_assessment_configs
             custom_metrics = self.custom_metrics
         elif question_id not in self.per_item_assessments:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"No per-item assessment configs found for question (question_id=`{question_id}`)."
             )
         else:
@@ -429,7 +430,7 @@ class AssessmentInputRequirementExpression:
         ]
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class AssessmentConfig:
     assessment_name: str
 
@@ -461,7 +462,7 @@ class AssessmentConfig:
     """Whether the assessment requires guidelines to be present in the dataset to eval."""
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class BuiltinAssessmentConfig(AssessmentConfig):
     """
     Assessment represents a method to assess the quality of a RAG system.
@@ -507,7 +508,7 @@ class EvaluationMetricAssessmentConfig(AssessmentConfig):
                 ).upper()
             )
         except Exception:
-            raise ValidationError(
+            raise MlflowException.invalid_parameter_value(
                 f"Invalid assessment type in evaluation metric: {evaluation_metric.name}. Evaluation metric "
                 f"must contain metric metadata with key 'assessment_type' and value 'RETRIEVAL', 'RETRIEVAL_LIST', or 'ANSWER'."
             )
@@ -561,7 +562,7 @@ def create_custom_eval_metric_assessment_configs(
     return [
         EvaluationMetricAssessmentConfig.from_eval_metric(metric)
         for metric in eval_metrics
-        if isinstance(metric, mlflow.models.EvaluationMetric)
+        if isinstance(metric, EvaluationMetric)
     ]
 
 

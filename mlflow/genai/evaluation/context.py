@@ -74,9 +74,6 @@ class NoneContext(Context):
     def display_html(self, html: str) -> None:
         raise AssertionError("Context is not set")
 
-    def build_managed_rag_client(self) -> "managed_rag_client.ManagedRagClient":
-        raise AssertionError("Context is not set")
-
     def build_managed_evals_client(self) -> "managed_evals_client.ManagedEvalsClient":
         raise AssertionError("Context is not set")
 

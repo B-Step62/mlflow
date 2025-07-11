@@ -9,22 +9,23 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partialmethod
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import mlflow
-from mlflow.genai.evaluation.config import GlobalEvaluationConfig, ItemEvaluationConfig
 from mlflow.genai.evaluation.dataset import EvaluationDataframe
-from mlflow.genai.evaluation.metrics import compute_eval_metrics
+from mlflow.genai.evaluation.metrics import compute_eval_scores
 from mlflow.genai.evaluation.models import ModelResult, invoke_model
-from mlflow.genai.evaluation.per_run_metrics import compute_aggregate_metric_results
 from mlflow.genai.evaluation.rate_limit import RateLimitConfig, RateLimiter
-from mlflow.genai.evaluation.trace import extract_model_output_from_trace
+from mlflow.genai.evaluation.trace import extract_model_output_from_trace, extract_tool_calls
 from mlflow.genai.evaluation.trace_utils import clone_trace_to_reupload, create_minimal_trace, inject_experiment_run_id_to_trace
+from mlflow.genai.scorers.base import Scorer
+from mlflow.genai.utils import input_output_utils
 from mlflow.genai.utils.trace_utils import _get_top_level_retrieval_spans, extract_retrieval_context_from_trace
+from mlflow.pyfunc import PyFuncModel
 import mlflow.tracing.constant as tracing_constant
 from mlflow import entities as mlflow_entities
 from tqdm.auto import tqdm
-from mlflow.genai.evaluation import context, entities, input_output_utils
+from mlflow.genai.evaluation import context, entities
 
 
 _logger = logging.getLogger(__name__)
@@ -49,9 +50,7 @@ def _get_current_time() -> float:
 def run(
     *,
     eval_dataset: Union[EvaluationDataframe, List[entities.EvalItem]],
-    config: GlobalEvaluationConfig,
-    experiment_id: Optional[str] = None,
-    run_id: Optional[str] = None,
+    scorers: list[Scorer],
     model=None,
 ) -> EvalResults:
     """
@@ -64,7 +63,6 @@ def run(
     :param model: Optional model to use for generating responses and traces
     :return: EvalResults
     """
-
     eval_items = (
         eval_dataset.eval_items
         if isinstance(eval_dataset, EvaluationDataframe)
@@ -74,23 +72,12 @@ def run(
     # Disable tqdm progress bar by default so that the progress bars inside MLflow eval_fn do not show
     tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
-    client = context.get_context().build_managed_rag_client()
-    rate_limiter = _build_rate_limiter_for_assessment()
-
-    # # Emit usage events prior to all logic
-    # _emit_custom_assessments_usage_event_if_present(
-    #     client, config.global_assessment_configs
-    # )
-
     ctx = context.get_context()
     # Ensure there's always a valid experiment ID. Note this internal method will fall back to the
     # default experiment ID if there is no current experiment. In Databricks, it's the
     # notebook-based experiment and in OSS it is `experiment_id=0`.
-    experiment_id = (
-        ctx.get_mlflow_experiment_id() if experiment_id is None else experiment_id
-    )
-    # Try to get the active run from the context
-    run_id = ctx.get_mlflow_run_id() if run_id is None else run_id
+    experiment_id = ctx.get_mlflow_experiment_id()
+    run_id = ctx.get_mlflow_run_id()
 
     eval_results = []
     with ThreadPoolExecutor(
@@ -100,11 +87,8 @@ def run(
             executor.submit(
                 _run_single,
                 eval_item=eval_item,
-                config=config.get_eval_item_eval_config(eval_item.question_id),
+                scorers=scorers,
                 model=model,
-                client=client,
-                rate_limiter=rate_limiter,
-                #current_session=session.current_session(),
                 experiment_id=experiment_id,
                 run_id=run_id,
             )
@@ -143,25 +127,6 @@ def run(
                     }
                 )
 
-    # Compute aggregate metrics if there are custom metrics configured
-    if config.custom_metrics:
-        try:
-            compute_aggregate_metric_results(
-                # We pass in an empty dict which will default to computing mean for all metrics
-                # This is because our telemetry only logs the average right now
-                eval_results,
-                {},
-            )
-        except Exception as e:
-            _logger.error(
-                "Failed to compute aggregate metrics. Skipping emitting custom metric usage event.",
-                exc_info=e,
-            )
-
-    # _emit_custom_metric_usage_event_if_present(
-    #     client, config.custom_metrics, metric_stats=aggregate_metrics
-    # )
-
     return eval_results
 
 
@@ -180,12 +145,10 @@ class EvalTimes:
 
 def _run_single(
     eval_item: entities.EvalItem,
-    config: ItemEvaluationConfig,
-    # client: managed_rag_client.ManagedRagClient,
-    rate_limiter: RateLimiter,
+    scorers: list[Scorer],
     experiment_id: Optional[str],
     run_id: Optional[str],
-    model: Optional[mlflow.pyfunc.PyFuncModel] = None,
+    model: Optional[PyFuncModel] = None,
    # current_session: Optional[session.Session] = None,
 ) -> Tuple[entities.EvalResult, EvalTimes]:
     """
@@ -238,13 +201,6 @@ def _run_single(
         eval_item.trace = minimal_trace
         eval_item = _populate_eval_item_with_trace(eval_item)
 
-    # if eval_item.model_error_message is not None:
-    #     try:
-    #         client.emit_client_error_usage_event(eval_item.model_error_message)
-    #     except Exception:
-    #         # Telemetry logging failures are non-fatal.
-    #         pass
-
     # Skip the evaluation if invoking the model failed or there's a malformed trace
     eval_item_error_message = eval_item.model_error_message or trace_error_message
     if eval_item_error_message:
@@ -255,24 +211,9 @@ def _run_single(
         metric_computation_time = 0.0
     else:
         start_time = _get_current_time()
-        # We don't need this because all builtin scorers are based on custom metrics
-        # assessment_results = generate_llm_assessments(
-        #     client=client,
-        #     rate_limiter=rate_limiter,
-        #     eval_item=eval_item,
-        #     config=config,
-        # )
-        metric_results = compute_eval_metrics(
-            eval_item=eval_item,
-            assessment_results=None, #assessment_results,
-            metrics=config.custom_metrics,
-        )
+        metric_results = compute_eval_scores(eval_item=eval_item, scorers=scorers)
         metric_computation_time = _get_current_time() - start_time
-        eval_result = entities.EvalResult(
-            eval_item=eval_item,
-            assessment_results=None, #assessment_results,
-            metric_results=metric_results,
-        )
+        eval_result = entities.EvalResult(eval_item=eval_item, metric_results=metric_results)
 
     try:
         logged_trace = log_traces_and_assessments(
@@ -342,15 +283,7 @@ def _populate_model_result_to_eval_item(
     :param model_result: The model result to populate
     :return: The populated eval item
     """
-    eval_item.answer = model_result.response
-    try:
-        eval_item.raw_response = model_result.raw_model_output
-        # Ensure the raw response is json-serializable.
-        input_output_utils.to_dict(eval_item.raw_response)
-    except Exception as e:
-        raise ValueError(
-            f"The response from the model must be JSON serializable: {type(model_result.raw_model_output)}. "
-        ) from e
+    eval_item.response = model_result.raw_model_output
     eval_item.retrieval_context = model_result.retrieval_context
     eval_item.tool_calls = model_result.tool_calls
     eval_item.trace = model_result.trace
@@ -359,25 +292,10 @@ def _populate_model_result_to_eval_item(
 
 
 def _create_minimal_trace(eval_item: entities.EvalItem) -> mlflow_entities.Trace:
-    if eval_item.retrieval_context is not None:
-        trace = create_minimal_trace(
-            input_output_utils.to_dict(eval_item.raw_request),
-            input_output_utils.to_dict(eval_item.raw_response),
-            (
-                eval_item.retrieval_context.to_mlflow_documents()
-                if eval_item.retrieval_context is not None
-                else None
-            ),
-        )
-        eval_item.retrieval_context.span_id = _get_top_level_retrieval_spans(
-            trace
-        )[0].span_id
-        return trace
-    else:
-        return create_minimal_trace(
-            input_output_utils.to_dict(eval_item.raw_request),
-            input_output_utils.to_dict(eval_item.raw_response),
-        )
+    return create_minimal_trace(
+        input_output_utils.to_dict(eval_item.request),
+        input_output_utils.to_dict(eval_item.response),
+    )
 
 
 def _populate_eval_item_with_trace(eval_item: entities.EvalItem) -> entities.EvalItem:
@@ -386,12 +304,6 @@ def _populate_eval_item_with_trace(eval_item: entities.EvalItem) -> entities.Eva
 
     Keep the existing values in the eval item if they already exist.
     """
-    # # Extract tool calls from the trace, or response if trace is not available.
-    # eval_item.tool_calls = extract_tool_calls(
-    #     response=input_output_utils.to_dict(eval_item.raw_response),
-    #     trace=eval_item.trace,
-    # )
-
     # Skip if the trace is None
     if eval_item.trace is None:
         return eval_item
@@ -400,88 +312,19 @@ def _populate_eval_item_with_trace(eval_item: entities.EvalItem) -> entities.Eva
         extract_model_output_from_trace(eval_item.trace)
     )
 
-    eval_item.answer = (
-        input_output_utils.response_to_string(
-            extract_model_output_from_trace(eval_item.trace)
-        )
-        if eval_item.answer is None
-        else eval_item.answer
-    )
-
     eval_item.retrieval_context = (
         extract_retrieval_context_from_trace(eval_item.trace)
         if eval_item.retrieval_context is None
         else eval_item.retrieval_context
     )
 
+    # Extract tool calls from the trace, or response if trace is not available.
+    eval_item.tool_calls = extract_tool_calls(
+        response=input_output_utils.to_dict(eval_item.raw_response),
+        trace=eval_item.trace,
+    )
+
     return eval_item
-
-
-# def _emit_custom_assessments_usage_event_if_present(
-#     client: managed_rag_client.ManagedRagClient,
-#     assessment_configs: List[assessment_config.AssessmentConfig],
-# ):
-#     # TODO: change this to use the new usage tracking API
-#     evaluation_metric_configs = [
-#         assessment_conf
-#         for assessment_conf in assessment_configs
-#         if isinstance(
-#             assessment_conf, assessment_config.EvaluationMetricAssessmentConfig
-#         )
-#     ]
-
-#     if evaluation_metric_configs:
-#         try:
-#             batch_size = session.current_session().session_batch_size
-#             client.emit_chat_assessment_usage_event(
-#                 evaluation_metric_configs, batch_size
-#             )
-#         except Exception:
-#             # Telemetry logging failures are non-fatal.
-#             # Don't want to indicate to users that we're emitting data
-#             # TODO [ML-43811]: handle this case better since it means we have a loss of billing data
-#             pass
-
-
-# def _emit_custom_metric_usage_event_if_present(
-#     # client: managed_rag_client.ManagedRagClient,
-#     custom_metrics: List[agent_custom_metrics.CustomMetric],
-#     metric_stats: Dict[str, per_run_metrics.MetricAggregateData],
-# ):
-#     if custom_metrics:
-#         try:
-#             batch_size = session.current_session().session_batch_size
-#             client.emit_custom_metric_usage_event(
-#                 custom_metrics=custom_metrics,
-#                 eval_count=batch_size,
-#                 metric_stats={
-#                     k: v
-#                     for k, v in metric_stats.items()
-#                     if k in [custom_metric.name for custom_metric in custom_metrics]
-#                 },
-#             )
-#         except Exception:
-#             # Telemetry logging failures are non-fatal.
-#             # Don't want to indicate to users that we're emitting data
-#             # TODO [ML-43811]: handle this case better since it means we have a loss of billing data
-#             pass
-
-
-def _build_rate_limiter_for_assessment() -> RateLimiter:
-    """Build a rate limiter for the assessment."""
-    # Return a no-op rate limiter if the rate limiter for assessment is not enabled
-    if not os.environ.get("RAG_EVAL_ENABLE_RATE_LIMIT_FOR_ASSESSMENT") == "true":
-        return RateLimiter.no_op()
-
-    # For now, rate limiter config is from environment variables
-    rate_limit_config = RateLimitConfig(
-        quota=os.environ.get("RAG_EVAL_RATE_LIMIT_QUOTA"),
-        time_window_in_seconds=os.environ.get("RAG_EVAL_RATE_LIMIT_TIME_WINDOW_IN_SECONDS"),
-    )
-    return RateLimiter.build(
-        quota=rate_limit_config.quota,
-        time_window_in_seconds=rate_limit_config.time_window_in_seconds,
-    )
 
 
 def log_traces_and_assessments(

@@ -1,35 +1,9 @@
 import logging
 from typing import Callable, Dict, List, Union
-
 import numpy as np
 
-
-from enum import Enum, EnumMeta
-from typing import List
-
+from mlflow.exceptions import MlflowException
 from mlflow.genai.evaluation.dataset import EvaluationDataframe
-
-
-class MetaEnum(EnumMeta):
-    """Metaclass for Enum classes that allows to check if a value is a valid member of the Enum."""
-
-    def __contains__(cls, item):
-        try:
-            cls(item)
-        except ValueError:
-            return False
-        return True
-
-
-class StrEnum(str, Enum, metaclass=MetaEnum):
-    def __str__(self):
-        """Return the string representation of the enum using its value."""
-        return self.value
-
-    @classmethod
-    def values(cls) -> List[str]:
-        """Return a list of all string values of the Enum."""
-        return [str(member) for member in cls]
 
 
 _logger = logging.getLogger(__name__)
@@ -79,13 +53,6 @@ def get_aggregate_results(
 
 
 
-# TODO: Replace this with MlflowException
-class ValidationError(Exception):
-    """Error class for all user-facing validation errors."""
-    pass
-
-
-
 """Helper functions to convert RagEval entities to MLflow entities."""
 
 import time
@@ -97,39 +64,6 @@ from mlflow.entities import metric as mlflow_metric
 from mlflow.models import evaluation as mlflow_models_evaluation
 from mlflow.genai.evaluation import entities, schemas
 
-
-class EvaluationErrorCode(StrEnum):
-    MODEL_ERROR = "MODEL_ERROR"
-
-
-def eval_result_to_mlflow_metrics(
-    eval_result: entities.EvalResult,
-) -> List[mlflow_metric.Metric]:
-    """Get a list of MLflow Metric objects from an EvalResult object."""
-    return [
-        _construct_mlflow_metrics(
-            key=k,
-            value=v,
-        )
-        for k, v in eval_result.get_metrics_dict().items()
-        # Do not log metrics with non-numeric-or-boolean values
-        if isinstance(v, (int, float, bool))
-    ]
-
-
-def _construct_mlflow_metrics(
-    key: str, value: Union[int, float, bool]
-) -> mlflow_metric.Metric:
-    """
-    Construct an MLflow Metric object from key and value.
-    Timestamp is the current time and step is 0.
-    """
-    return mlflow_metric.Metric(
-        key=key,
-        value=value,
-        timestamp=int(time.time() * 1000),
-        step=0,
-    )
 
 
 def _cast_to_pandas_dataframe(
@@ -150,7 +84,7 @@ def _cast_to_pandas_dataframe(
     try:
         return pd.DataFrame(data)
     except Exception as e:
-        raise ValidationError(
+        raise MlflowException(
             f"Data must be a DataFrame or a list of dictionaries. Got: {type(data[0])}"
         ) from e
 
@@ -187,48 +121,3 @@ def mlflow_dataset_to_evaluation_dataset(
             ds.predictions_data, flatten=False
         )
     return EvaluationDataframe(df)
-
-
-
-"""Helper functions for dealing with ratings."""
-
-import re
-from typing import Optional
-
-MISSING_INPUTS_ERROR_CODE = 1001
-INVALID_INPUT_ERROR_CODE = 1006
-CONFLICTING_INPUTS_ERROR_CODE = 1010
-
-
-def _extract_error_code(error_message: Optional[str]) -> Optional[str]:
-    """
-    Extract the error code from the error message.
-    """
-    if error_message is None:
-        return None
-    match = re.match(r"Error\[(\d+)]", error_message)
-    return match.group(1) if match else None
-
-
-def is_missing_input_error(error_message: Optional[str]) -> bool:
-    """
-    Check if the error message is due to missing input fields (Error[1001]).
-    """
-    return _extract_error_code(error_message) == str(MISSING_INPUTS_ERROR_CODE)
-
-
-def has_conflicting_input_error(error_message: Optional[str]) -> bool:
-    """
-    Check if the error message is due to conflicting input fields (Error[1010]).
-    """
-    return _extract_error_code(error_message) == str(CONFLICTING_INPUTS_ERROR_CODE)
-
-
-def normalize_error_message(error_message: str) -> str:
-    """
-    Normalize the error message by removing the Reference ID part.
-
-    The Reference ID is a UUID generated for every Armeria service call. We assume any string
-    after "Reference ID: " with the character set described in the regex below is a Reference ID.
-    """
-    return re.sub(r", Reference ID: [\w.,!?;:-]+", "", error_message)

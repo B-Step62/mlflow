@@ -6,9 +6,9 @@ from typing import Callable, Dict, List, Union
 
 from mlflow.genai.evaluation import entities
 from mlflow.genai.evaluation.agent_utils import get_aggregate_results
-from mlflow.genai.evaluation.config import AssessmentType, GlobalEvaluationConfig, get_builtin_assessment_config_with_service_assessment_name
+from mlflow.genai.judges.databricks import CategoricalRating
+from mlflow.genai.scorers.base import Scorer
 
-_PERCENTAGE_SUFFIX = "/percentage"
 RunMetrics = Dict[str, float]
 
 
@@ -22,7 +22,7 @@ class MetricAggregateData:
 
 def generate_per_run_metrics(
     eval_results: List[entities.EvalResult],
-    config: GlobalEvaluationConfig,
+    custom_metrics: list[Scorer],
 ) -> RunMetrics:
     """
     Generates per-run MLflow metrics.
@@ -34,41 +34,19 @@ def generate_per_run_metrics(
     # Create mapping of metric function names to their aggregation configs from custom metrics
     # Add "mean" as default aggregation for all metrics
     metric_aggregations = {}
-    for metric in config.custom_metrics or []:
+    for metric in custom_metrics or []:
         # Note the name here is not the full metric name, but the name of the custom metric function
         metric_aggregations[metric.name] = (
             ["mean"] if metric.aggregations is None else metric.aggregations
         )
 
     # Extract all aggregation metrics
-    aggregation_metrics = {}
+    result = {}
     for metric_name, metric_data in compute_aggregate_metric_results(
         eval_results, metric_aggregations
     ).items():
         for agg_name, agg_value in metric_data.aggregations.items():
-            aggregation_metrics[f"{metric_name}/{agg_name}"] = agg_value
-
-    result = {
-        **aggregation_metrics,
-        # Per-request answer assessments
-        **{
-            f"{assessment_name}{_PERCENTAGE_SUFFIX}": true_rate
-            for assessment_name, true_rate in _compute_true_rate_per_request_assessment(
-                eval_results, AssessmentType.ANSWER
-            ).items()
-        },
-        # Per-request retrieval assessments
-        **{
-            f"{assessment_name}{_PERCENTAGE_SUFFIX}": true_rate
-            for assessment_name, true_rate in _compute_true_rate_per_request_assessment(
-                eval_results, AssessmentType.RETRIEVAL_LIST
-            ).items()
-        },
-    }
-
-    # Count error in judges
-    for assessment_name, error_count in _count_error_in_judges(eval_results).items():
-        result[f"judge/{assessment_name}/error_count"] = error_count
+            result[f"{metric_name}/{agg_name}"] = agg_value
 
     return result
 
@@ -101,10 +79,10 @@ def compute_aggregate_metric_results(
                 metric_counts[metric_name] += 1
             elif (
                 isinstance(metric_value, str)
-                and entities.CategoricalRating(metric_value)
-                != entities.CategoricalRating.UNKNOWN
+                and CategoricalRating(metric_value)
+                != CategoricalRating.UNKNOWN
             ):
-                float_value = float(metric_value == entities.CategoricalRating.YES)
+                float_value = float(metric_value == CategoricalRating.YES)
                 metric_values[metric_name].append(float_value)
                 metric_counts[metric_name] += 1
 
@@ -128,113 +106,3 @@ def compute_aggregate_metric_results(
             )
 
     return result
-
-
-def _compute_true_rate_per_request_assessment(
-    eval_results: List[entities.EvalResult],
-    expected_assessment_type: AssessmentType,
-) -> Dict[str, float]:
-    """
-    Compute the rate of `True` in per-request assessment results.
-
-    rate of `True` = count of `True` / count of non-null values.
-
-    :param eval_results: List of EvalResult objects
-    :param expected_assessment_type: Type of per-request assessment to compute results for (e.g., answer, retrieval_list)
-    :return: Dictionary of rate of `True` for each per-request assessment
-    """
-    true_counts = collections.defaultdict(int)
-    non_null_counts = collections.defaultdict(int)
-    for eval_result in eval_results:
-        for assessment_result in eval_result.assessment_results:
-
-            # TODO(ML-45046): remove assessment type lookup in harness, rely on service
-            # Get the assessment type from the built-in metrics. If the metric is not found, use the provided assessment type.
-            try:
-                builtin_assessment_config = get_builtin_assessment_config_with_service_assessment_name(
-                    assessment_result.assessment_name
-                )
-                assessment_type = builtin_assessment_config.assessment_type
-            except ValueError:
-                assessment_type = assessment_result.assessment_type
-
-            if (
-                isinstance(assessment_result, entities.PerRequestAssessmentResult)
-                and assessment_type == expected_assessment_type
-            ):
-                true_counts[assessment_result.assessment_name] += (
-                    assessment_result.rating.categorical_value
-                    == entities.CategoricalRating.YES
-                )
-                non_null_counts[assessment_result.assessment_name] += (
-                    assessment_result.rating.categorical_value is not None
-                )
-
-    return {
-        assessment_name: true_counts[assessment_name] / non_null_counts[assessment_name]
-        for assessment_name in true_counts
-        if non_null_counts[assessment_name] > 0
-    }
-
-
-def _count_error_in_judges(
-    eval_results: List[entities.EvalResult],
-) -> Dict[str, int]:
-    """
-    Count the number of errors in the assessment results.
-
-    :param eval_results: List of EvalResult objects
-    :return: Dictionary of count of errors for each assessment
-    """
-    error_counts = collections.defaultdict(int)
-    for eval_result in eval_results:
-        for assessment_result in eval_result.assessment_results:
-            if isinstance(assessment_result, entities.PerRequestAssessmentResult):
-                if _is_real_error_rating(assessment_result.rating):
-                    error_counts[assessment_result.assessment_name] += 1
-            elif isinstance(assessment_result, entities.PerChunkAssessmentResult):
-                for positional_rating in assessment_result.positional_rating.values():
-                    if _is_real_error_rating(positional_rating):
-                        error_counts[assessment_result.assessment_name] += 1
-
-    return error_counts
-
-import re
-from typing import Optional
-
-MISSING_INPUTS_ERROR_CODE = 1001
-INVALID_INPUT_ERROR_CODE = 1006
-CONFLICTING_INPUTS_ERROR_CODE = 1010
-
-
-def _extract_error_code(error_message: Optional[str]) -> Optional[str]:
-    """
-    Extract the error code from the error message.
-    """
-    if error_message is None:
-        return None
-    match = re.match(r"Error\[(\d+)]", error_message)
-    return match.group(1) if match else None
-
-
-def is_missing_input_error(error_message: Optional[str]) -> bool:
-    """
-    Check if the error message is due to missing input fields (Error[1001]).
-    """
-    return _extract_error_code(error_message) == str(MISSING_INPUTS_ERROR_CODE)
-
-
-def has_conflicting_input_error(error_message: Optional[str]) -> bool:
-    """
-    Check if the error message is due to conflicting input fields (Error[1010]).
-    """
-    return _extract_error_code(error_message) == str(CONFLICTING_INPUTS_ERROR_CODE)
-
-
-def _is_real_error_rating(rating: entities.Rating) -> bool:
-    """Check if the rate is a real error. Missing input error is not considered as a real error."""
-    return (
-        rating.error_message is not None
-        and not is_missing_input_error(rating.error_message)
-        and not has_conflicting_input_error(rating.error_message)
-    )

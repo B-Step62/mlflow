@@ -223,20 +223,71 @@ def evaluate(
         This function is not thread-safe. Please do not use it in multi-threaded
         environments.
     """
-    try:
-        import databricks.agents  # noqa: F401
-    except ImportError:
-        raise ImportError(
-            "The `databricks-agents` package is required to use mlflow.genai.evaluate() "
-            "Please install it with `pip install databricks-agents`."
+    if is_databricks_uri(mlflow.get_tracking_uri()):
+        return _evaluate_dbx(data, scorers, predict_fn, model_id)
+    else:
+        return _evaluate_oss(data, scorers, predict_fn, model_id)
+
+
+def _evaluate_oss(data, scorers, predict_fn, model_id):
+    is_managed_dataset = isinstance(data, EvaluationDataset)
+
+    scorers = validate_scorers(scorers)
+    # convert into a pandas dataframe with current evaluation set schema
+    df = data.to_df() if is_managed_dataset else _convert_to_legacy_eval_set(data)
+
+    builtin_scorers = [scorer for scorer in scorers if isinstance(scorer, BuiltInScorer)]
+    valid_data_for_builtin_scorers(df, builtin_scorers, predict_fn)
+
+    # "request" column must exist after conversion
+    input_key = "inputs" if is_managed_dataset else "request"
+    sample_input = df.iloc[0][input_key]
+
+    # Only check 'inputs' column when it is not derived from the trace object
+    if "trace" not in df.columns and not isinstance(sample_input, dict):
+        raise MlflowException.invalid_parameter_value(
+            "The 'inputs' column must be a dictionary of field names and values. "
+            "For example: {'query': 'What is MLflow?'}"
         )
 
-    if not is_databricks_uri(mlflow.get_tracking_uri()):
-        raise ValueError(
-            "The genai evaluation function is only supported on Databricks. "
-            "Please set the tracking URI to Databricks."
+    if predict_fn:
+        predict_fn = convert_predict_fn(predict_fn=predict_fn, sample_input=sample_input)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Hint: Inferred schema contains integer column\(s\).*",
+            category=UserWarning,
+        )
+        # Suppress numpy warning about ragged nested sequences. This is raised when passing
+        # a dataset that contains complex object to mlflow.evaluate(). MLflow converts data
+        # into numpy array to compute dataset digest, which triggers the warning.
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Creating an ndarray from ragged nested sequences",
+            module="mlflow.data.evaluation_dataset",
         )
 
+        eval_start_time = int(time.time() * 1000)
+        result = mlflow.models.evaluate(
+            model=predict_fn,
+            # If the input dataset is a managed dataset, we pass the original dataset
+            # to the evaluate function to preserve metadata like dataset name.
+            data=data if is_managed_dataset else df,
+            # Scorers are passed to the eval harness as extra metrics
+            extra_metrics=scorers,
+            model_type="genai",
+            model_id=model_id,
+            _called_from_genai_evaluate=True,
+        )
+
+        # Clean up noisy traces generated during evaluation
+        clean_up_extra_traces(result.run_id, eval_start_time)
+        return result
+
+
+
+def _evaluate_dbx(data, scorers, predict_fn, model_id):
     is_managed_dataset = isinstance(data, EvaluationDataset)
 
     scorers = validate_scorers(scorers)

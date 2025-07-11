@@ -21,8 +21,6 @@ from mlflow.tracing.constant import TraceMetadataKey
 from tests.evaluate.test_evaluation import _DUMMY_CHAT_RESPONSE
 from tests.tracing.helper import get_traces
 
-_IS_AGENT_SDK_V1 = Version(import_module("databricks.agents").__version__).major >= 1
-
 
 class TestModel:
     def predict(self, question: str) -> str:
@@ -93,7 +91,6 @@ def _validate_assessment(traces):
         assert a_max_length.source.source_type == AssessmentSourceType.HUMAN
 
 
-@pytest.mark.skipif(not _IS_AGENT_SDK_V1, reason="Databricks Agent SDK v1 is required")
 def test_evaluate_with_static_dataset():
     data = [
         {
@@ -146,7 +143,6 @@ def test_evaluate_with_static_dataset():
     _validate_assessment(traces)
 
 
-@pytest.mark.skipif(not _IS_AGENT_SDK_V1, reason="Databricks Agent SDK v1 is required")
 @pytest.mark.parametrize("is_predict_fn_traced", [True, False])
 def test_evaluate_with_predict_fn(is_predict_fn_traced):
     model_id = mlflow.set_active_model(name="test-model-id").model_id
@@ -296,7 +292,7 @@ def test_evaluate_with_traces(pass_full_dataframe):
     _validate_assessment(traces)
 
 
-@pytest.mark.skipif(not _IS_AGENT_SDK_V1, reason="Databricks Agent SDK v1 is required")
+@pytest.mark.skip(reason="TODO: Run test with databricks-agents and tracking URI 'databricks'")
 def test_evaluate_with_managed_dataset():
     class MockDatasetClient:
         def __init__(self):

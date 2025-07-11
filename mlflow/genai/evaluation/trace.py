@@ -6,11 +6,12 @@ import logging
 from typing import Any, Dict, List, Mapping, Optional
 
 import mlflow.entities as mlflow_entities
+from mlflow.genai.evaluation.trace_utils import get_root_span
+from mlflow.genai.utils.input_output_utils import ModelOutput
 import mlflow.models.dependencies_schemas as mlflow_dependencies_schemas
 import mlflow.tracing.constant as mlflow_tracing_constant
 
 from mlflow.genai.evaluation import entities
-from mlflow.genai.utils import input_output_utils, trace_utils
 
 _logger = logging.getLogger(__name__)
 
@@ -288,7 +289,7 @@ def _extract_span_token_counts(span: mlflow_entities.Span) -> SpanTokenCount:
 # ================== Model Input/Output ==================
 def extract_model_output_from_trace(
     trace: Optional[mlflow_entities.Trace],
-) -> Optional[input_output_utils.ModelOutput]:
+) -> Optional[ModelOutput]:
     """
     Extract the model output from the trace.
 
@@ -298,7 +299,7 @@ def extract_model_output_from_trace(
     """
     if trace is None:
         return None
-    root_span = trace_utils.get_root_span(trace)
+    root_span = get_root_span(trace)
     if root_span is None:
         return None
 

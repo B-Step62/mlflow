@@ -1,8 +1,11 @@
 import warnings
 
+import mlflow
 from mlflow.exceptions import MlflowException
+from mlflow.genai.evaluation.evaluator import GenAIEvaluator
 from mlflow.utils.import_hooks import register_post_import_hook
 from mlflow.utils.plugins import get_entry_points
+from mlflow.utils.uri import is_databricks_uri
 
 
 class ModelEvaluatorRegistry:
@@ -71,6 +74,9 @@ def register_evaluators(module):
     )
     module._model_evaluation_registry.register_builtin(RegressorEvaluator.name, RegressorEvaluator)
     module._model_evaluation_registry.register_builtin(ShapEvaluator.name, ShapEvaluator)
+
+    # TODO: Remove this once mlflow.genai.evaluate is migrated off from mlflow.evaluate()
+    module._model_evaluation_registry.register_builtin(GenAIEvaluator.name, GenAIEvaluator)
 
     # Plugin evaluators
     module._model_evaluation_registry.register_entrypoints()

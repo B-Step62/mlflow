@@ -12,7 +12,8 @@ import mlflow
 import mlflow.deployments
 import mlflow.entities as mlflow_entities
 from mlflow.genai.evaluation.entities import EvalItem, RetrievalContext, ToolCallInvocation
-from mlflow.genai.evaluation.input_output_utils import response_to_string
+from mlflow.genai.evaluation.trace import extract_tool_calls
+from mlflow.genai.utils.input_output_utils import response_to_string
 from mlflow.genai.evaluation.trace_utils import create_minimal_trace
 from mlflow.genai.utils.trace_utils import extract_retrieval_context_from_trace
 import mlflow.pyfunc.context as pyfunc_context
@@ -58,8 +59,7 @@ def invoke_model(
     # === Prepare the model input ===
     # TODO: Validate if this is ok. We should not convert to chat message, but need to double check.
     # model_input = to_chat_completion_request(eval_item.raw_request)
-    model_input = eval_item.raw_request
-
+    model_input = eval_item.request
 
     # === Invoke the model and get the trace ===
     # Use a random UUID as the context ID to avoid conflicts with other evaluations on the same set of questions
@@ -108,9 +108,9 @@ def invoke_model(
     )
 
     # Extract tool calls from the trace, or response if trace is not available.
-    # model_result.tool_calls = extract_tool_calls(
-    #     response=model_result.response, trace=model_result.trace
-    # )
+    model_result.tool_calls = extract_tool_calls(
+        response=model_result.response, trace=model_result.trace
+    )
 
     return model_result
 
