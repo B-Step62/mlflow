@@ -52,6 +52,14 @@ repos:
         stages: [pre-commit]
         require_serial: true
 
+      - id: docs-prettier
+        name: docs-prettier
+        entry: bash -c 'cd docs && yarn prettier:fix'
+        files: '^docs/.*\.(js|jsx|ts|tsx|md|mdx|json|ya?ml)$'
+        language: system
+        stages: [pre-commit]
+        require_serial: true
+
       - id: clint
         name: clint
         entry: clint
