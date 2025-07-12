@@ -6,6 +6,7 @@
  */
 
 import type { TraceInfo } from '../core/entities/trace_info';
+import type { Experiment } from '../core/entities/experiment';
 import { ArtifactCredentialType } from './artifacts/databricks';
 
 /**
@@ -53,6 +54,16 @@ export namespace CreateExperiment {
 
   export interface Response {
     experiment_id: string;
+  }
+}
+
+/** Get Experiment by Name */
+export namespace GetExperimentByName {
+  export const getEndpoint = (host: string, experimentName: string) =>
+    `${host}/api/2.0/mlflow/experiments/get-by-name?experiment_name=${encodeURIComponent(experimentName)}`;
+
+  export interface Response {
+    experiment: Parameters<typeof Experiment.fromJson>[0];
   }
 }
 

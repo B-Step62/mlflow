@@ -1,5 +1,6 @@
 import { MlflowClient } from '../../src/clients/client';
 import { TraceInfo } from '../../src/core/entities/trace_info';
+import { Experiment } from '../../src/core/entities/experiment';
 import { TraceLocationType } from '../../src/core/entities/trace_location';
 import { TraceState } from '../../src/core/entities/trace_state';
 import { TEST_TRACKING_URI } from '../helper';
@@ -118,6 +119,32 @@ describe('MlflowClient', () => {
       expect(retrievedTraceInfo.traceId).toBe(traceId);
       expect(retrievedTraceInfo.state).toBe(TraceState.OK);
       expect(retrievedTraceInfo.requestTime).toBe(1000);
+    });
+  });
+
+  describe('getExperimentByName', () => {
+    it('should retrieve an experiment by name', async () => {
+      const experimentName = `test-experiment-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      const createdExperimentId = await client.createExperiment(experimentName);
+
+      // Retrieve the experiment by name
+      const experiment = await client.getExperimentByName(experimentName);
+
+      expect(experiment).toBeInstanceOf(Experiment);
+      expect(experiment?.experimentId).toBe(createdExperimentId);
+      expect(experiment?.name).toBe(experimentName);
+      expect(experiment?.lifecycleStage).toBe('active');
+      expect(experiment?.artifactLocation).toBeDefined();
+      expect(experiment?.tags).toBeDefined();
+
+      // Clean up the experiment
+      await client.deleteExperiment(createdExperimentId);
+    });
+
+    it('should return null for non-existent experiment', async () => {
+      const nonExistentName = `non-existent-experiment-${Date.now()}`;
+      const experiment = await client.getExperimentByName(nonExistentName);
+      expect(experiment).toBeNull();
     });
   });
 });

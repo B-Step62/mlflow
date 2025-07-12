@@ -1,6 +1,13 @@
 import { TraceInfo } from '../core/entities/trace_info';
 import { Trace } from '../core/entities/trace';
-import { CreateExperiment, DeleteExperiment, GetTraceInfoV3, StartTraceV3 } from './spec';
+import { Experiment } from '../core/entities/experiment';
+import {
+  CreateExperiment,
+  DeleteExperiment,
+  GetExperimentByName,
+  GetTraceInfoV3,
+  StartTraceV3
+} from './spec';
 import { getRequestHeaders, makeRequest } from './utils';
 import { TraceData } from '../core/entities/trace_data';
 import { ArtifactsClient, getArtifactsClient } from './artifacts';
@@ -103,6 +110,37 @@ export class MlflowClient {
       payload
     );
     return response.experiment_id;
+  }
+
+  /**
+   * Get an experiment by name
+   * Corresponds to Python: client.get_experiment_by_name()
+   */
+  async getExperimentByName(name: string): Promise<Experiment | null> {
+    const url = GetExperimentByName.getEndpoint(this.host, name);
+    try {
+      const response = await makeRequest<GetExperimentByName.Response>(
+        'GET',
+        url,
+        getRequestHeaders(this.databricksToken)
+      );
+      return Experiment.fromJson(response.experiment);
+    } catch (error: unknown) {
+      // Return null if experiment not found (similar to Python SDK behavior)
+      if (
+        error &&
+        typeof error === 'object' &&
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        (('status' in error && (error as any).status === 404) ||
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          ('message' in error &&
+            typeof (error as any).message === 'string' &&
+            (error as any).message.includes('RESOURCE_DOES_NOT_EXIST')))
+      ) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**

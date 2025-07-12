@@ -42,7 +42,10 @@ export async function makeRequest<T>(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      error.status = response.status;
+      throw error;
     }
 
     // Handle empty responses (like DELETE operations)
@@ -58,6 +61,13 @@ export async function makeRequest<T>(
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
         throw new Error(`Request timeout after ${timeout}ms`);
+      }
+      // Preserve the status property if it exists
+      if ('status' in error) {
+        const apiError = new Error(`API request failed: ${error.message}`) as any;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        apiError.status = (error as any).status;
+        throw apiError;
       }
       throw new Error(`API request failed: ${error.message}`);
     }
