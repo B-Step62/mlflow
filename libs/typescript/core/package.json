@@ -1,6 +1,9 @@
 {
-  "name": "mlflow-tracing",
-  "version": "0.1.0",
+  "name": "@mlflow/tracing",
+  "version": "0.1.0-rc.1",
+  "packageConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "description": "TypeScript implementation of MLflow Tracing SDK for LLM observability",
   "repository": {
     "type": "git",

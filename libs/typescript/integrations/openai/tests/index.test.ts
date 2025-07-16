@@ -2,7 +2,7 @@
  * Tests for MLflow OpenAI integration with MSW mock server
  */
 
-import * as mlflow from 'mlflow-tracing';
+import * as mlflow from '@mlflow/tracing';
 import { tracedOpenAI } from '../src';
 import { OpenAI } from 'openai';
 import { http, HttpResponse } from 'msw';
