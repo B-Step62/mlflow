@@ -1018,6 +1018,7 @@ class FileStore(AbstractStore):
         max_results,
         order_by,
         page_token,
+        ensure_hierarchical_completeness=False,
     ):
         if max_results > SEARCH_MAX_RESULTS_THRESHOLD:
             raise MlflowException(
@@ -1031,7 +1032,14 @@ class FileStore(AbstractStore):
             runs.extend(self._get_run_from_info(r) for r in run_infos)
         filtered = SearchUtils.filter(runs, filter_string)
         sorted_runs = SearchUtils.sort(filtered, order_by)
-        runs, next_page_token = SearchUtils.paginate(sorted_runs, page_token, max_results)
+        
+        if ensure_hierarchical_completeness:
+            runs, next_page_token = SearchUtils.paginate_with_hierarchical_completeness(
+                sorted_runs, page_token, max_results
+            )
+        else:
+            runs, next_page_token = SearchUtils.paginate(sorted_runs, page_token, max_results)
+        
         return runs, next_page_token
 
     def log_metric(self, run_id: str, metric: Metric):

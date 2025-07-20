@@ -3496,6 +3496,7 @@ class MlflowClient:
         max_results: int = SEARCH_MAX_RESULTS_DEFAULT,
         order_by: Optional[list[str]] = None,
         page_token: Optional[str] = None,
+        ensure_hierarchical_completeness: bool = False,
     ) -> PagedList[Run]:
         """
         Search for Runs that fit the specified criteria.
@@ -3511,6 +3512,10 @@ class MlflowClient:
                 The default ordering is to sort by ``start_time DESC``, then ``run_id``.
             page_token: Token specifying the next page of results. It should be obtained from
                 a ``search_runs`` call.
+            ensure_hierarchical_completeness: If True, ensure that child runs are not returned
+                without their parent runs in paginated results. This helps maintain hierarchical
+                completeness when viewing nested runs, preventing orphaned child runs from appearing
+                in paginated results. Default is False for backward compatibility.
 
         Returns:
             A :py:class:`PagedList <mlflow.store.entities.PagedList>` of
@@ -3578,7 +3583,8 @@ class MlflowClient:
             tags: {'s.release': '1.1.0-RC'}
         """
         return self._tracking_client.search_runs(
-            experiment_ids, filter_string, run_view_type, max_results, order_by, page_token
+            experiment_ids, filter_string, run_view_type, max_results, order_by, page_token,
+            ensure_hierarchical_completeness
         )
 
     # Registry API

@@ -919,6 +919,74 @@ class SearchUtils:
             next_page_token = cls.create_page_token(final_offset)
         return (paginated_runs, next_page_token)
 
+    @classmethod
+    def paginate_with_hierarchical_completeness(cls, runs, page_token, max_results):
+        """
+        Paginate runs while ensuring hierarchical completeness.
+        
+        This method ensures that if a child run is included in the paginated results,
+        its parent run is also included. This prevents orphaned child runs from
+        appearing without their ancestors when pagination boundaries split
+        parent-child groups.
+        
+        Args:
+            runs: List of runs to paginate (already sorted)
+            page_token: Page token for pagination offset
+            max_results: Maximum number of runs to return
+            
+        Returns:
+            Tuple of (paginated_runs, next_page_token) where paginated_runs
+            maintains hierarchical completeness
+        """
+        if not runs or max_results <= 0:
+            return ([], None)
+        
+        start_offset = cls.parse_start_offset_from_page_token(page_token)
+        
+        # Build parent-child mapping for hierarchy resolution
+        parent_to_children = {}
+        child_to_parent = {}
+        
+        for run in runs:
+            parent_id = run.data.tags.get("mlflow.parentRunId")
+            if parent_id:
+                # This is a child run
+                child_to_parent[run.info.run_id] = parent_id
+                if parent_id not in parent_to_children:
+                    parent_to_children[parent_id] = []
+                parent_to_children[parent_id].append(run.info.run_id)
+        
+        # Get initial page boundary
+        initial_end_offset = min(start_offset + max_results, len(runs))
+        candidate_runs = runs[start_offset:initial_end_offset]
+        
+        # Track which runs we need to include for hierarchical completeness
+        required_run_ids = set()
+        
+        # For each run in the candidate page, ensure its hierarchy is complete
+        for run in candidate_runs:
+            required_run_ids.add(run.info.run_id)
+            
+            # If this is a child run, ensure ALL ancestors are included
+            current_run_id = run.info.run_id
+            while current_run_id in child_to_parent:
+                parent_id = child_to_parent[current_run_id]
+                required_run_ids.add(parent_id)
+                current_run_id = parent_id  # Move up the hierarchy
+            
+        # Collect all required runs while preserving original sort order
+        final_runs = []
+        for run in runs:
+            if run.info.run_id in required_run_ids:
+                final_runs.append(run)
+        
+        # Determine next page token
+        next_page_token = None
+        if initial_end_offset < len(runs):
+            next_page_token = cls.create_page_token(initial_end_offset)
+        
+        return (final_runs, next_page_token)
+
     # Model Registry specific parser
     # TODO: Tech debt. Refactor search code into common utils, tracking server, and model
     #       registry specific code.
