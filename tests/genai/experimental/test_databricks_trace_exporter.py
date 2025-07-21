@@ -6,9 +6,11 @@ import threading
 import time
 from unittest import mock
 
+from mlflow.tracing.constant import SpanAttributeKey
+from mlflow.tracing.trace_manager import InMemoryTraceManager, ManagerTrace
 import pytest
 
-from mlflow.entities.span import Span
+from mlflow.entities.span import LiveSpan, Span
 from mlflow.entities.trace import Trace
 from mlflow.entities.trace_data import TraceData
 from mlflow.entities.trace_info import TraceInfo
@@ -26,30 +28,18 @@ from mlflow.genai.experimental.databricks_trace_storage_config import (
 _EXPERIMENT_ID = "dummy-experiment-id"
 
 
-@pytest.fixture
-def sample_trace_without_spans():
-    """Fixture providing a sample trace for testing."""
-    trace_info = TraceInfo(
-        trace_id="test-trace-id",
-        trace_location=TraceLocation.from_experiment_id(_EXPERIMENT_ID),
-        request_time=0,
-        execution_duration=1,
-        state=TraceState.OK,
-        trace_metadata={},
-        tags={},
-    )
-    trace_data = TraceData(spans=[])
-    return Trace(info=trace_info, data=trace_data)
-
 
 @pytest.fixture
-def sample_trace_with_spans():
+def sample_trace():
     """Fixture providing a trace with sample spans for testing."""
     from tests.tracing.helper import create_mock_otel_span
 
+    otel_trace_id = 0x1234567890ABCDEF
+    mlflow_trace_id = "test-trace-id"
+
     # Create real OpenTelemetry spans using the helper function
     otel_span1 = create_mock_otel_span(
-        trace_id=0x1234567890ABCDEF,  # Use proper hex trace ID
+        trace_id=otel_trace_id,  # Use proper hex trace ID
         span_id=0x123456789ABCDEF0,
         name="root_span",
         parent_id=None,
@@ -58,7 +48,7 @@ def sample_trace_with_spans():
     )
 
     otel_span2 = create_mock_otel_span(
-        trace_id=0x1234567890ABCDEF,  # Same trace ID
+        trace_id=otel_trace_id,  # Same trace ID
         span_id=0x123456789ABCDEF1,
         name="child_span",
         parent_id=0x123456789ABCDEF0,
@@ -67,8 +57,8 @@ def sample_trace_with_spans():
     )
 
     # Create real MLflow Span objects
-    span1 = Span(otel_span1)
-    span2 = Span(otel_span2)
+    span1 = LiveSpan(otel_span1, mlflow_trace_id)
+    span2 = LiveSpan(otel_span2, mlflow_trace_id)
 
     # Set attributes using the proper span methods
     # Note: We need to set attributes through the underlying otel span for testing
@@ -78,7 +68,7 @@ def sample_trace_with_spans():
     spans = [span1, span2]
 
     trace_info = TraceInfo(
-        trace_id="test-trace-id",
+        trace_id=mlflow_trace_id,
         trace_location=TraceLocation.from_experiment_id(_EXPERIMENT_ID),
         request_time=0,
         execution_duration=1,
@@ -87,6 +77,11 @@ def sample_trace_with_spans():
         tags={},
     )
     trace_data = TraceData(spans=spans)
+
+    trace_manager = InMemoryTraceManager.get_instance()
+    trace_manager.register_trace(otel_trace_id, trace_info)
+    trace_manager.register_span(span1)
+    trace_manager.register_span(span2)
     return Trace(info=trace_info, data=trace_data)
 
 
@@ -107,7 +102,7 @@ def sample_config():
 # =============================================================================
 
 
-def test_mlflow_v3_delta_span_exporter_delegates_to_archiver(sample_trace_without_spans):
+def test_mlflow_v3_delta_span_exporter_delegates_to_archiver(sample_trace):
     """Test that MlflowV3DeltaSpanExporter properly delegates to the archiver."""
     exporter = MlflowV3DeltaSpanExporter(tracking_uri="databricks")
 
@@ -117,17 +112,28 @@ def test_mlflow_v3_delta_span_exporter_delegates_to_archiver(sample_trace_withou
         # Mock delta archiver
         mock.patch.object(exporter._delta_archiver, "archive") as mock_archive,
     ):
-        # Call _log_trace - should delegate to both parent and archiver
-        exporter._log_trace(sample_trace_without_spans, prompts=[])
+        # Export spans - should delegate to both parent and archiver
+        otel_spans = [s._span for s in sample_trace.data.spans]
+        exporter.export(otel_spans)
+        exporter.force_flush()
 
         # Verify parent _log_trace was called
-        mock_parent_log_trace.assert_called_once_with(sample_trace_without_spans, [])
+        mock_parent_log_trace.assert_called_once()
+        trace, prompts = mock_parent_log_trace.call_args[0]
+        assert trace.info.trace_id == sample_trace.info.trace_id
+        assert prompts == []
 
-        # Verify archiver was called
-        mock_archive.assert_called_once_with(sample_trace_without_spans)
+        # Verify archiver was called for each span
+        assert mock_archive.call_count == 2
+        assert mock_archive.has_calls(
+            [
+                mock.call(sample_trace.data.spans[0]),
+                mock.call(sample_trace.data.spans[1]),
+            ]
+        )
 
 
-def test_mlflow_v3_delta_span_exporter_error_isolation(sample_trace_without_spans):
+def test_mlflow_v3_delta_span_exporter_error_isolation(sample_trace):
     """Test that delta archiver errors don't affect base MLflow export functionality."""
     exporter = MlflowV3DeltaSpanExporter(tracking_uri="databricks")
 
@@ -140,14 +146,25 @@ def test_mlflow_v3_delta_span_exporter_error_isolation(sample_trace_without_span
         ) as mock_archive,
         mock.patch("mlflow.genai.experimental.databricks_trace_exporter._logger") as mock_logger,
     ):
-        # Call _log_trace - should succeed despite archiver error
-        exporter._log_trace(sample_trace_without_spans, prompts=[])
+        # Call export - should succeed despite archiver error
+        otel_spans = [s._span for s in sample_trace.data.spans]
+        exporter.export(otel_spans)
+        exporter.force_flush()
 
         # Verify parent _log_trace was called successfully
-        mock_parent_log_trace.assert_called_once_with(sample_trace_without_spans, [])
+        mock_parent_log_trace.assert_called_once()
+        trace, prompts = mock_parent_log_trace.call_args[0]
+        assert trace.info.trace_id == sample_trace.info.trace_id
+        assert prompts == []
 
         # Verify archiver was called
-        mock_archive.assert_called_once_with(sample_trace_without_spans)
+        assert mock_archive.call_count == 2
+        assert mock_archive.has_calls(
+            [
+                mock.call(sample_trace.data.spans[0]),
+                mock.call(sample_trace.data.spans[1]),
+            ]
+        )
 
         # Verify error was logged but didn't crash the export
         mock_logger.warning.assert_called()
@@ -160,7 +177,7 @@ def test_mlflow_v3_delta_span_exporter_error_isolation(sample_trace_without_span
 # =============================================================================
 
 
-def test_archive_with_delta_disabled(sample_trace_without_spans, monkeypatch):
+def test_archive_with_delta_disabled(sample_trace, monkeypatch):
     """Test archive method when delta archiving is disabled."""
     monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "false")
 
@@ -170,7 +187,7 @@ def test_archive_with_delta_disabled(sample_trace_without_spans, monkeypatch):
         "mlflow.genai.experimental.databricks_trace_exporter.DatabricksTraceServerClient"
     ) as mock_client_class:
         # Archive should return early without calling the client
-        archiver.archive(sample_trace_without_spans)
+        archiver.archive(sample_trace.data.spans[0])
         mock_client_class.assert_not_called()
 
 
@@ -201,7 +218,7 @@ def test_archive_with_no_experiment_id(monkeypatch):
         mock_client_class.assert_not_called()
 
 
-def test_archive_with_missing_archival_config(sample_trace_without_spans, monkeypatch):
+def test_archive_with_missing_archival_config(sample_trace, monkeypatch):
     """Test that archiver handles gracefully when no configuration is available."""
     monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "true")
 
@@ -220,7 +237,7 @@ def test_archive_with_missing_archival_config(sample_trace_without_spans, monkey
         mock_client.get_trace_destination.return_value = None
 
         # Archive should return early without error
-        archiver.archive(sample_trace_without_spans)
+        archiver.archive(sample_trace.data.spans[0])
 
         # Verify that the client was called to check for config
         mock_client.get_trace_destination.assert_called_once_with(_EXPERIMENT_ID)
@@ -231,9 +248,7 @@ def test_archive_with_missing_archival_config(sample_trace_without_spans, monkey
         assert any("not enabled for experiment" in msg for msg in debug_calls)
 
 
-def test_delta_archiver_archive_archival_config_error_handling(
-    sample_trace_without_spans, monkeypatch
-):
+def test_delta_archiver_archive_archival_config_error_handling(sample_trace, monkeypatch):
     """Test that DatabricksTraceDeltaArchiver handles errors gracefully."""
     monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "true")
 
@@ -252,7 +267,7 @@ def test_delta_archiver_archive_archival_config_error_handling(
         mock_client.get_trace_destination.side_effect = Exception("Config fetch failed")
 
         # Archive should handle the error gracefully without crashing
-        archiver.archive(sample_trace_without_spans)
+        archiver.archive(sample_trace.data.spans[0])
 
         # Verify that the error was logged as a warning (since an exception was raised)
         mock_logger.warning.assert_called()
@@ -261,7 +276,7 @@ def test_delta_archiver_archive_archival_config_error_handling(
 
 
 def test_delta_archiver_archive_with_valid_archival_config(
-    sample_trace_without_spans, sample_config, monkeypatch
+    sample_trace, sample_config, monkeypatch
 ):
     """Test successful archival when valid configuration is available."""
     monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "true")
@@ -281,7 +296,7 @@ def test_delta_archiver_archive_with_valid_archival_config(
         mock_client.get_trace_destination.return_value = sample_config
 
         # Archive should proceed with archival
-        archiver.archive(sample_trace_without_spans)
+        archiver.archive(sample_trace.data.spans[0])
 
         # Verify that the client was called
         mock_client.get_trace_destination.assert_called_once_with(_EXPERIMENT_ID)
@@ -290,7 +305,7 @@ def test_delta_archiver_archive_with_valid_archival_config(
         mock_asyncio.run.assert_called_once()
 
 
-def test_archive_trace_integration_flow(sample_trace_with_spans, sample_config, monkeypatch):
+def test_archive_trace_integration_flow(sample_trace, sample_config, monkeypatch):
     """Test the complete _archive_trace integration flow with IngestStreamFactory."""
     monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "true")
 
@@ -317,65 +332,22 @@ def test_archive_trace_integration_flow(sample_trace_with_spans, sample_config, 
         mock_get_instance.return_value = mock_factory
 
         # Call archive - this will run the async _archive_trace method
-        archiver.archive(sample_trace_with_spans)
+        archiver.archive(sample_trace.data.spans[0])
 
         # Verify the integration flow
         mock_client.get_trace_destination.assert_called_once_with(_EXPERIMENT_ID)
         mock_get_instance.assert_called_once()
         mock_factory.get_or_create_stream.assert_called_once()
 
-        # Verify that proto spans were ingested (2 spans in the test trace)
-        assert mock_stream.ingest_record.call_count == 2
+        # Verify that proto span was ingested
+        assert mock_stream.ingest_record.call_count == 1
 
         # Verify stream was flushed
         mock_stream.flush.assert_called_once()
 
 
-def test_archive_trace_with_empty_spans(sample_trace_without_spans, sample_config, monkeypatch):
-    """Test _archive_trace with a trace containing no spans."""
-    monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "true")
-
-    # Clear cache to avoid interference from other tests
-    DatabricksTraceDeltaArchiver._config_cache.clear()
-    archiver = DatabricksTraceDeltaArchiver()
-
-    # Mock stream and factory
-    mock_stream = mock.AsyncMock()
-    mock_factory = mock.AsyncMock()
-    mock_factory.get_or_create_stream.return_value = mock_stream
-
-    with (
-        mock.patch(
-            "mlflow.genai.experimental.databricks_trace_exporter.DatabricksTraceServerClient"
-        ) as mock_client_class,
-        mock.patch(
-            "mlflow.genai.experimental.databricks_trace_exporter.IngestStreamFactory.get_instance"
-        ) as mock_get_instance,
-        mock.patch("mlflow.genai.experimental.databricks_trace_exporter._logger") as mock_logger,
-    ):
-        # Setup mocks
-        mock_client = mock_client_class.return_value
-        mock_client.get_trace_destination.return_value = sample_config
-        mock_get_instance.return_value = mock_factory
-
-        # Call archive with empty trace
-        archiver.archive(sample_trace_without_spans)
-
-        # Verify config was fetched
-        mock_client.get_trace_destination.assert_called_once_with(_EXPERIMENT_ID)
-
-        # Should have logged debug message about no spans
-        mock_logger.debug.assert_called()
-        debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
-        assert any("No proto spans to export" in msg for msg in debug_calls)
-
-        # Stream operations should not be called
-        mock_get_instance.assert_not_called()
-        mock_stream.ingest_record.assert_not_called()
-
-
 def test_archive_trace_ingest_stream_error_handling(
-    sample_trace_with_spans, sample_config, monkeypatch
+    sample_trace, sample_config, monkeypatch
 ):
     """Test error handling when stream operations fail."""
     monkeypatch.setenv("MLFLOW_TRACING_ENABLE_DELTA_ARCHIVAL", "true")
@@ -405,7 +377,7 @@ def test_archive_trace_ingest_stream_error_handling(
         mock_get_instance.return_value = mock_factory
 
         # Call archive - should handle stream error gracefully
-        archiver.archive(sample_trace_with_spans)
+        archiver.archive(sample_trace.data.spans[0])
 
         # Verify that the error was caught and logged
         mock_logger.warning.assert_called()
@@ -726,20 +698,16 @@ def test_ingest_stream_factory_thread_safety():
 # =============================================================================
 
 
-def test_convert_trace_to_proto_spans_basic(sample_trace_with_spans):
+def test_convert_trace_to_proto_spans_basic(sample_trace):
     """Test basic conversion of trace to proto spans."""
     archiver = DatabricksTraceDeltaArchiver()
 
-    proto_spans = archiver._convert_trace_to_proto_spans(sample_trace_with_spans)
-
-    # Should convert 2 spans from the fixture
-    assert len(proto_spans) == 2
+    proto_span = archiver._convert_span_to_proto(sample_trace.data.spans[0])
 
     # Verify basic fields are populated
-    for proto_span in proto_spans:
-        assert proto_span.name in ["root_span", "child_span"]
-        assert proto_span.trace_id  # Should have trace ID
-        assert proto_span.span_id  # Should have span ID
+    assert proto_span.name == "root_span"
+    assert proto_span.trace_id  # Should have trace ID
+    assert proto_span.span_id  # Should have span ID
 
 
 def test_convert_trace_to_proto_spans_with_complex_data():
@@ -777,26 +745,10 @@ def test_convert_trace_to_proto_spans_with_complex_data():
     otel_span.set_status(OTelStatus(StatusCode.ERROR, "Test error"))
 
     # Create real MLflow Span object
-    span = Span(otel_span)
-    spans = [span]
-
-    trace_info = TraceInfo(
-        trace_id="test-trace-id",
-        trace_location=TraceLocation.from_experiment_id(_EXPERIMENT_ID),
-        request_time=0,
-        execution_duration=1,
-        state=TraceState.OK,
-        trace_metadata={},
-        tags={},
-    )
-    trace_data = TraceData(spans=spans)
-    trace = Trace(info=trace_info, data=trace_data)
+    mlflow_span = Span(otel_span)
 
     archiver = DatabricksTraceDeltaArchiver()
-    proto_spans = archiver._convert_trace_to_proto_spans(trace)
-
-    assert len(proto_spans) == 1
-    proto_span = proto_spans[0]
+    proto_span = archiver._convert_span_to_proto(mlflow_span)
 
     # Verify basic proto span structure
     assert proto_span.trace_id == "00000000000000001234567890abcdef"
@@ -851,26 +803,15 @@ def test_convert_trace_to_proto_spans_with_complex_data():
     assert status["message"] == "Test error"
 
 
-def test_convert_trace_to_proto_spans_empty_trace(sample_trace_without_spans):
-    """Test conversion with a trace containing no spans."""
-    archiver = DatabricksTraceDeltaArchiver()
-
-    proto_spans = archiver._convert_trace_to_proto_spans(sample_trace_without_spans)
-
-    # Empty trace should return empty list
-    assert proto_spans == []
-
-
-def test_convert_trace_to_proto_spans_otel_compliance(sample_trace_with_spans):
+def test_convert_trace_to_proto_spans_otel_compliance(sample_trace):
     """Test that trace_id format complies with OTel spec (no tr- prefix)."""
     archiver = DatabricksTraceDeltaArchiver()
 
-    proto_spans = archiver._convert_trace_to_proto_spans(sample_trace_with_spans)
+    proto_span = archiver._convert_span_to_proto(sample_trace.data.spans[0])
 
     # Verify trace IDs don't have "tr-" prefix (OTel compliance)
-    for proto_span in proto_spans:
-        assert not proto_span.trace_id.startswith("tr-")
-        # Should use the raw _trace_id from the span
-        assert (
-            proto_span.trace_id == "00000000000000001234567890abcdef"
-        )  # From the fixture hex value
+    assert not proto_span.trace_id.startswith("tr-")
+    # Should use the raw _trace_id from the span
+    assert (
+        proto_span.trace_id == "00000000000000001234567890abcdef"
+    )  # From the fixture hex value

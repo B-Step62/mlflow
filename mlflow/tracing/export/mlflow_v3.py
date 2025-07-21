@@ -135,3 +135,10 @@ class MlflowV3SpanExporter(SpanExporter):
             return False
 
         return self._is_async_enabled
+
+    def force_flush(self):
+        """
+        Force the exporter to flush any pending traces.
+        """
+        if self._is_async_enabled:
+            self._async_queue.flush()
