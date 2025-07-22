@@ -48,7 +48,7 @@ class MlflowV3SpanExporter(SpanExporter):
         """
         for span in spans:
             if span._parent is not None:
-                _logger.debug("Received a non-root span. Skipping export.")
+                # Skip non-root spans.
                 continue
 
             manager_trace = InMemoryTraceManager.get_instance().pop_trace(span.context.trace_id)

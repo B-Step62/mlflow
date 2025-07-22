@@ -1,4 +1,3 @@
-import asyncio
 import atexit
 import json
 import logging
@@ -137,8 +136,7 @@ class DatabricksTraceDeltaArchiver:
                 config.spans_table_name, DeltaProtoSpan.DESCRIPTOR
             )
 
-            # Run the async trace logging and wait for completion
-            asyncio.run(self._archive(span, experiment_id, config.spans_table_name))
+            self._archive(span, experiment_id, config.spans_table_name)
 
         except Exception as e:
             _logger.warning(f"Failed to export trace to Databricks Delta: {e}")
@@ -160,7 +158,7 @@ class DatabricksTraceDeltaArchiver:
                 _logger.debug(f"Cached config for experiment {experiment_id}: {config is not None}")
             return self._config_cache[experiment_id]
 
-    async def _archive(self, span: Span, experiment_id: str, spans_table_name: str):
+    def _archive(self, span: Span, experiment_id: str, spans_table_name: str):
         """
         Handles exporting a span to Databricks Delta using the IngestApi.
 
@@ -176,19 +174,17 @@ class DatabricksTraceDeltaArchiver:
             factory = IngestStreamFactory.get_instance(self._spans_table_properties)
 
             # Get stream from factory
-            stream = await factory.get_or_create_stream()
+            stream = factory.get_or_create_stream()
 
             # Ingest all spans for the trace
             _logger.debug(
                 f"Ingesting span {span.span_id} for trace {span.trace_id} to table "
                 f"{spans_table_name}"
             )
-            await stream.ingest_record(proto_span)
+            stream.ingest_record(proto_span)
 
-            # Always flush() to ensure data durability.  In sync logging mode, this is ok.
-            # For async mode, the flush will be handled by the async queue
-            # which runs in the background.
-            await stream.flush()
+            # Always flush() to ensure data durability.
+            stream.flush()
 
         except Exception as e:
             _logger.warning(f"Failed to send trace to Databricks Delta: {e}")
@@ -333,7 +329,7 @@ class IngestStreamFactory:
         # Initialize thread-local storage for streams
         self._thread_local = threading.local()
 
-    async def get_or_create_stream(self):
+    def get_or_create_stream(self):
         """
         Factory method: Get or create a cached stream for current thread.
 
@@ -364,7 +360,7 @@ class IngestStreamFactory:
         else:
             _logger.debug("Creating new thread-local stream for Databricks Delta export")
             ingest_sdk = create_archival_ingest_sdk()
-            new_stream = await ingest_sdk.create_stream(self.table_properties)
+            new_stream = ingest_sdk.create_stream(self.table_properties)
 
             # Store with metadata
             self._thread_local.stream_cache = {"stream": new_stream, "created_at": current_time}
@@ -382,7 +378,7 @@ class IngestStreamFactory:
                 if stream_cache and "stream" in stream_cache:
                     try:
                         stream = stream_cache["stream"]
-                        asyncio.run(stream.close())
+                        stream.close()
                     except Exception as e:
                         _logger.debug(f"Error during stream cleanup: {e}")
                     finally:
