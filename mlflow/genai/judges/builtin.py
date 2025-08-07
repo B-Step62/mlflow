@@ -121,14 +121,15 @@ def is_context_relevant(
     return _sanitize_feedback(feedback)
 
 
-@requires_databricks_agents
+@format_docstring(_MODEL_API_DOC)
 def is_context_sufficient(
     *,
     request: str,
     context: Any,
-    expected_facts: list[str],
+    expected_facts: list[str] | None = None,
     expected_response: str | None = None,
     name: str | None = None,
+    model: str | None = None,
 ) -> Feedback:
     """
     LLM judge determines whether the given context is sufficient to answer the input request.
@@ -136,9 +137,10 @@ def is_context_sufficient(
     Args:
         request: Input to the application to evaluate, user's question or query.
         context: Context to evaluate the sufficiency of. Supports any JSON-serializable object.
-        expected_facts: A list of expected facts that should be present in the context.
+        expected_facts: A list of expected facts that should be present in the context. Optional.
         expected_response: The expected response from the application. Optional.
         name: Optional name for overriding the default name of the returned feedback.
+        model: {{ model }}
 
     Returns:
         A :py:class:`mlflow.entities.assessment.Feedback~` object with a "yes" or "no"
@@ -162,18 +164,42 @@ def is_context_sufficient(
                 expected_facts=["Paris is the capital of France."],
             )
             print(feedback.value)  # "yes"
-    """
-    from databricks.agents.evals.judges import context_sufficiency
 
-    return _sanitize_feedback(
-        context_sufficiency(
+            feedback = is_context_sufficient(
+                request="What is the capital of France?",
+                context={"content": "France is a country in Europe."},
+                expected_response="Paris is the capital of France.",
+            )
+            print(feedback.value)  # "no"
+    """
+    from mlflow.genai.judges.prompts.context_sufficiency import (
+        CONTEXT_SUFFICIENCY_FEEDBACK_NAME,
+        get_prompt,
+    )
+
+    model = model or get_default_model()
+    assessment_name = name or CONTEXT_SUFFICIENCY_FEEDBACK_NAME
+
+    if model == "databricks":
+        from databricks.agents.evals.judges import context_sufficiency
+
+        feedback = context_sufficiency(
             request=request,
             retrieved_context=context,
             expected_facts=expected_facts,
             expected_response=expected_response,
-            assessment_name=name,
+            assessment_name=assessment_name,
         )
-    )
+    else:
+        prompt = get_prompt(
+            request=request,
+            context=context,
+            expected_response=expected_response,
+            expected_facts=expected_facts,
+        )
+        feedback = invoke_judge_model(model, prompt, assessment_name=assessment_name)
+
+    return _sanitize_feedback(feedback)
 
 
 @format_docstring(_MODEL_API_DOC)
