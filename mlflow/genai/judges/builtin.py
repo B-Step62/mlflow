@@ -276,8 +276,15 @@ def is_correct(
     return _sanitize_feedback(feedback)
 
 
-@requires_databricks_agents
-def is_grounded(*, request: str, response: str, context: Any, name: str | None = None) -> Feedback:
+@format_docstring(_MODEL_API_DOC)
+def is_grounded(
+    *,
+    request: str,
+    response: str,
+    context: Any,
+    name: str | None = None,
+    model: str | None = None,
+) -> Feedback:
     """
     LLM judge determines whether the given response is grounded in the given context.
 
@@ -286,6 +293,7 @@ def is_grounded(*, request: str, response: str, context: Any, name: str | None =
         response: The response from the application to evaluate.
         context: Context to evaluate the response against. Supports any JSON-serializable object.
         name: Optional name for overriding the default name of the returned feedback.
+        model: {{ model }}
 
     Returns:
         A :py:class:`mlflow.entities.assessment.Feedback~` object with a "yes" or "no"
@@ -309,17 +317,40 @@ def is_grounded(*, request: str, response: str, context: Any, name: str | None =
                 ],
             )
             print(feedback.value)  # "yes"
-    """
-    from databricks.agents.evals.judges import groundedness
 
-    return _sanitize_feedback(
-        groundedness(
+            feedback = is_grounded(
+                request="What is the capital of France?",
+                response="London is the capital of France.",
+                context=[
+                    {"content": "Paris is the capital of France."},
+                    {"content": "Paris is known for its Eiffel Tower."},
+                ],
+            )
+            print(feedback.value)  # "no"
+    """
+    from mlflow.genai.judges.prompts.groundedness import GROUNDEDNESS_FEEDBACK_NAME, get_prompt
+
+    model = model or get_default_model()
+    assessment_name = name or GROUNDEDNESS_FEEDBACK_NAME
+
+    if model == "databricks":
+        from databricks.agents.evals.judges import groundedness
+
+        feedback = groundedness(
             request=request,
             response=response,
             retrieved_context=context,
-            assessment_name=name,
+            assessment_name=assessment_name,
         )
-    )
+    else:
+        prompt = get_prompt(
+            request=request,
+            response=response,
+            context=context,
+        )
+        feedback = invoke_judge_model(model, prompt, assessment_name=assessment_name)
+
+    return _sanitize_feedback(feedback)
 
 
 @requires_databricks_agents
