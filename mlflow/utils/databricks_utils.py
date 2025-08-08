@@ -815,10 +815,11 @@ def get_databricks_host_creds(server_uri=None):
             use_databricks_sdk = True
             databricks_auth_profile = profile
         except Exception as e:
-            _logger.debug(f"Failed to create databricks SDK workspace client, error: {e!r}")
+            _logger.info(f"Failed to create databricks SDK workspace client, error: {e!r}")
             use_databricks_sdk = False
             databricks_auth_profile = None
     else:
+        _logger.info("MLFLOW_ENABLE_DB_SDK is not set, using legacy authentication")
         use_databricks_sdk = False
         databricks_auth_profile = None
 

@@ -109,7 +109,7 @@ def http_request(
     backoff_jitter = (
         MLFLOW_HTTP_REQUEST_BACKOFF_JITTER.get() if backoff_jitter is None else backoff_jitter
     )
-    _logger.info(f"Host creds: {host_creds}")
+    _logger.info(f"Host creds: {host_creds.host} {host_creds.use_databricks_sdk}")
 
     if host_creds.use_databricks_sdk:
         from databricks.sdk.errors import DatabricksError
