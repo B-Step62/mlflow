@@ -68,6 +68,7 @@ class DatabricksDeltaArchivalMixin:
 
         try:
             # Extract experiment ID from trace location
+            _logger.info(f"Archiving trace {trace.info.request_id} to Databricks Delta")
             experiment_id = None
             if (
                 trace.info.trace_location
@@ -75,6 +76,7 @@ class DatabricksDeltaArchivalMixin:
                 and trace.info.trace_location.mlflow_experiment
             ):
                 experiment_id = trace.info.trace_location.mlflow_experiment.experiment_id
+                _logger.info(f"Experiment ID: {experiment_id}")
 
             if not experiment_id:
                 _logger.debug("No experiment ID found in trace, skipping delta archival")
@@ -88,6 +90,8 @@ class DatabricksDeltaArchivalMixin:
                     "skipping."
                 )
                 return
+
+            _logger.info(f"Databricks trace archival config: {config}")
 
             # Store configuration for this export
             self._spans_table_name = config.spans_table_name
@@ -123,7 +127,9 @@ class DatabricksDeltaArchivalMixin:
         """
         with self._config_cache_lock:
             if experiment_id not in self._config_cache:
+                _logger.info(f"Getting config for experiment {experiment_id}")
                 config = DatabricksTraceServerClient().get_trace_destination(experiment_id)
+                _logger.info(f"Config: {config}")
                 self._config_cache[experiment_id] = config
                 _logger.debug(f"Cached config for experiment {experiment_id}: {config is not None}")
             return self._config_cache[experiment_id]

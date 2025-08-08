@@ -363,6 +363,7 @@ class DatabricksTraceServerClient:
             MlflowException: If there's an error (other than 404)
         """
         try:
+            _logger.info(f"Getting trace destination for experiment {experiment_id}")
             # Create proto request
             proto_trace_location = ProtoTraceLocation()
             proto_trace_location.type = ProtoTraceLocation.TraceLocationType.MLFLOW_EXPERIMENT
@@ -371,9 +372,10 @@ class DatabricksTraceServerClient:
             proto_request = GetTraceDestinationRequest(
                 trace_location=proto_trace_location,
             )
-
+            _logger.info(f"Proto request: {proto_request}")
             # Call the trace server API
             request_body = message_to_json(proto_request)
+            _logger.info(f"Request body: {request_body}")
 
             response_proto = call_endpoint(
                 host_creds=self._host_creds,
@@ -381,7 +383,9 @@ class DatabricksTraceServerClient:
                 method="GET",
                 json_body=request_body,
                 response_proto=ProtoTraceDestination(),
+                retry_timeout_seconds=10,
             )
+            _logger.info(f"Response proto: {response_proto}")
 
             # Convert response to config
             return self._proto_to_config(response_proto)

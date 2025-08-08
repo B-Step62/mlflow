@@ -419,6 +419,7 @@ def _retry_databricks_sdk_call_with_exponential_backoff(
 
     while attempt <= max_retries:
         try:
+            _logger.info(f"Databricks SDK call attempt {attempt}")
             return call_func()
         except DatabricksError as e:
             # Get HTTP status code from the error
@@ -450,7 +451,7 @@ def _retry_databricks_sdk_call_with_exponential_backoff(
                 _logger.warning(f"Retry timeout ({retry_timeout_seconds}s) exceeded: {e}")
                 raise
 
-            _logger.debug(
+            _logger.info(
                 f"Databricks SDK call failed with retryable error (status {status_code}): {e}. "
                 f"Retrying in {backoff_time:.2f} seconds (attempt {attempt + 1})"
             )
