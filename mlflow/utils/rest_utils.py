@@ -109,9 +109,11 @@ def http_request(
     backoff_jitter = (
         MLFLOW_HTTP_REQUEST_BACKOFF_JITTER.get() if backoff_jitter is None else backoff_jitter
     )
+    _logger.info(f"Host creds: {host_creds}")
 
     if host_creds.use_databricks_sdk:
         from databricks.sdk.errors import DatabricksError
+        _logger.info(f"Using Databricks SDK to make request to {endpoint}")
 
         ws_client = get_workspace_client(
             host_creds.use_secret_scope_token,
@@ -131,6 +133,7 @@ def http_request(
                 warnings.filterwarnings(
                     "ignore", message=f".*{_DATABRICKS_SDK_RETRY_AFTER_SECS_DEPRECATION_WARNING}.*"
                 )
+                _logger.info(f"Making Databricks SDK call to {endpoint} with method {method} {kwargs=}")
                 raw_response = ws_client.api_client.do(
                     method=method,
                     path=endpoint,
@@ -182,6 +185,7 @@ def http_request(
             ).encode("UTF-8")
             return response
 
+    _logger.info(f"No Databricks SDK, making request to {url} with method {method} {kwargs=}")
     _validate_max_retries(max_retries)
     _validate_backoff_factor(backoff_factor)
     respect_retry_after_header = (
@@ -227,6 +231,7 @@ def http_request(
         kwargs["auth"] = fetch_auth(host_creds.auth)
 
     try:
+        _logger.info(f"Making request to {url} with method {method} {kwargs=}")
         return _get_http_response_with_retries(
             method,
             url,
@@ -546,6 +551,7 @@ def call_endpoint(
         call_kwargs["retry_timeout_seconds"] = retry_timeout_seconds
     if method == "GET":
         call_kwargs["params"] = json_body
+        _logger.info(f"Call kwargs: {call_kwargs}")
         response = http_request(**call_kwargs)
     else:
         call_kwargs["json"] = json_body
