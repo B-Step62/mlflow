@@ -16,6 +16,8 @@ import { FormattedMessage } from 'react-intl';
 import { uniq } from 'lodash';
 import { useDeletePromptVersionModal } from '../hooks/useDeletePromptVersionModal';
 import { ShowArtifactCodeSnippet } from '../../../components/artifact-view-components/ShowArtifactCodeSnippet';
+import { ModelTraceExplorerConversation } from '../../../../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerConversation';
+import type { ModelTraceChatMessage } from '../../../../shared/web-shared/model-trace-explorer/ModelTrace.types';
 
 const PROMPT_VARIABLE_REGEX = /\{\{\s*(.*?)\s*\}\}/g;
 
@@ -38,6 +40,31 @@ export const PromptContentPreview = ({
 }) => {
   const value = useMemo(() => (promptVersion ? getPromptContentTagValue(promptVersion) : ''), [promptVersion]);
 
+  // Try to parse the value as chat messages
+  const chatMessages = useMemo<ModelTraceChatMessage[] | null>(() => {
+    if (!value) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      // Check if it's an array of messages with 'role' and 'content' properties
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (msg) =>
+            typeof msg === 'object' && 'role' in msg && (typeof msg.content === 'string' || msg.content === null),
+        )
+      ) {
+        return parsed as ModelTraceChatMessage[];
+      }
+    } catch {
+      // Not JSON or not chat format
+    }
+    return null;
+  }, [value]);
+
   const { DeletePromptModal, openModal: openDeleteModal } = useDeletePromptVersionModal({
     promptVersion,
     onSuccess: () => onDeletedVersion?.(),
@@ -45,9 +72,10 @@ export const PromptContentPreview = ({
 
   const [showUsageExample, setShowUsageExample] = useState(false);
 
-  // Find all variables in the prompt content
+  // Find all variables in the prompt content (only for non-chat prompts)
   const variableNames = useMemo(() => {
-    if (!value) {
+    // Skip variable extraction for chat messages
+    if (chatMessages || !value) {
       return [];
     }
 
@@ -65,8 +93,8 @@ export const PromptContentPreview = ({
     }
 
     return uniq(variables);
-  }, [value]);
-  const codeSnippetContent = buildCodeSnippetContent(promptVersion, variableNames);
+  }, [value, chatMessages]);
+  const codeSnippetContent = buildCodeSnippetContent(promptVersion, variableNames, chatMessages);
 
   const { theme } = useDesignSystemTheme();
   return (
@@ -124,13 +152,17 @@ export const PromptContentPreview = ({
           overflow: 'auto',
         }}
       >
-        <Typography.Text
-          css={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {value || 'Empty'}
-        </Typography.Text>
+        {chatMessages ? (
+          <ModelTraceExplorerConversation messages={chatMessages} />
+        ) : (
+          <Typography.Text
+            css={{
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {value || 'Empty'}
+          </Typography.Text>
+        )}
       </div>
       <Modal
         componentId="mlflow.prompts.details.preview.usage_example_modal"
@@ -149,14 +181,18 @@ export const PromptContentPreview = ({
           />
         }
       >
-        <ShowArtifactCodeSnippet code={buildCodeSnippetContent(promptVersion, variableNames)} />
+        <ShowArtifactCodeSnippet code={buildCodeSnippetContent(promptVersion, variableNames, chatMessages)} />
       </Modal>
       {DeletePromptModal}
     </div>
   );
 };
 
-const buildCodeSnippetContent = (promptVersion: RegisteredPromptVersion | undefined, variables: string[] | null) => {
+const buildCodeSnippetContent = (
+  promptVersion: RegisteredPromptVersion | undefined,
+  variables: string[] | null,
+  chatMessages: ModelTraceChatMessage[] | null,
+) => {
   let codeSnippetContent = `from openai import OpenAI
 import mlflow
 client = OpenAI(api_key="<YOUR_API_KEY>")
@@ -167,8 +203,17 @@ mlflow.set_tracking_uri("<YOUR_TRACKING_URI>")
 # Example of loading and using the prompt
 prompt = mlflow.genai.load_prompt("prompts:/${promptVersion?.name}/${promptVersion?.version}")`;
 
-  // Null variables mean that there was a parsing error
-  if (variables === null) {
+  // If it's a chat prompt, show how to use it as messages
+  if (chatMessages) {
+    codeSnippetContent += `
+
+# The prompt is a chat template - use it directly as messages
+response = client.chat.completions.create(
+    messages=prompt,
+    model="gpt-4o-mini",
+)`;
+  } else if (variables === null) {
+    // Null variables mean that there was a parsing error
     codeSnippetContent += `
 
 # Replace the variables with the actual values

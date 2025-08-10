@@ -5,6 +5,8 @@ import { getPromptContentTagValue } from '../utils';
 import { PromptVersionMetadata } from './PromptVersionMetadata';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { diffWords } from '../diff';
+import { ModelTraceExplorerConversation } from '../../../../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerConversation';
+import type { ModelTraceChatMessage } from '../../../../shared/web-shared/model-trace-explorer/ModelTrace.types';
 
 export const PromptContentCompare = ({
   baselineVersion,
@@ -34,6 +36,56 @@ export const PromptContentCompare = ({
     () => (comparedVersion ? getPromptContentTagValue(comparedVersion) : ''),
     [comparedVersion],
   );
+
+  // Try to parse baseline value as chat messages
+  const baselineChatMessages = useMemo<ModelTraceChatMessage[] | null>(() => {
+    if (!baselineValue) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(baselineValue);
+      // Check if it's an array of messages with 'role' and 'content' properties
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (msg) =>
+            typeof msg === 'object' && 'role' in msg && (typeof msg.content === 'string' || msg.content === null),
+        )
+      ) {
+        return parsed as ModelTraceChatMessage[];
+      }
+    } catch {
+      // Not JSON or not chat format
+    }
+    return null;
+  }, [baselineValue]);
+
+  // Try to parse compared value as chat messages
+  const comparedChatMessages = useMemo<ModelTraceChatMessage[] | null>(() => {
+    if (!comparedValue) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(comparedValue);
+      // Check if it's an array of messages with 'role' and 'content' properties
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (msg) =>
+            typeof msg === 'object' && 'role' in msg && (typeof msg.content === 'string' || msg.content === null),
+        )
+      ) {
+        return parsed as ModelTraceChatMessage[];
+      }
+    } catch {
+      // Not JSON or not chat format
+    }
+    return null;
+  }, [comparedValue]);
 
   const diff = useMemo(() => diffWords(baselineValue ?? '', comparedValue ?? '') ?? [], [baselineValue, comparedValue]);
 
@@ -101,15 +153,20 @@ export const PromptContentCompare = ({
             backgroundColor: theme.colors.backgroundSecondary,
             padding: theme.spacing.md,
             flex: 1,
+            overflow: 'auto',
           }}
         >
-          <Typography.Text
-            css={{
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {baselineValue || 'Empty'}
-          </Typography.Text>
+          {baselineChatMessages ? (
+            <ModelTraceExplorerConversation messages={baselineChatMessages} />
+          ) : (
+            <Typography.Text
+              css={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {baselineValue || 'Empty'}
+            </Typography.Text>
+          )}
         </div>
         <div css={{ paddingLeft: theme.spacing.sm, paddingRight: theme.spacing.sm }}>
           <Tooltip
@@ -139,29 +196,34 @@ export const PromptContentCompare = ({
             backgroundColor: theme.colors.backgroundSecondary,
             padding: theme.spacing.md,
             flex: 1,
+            overflow: 'auto',
           }}
         >
-          <Typography.Text
-            css={{
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {diff.map((part, index) => (
-              <span
-                key={index}
-                css={{
-                  backgroundColor: part.added
-                    ? colors.addedBackground
-                    : part.removed
-                    ? colors.removedBackground
-                    : undefined,
-                  textDecoration: part.removed ? 'line-through' : 'none',
-                }}
-              >
-                {part.value}
-              </span>
-            ))}
-          </Typography.Text>
+          {comparedChatMessages ? (
+            <ModelTraceExplorerConversation messages={comparedChatMessages} />
+          ) : (
+            <Typography.Text
+              css={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {diff.map((part, index) => (
+                <span
+                  key={index}
+                  css={{
+                    backgroundColor: part.added
+                      ? colors.addedBackground
+                      : part.removed
+                      ? colors.removedBackground
+                      : undefined,
+                    textDecoration: part.removed ? 'line-through' : 'none',
+                  }}
+                >
+                  {part.value}
+                </span>
+              ))}
+            </Typography.Text>
+          )}
         </div>
       </div>
     </div>
