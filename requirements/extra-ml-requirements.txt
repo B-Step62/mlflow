@@ -87,3 +87,11 @@ mistralai
 autogen-agentchat
 # Required by mlflow.semantic_kernel
 semantic-kernel
+# Required by mlflow.agno
+agno
+# Required by mlflow.pydantic_ai
+pydantic-ai
+# Required by mlflow.crewai
+crewai
+# Required by mlflow.smolagents
+smolagents
