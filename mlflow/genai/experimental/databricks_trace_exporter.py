@@ -151,6 +151,8 @@ class DatabricksDeltaArchivalMixin:
             # Get stream from factory
             stream = factory.get_or_create_stream()
 
+            _logger.debug(f"Got stream {stream}")
+
             # Ingest all spans for the trace
             _logger.debug(
                 f"Ingesting {len(proto_spans)} spans for trace {trace.info.request_id} to table "
@@ -402,10 +404,13 @@ class IngestStreamFactory:
         else:
             _logger.debug("Creating new thread-local stream for Databricks Delta export")
             ingest_sdk = create_archival_ingest_sdk()
+            _logger.debug(f"Created ingest SDK {ingest_sdk}")
             new_stream = ingest_sdk.create_stream(self.table_properties)
+            _logger.debug(f"Created new stream {new_stream}")
 
             # Store with metadata
             self._thread_local.stream_cache = {"stream": new_stream, "created_at": current_time}
+            _logger.debug(f"Stored new stream in thread-local cache {self._thread_local.stream_cache}")
 
             return new_stream
 
