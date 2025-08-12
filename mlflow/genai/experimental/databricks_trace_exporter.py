@@ -419,8 +419,10 @@ class IngestStreamFactory:
                 stream_cache = self._thread_local.stream_cache
                 if stream_cache and "stream" in stream_cache:
                     try:
+                        _logger.debug("Closing stream")
                         stream = stream_cache["stream"]
                         stream.close()
+                        _logger.debug("Stream closed")
                     except Exception as e:
                         _logger.debug(f"Error during stream cleanup: {e}")
                     finally:
@@ -434,8 +436,11 @@ class IngestStreamFactory:
         """
         Reset all factory instances. Used for testing and cleanup.
         """
-        with cls._instances_lock:
-            for factory in cls._instances.values():
-                factory.shutdown()
-            cls._instances.clear()
-            _logger.debug("Reset all IngestStreamFactory instances")
+        _logger.debug("Let's reset the IngestStreamFactory instances")
+        #with cls._instances_lock:
+        for factory in cls._instances.values():
+            _logger.debug(f"Shutting down factory {factory}")
+            factory.shutdown()
+        _logger.debug("Clearing instances")
+        cls._instances.clear()
+        _logger.debug("Reset all IngestStreamFactory instances desu")
