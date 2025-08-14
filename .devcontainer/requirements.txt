@@ -149,6 +149,8 @@ docutils==0.16
     #   sphinx-tabs
 evaluate==0.4.3
     # via -r test-requirements.txt
+fastapi==0.115.4
+    # via -r core-requirements.txt
 exceptiongroup==1.2.2
     # via
     #   anyio
