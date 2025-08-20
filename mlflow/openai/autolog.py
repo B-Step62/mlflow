@@ -301,7 +301,12 @@ def _end_span_on_success(span: LiveSpan, inputs: dict[str, Any], raw_result: Any
                 _add_span_event(span, i, chunk)
                 output.append(chunk)
                 yield chunk
-            _process_last_chunk(span, chunk, inputs, output)
+            try:
+                _process_last_chunk(span, chunk, inputs, output)
+            except Exception as e:
+                _logger.warning(
+                    f"Failed to process streaming chunks for tracing: {e}", exc_info=True
+                )
 
         result._iterator = _stream_output_logging_hook(result._iterator)
     elif isinstance(result, AsyncStream):
@@ -312,7 +317,12 @@ def _end_span_on_success(span: LiveSpan, inputs: dict[str, Any], raw_result: Any
                 _add_span_event(span, len(output), chunk)
                 output.append(chunk)
                 yield chunk
-            _process_last_chunk(span, chunk, inputs, output)
+            try:
+                _process_last_chunk(span, chunk, inputs, output)
+            except Exception as e:
+                _logger.warning(
+                    f"Failed to process streaming chunks for tracing: {e}", exc_info=True
+                )
 
         result._iterator = _stream_output_logging_hook(result._iterator)
     else:
@@ -372,7 +382,10 @@ def _reconstruct_completion_from_stream(chunks: list[Any]) -> Any:
     def _extract_content(chunk: Any) -> str:
         if not chunk.choices:
             return ""
-        return chunk.choices[0].delta.content or ""
+        content = chunk.choices[0].delta.content
+        # Exclude non-string content from joining. OpenAI models do not return non-string
+        # content, but OpenAI-like models can e.g., Databricks endpoint.
+        return content if isinstance(content, str) else ""
 
     message = ChatCompletionMessage(
         role="assistant", content="".join(map(_extract_content, chunks))
