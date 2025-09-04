@@ -1,0 +1,299 @@
+openapi: 3.0.3
+info:
+  title: MLflow Custom Chart Generation API
+  description: API for generating custom charts using natural language in MLflow
+  version: 1.0.0
+servers:
+  - url: /api/2.0/mlflow
+paths:
+  /charts/generate:
+    post:
+      summary: Generate a custom chart from natural language
+      operationId: generateChart
+      tags:
+        - Charts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateChartRequest'
+      responses:
+        '200':
+          description: Chart generation request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateChartResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+        '429':
+          description: Rate limit exceeded
+
+  /charts/status/{request_id}:
+    get:
+      summary: Get status of chart generation request
+      operationId: getChartStatus
+      tags:
+        - Charts
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Request status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartStatusResponse'
+        '404':
+          description: Request not found
+
+  /charts/save:
+    post:
+      summary: Save generated chart as artifact
+      operationId: saveChart
+      tags:
+        - Charts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveChartRequest'
+      responses:
+        '200':
+          description: Chart saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveChartResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+
+  /charts/list/{experiment_id}:
+    get:
+      summary: List saved charts for an experiment
+      operationId: listCharts
+      tags:
+        - Charts
+      parameters:
+        - name: experiment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of charts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListChartsResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Experiment not found
+
+  /charts/{chart_id}:
+    get:
+      summary: Get a specific chart
+      operationId: getChart
+      tags:
+        - Charts
+      parameters:
+        - name: chart_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chart details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartDetails'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Chart not found
+
+    delete:
+      summary: Delete a chart
+      operationId: deleteChart
+      tags:
+        - Charts
+      parameters:
+        - name: chart_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Chart deleted successfully
+        '401':
+          description: Unauthorized
+        '404':
+          description: Chart not found
+
+components:
+  schemas:
+    GenerateChartRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Natural language description of desired chart
+        run_id:
+          type: string
+          description: MLflow run ID
+        experiment_id:
+          type: string
+          description: MLflow experiment ID
+
+    GenerateChartResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending]
+
+    ChartStatusResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        result:
+          type: object
+          properties:
+            chart_code:
+              type: string
+              description: Generated JavaScript/React code
+            chart_config:
+              type: object
+              description: Plotly configuration
+            data_sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [metric, artifact]
+                  name:
+                    type: string
+                  path:
+                    type: string
+        error_message:
+          type: string
+
+    SaveChartRequest:
+      type: object
+      required:
+        - chart_code
+        - experiment_id
+        - name
+      properties:
+        chart_code:
+          type: string
+        chart_config:
+          type: object
+        experiment_id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        data_sources:
+          type: array
+          items:
+            type: object
+
+    SaveChartResponse:
+      type: object
+      properties:
+        chart_id:
+          type: string
+          format: uuid
+        artifact_uri:
+          type: string
+
+    ListChartsResponse:
+      type: object
+      properties:
+        charts:
+          type: array
+          items:
+            type: object
+            properties:
+              chart_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              artifact_uri:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+              created_by:
+                type: string
+
+    ChartDetails:
+      type: object
+      properties:
+        chart_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        chart_code:
+          type: string
+        chart_config:
+          type: object
+        data_sources:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        execution_count:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
