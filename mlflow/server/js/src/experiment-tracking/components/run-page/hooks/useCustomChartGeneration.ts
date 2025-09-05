@@ -16,6 +16,7 @@ export interface ChartStatusResponse {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   result?: {
     chart_code: string;
+    chart_title?: string;  // Add chart title to the response
     chart_config?: any;
     data_sources?: Array<{
       type: 'metric' | 'artifact';
@@ -30,6 +31,7 @@ interface UseCustomChartGenerationState {
   isGenerating: boolean;
   requestId: string | null;
   chartCode: string | null;
+  chartTitle: string | null;
   error: string | null;
   progress: string | null;
 }
@@ -61,6 +63,7 @@ const mockGetChartStatus = async (requestId: string): Promise<ChartStatusRespons
       request_id: requestId,
       status: 'completed',
       result: {
+        chart_title: 'Test F1 Score by Step',
         chart_code: `
 // Generated chart code that fetches real MLflow metrics
 const GeneratedChart = ({ runId, experimentId }) => {
@@ -194,18 +197,18 @@ const GeneratedChart = ({ runId, experimentId }) => {
       hovertemplate: 'Step: %{x}<br>F1 Score: %{y:.4f}<extra></extra>'
     }],
     layout: {
-      title: 'Test F1 Score by Step',
-      xaxis: { 
-        title: 'Step', 
+      // Not adding title here because we want to make it configurable via MLflow UI.
+      xaxis: {
+        title: 'Step',
         gridcolor: '#e0e0e0',
         type: 'category'
       },
-      yaxis: { 
-        title: 'F1 Score', 
-        gridcolor: '#e0e0e0', 
+      yaxis: {
+        title: 'F1 Score',
+        gridcolor: '#e0e0e0',
         range: [0, 1.1]
       },
-      margin: { l: 60, r: 100, b: 50, t: 60 },
+      margin: { l: 60, r: 100, b: 50, t: 20 },
       paper_bgcolor: 'transparent',
       plot_bgcolor: 'transparent',
       hovermode: 'x unified',
@@ -243,6 +246,7 @@ export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
     isGenerating: false,
     requestId: null,
     chartCode: null,
+    chartTitle: null,
     error: null,
     progress: null,
   });
@@ -259,7 +263,8 @@ export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
         error: null,
         requestId: null,
         chartCode: null,
-        progress: 'Submitting request...',
+        chartTitle: null,
+        progress: 'Submitting request...', 
       }));
 
       const request: GenerateChartRequest = {
@@ -298,6 +303,7 @@ export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
             ...prev,
             isGenerating: false,
             chartCode: statusResponse.result?.chart_code || null,
+            chartTitle: statusResponse.result?.chart_title || null,
             progress: null,
           }));
           return;
@@ -329,6 +335,7 @@ export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
       isGenerating: false,
       requestId: null,
       chartCode: null,
+      chartTitle: null,
       error: null,
       progress: null,
     });

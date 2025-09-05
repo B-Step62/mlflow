@@ -1,5 +1,5 @@
 import { Button, Input, Modal, useDesignSystemTheme } from '@databricks/design-system';
-import React, { useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useState } from 'react';
 
 interface CustomChartGeneratorProps {
   runId?: string;
@@ -7,26 +7,33 @@ interface CustomChartGeneratorProps {
   onGenerate: (prompt: string) => void;
   isGenerating?: boolean;
   chartCode?: string;
+  chartTitle?: string;
   error?: string;
   progress?: string | null;
-  onAddChart?: () => void;
+  onAddChart?: (chartTitle?: string) => void;
   onResetChart?: () => void;
 }
 
-export const CustomChartGenerator: React.FC<CustomChartGeneratorProps> = ({
+export const CustomChartGenerator = forwardRef<{ openModal: () => void }, CustomChartGeneratorProps>(({
   runId,
   experimentId,
   onGenerate,
   isGenerating = false,
   chartCode,
+  chartTitle,
   error,
   progress,
   onAddChart,
   onResetChart,
-}) => {
+}, ref) => {
   const { theme } = useDesignSystemTheme();
   const [prompt, setPrompt] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Expose openModal function via ref
+  useImperativeHandle(ref, () => ({
+    openModal
+  }));
 
   const handleGenerate = () => {
     if (prompt.trim()) {
@@ -58,7 +65,7 @@ export const CustomChartGenerator: React.FC<CustomChartGeneratorProps> = ({
 
   const handleAddChart = () => {
     if (onAddChart) {
-      onAddChart();
+      onAddChart(chartTitle);
     }
     // Close modal after adding chart
     setIsModalOpen(false);
@@ -381,28 +388,11 @@ export const CustomChartGenerator: React.FC<CustomChartGeneratorProps> = ({
 
   return (
     <>
-      {/* Compact trigger button */}
-      <Button
-        componentId="mlflow.custom-charts.open-generator"
-        onClick={openModal}
-        icon={<span css={{ fontSize: '16px' }}>✨</span>}
-        css={{
-          alignSelf: 'flex-start',
-          backgroundColor: `${theme.colors.backgroundPrimary} !important`,
-          border: `1px solid ${theme.colors.border}`,
-          '&:hover': {
-            borderColor: theme.colors.primary,
-          },
-        }}
-      >
-        Generate custom chart
-      </Button>
-
       {/* Modal containing the chart generation form */}
       {isModalOpen && (
         <Modal
           componentId="mlflow.custom-charts.generator-modal"
-          title="✨ Generate Custom Chart"
+          title="✨ Generate Custom Chart with AI"
           visible={isModalOpen}
           onCancel={closeModal}
           footer={getModalFooter()}
@@ -411,7 +401,6 @@ export const CustomChartGenerator: React.FC<CustomChartGeneratorProps> = ({
           {renderModalContent()}
         </Modal>
       )}
-      
       <style>
         {`
           @keyframes spin {
@@ -422,4 +411,4 @@ export const CustomChartGenerator: React.FC<CustomChartGeneratorProps> = ({
       </style>
     </>
   );
-};
+});

@@ -42,6 +42,11 @@ export interface SaveChartResponse {
   artifact_uri: string;
 }
 
+export interface DeleteChartResponse {
+  success: boolean;
+  message?: string;
+}
+
 export interface ListChartsResponse {
   charts: Array<{
     chart_id: string;

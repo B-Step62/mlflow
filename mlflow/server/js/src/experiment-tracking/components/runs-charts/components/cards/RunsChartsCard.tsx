@@ -1,6 +1,7 @@
 import { useMemo, memo } from 'react';
 import { RunsChartType } from '../../runs-charts.types';
 import type {
+  RunsChartsAIGeneratedCardConfig,
   RunsChartsBarCardConfig,
   RunsChartsCardConfig,
   RunsChartsContourCardConfig,
@@ -25,6 +26,7 @@ import type {
 import { RunsChartsDifferenceChartCard } from './RunsChartsDifferenceChartCard';
 import type { RunsGroupByConfig } from '../../../experiment-page/utils/experimentPage.group-row-utils';
 import { RunsChartsImageChartCard } from './RunsChartsImageChartCard';
+import { RunsChartsAIGeneratedChartCard } from './RunsChartsAIGeneratedChartCard';
 import { RunsChartsGlobalLineChartConfig } from '../../../experiment-page/models/ExperimentPageUIState';
 
 export interface RunsChartsCardProps
@@ -176,6 +178,14 @@ const RunsChartsCardRaw = ({
     return (
       <RunsChartsContourChartCard
         config={cardConfig as RunsChartsContourCardConfig}
+        chartRunData={slicedRuns}
+        {...commonChartProps}
+      />
+    );
+  } else if (cardConfig.type === RunsChartType.AI_GENERATED) {
+    return (
+      <RunsChartsAIGeneratedChartCard
+        config={cardConfig as RunsChartsAIGeneratedCardConfig}
         chartRunData={slicedRuns}
         {...commonChartProps}
       />

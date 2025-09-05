@@ -146,8 +146,7 @@ export const createMockStatusResponse = (
 
 export const createMockSaveResponse = (overrides: Partial<SaveChartResponse> = {}): SaveChartResponse => ({
   chart_id: `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-  status: 'saved',
-  created_at: new Date().toISOString(),
+  artifact_uri: `s3://bucket/path/to/chart/${Date.now()}`,
   ...overrides,
 });
 
@@ -155,30 +154,20 @@ export const createMockListResponse = (count: number = 3, overrides: Partial<Lis
   const charts = Array.from({ length: count }, (_, index) => ({
     chart_id: `chart-${index + 1}`,
     name: `Generated Chart ${index + 1}`,
-    description: `A sample chart generated for testing purposes #${index + 1}`,
-    chart_code: createMockChartCode(index % 2 === 0 ? 'simple' : 'complex'),
+    artifact_uri: `s3://bucket/path/to/chart-${index + 1}`,
     created_at: new Date(Date.now() - (count - index) * 86400000).toISOString(), // Spread over recent days
-    updated_at: new Date(Date.now() - (count - index) * 43200000).toISOString(), // Half the age for updated
-    run_id: `run-${index + 1}`,
-    experiment_id: `exp-${index + 1}`,
-    tags: {
-      chart_type: index % 2 === 0 ? 'line' : 'bar',
-      complexity: index % 3 === 0 ? 'simple' : 'complex',
-    },
+    created_by: `user-${index + 1}`,
   }));
 
   return {
     charts,
-    total_count: count,
-    page: 1,
-    page_size: 50,
     ...overrides,
   };
 };
 
 export const createMockDeleteResponse = (overrides: Partial<DeleteChartResponse> = {}): DeleteChartResponse => ({
-  status: 'deleted',
-  deleted_at: new Date().toISOString(),
+  success: true,
+  message: 'Chart deleted successfully',
   ...overrides,
 });
 

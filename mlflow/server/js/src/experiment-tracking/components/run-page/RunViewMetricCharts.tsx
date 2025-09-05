@@ -1,6 +1,6 @@
-import { TableSkeleton, ToggleButton, useDesignSystemTheme, Accordion, PlusIcon, Button } from '@databricks/design-system';
+import { TableSkeleton, ToggleButton, useDesignSystemTheme, Accordion, SparkleIcon, Button } from '@databricks/design-system';
 import { compact, mapValues, values } from 'lodash';
-import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import React, { ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
 import { useIntl } from 'react-intl';
 import { useSelector } from 'react-redux';
 import { ReduxState } from '../../../redux-types';
@@ -9,13 +9,13 @@ import { KeyValueEntity } from '../../../common/types';
 
 import { RunsChartsTooltipWrapper } from '../runs-charts/hooks/useRunsChartsTooltip';
 import { RunViewChartTooltipBody } from './RunViewChartTooltipBody';
-import { RunsChartType, RunsChartsCardConfig } from '../runs-charts/runs-charts.types';
+import { RunsChartType, RunsChartsCardConfig, RunsChartsAIGeneratedCardConfig } from '../runs-charts/runs-charts.types';
+import { getUUID } from '../../../common/utils/ActionUtils';
 import type { RunsChartsRunData } from '../runs-charts/components/RunsCharts.common';
 import { RunsChartsLineChartXAxisType } from '../runs-charts/components/RunsCharts.common';
 import type { ExperimentRunsChartsUIConfiguration } from '../experiment-page/models/ExperimentPageUIState';
 import { RunsChartsSectionAccordion } from '../runs-charts/components/sections/RunsChartsSectionAccordion';
 import { RunsChartsConfigureModal } from '../runs-charts/components/RunsChartsConfigureModal';
-import MetricChartsAccordion, { METRIC_CHART_SECTION_HEADER_SIZE } from '../MetricChartsAccordion';
 import {
   RunsChartsUIConfigurationContextProvider,
   useConfirmChartCardConfigurationFn,
@@ -39,8 +39,8 @@ import { RunsChartsGlobalChartSettingsDropdown } from '../runs-charts/components
 import { RunsChartsDraggableCardsGridContextProvider } from '../runs-charts/components/RunsChartsDraggableCardsGridContext';
 import { RunsChartsFilterInput } from '../runs-charts/components/RunsChartsFilterInput';
 import { CustomChartGenerator } from '../custom-charts/CustomChartGenerator';
+import { RunsChartsAIGeneratedChartConfigModal } from '../runs-charts/components/cards/RunsChartsAIGeneratedChartConfigModal';
 import { useCustomChartGeneration } from './hooks/useCustomChartGeneration';
-import { LazyPlot } from '../LazyPlot';
 
 interface RunViewMetricChartsProps {
   metricKeys: string[];
@@ -54,128 +54,6 @@ interface RunViewMetricChartsProps {
   tags?: Record<string, KeyValueEntity>;
   params?: Record<string, KeyValueEntity>;
 }
-
-// Dynamic chart renderer that executes generated React code
-const ChartRenderer = ({ chartCode, runId, experimentId }: { 
-  chartCode: string; 
-  runId?: string; 
-  experimentId?: string; 
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const [ChartComponent, setChartComponent] = useState<React.ComponentType<any> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const executeChartCode = () => {
-      try {
-        setError(null);
-
-        // Strip import and export statements since we provide dependencies directly
-        const codeWithoutImports = chartCode
-          .replace(/import\s+.*?from\s+['"].*?['"];?/g, '') // Remove import statements
-          .replace(/export\s+/g, ''); // Remove export keywords
-        
-        // Create a safe execution context with necessary imports
-        const executeCode = new Function(
-          'React',
-          'useState', 
-          'useEffect',
-          'LazyPlot',
-          'useDesignSystemTheme',
-          `
-          ${codeWithoutImports}
-          
-          // Return the GeneratedChart component
-          return GeneratedChart;
-          `
-        );
-
-        // Execute the code with required dependencies
-        const GeneratedChartComponent = executeCode(
-          React,
-          useState,
-          useEffect,
-          LazyPlot,
-          useDesignSystemTheme
-        );
-
-        // Create a wrapper component that passes run context
-        const WrappedComponent = () => (
-          <div css={{ 
-            width: '100%', 
-            height: '400px',
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: theme.borders.borderRadiusMd,
-            overflow: 'hidden',
-            backgroundColor: theme.colors.backgroundPrimary
-          }}>
-            <GeneratedChartComponent runId={runId} experimentId={experimentId} />
-          </div>
-        );
-
-        setChartComponent(() => WrappedComponent);
-        
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to execute chart code';
-        setError(errorMessage);
-        console.error('Chart execution error:', err);
-      }
-    };
-
-    if (chartCode) {
-      executeChartCode();
-    }
-  }, [chartCode, runId, experimentId, theme]);
-
-  if (error) {
-    return (
-      <div css={{
-        width: '100%',
-        height: '400px',
-        border: `1px solid ${theme.colors.borderDanger}`,
-        borderRadius: theme.borders.borderRadiusMd,
-        padding: theme.spacing.md,
-        backgroundColor: theme.colors.backgroundDanger,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center'
-      }}>
-        <div>
-          <div css={{ fontSize: '24px', marginBottom: theme.spacing.sm }}>⚠️</div>
-          <div css={{ color: theme.colors.textValidationDanger, fontWeight: 'bold' }}>
-            Chart Execution Error
-          </div>
-          <div css={{ color: theme.colors.textValidationDanger, fontSize: theme.typography.fontSizeSm, marginTop: theme.spacing.xs }}>
-            {error}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!ChartComponent) {
-    return (
-      <div css={{
-        width: '100%',
-        height: '400px',
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusMd,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.backgroundSecondary
-      }}>
-        <div css={{ textAlign: 'center', color: theme.colors.textSecondary }}>
-          <div css={{ fontSize: '24px', marginBottom: theme.spacing.sm }}>📊</div>
-          <div>Loading chart...</div>
-        </div>
-      </div>
-    );
-  }
-
-  return <ChartComponent />;
-};
 
 /**
  * Component displaying metric charts for a single run
@@ -199,19 +77,19 @@ const RunViewMetricChartsImpl = ({
   const [search, setSearch] = useState('');
   const { formatMessage } = useIntl();
   
-  // Custom charts state
-  const [customChartsExpanded, setCustomChartsExpanded] = useState(true);
-  const [customCharts, setCustomCharts] = useState<{ id: string; code: string }[]>([]);
-  
-  // Custom chart generation state
+  // Custom chart generation state (for AI generation modal)
   const { 
     isGenerating, 
-    chartCode, 
+    chartCode,
+    chartTitle, 
     error: chartError, 
     progress,
     generateCustomChart, 
     reset: resetChart 
   } = useCustomChartGeneration();
+  
+  // Ref to control the main generator
+  const mainGeneratorRef = React.useRef<any>(null);
 
   const { compareRunCharts, compareRunSections, chartsSearchFilter } = chartUIState;
 
@@ -246,15 +124,31 @@ const RunViewMetricChartsImpl = ({
   }));
 
   const [configuredCardConfig, setConfiguredCardConfig] = useState<RunsChartsCardConfig | null>(null);
+  const [aiChartConfigModal, setAiChartConfigModal] = useState<RunsChartsAIGeneratedCardConfig | null>(null);
 
   const reorderCharts = useReorderRunsChartsFn();
 
-  const addNewChartCard = (metricSectionId: string) => (type: RunsChartType) =>
-    setConfiguredCardConfig(RunsChartsCardConfig.getEmptyChartCardByType(type, false, undefined, metricSectionId));
+  const addNewChartCard = (metricSectionId: string) => (type: RunsChartType) => {
+    if (type === RunsChartType.AI_GENERATED) {
+      // For AI generated charts, open the chart generation modal
+      mainGeneratorRef.current?.openModal();
+    } else {
+      // For regular chart types, use the existing config modal
+      setConfiguredCardConfig(RunsChartsCardConfig.getEmptyChartCardByType(type, false, undefined, metricSectionId));
+    }
+  };
 
   const insertCharts = useInsertRunsChartsFn();
 
-  const startEditChart = (chartCard: RunsChartsCardConfig) => setConfiguredCardConfig(chartCard);
+  const startEditChart = (chartCard: RunsChartsCardConfig) => {
+    if (chartCard.type === RunsChartType.AI_GENERATED) {
+      // For AI-generated charts, use the custom configuration modal
+      setAiChartConfigModal(chartCard as RunsChartsAIGeneratedCardConfig);
+    } else {
+      // For other chart types, use the regular configuration modal
+      setConfiguredCardConfig(chartCard);
+    }
+  };
 
   const removeChart = useRemoveRunsChartFn();
 
@@ -361,31 +255,38 @@ const RunViewMetricChartsImpl = ({
       <div
         css={{
           paddingBottom: theme.spacing.md,
-          display: 'flex',
-          gap: theme.spacing.sm,
           flex: '0 0 auto',
         }}
       >
-        <RunsChartsFilterInput chartsSearchFilter={chartsSearchFilter} />
-        {shouldEnableRunDetailsPageAutoRefresh() && (
-          <ToggleButton
-            componentId="codegen_mlflow_app_src_experiment-tracking_components_run-page_runviewmetricchartsv2.tsx_244"
-            pressed={chartUIState.autoRefreshEnabled}
-            onPressedChange={(pressed) => {
-              updateChartsUIState((current) => ({ ...current, autoRefreshEnabled: pressed }));
-            }}
-          >
-            {formatMessage({
-              defaultMessage: 'Auto-refresh',
-              description: 'Run page > Charts tab > Auto-refresh toggle button',
-            })}
-          </ToggleButton>
-        )}
-        <RunsChartsGlobalChartSettingsDropdown
-          metricKeyList={metricKeys}
-          globalLineChartConfig={chartUIState.globalLineChartConfig}
-          updateUIState={updateChartsUIState}
-        />
+        {/* First row: Search and controls */}
+        <div
+          css={{
+            display: 'flex',
+            gap: theme.spacing.sm,
+            marginBottom: theme.spacing.sm,
+          }}
+        >
+          <RunsChartsFilterInput chartsSearchFilter={chartsSearchFilter} />
+          {shouldEnableRunDetailsPageAutoRefresh() && (
+            <ToggleButton
+              componentId="codegen_mlflow_app_src_experiment-tracking_components_run-page_runviewmetricchartsv2.tsx_244"
+              pressed={chartUIState.autoRefreshEnabled}
+              onPressedChange={(pressed) => {
+                updateChartsUIState((current) => ({ ...current, autoRefreshEnabled: pressed }));
+              }}
+            >
+              {formatMessage({
+                defaultMessage: 'Auto-refresh',
+                description: 'Run page > Charts tab > Auto-refresh toggle button',
+              })}
+            </ToggleButton>
+          )}
+          <RunsChartsGlobalChartSettingsDropdown
+            metricKeyList={metricKeys}
+            globalLineChartConfig={chartUIState.globalLineChartConfig}
+            updateUIState={updateChartsUIState}
+          />
+        </div>
       </div>
       <div
         css={{
@@ -393,6 +294,14 @@ const RunViewMetricChartsImpl = ({
           overflow: 'auto',
         }}
       >
+        {/* Generate custom chart button */}
+        <Button
+          componentId="generate-custom-chart-button"
+          onClick={() => mainGeneratorRef.current?.openModal()}
+          icon={<SparkleIcon />}
+        >
+          Generate custom chart with MLflow AI Engine
+        </Button>
         <RunsChartsTooltipWrapper contextData={tooltipContextValue} component={RunViewChartTooltipBody}>
           <RunsChartsDraggableCardsGridContextProvider visibleChartCards={visibleChartCards}>
             <RunsChartsSectionAccordion
@@ -405,7 +314,7 @@ const RunViewMetricChartsImpl = ({
               removeChart={removeChart}
               addNewChartCard={addNewChartCard}
               search={chartsSearchFilter ?? ''}
-              supportedChartTypes={[RunsChartType.LINE, RunsChartType.BAR, RunsChartType.IMAGE]}
+              supportedChartTypes={[RunsChartType.LINE, RunsChartType.BAR, RunsChartType.IMAGE, RunsChartType.AI_GENERATED]}
               setFullScreenChart={setFullScreenChart}
               autoRefreshEnabled={autoRefreshEnabled}
               globalLineChartConfig={chartUIState.globalLineChartConfig}
@@ -415,153 +324,35 @@ const RunViewMetricChartsImpl = ({
         </RunsChartsTooltipWrapper>
       </div>
       
-      {/* Custom Charts Section */}
-      <div css={{ 
-        borderTop: `1px solid ${theme.colors.border}`, 
-        paddingTop: theme.spacing.md,
-        marginTop: theme.spacing.md 
-      }}>
-        <MetricChartsAccordion
-          activeKey={customChartsExpanded ? 'custom-charts' : undefined}
-          onActiveKeyChange={(key) => setCustomChartsExpanded(key === 'custom-charts' || (Array.isArray(key) && key.includes('custom-charts')))}
-        >
-          <Accordion.Panel
-            key="custom-charts"
-            header={
-              <div
-                css={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  width: '100%',
-                  padding: `${theme.spacing.xs}px 0px`,
-                  height: `${METRIC_CHART_SECTION_HEADER_SIZE}px`,
-                }}
-              >
-                <div
-                  css={{
-                    minWidth: 0,
-                    maxWidth: '40%',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div
-                    css={{
-                      textOverflow: 'ellipsis',
-                      maxWidth: '100%',
-                      overflow: 'clip',
-                      paddingLeft: theme.spacing.xs,
-                      whiteSpace: 'pre',
-                      fontSize: theme.typography.fontSizeBase,
-                      fontWeight: theme.typography.typographyBoldFontWeight,
-                      color: theme.colors.textPrimary,
-                    }}
-                  >
-                    Custom Charts
-                  </div>
-                  <div
-                    css={{
-                      padding: theme.spacing.xs,
-                      position: 'relative',
-                      color: theme.colors.textSecondary,
-                    }}
-                  >
-                    ({customCharts.length})
-                  </div>
-                </div>
-                <div
-                  css={{
-                    position: 'absolute',
-                    top: '50%',
-                    right: '0',
-                    transform: 'translate(0, -50%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div
-                    css={{
-                      alignSelf: 'flex-end',
-                      marginLeft: theme.spacing.xs,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <CustomChartGenerator
-                      runId={runInfo.runUuid}
-                      experimentId={runInfo.experimentId}
-                      onGenerate={generateCustomChart}
-                      isGenerating={isGenerating}
-                      chartCode={chartCode}
-                      error={chartError}
-                      progress={progress}
-                      onAddChart={() => {
-                        setCustomCharts(prev => [...prev, { id: Date.now().toString(), code: chartCode || '' }]);
-                        resetChart();
-                      }}
-                      onResetChart={resetChart}
-                    />
-                  </div>
-                </div>
-              </div>
-            }
-          >
-            <div css={{ padding: `0 0 ${theme.spacing.md}px 0` }}>
-              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-                {/* Display existing custom charts */}
-                {customCharts.length > 0 && (
-                  <div css={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
-                    gap: theme.spacing.md,
-                    marginTop: theme.spacing.md
-                  }}>
-                    {customCharts.map((chart) => (
-                      <div
-                        key={chart.id}
-                        css={{
-                          border: `1px solid ${theme.colors.border}`,
-                          borderRadius: theme.borders.borderRadiusMd,
-                          padding: theme.spacing.md,
-                          backgroundColor: theme.colors.backgroundSecondary,
-                        }}
-                      >
-                        <div css={{ 
-                          fontSize: theme.typography.fontSizeSm,
-                          fontWeight: theme.typography.typographyBoldFontWeight,
-                          color: theme.colors.textSecondary,
-                          marginBottom: theme.spacing.sm
-                        }}>
-                          Custom Chart {chart.id}
-                        </div>
-                        <ChartRenderer 
-                          chartCode={chart.code} 
-                          runId={runInfo.runUuid} 
-                          experimentId={runInfo.experimentId} 
-                        />
-                        <div css={{ 
-                          display: 'flex', 
-                          justifyContent: 'flex-end', 
-                          marginTop: theme.spacing.sm,
-                          gap: theme.spacing.sm
-                        }}>
-                          <Button
-                            componentId="mlflow.custom-charts.remove-chart"
-                            onClick={() => {
-                              setCustomCharts(prev => prev.filter(c => c.id !== chart.id));
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </Accordion.Panel>
-        </MetricChartsAccordion>
-      </div>
+      {/* Hidden AI Chart Generator Modal - triggered by Add Chart menu */}
+      <CustomChartGenerator
+        ref={mainGeneratorRef}
+        runId={runInfo.runUuid || undefined}
+        experimentId={runInfo.experimentId || undefined}
+        onGenerate={generateCustomChart}
+        isGenerating={isGenerating}
+        chartCode={chartCode || undefined}
+        chartTitle={chartTitle || undefined}
+        error={chartError || undefined}
+        progress={progress}
+        onAddChart={(title) => {
+          if (chartCode && compareRunSections) {
+            // Find the Model metrics section to add the AI-generated chart to
+            const modelMetricsSection = compareRunSections.find(section => section.name === MLFLOW_MODEL_METRIC_NAME);
+            const sectionId = modelMetricsSection?.uuid || getUUID();
+            
+            // Create a new AI-generated chart config
+            const aiChartConfig = new RunsChartsAIGeneratedCardConfig(false, undefined, sectionId);
+            aiChartConfig.chartCode = chartCode;
+            aiChartConfig.displayName = title || chartTitle || `AI Generated Chart ${Date.now()}`;
+            
+            // Add the chart to the normal chart system using the confirmChartCardConfiguration function
+            confirmChartCardConfiguration(aiChartConfig);
+          }
+          resetChart();
+        }}
+        onResetChart={resetChart}
+      />
       
       {configuredCardConfig && (
         <RunsChartsConfigureModal
@@ -574,6 +365,19 @@ const RunViewMetricChartsImpl = ({
           groupBy={null}
           supportedChartTypes={[RunsChartType.LINE, RunsChartType.BAR, RunsChartType.IMAGE]}
           globalLineChartConfig={chartUIState.globalLineChartConfig}
+        />
+      )}
+      
+      {/* AI Chart Configuration Modal */}
+      {aiChartConfigModal && (
+        <RunsChartsAIGeneratedChartConfigModal
+          isOpen
+          onClose={() => setAiChartConfigModal(null)}
+          config={aiChartConfigModal}
+          onSave={(updatedConfig) => {
+            confirmChartCardConfiguration(updatedConfig);
+            setAiChartConfigModal(null);
+          }}
         />
       )}
       <RunsChartsFullScreenModal
@@ -589,66 +393,44 @@ const RunViewMetricChartsImpl = ({
   );
 };
 
-export const RunViewMetricCharts = (props: RunViewMetricChartsProps) => {
-  const persistenceIdentifier = `${props.runInfo.runUuid}-${props.mode}`;
-
-  const localStore = useMemo(
-    () => LocalStorageUtils.getStoreForComponent('RunPage', persistenceIdentifier),
-    [persistenceIdentifier],
-  );
-
-  const [chartUIState, updateChartsUIState] = useState<ExperimentRunsChartsUIConfiguration>(() => {
-    const defaultChartState: ExperimentRunsChartsUIConfiguration = {
-      isAccordionReordered: false,
-      compareRunCharts: undefined,
-      compareRunSections: undefined,
-      // Auto-refresh is enabled by default only if the flag is set
-      autoRefreshEnabled: shouldEnableRunDetailsPageAutoRefresh(),
-      globalLineChartConfig: {
-        xAxisKey: RunsChartsLineChartXAxisType.STEP,
-        lineSmoothness: 0,
-        selectedXAxisMetricKey: '',
-      },
-    };
-    try {
-      const persistedChartState = localStore.getItem('chartUIState');
-
-      if (!persistedChartState) {
-        return defaultChartState;
-      }
-      return JSON.parse(persistedChartState);
-    } catch {
-      return defaultChartState;
-    }
+export const RunViewMetricCharts = ({
+  runInfo,
+  metricKeys,
+  mode,
+  latestMetrics = {},
+  params = {},
+  tags = {},
+}: RunViewMetricChartsProps) => {
+  const [chartUIState, setChartUIState] = useState<ExperimentRunsChartsUIConfiguration>({
+    compareRunCharts: undefined,
+    compareRunSections: undefined,
+    chartsSearchFilter: '',
+    autoRefreshEnabled: false,
+    isAccordionReordered: false,
+    globalLineChartConfig: {},
   });
 
-  useEffect(() => {
-    localStore.setItem('chartUIState', JSON.stringify(chartUIState));
-  }, [chartUIState, localStore]);
-
-  return (
-    <RunsChartsUIConfigurationContextProvider updateChartsUIState={updateChartsUIState}>
-      <RunViewMetricChartsImpl {...props} chartUIState={chartUIState} updateChartsUIState={updateChartsUIState} />
-    </RunsChartsUIConfigurationContextProvider>
+  const updateChartsUIState = useCallback(
+    (stateSetter: (state: ExperimentRunsChartsUIConfiguration) => ExperimentRunsChartsUIConfiguration) => {
+      setChartUIState(stateSetter);
+    },
+    []
   );
-};
 
-const RunViewMetricChartsSkeleton = ({ className }: { className?: string }) => {
-  const { theme } = useDesignSystemTheme();
   return (
-    <div
-      css={{
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr',
-        gridTemplateRows: '200px',
-        gap: theme.spacing.md,
-      }}
-      className={className}
+    <RunsChartsUIConfigurationContextProvider
+      updateChartsUIState={updateChartsUIState}
     >
-      {new Array(6).fill(null).map((_, index) => (
-        <TableSkeleton key={index} lines={5} seed={index.toString()} />
-      ))}
-    </div>
+      <RunViewMetricChartsImpl
+        runInfo={runInfo}
+        metricKeys={metricKeys}
+        mode={mode}
+        chartUIState={chartUIState}
+        updateChartsUIState={updateChartsUIState}
+        latestMetrics={latestMetrics}
+        params={params}
+        tags={tags}
+      />
+    </RunsChartsUIConfigurationContextProvider>
   );
 };

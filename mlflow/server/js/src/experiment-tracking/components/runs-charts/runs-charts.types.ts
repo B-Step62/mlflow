@@ -23,6 +23,7 @@ export enum RunsChartType {
   PARALLEL = 'PARALLEL',
   DIFFERENCE = 'DIFFERENCE',
   IMAGE = 'IMAGE',
+  AI_GENERATED = 'AI_GENERATED',
 }
 
 const MIN_NUMBER_OF_STEP_FOR_LINE_COMPARISON = 1;
@@ -89,6 +90,8 @@ export abstract class RunsChartsCardConfig {
       return new RunsChartsDifferenceCardConfig(isGenerated, uuid, metricSectionId);
     } else if (type === RunsChartType.IMAGE) {
       return new RunsChartsImageCardConfig(isGenerated, uuid, metricSectionId);
+    } else if (type === RunsChartType.AI_GENERATED) {
+      return new RunsChartsAIGeneratedCardConfig(isGenerated, uuid, metricSectionId);
     } else {
       // Must be contour
       return new RunsChartsContourCardConfig(isGenerated, uuid, metricSectionId);
@@ -296,6 +299,14 @@ export abstract class RunsChartsCardConfig {
     const sectionName2Uuid: Record<string, string> = {};
     compareRunSections.forEach((section) => (sectionName2Uuid[section.name] = section.uuid));
 
+    // Preserve existing AI-generated charts and other non-metric/non-image charts
+    // The resultChartSet already contains all existing charts, but we need to ensure
+    // they don't get overwritten by the metric/image processing logic below
+    
+    // Debug: Log existing AI charts
+    const existingAICharts = resultChartSet.filter(chart => chart.type === RunsChartType.AI_GENERATED);
+    console.log('Existing AI charts in updateChartAndSectionConfigs:', existingAICharts.length, existingAICharts);
+
     imagesToRender.forEach((imageKey) => {
       const doesImageKeyExist =
         resultChartSet.findIndex((chart) => {
@@ -440,6 +451,10 @@ export abstract class RunsChartsCardConfig {
       ].filter((section) => !isNil(section));
     }
 
+    // Debug: Log final AI charts
+    const finalAICharts = resultChartSet.filter(chart => chart.type === RunsChartType.AI_GENERATED);
+    console.log('Final AI charts in updateChartAndSectionConfigs:', finalAICharts.length, finalAICharts);
+    
     return { resultChartSet, resultSectionSet, isResultUpdated };
   }
 }
@@ -628,6 +643,20 @@ export class RunsChartsImageCardConfig extends RunsChartsCardConfig {
   // image keys to show
   imageKeys: string[] = [];
   step = 0;
+}
+
+export class RunsChartsAIGeneratedCardConfig extends RunsChartsCardConfig {
+  type: RunsChartType.AI_GENERATED = RunsChartType.AI_GENERATED;
+  
+  /**
+   * The generated JavaScript code for the chart
+   */
+  chartCode = '';
+  
+  /**
+   * Custom display name for the AI-generated chart
+   */
+  displayName = 'AI Generated Chart';
 }
 
 /**

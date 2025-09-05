@@ -139,6 +139,21 @@ export const RunsChartsAddChartMenu = ({ onAddChart, supportedChartTypes }: Runs
             />
           </DropdownMenu.Item>
         )}
+        {isChartTypeSupported(RunsChartType.AI_GENERATED) && (
+          <DropdownMenu.Item
+            componentId="codegen_mlflow_app_src_experiment-tracking_components_runs-charts_components_runschartsaddchartmenu.tsx_ai_generated"
+            onClick={() => onAddChart(RunsChartType.AI_GENERATED)}
+            data-testid="experiment-view-compare-runs-chart-type-ai-generated"
+          >
+            <DropdownMenu.IconWrapper css={styles.iconWrapper}>
+              <span css={{ fontSize: '14px' }}>🪄</span>
+            </DropdownMenu.IconWrapper>
+            <FormattedMessage
+              defaultMessage="Generate AI chart"
+              description="Experiment tracking > runs charts > add chart menu > AI generated chart"
+            />
+          </DropdownMenu.Item>
+        )}
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   );

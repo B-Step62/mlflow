@@ -103,11 +103,17 @@ export const useConfirmChartCardConfigurationFn = () => {
 
       // Creating new chart
       if (!configuredCard.uuid) {
-        updateChartsUIState((current) => ({
-          ...current,
-          // This condition ensures that chart collection will remain undefined if not set previously
-          compareRunCharts: current.compareRunCharts && [...current.compareRunCharts, serializedCard],
-        }));
+        console.log('Adding new chart:', serializedCard);
+        updateChartsUIState((current) => {
+          console.log('Current compareRunCharts:', current.compareRunCharts?.length, current.compareRunCharts);
+          const newState = {
+            ...current,
+            // This condition ensures that chart collection will remain undefined if not set previously
+            compareRunCharts: current.compareRunCharts && [...current.compareRunCharts, serializedCard],
+          };
+          console.log('New compareRunCharts:', newState.compareRunCharts?.length, newState.compareRunCharts);
+          return newState;
+        });
       } /* Editing existing chart */ else {
         updateChartsUIState((current) => ({
           ...current,
