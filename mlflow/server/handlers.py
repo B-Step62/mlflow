@@ -3599,6 +3599,266 @@ def get_endpoints(get_handler=get_handler):
     )
 
 
+
+# =============================================================================
+# Chart Generation Handlers (Mock Implementation - Phase 4)
+# =============================================================================
+
+@catch_mlflow_exception
+def generate_chart_handler():
+    """
+    Mock handler for POST /charts/generate endpoint.
+    Accepts a chart generation request and returns a request ID for polling.
+    """
+    from flask import request
+    import json
+    import uuid
+    import time
+    
+    # Parse request
+    try:
+        request_data = request.get_json() or {}
+        prompt = request_data.get('prompt', '')
+        run_id = request_data.get('run_id')
+        experiment_id = request_data.get('experiment_id')
+        
+        if not prompt:
+            return jsonify({
+                'error_code': 'INVALID_PARAMETER_VALUE',
+                'message': 'prompt is required'
+            }), 400
+            
+        # Generate mock request ID
+        request_id = f"chart-gen-{int(time.time())}-{uuid.uuid4().hex[:8]}"
+        
+        # Store the request in memory for mock polling
+        # In real implementation, this would go to a database
+        if not hasattr(generate_chart_handler, '_requests'):
+            generate_chart_handler._requests = {}
+            
+        generate_chart_handler._requests[request_id] = {
+            'status': 'pending',
+            'prompt': prompt,
+            'run_id': run_id,
+            'experiment_id': experiment_id,
+            'created_at': time.time()
+        }
+        
+        response = {
+            'request_id': request_id,
+            'status': 'pending'
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error_code': 'INTERNAL_ERROR',
+            'message': str(e)
+        }), 500
+
+
+@catch_mlflow_exception  
+def get_chart_status_handler(request_id):
+    """
+    Mock handler for GET /charts/status/{request_id} endpoint.
+    Returns the status of a chart generation request.
+    """
+    import time
+    import json
+    
+    # Check if request exists
+    if not hasattr(generate_chart_handler, '_requests'):
+        generate_chart_handler._requests = {}
+        
+    if request_id not in generate_chart_handler._requests:
+        return jsonify({
+            'error_code': 'RESOURCE_DOES_NOT_EXIST',
+            'message': f'Chart generation request {request_id} not found'
+        }), 404
+        
+    request_info = generate_chart_handler._requests[request_id]
+    current_time = time.time()
+    elapsed = current_time - request_info['created_at']
+    
+    # Mock progression: pending -> processing -> completed
+    if elapsed < 2:
+        status = 'pending'
+        result = None
+    elif elapsed < 5:
+        status = 'processing'  
+        result = None
+    else:
+        status = 'completed'
+        # Return mock chart code similar to the frontend mock
+        result = {
+            'chart_title': 'Test Metric Chart',
+            'chart_code': '''
+// Generated chart code that fetches real MLflow metrics
+const GeneratedChart = ({ runId, experimentId }) => {
+  const [metrics, setMetrics] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        setLoading(true);
+        
+        // First, get the run details to see available metrics
+        const runResponse = await fetch(`/ajax-api/2.0/mlflow/runs/get?run_id=${runId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (!runResponse.ok) {
+          throw new Error('Failed to fetch run details. Error: ' + runResponse.statusText);
+        }
+        
+        const runData = await runResponse.json();
+        const availableMetrics = runData.run?.data?.metrics || [];
+        
+        // Look for accuracy metric specifically, fallback to first available metric
+        let targetMetricKey = 'accuracy';
+        let targetMetric = availableMetrics.find(m => m.key === targetMetricKey);
+        
+        if (!targetMetric && availableMetrics.length > 0) {
+          // Fallback to first available metric
+          targetMetric = availableMetrics[0];
+          targetMetricKey = targetMetric.key;
+        }
+        
+        if (!targetMetric) {
+          throw new Error('No metrics found in this run');
+        }
+        
+        // Fetch the metric history
+        const historyParams = new URLSearchParams({
+          run_id: runId,
+          metric_key: targetMetricKey,
+          max_results: '1000'
+        });
+        const historyResponse = await fetch(`/ajax-api/2.0/mlflow/metrics/get-history?${historyParams}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (!historyResponse.ok) {
+          throw new Error(`Failed to fetch metric history for '${targetMetricKey}': ${historyResponse.statusText}`);
+        }
+        
+        const historyData = await historyResponse.json();
+        const metricValues = historyData.metrics || [];
+        
+        if (metricValues.length === 0) {
+          throw new Error(`No values found for metric '${targetMetricKey}'`);
+        }
+        
+        setMetrics(metricValues);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (runId) {
+      fetchMetrics();
+    }
+  }, [runId]);
+  
+  if (loading) {
+    return React.createElement('div', {
+      style: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '400px',
+        border: '1px solid #d9d9d9',
+        borderRadius: '6px'
+      }
+    }, 'Loading metrics...');
+  }
+  
+  if (error) {
+    return React.createElement('div', {
+      style: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '400px',
+        border: '1px solid #ff4d4f',
+        borderRadius: '6px',
+        color: '#ff4d4f'
+      }
+    }, 'Error: ' + error);
+  }
+  
+  // Prepare data for Plotly line chart
+  const plotlyConfig = {
+    data: [{
+      x: metrics.map((m, i) => m.step !== undefined ? m.step : i),
+      y: metrics.map(m => m.value),
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'metric',
+      line: { 
+        color: '#1890ff',
+        width: 2
+      },
+      marker: { 
+        size: 6,
+        color: '#1890ff'
+      },
+      hovertemplate: 'Step: %{x}<br>Value: %{y:.4f}<extra></extra>'
+    }],
+    layout: {
+      xaxis: {
+        title: 'Step',
+        gridcolor: '#e0e0e0'
+      },
+      yaxis: {
+        title: 'Metric Value',
+        gridcolor: '#e0e0e0'
+      },
+      margin: { l: 60, r: 20, b: 50, t: 20 },
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent',
+      hovermode: 'x unified'
+    }
+  };
+  
+  return React.createElement(LazyPlot, {
+    data: plotlyConfig.data,
+    layout: plotlyConfig.layout,
+    style: { width: '100%', height: '100%' },
+    useResizeHandler: true
+  });
+};''',
+            'data_sources': [
+                {
+                    'type': 'metric',
+                    'name': 'accuracy',
+                    'path': '/ajax-api/2.0/mlflow/metrics/get-history'
+                }
+            ]
+        }
+    
+    response = {
+        'request_id': request_id,
+        'status': status
+    }
+    
+    if result:
+        response['result'] = result
+        
+    return jsonify(response), 200
+
+
 HANDLERS = {
     # Tracking Server APIs
     CreateExperiment: _create_experiment,

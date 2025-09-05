@@ -41,204 +41,38 @@ interface UseCustomChartGenerationResult extends UseCustomChartGenerationState {
   reset: () => void;
 }
 
-// Mock API functions (will be replaced with real API calls in Phase 4)
-const mockGenerateChart = async (request: GenerateChartRequest): Promise<GenerateChartResponse> => {
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-  
-  return {
-    request_id: `mock-request-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    status: 'pending' as const,
-  };
+// API functions for chart generation
+const generateChart = async (request: GenerateChartRequest): Promise<GenerateChartResponse> => {
+  const response = await fetch('/ajax-api/2.0/mlflow/charts/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return response.json();
 };
 
-const mockGetChartStatus = async (requestId: string): Promise<ChartStatusResponse> => {
-  await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-  
-  // Mock progressive status updates
-  const mockStatuses = ['pending', 'processing', 'completed'] as const;
-  const randomStatus = mockStatuses[Math.floor(Math.random() * mockStatuses.length)];
-  
-  if (randomStatus === 'completed') {
-    return {
-      request_id: requestId,
-      status: 'completed',
-      result: {
-        chart_title: 'Test F1 Score by Step',
-        chart_code: `
-// Generated chart code that fetches real MLflow metrics
-const GeneratedChart = ({ runId, experimentId }) => {
-  const [metrics, setMetrics] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        setLoading(true);
-        
-        // First, get the run details to see available metrics
-        const runResponse = await fetch(\`/ajax-api/2.0/mlflow/runs/get?run_id=\${runId}\`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-        
-        if (!runResponse.ok) {
-          throw new Error('Failed to fetch run details. Error: ' + runResponse.statusText);
-        }
-        
-        const runData = await runResponse.json();
-        const availableMetrics = runData.run?.data?.metrics || [];
-        
-        // Look for test_f1 metric specifically
-        const targetMetricKey = 'test_f1';
-        const targetMetric = availableMetrics.find(m => m.key === targetMetricKey);
-        
-        if (!targetMetric) {
-          // If test_f1 not found, list available metrics for debugging
-          const availableKeys = availableMetrics.map(m => m.key).join(', ');
-          throw new Error(
-            availableKeys.length > 0 
-              ? \`Metric '\${targetMetricKey}' not found. Available metrics: \${availableKeys}\`
-              : 'No metrics found in this run'
-          );
-        }
-        
-        // Fetch the test_f1 metric history
-        const historyParams = new URLSearchParams({
-          run_id: runId,
-          metric_key: targetMetricKey,
-          max_results: '1000'
-        });
-        const historyResponse = await fetch(\`/ajax-api/2.0/mlflow/metrics/get-history?\${historyParams}\`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-        
-        if (!historyResponse.ok) {
-          throw new Error(\`Failed to fetch metric history for '\${targetMetricKey}': \${historyResponse.statusText}\`);
-        }
-        
-        const historyData = await historyResponse.json();
-        const metricValues = historyData.metrics || [];
-        
-        if (metricValues.length === 0) {
-          throw new Error(\`No values found for metric '\${targetMetricKey}'\`);
-        }
-        
-        setMetrics(metricValues);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (runId) {
-      fetchMetrics();
-    }
-  }, [runId]);
-  
-  if (loading) {
-    return React.createElement('div', {
-      style: { 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        height: '400px',
-        border: '1px solid #d9d9d9',
-        borderRadius: '6px'
-      }
-    }, 'Loading metrics...');
-  }
-  
-  if (error) {
-    return React.createElement('div', {
-      style: { 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        height: '400px',
-        border: '1px solid #ff4d4f',
-        borderRadius: '6px',
-        color: '#ff4d4f'
-      }
-    }, 'Error: ' + error);
-  }
-  
-  // Prepare data for Plotly bar chart
-  const plotlyConfig = {
-    data: [{
-      x: metrics.map((m, i) => m.step !== undefined ? m.step : i),
-      y: metrics.map(m => m.value),
-      type: 'bar',
-      name: 'test_f1',
-      marker: { 
-        color: metrics.map(m => m.value),
-        colorscale: [
-          [0, '#ff4444'],
-          [0.5, '#ffaa00'],
-          [1, '#00aa00']
-        ],
-        cmin: 0,
-        cmax: 1,
-        showscale: true,
-        colorbar: {
-          title: 'F1 Score',
-          thickness: 15,
-          len: 0.7
-        }
-      },
-      text: metrics.map(m => m.value.toFixed(4)),
-      textposition: 'outside',
-      hovertemplate: 'Step: %{x}<br>F1 Score: %{y:.4f}<extra></extra>'
-    }],
-    layout: {
-      // Not adding title here because we want to make it configurable via MLflow UI.
-      xaxis: {
-        title: 'Step',
-        gridcolor: '#e0e0e0',
-        type: 'category'
-      },
-      yaxis: {
-        title: 'F1 Score',
-        gridcolor: '#e0e0e0',
-        range: [0, 1.1]
-      },
-      margin: { l: 60, r: 100, b: 50, t: 20 },
-      paper_bgcolor: 'transparent',
-      plot_bgcolor: 'transparent',
-      hovermode: 'x unified',
-      bargap: 0.2
-    }
-  };
-  
-  return React.createElement(LazyPlot, {
-    data: plotlyConfig.data,
-    layout: plotlyConfig.layout,
-    style: { width: '100%', height: '100%' },
-    useResizeHandler: true
+const getChartStatus = async (requestId: string): Promise<ChartStatusResponse> => {
+  const response = await fetch(`/ajax-api/2.0/mlflow/charts/status/${encodeURIComponent(requestId)}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
-};`,
-        data_sources: [
-          {
-            type: 'metric' as const,
-            name: 'example_metric',
-            path: '/api/2.0/mlflow/runs/get-metric'
-          }
-        ]
-      }
-    };
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
   }
-  
-  return {
-    request_id: requestId,
-    status: randomStatus,
-    ...(randomStatus === 'failed' && { error_message: 'Mock error: Chart generation failed' })
-  };
+
+  return response.json();
 };
 
 export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
@@ -274,7 +108,7 @@ export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
       };
 
       // Step 1: Submit generation request
-      const generateResponse = await mockGenerateChart(request);
+      const generateResponse = await generateChart(request);
       
       setState(prev => ({
         ...prev,
@@ -282,14 +116,14 @@ export const useCustomChartGeneration = (): UseCustomChartGenerationResult => {
         progress: 'Analyzing your request...',
       }));
 
-      // Step 2: Poll for completion (mock implementation)
+      // Step 2: Poll for completion
       let attempts = 0;
-      const maxAttempts = 10;
+      const maxAttempts = 30; // Increased for real backend
       
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
         
-        const statusResponse: ChartStatusResponse = await mockGetChartStatus(generateResponse.request_id);
+        const statusResponse: ChartStatusResponse = await getChartStatus(generateResponse.request_id);
         
         // Update progress based on status
         if (statusResponse.status === 'pending') {

@@ -26,6 +26,8 @@ from mlflow.server.handlers import (
     get_trace_artifact_handler,
     search_datasets_handler,
     upload_artifact_handler,
+    generate_chart_handler,
+    get_chart_status_handler,
 )
 from mlflow.utils.os import is_windows
 from mlflow.utils.plugins import get_entry_points
@@ -132,6 +134,17 @@ def serve_get_trace_artifact():
 )
 def serve_get_logged_model_artifact(model_id: str):
     return get_logged_model_artifact_handler(model_id)
+
+
+# Serve the chart generation endpoints
+@app.route(_add_static_prefix("/ajax-api/2.0/mlflow/charts/generate"), methods=["POST"])
+def serve_generate_chart():
+    return generate_chart_handler()
+
+
+@app.route(_add_static_prefix("/ajax-api/2.0/mlflow/charts/status/<request_id>"), methods=["GET"])
+def serve_get_chart_status(request_id: str):
+    return get_chart_status_handler(request_id)
 
 
 # We expect the react app to be built assuming it is hosted at /static-files, so that requests for
