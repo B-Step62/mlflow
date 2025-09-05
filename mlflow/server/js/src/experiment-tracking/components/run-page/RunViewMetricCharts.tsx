@@ -1,6 +1,6 @@
 import { TableSkeleton, ToggleButton, useDesignSystemTheme, Accordion, PlusIcon, Button } from '@databricks/design-system';
 import { compact, mapValues, values } from 'lodash';
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useSelector } from 'react-redux';
 import { ReduxState } from '../../../redux-types';
@@ -55,118 +55,126 @@ interface RunViewMetricChartsProps {
   params?: Record<string, KeyValueEntity>;
 }
 
-// Simple chart renderer component
-const ChartRenderer = ({ chartCode }: { chartCode: string }) => {
+// Dynamic chart renderer that executes generated React code
+const ChartRenderer = ({ chartCode, runId, experimentId }: { 
+  chartCode: string; 
+  runId?: string; 
+  experimentId?: string; 
+}) => {
   const { theme } = useDesignSystemTheme();
+  const [ChartComponent, setChartComponent] = useState<React.ComponentType<any> | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Create a fancy multi-series chart with different visualizations
-  const sampleData = [
-    {
-      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      y: [0.82, 0.85, 0.88, 0.87, 0.91, 0.94, 0.93, 0.96, 0.97, 0.98],
-      type: 'scatter',
-      mode: 'lines+markers',
-      name: 'Training Accuracy',
-      line: { color: '#1f77b4', width: 3 },
-      marker: { size: 8 }
-    },
-    {
-      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      y: [0.78, 0.81, 0.83, 0.82, 0.86, 0.88, 0.87, 0.89, 0.91, 0.92],
-      type: 'scatter',
-      mode: 'lines+markers',
-      name: 'Validation Accuracy',
-      line: { color: '#ff7f0e', width: 3, dash: 'dash' },
-      marker: { size: 8 }
-    },
-    {
-      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      y: [0.45, 0.38, 0.32, 0.35, 0.28, 0.22, 0.25, 0.18, 0.15, 0.12],
-      type: 'scatter',
-      mode: 'lines+markers',
-      name: 'Training Loss',
-      yaxis: 'y2',
-      line: { color: '#d62728', width: 2 },
-      marker: { size: 6 }
-    },
-    {
-      x: [2, 4, 6, 8, 10],
-      y: [0.89, 0.91, 0.93, 0.95, 0.96],
-      type: 'bar',
-      name: 'Checkpoints',
-      marker: { 
-        color: 'rgba(55, 128, 191, 0.7)',
-        line: { color: 'rgba(55, 128, 191, 1.0)', width: 2 }
-      },
-      opacity: 0.6
+  useEffect(() => {
+    const executeChartCode = () => {
+      try {
+        setError(null);
+
+        // Strip import and export statements since we provide dependencies directly
+        const codeWithoutImports = chartCode
+          .replace(/import\s+.*?from\s+['"].*?['"];?/g, '') // Remove import statements
+          .replace(/export\s+/g, ''); // Remove export keywords
+        
+        // Create a safe execution context with necessary imports
+        const executeCode = new Function(
+          'React',
+          'useState', 
+          'useEffect',
+          'LazyPlot',
+          'useDesignSystemTheme',
+          `
+          ${codeWithoutImports}
+          
+          // Return the GeneratedChart component
+          return GeneratedChart;
+          `
+        );
+
+        // Execute the code with required dependencies
+        const GeneratedChartComponent = executeCode(
+          React,
+          useState,
+          useEffect,
+          LazyPlot,
+          useDesignSystemTheme
+        );
+
+        // Create a wrapper component that passes run context
+        const WrappedComponent = () => (
+          <div css={{ 
+            width: '100%', 
+            height: '400px',
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            overflow: 'hidden',
+            backgroundColor: theme.colors.backgroundPrimary
+          }}>
+            <GeneratedChartComponent runId={runId} experimentId={experimentId} />
+          </div>
+        );
+
+        setChartComponent(() => WrappedComponent);
+        
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to execute chart code';
+        setError(errorMessage);
+        console.error('Chart execution error:', err);
+      }
+    };
+
+    if (chartCode) {
+      executeChartCode();
     }
-  ];
-  
-  const layout = {
-    title: {
-      text: '🚀 Model Training Progress',
-      font: { size: 18, color: theme.colors.textPrimary }
-    },
-    xaxis: { 
-      title: { text: 'Training Epoch', font: { color: theme.colors.textPrimary } },
-      gridcolor: theme.colors.border,
-      zerolinecolor: theme.colors.border
-    },
-    yaxis: { 
-      title: { text: 'Accuracy Score', font: { color: theme.colors.textPrimary } },
-      gridcolor: theme.colors.border,
-      zerolinecolor: theme.colors.border
-    },
-    yaxis2: {
-      title: { text: 'Loss Value', font: { color: theme.colors.textPrimary } },
-      overlaying: 'y',
-      side: 'right',
-      gridcolor: 'rgba(128,128,128,0.2)'
-    },
-    margin: { l: 60, r: 60, b: 60, t: 80 },
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { color: theme.colors.textPrimary },
-    legend: {
-      x: 0.02,
-      y: 0.98,
-      bgcolor: 'rgba(255,255,255,0.8)',
-      bordercolor: theme.colors.border,
-      borderwidth: 1
-    },
-    hovermode: 'x unified',
-    showlegend: true
-  };
+  }, [chartCode, runId, experimentId, theme]);
 
-  return (
-    <div css={{ 
-      width: '100%', 
-      height: '450px',
-      border: `1px solid ${theme.colors.border}`,
-      borderRadius: theme.borders.borderRadiusMd,
-      overflow: 'hidden',
-      backgroundColor: theme.colors.backgroundPrimary
-    }}>
-      <LazyPlot
-        data={sampleData}
-        layout={layout}
-        style={{ width: '100%', height: '100%' }}
-        useResizeHandler={true}
-        config={{
-          displayModeBar: true,
-          modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-          displaylogo: false,
-          toImageButtonOptions: {
-            format: 'png',
-            filename: 'mlflow_custom_chart',
-            height: 450,
-            width: 800,
-            scale: 1
-          }
-        }}
-      />
-    </div>
-  );
+  if (error) {
+    return (
+      <div css={{
+        width: '100%',
+        height: '400px',
+        border: `1px solid ${theme.colors.borderDanger}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        padding: theme.spacing.md,
+        backgroundColor: theme.colors.backgroundDanger,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center'
+      }}>
+        <div>
+          <div css={{ fontSize: '24px', marginBottom: theme.spacing.sm }}>⚠️</div>
+          <div css={{ color: theme.colors.textValidationDanger, fontWeight: 'bold' }}>
+            Chart Execution Error
+          </div>
+          <div css={{ color: theme.colors.textValidationDanger, fontSize: theme.typography.fontSizeSm, marginTop: theme.spacing.xs }}>
+            {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ChartComponent) {
+    return (
+      <div css={{
+        width: '100%',
+        height: '400px',
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.backgroundSecondary
+      }}>
+        <div css={{ textAlign: 'center', color: theme.colors.textSecondary }}>
+          <div css={{ fontSize: '24px', marginBottom: theme.spacing.sm }}>📊</div>
+          <div>Loading chart...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return <ChartComponent />;
 };
 
 /**
@@ -525,7 +533,11 @@ const RunViewMetricChartsImpl = ({
                         }}>
                           Custom Chart {chart.id}
                         </div>
-                        <ChartRenderer chartCode={chart.code} />
+                        <ChartRenderer 
+                          chartCode={chart.code} 
+                          runId={runInfo.runUuid} 
+                          experimentId={runInfo.experimentId} 
+                        />
                         <div css={{ 
                           display: 'flex', 
                           justifyContent: 'flex-end', 
