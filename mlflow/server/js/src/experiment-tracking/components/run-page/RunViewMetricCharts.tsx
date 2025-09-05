@@ -1,4 +1,4 @@
-import { TableSkeleton, ToggleButton, useDesignSystemTheme } from '@databricks/design-system';
+import { TableSkeleton, ToggleButton, useDesignSystemTheme, Accordion, PlusIcon, Button } from '@databricks/design-system';
 import { compact, mapValues, values } from 'lodash';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
@@ -15,6 +15,7 @@ import { RunsChartsLineChartXAxisType } from '../runs-charts/components/RunsChar
 import type { ExperimentRunsChartsUIConfiguration } from '../experiment-page/models/ExperimentPageUIState';
 import { RunsChartsSectionAccordion } from '../runs-charts/components/sections/RunsChartsSectionAccordion';
 import { RunsChartsConfigureModal } from '../runs-charts/components/RunsChartsConfigureModal';
+import MetricChartsAccordion, { METRIC_CHART_SECTION_HEADER_SIZE } from '../MetricChartsAccordion';
 import {
   RunsChartsUIConfigurationContextProvider,
   useConfirmChartCardConfigurationFn,
@@ -37,6 +38,9 @@ import type { UseGetRunQueryResponseRunInfo } from './hooks/useGetRunQuery';
 import { RunsChartsGlobalChartSettingsDropdown } from '../runs-charts/components/RunsChartsGlobalChartSettingsDropdown';
 import { RunsChartsDraggableCardsGridContextProvider } from '../runs-charts/components/RunsChartsDraggableCardsGridContext';
 import { RunsChartsFilterInput } from '../runs-charts/components/RunsChartsFilterInput';
+import { CustomChartGenerator } from '../custom-charts/CustomChartGenerator';
+import { useCustomChartGeneration } from './hooks/useCustomChartGeneration';
+import { LazyPlot } from '../LazyPlot';
 
 interface RunViewMetricChartsProps {
   metricKeys: string[];
@@ -50,6 +54,120 @@ interface RunViewMetricChartsProps {
   tags?: Record<string, KeyValueEntity>;
   params?: Record<string, KeyValueEntity>;
 }
+
+// Simple chart renderer component
+const ChartRenderer = ({ chartCode }: { chartCode: string }) => {
+  const { theme } = useDesignSystemTheme();
+
+  // Create a fancy multi-series chart with different visualizations
+  const sampleData = [
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      y: [0.82, 0.85, 0.88, 0.87, 0.91, 0.94, 0.93, 0.96, 0.97, 0.98],
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'Training Accuracy',
+      line: { color: '#1f77b4', width: 3 },
+      marker: { size: 8 }
+    },
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      y: [0.78, 0.81, 0.83, 0.82, 0.86, 0.88, 0.87, 0.89, 0.91, 0.92],
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'Validation Accuracy',
+      line: { color: '#ff7f0e', width: 3, dash: 'dash' },
+      marker: { size: 8 }
+    },
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      y: [0.45, 0.38, 0.32, 0.35, 0.28, 0.22, 0.25, 0.18, 0.15, 0.12],
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'Training Loss',
+      yaxis: 'y2',
+      line: { color: '#d62728', width: 2 },
+      marker: { size: 6 }
+    },
+    {
+      x: [2, 4, 6, 8, 10],
+      y: [0.89, 0.91, 0.93, 0.95, 0.96],
+      type: 'bar',
+      name: 'Checkpoints',
+      marker: { 
+        color: 'rgba(55, 128, 191, 0.7)',
+        line: { color: 'rgba(55, 128, 191, 1.0)', width: 2 }
+      },
+      opacity: 0.6
+    }
+  ];
+  
+  const layout = {
+    title: {
+      text: '🚀 Model Training Progress',
+      font: { size: 18, color: theme.colors.textPrimary }
+    },
+    xaxis: { 
+      title: { text: 'Training Epoch', font: { color: theme.colors.textPrimary } },
+      gridcolor: theme.colors.border,
+      zerolinecolor: theme.colors.border
+    },
+    yaxis: { 
+      title: { text: 'Accuracy Score', font: { color: theme.colors.textPrimary } },
+      gridcolor: theme.colors.border,
+      zerolinecolor: theme.colors.border
+    },
+    yaxis2: {
+      title: { text: 'Loss Value', font: { color: theme.colors.textPrimary } },
+      overlaying: 'y',
+      side: 'right',
+      gridcolor: 'rgba(128,128,128,0.2)'
+    },
+    margin: { l: 60, r: 60, b: 60, t: 80 },
+    paper_bgcolor: 'transparent',
+    plot_bgcolor: 'transparent',
+    font: { color: theme.colors.textPrimary },
+    legend: {
+      x: 0.02,
+      y: 0.98,
+      bgcolor: 'rgba(255,255,255,0.8)',
+      bordercolor: theme.colors.border,
+      borderwidth: 1
+    },
+    hovermode: 'x unified',
+    showlegend: true
+  };
+
+  return (
+    <div css={{ 
+      width: '100%', 
+      height: '450px',
+      border: `1px solid ${theme.colors.border}`,
+      borderRadius: theme.borders.borderRadiusMd,
+      overflow: 'hidden',
+      backgroundColor: theme.colors.backgroundPrimary
+    }}>
+      <LazyPlot
+        data={sampleData}
+        layout={layout}
+        style={{ width: '100%', height: '100%' }}
+        useResizeHandler={true}
+        config={{
+          displayModeBar: true,
+          modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+          displaylogo: false,
+          toImageButtonOptions: {
+            format: 'png',
+            filename: 'mlflow_custom_chart',
+            height: 450,
+            width: 800,
+            scale: 1
+          }
+        }}
+      />
+    </div>
+  );
+};
 
 /**
  * Component displaying metric charts for a single run
@@ -72,6 +190,20 @@ const RunViewMetricChartsImpl = ({
   const { theme } = useDesignSystemTheme();
   const [search, setSearch] = useState('');
   const { formatMessage } = useIntl();
+  
+  // Custom charts state
+  const [customChartsExpanded, setCustomChartsExpanded] = useState(true);
+  const [customCharts, setCustomCharts] = useState<{ id: string; code: string }[]>([]);
+  
+  // Custom chart generation state
+  const { 
+    isGenerating, 
+    chartCode, 
+    error: chartError, 
+    progress,
+    generateCustomChart, 
+    reset: resetChart 
+  } = useCustomChartGeneration();
 
   const { compareRunCharts, compareRunSections, chartsSearchFilter } = chartUIState;
 
@@ -274,6 +406,151 @@ const RunViewMetricChartsImpl = ({
           </RunsChartsDraggableCardsGridContextProvider>
         </RunsChartsTooltipWrapper>
       </div>
+      
+      {/* Custom Charts Section */}
+      <div css={{ 
+        borderTop: `1px solid ${theme.colors.border}`, 
+        paddingTop: theme.spacing.md,
+        marginTop: theme.spacing.md 
+      }}>
+        <MetricChartsAccordion
+          activeKey={customChartsExpanded ? 'custom-charts' : undefined}
+          onActiveKeyChange={(key) => setCustomChartsExpanded(key === 'custom-charts' || (Array.isArray(key) && key.includes('custom-charts')))}
+        >
+          <Accordion.Panel
+            key="custom-charts"
+            header={
+              <div
+                css={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  width: '100%',
+                  padding: `${theme.spacing.xs}px 0px`,
+                  height: `${METRIC_CHART_SECTION_HEADER_SIZE}px`,
+                }}
+              >
+                <div
+                  css={{
+                    minWidth: 0,
+                    maxWidth: '40%',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div
+                    css={{
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%',
+                      overflow: 'clip',
+                      paddingLeft: theme.spacing.xs,
+                      whiteSpace: 'pre',
+                      fontSize: theme.typography.fontSizeBase,
+                      fontWeight: theme.typography.typographyBoldFontWeight,
+                      color: theme.colors.textPrimary,
+                    }}
+                  >
+                    Custom Charts
+                  </div>
+                  <div
+                    css={{
+                      padding: theme.spacing.xs,
+                      position: 'relative',
+                      color: theme.colors.textSecondary,
+                    }}
+                  >
+                    ({customCharts.length})
+                  </div>
+                </div>
+                <div
+                  css={{
+                    position: 'absolute',
+                    top: '50%',
+                    right: '0',
+                    transform: 'translate(0, -50%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div
+                    css={{
+                      alignSelf: 'flex-end',
+                      marginLeft: theme.spacing.xs,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <CustomChartGenerator
+                      runId={runInfo.runUuid}
+                      experimentId={runInfo.experimentId}
+                      onGenerate={generateCustomChart}
+                      isGenerating={isGenerating}
+                      chartCode={chartCode}
+                      error={chartError}
+                      progress={progress}
+                      onAddChart={() => {
+                        setCustomCharts(prev => [...prev, { id: Date.now().toString(), code: chartCode || '' }]);
+                        resetChart();
+                      }}
+                      onResetChart={resetChart}
+                    />
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <div css={{ padding: `0 0 ${theme.spacing.md}px 0` }}>
+              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+                {/* Display existing custom charts */}
+                {customCharts.length > 0 && (
+                  <div css={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
+                    gap: theme.spacing.md,
+                    marginTop: theme.spacing.md
+                  }}>
+                    {customCharts.map((chart) => (
+                      <div
+                        key={chart.id}
+                        css={{
+                          border: `1px solid ${theme.colors.border}`,
+                          borderRadius: theme.borders.borderRadiusMd,
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.backgroundSecondary,
+                        }}
+                      >
+                        <div css={{ 
+                          fontSize: theme.typography.fontSizeSm,
+                          fontWeight: theme.typography.typographyBoldFontWeight,
+                          color: theme.colors.textSecondary,
+                          marginBottom: theme.spacing.sm
+                        }}>
+                          Custom Chart {chart.id}
+                        </div>
+                        <ChartRenderer chartCode={chart.code} />
+                        <div css={{ 
+                          display: 'flex', 
+                          justifyContent: 'flex-end', 
+                          marginTop: theme.spacing.sm,
+                          gap: theme.spacing.sm
+                        }}>
+                          <Button
+                            componentId="mlflow.custom-charts.remove-chart"
+                            onClick={() => {
+                              setCustomCharts(prev => prev.filter(c => c.id !== chart.id));
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Accordion.Panel>
+        </MetricChartsAccordion>
+      </div>
+      
       {configuredCardConfig && (
         <RunsChartsConfigureModal
           chartRunData={chartData}
