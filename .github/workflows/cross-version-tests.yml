@@ -186,7 +186,9 @@ jobs:
           JOHNSNOWLABS_LICENSE_JSON: ${{ secrets.JOHNSNOWLABS_LICENSE_JSON }}
           HF_HUB_ENABLE_HF_TRANSFER: 1
         run: |
-          ${{ matrix.run }}
+          tee -a test1.log ${{ matrix.run }}
+      - name: Suggest root cause
+          
 
   test2:
     needs: set-matrix
