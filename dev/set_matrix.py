@@ -814,7 +814,7 @@ def main(args):
     # https://docs.github.com/en/actions/learn-github-actions/usage-limits-billing-and-administration#usage-limits
     # > A job matrix can generate a maximum of 256 jobs per workflow run.
     MAX_ITEMS = 256
-    NUM_JOBS = 2
+    NUM_JOBS = 1
     validate_action_config(NUM_JOBS)
 
     print(divider("Parameters"))
