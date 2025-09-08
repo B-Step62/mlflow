@@ -187,8 +187,105 @@ jobs:
           HF_HUB_ENABLE_HF_TRANSFER: 1
         run: |
           tee -a test1.log ${{ matrix.run }}
+
+      - name: Print test1.log
+        run: |
+          cat test1.log
+
+      - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb # v6.1.0
+        with:
+          version: 0.7.8
+      - name: Install codex
+        run: |
+          curl -L -o codex.tar.gz https://github.com/openai/codex/releases/download/rust-v0.25.0/codex-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf codex.tar.gz
+          mv codex-x86_64-unknown-linux-musl codex
+          chmod +x codex
+          ./codex --version
+      - name: Set up config
+        run: |
+          # https://github.com/openai/codex/blob/main/docs/config.md
+          mkdir -p ~/.codex
+          cat <<'EOF' > ~/.codex/config.toml
+          # TODO: Use github models if gpt-5 supports higher input/output token limits
+          # https://github.com/marketplace/models/azure-openai/gpt-5
+          # model = "openai/gpt-5"
+          # model_provider = "github-models"
+          model_verbosity = "high"
+          approval_policy = "never"
+          sandbox_mode = "workspace-write"
+
+          [sandbox_workspace_write]
+          network_access = true
+
+          [model_providers.github-models]
+          # https://docs.github.com/en/github-models/use-github-models/prototyping-with-ai-models#rate-limits
+          name = "GitHub Models"
+          base_url = "https://models.github.ai/inference"
+          env_key = "GITHUB_TOKEN"
+          wire_api = "chat"
+
+          [mcp_servers.github]
+          # https://github.com/github/github-mcp-server
+          command = "uv"
+          args = [
+            "run",
+            "--no-project",
+            "dev/mcps/review.py"
+          ]
+          env = { "GITHUB_TOKEN" = "${{ secrets.GITHUB_TOKEN }}" }
+          EOF
+      - name: Prompt
+        run: |
+          cat <<'EOF' > AGENTS.md
+          You are a professional software engineer. You will be given log of failed MLflow cross version test (Github action) for a particular integrated library and version. Your job is to suggest a root cause by researching the
+          recent updates of the library.
+
+          ### What is MLflow?
+
+          MLflow is an open-source platform for managing the end-to-end machine learning lifecycle. It provides tools for:
+
+          - Experiment tracking
+          - Model versioning and deployment
+          - LLM observability and tracing
+          - Model evaluation
+          - Prompt management
+
+          ### What is cross version test?
+
+          Cross version tests is a set of CI jobs running against the latest MLflow's master branch to test integration with various libraries, such as scikit-learn, LangChain, DSPy, etc.
+
+          MLflow runs tests with the ML libraries listed in mlflow/ml-package-versions.yml
+
+          Notable thing is MLflow runs test for versions of each library, from 'minimum' version to """latest""" version available on PyPI, not 'maximum' version declared in the file. This is because we only update this file per minor release and new versions can be available before that. MLflow must be compatible with whatever latest version.
+
+          ### Your Workflow
+
+          You are at a workspace directory with the following files:
+           - Cloned MLflow repository
+           - test1.log: The full log of failed job
+           - versions.txt: The dependency versions used in the failed job.
+          Investigate on the root cause. See the changelog of that particular
+          version to find relevant changes. If it is not found, you can analyze
+          commit history as well. Sometimes the change is not in the integrated
+          library itself, but a dependency of it.
+
+          Once you find the root cause, write down a short summary of the root cause
+          in `root_cause.txt`.
+
+          EOF
+
+      - name: Run codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use timeout in case codex hangs
+          timeout 3m ./codex exec --skip-git-repo-check "Can you review $PR_URL?" || true
+
       - name: Suggest root cause
-          
+        run: |
+          cat root_cause.txt
 
   test2:
     needs: set-matrix
