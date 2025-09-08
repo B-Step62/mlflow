@@ -186,7 +186,7 @@ jobs:
           JOHNSNOWLABS_LICENSE_JSON: ${{ secrets.JOHNSNOWLABS_LICENSE_JSON }}
           HF_HUB_ENABLE_HF_TRANSFER: 1
         run: |
-          tee -a test1.log ${{ matrix.run }}
+          ${{ matrix.run }} | tee test1.log
 
       - name: Print test1.log
         run: |
