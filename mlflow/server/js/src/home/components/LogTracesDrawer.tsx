@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Drawer, Spacer, Typography, useDesignSystemTheme, CopyIcon } from '@databricks/design-system';
+import { Drawer, Spacer, Typography, useDesignSystemTheme, CopyIcon, NewWindowIcon } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
 import { TraceTableGenericQuickstart } from '@mlflow/mlflow/src/experiment-tracking/components/traces/quickstart/TraceTableGenericQuickstart';
 import type { QUICKSTART_FLAVOR } from '@mlflow/mlflow/src/experiment-tracking/components/traces/quickstart/TraceTableQuickstart.utils';
@@ -11,12 +11,13 @@ import OpenAiLogo from '../../common/static/logos/openai.svg';
 import OpenAiLogoDark from '../../common/static/logos/openai-dark.svg';
 import LangChainLogo from '../../common/static/logos/langchain.svg';
 import LangChainLogoDark from '../../common/static/logos/langchain-dark.png';
+import LangGraphLogo from '../../common/static/logos/langgraph.svg';
 import AnthropicLogo from '../../common/static/logos/anthropic.svg';
 import AnthropicLogoDark from '../../common/static/logos/anthropic-dark.png';
-import BedrockLogo from '../../common/static/logos/bedrock.svg';
 import DspyLogo from '../../common/static/logos/dspy.png';
 import LiteLLMLogo from '../../common/static/logos/litellm.png';
 import GeminiLogo from '../../common/static/logos/gemini.png';
+import BedrockLogo from '../../common/static/logos/bedrock.svg';
 import LlamaIndexLogo from '../../common/static/logos/llamaindex.png';
 import AutoGenLogo from '../../common/static/logos/autogen.png';
 import CrewAILogo from '../../common/static/logos/crewai.png';
@@ -44,15 +45,25 @@ const frameworks: FrameworkDefinition[] = [
     selectedLogo: LangChainLogoDark,
   },
   {
+    id: 'langgraph',
+    message: 'LangGraph',
+    logo: LangGraphLogo,
+  },
+  {
+    id: 'dspy',
+    message: 'DSPy',
+    logo: DspyLogo,
+  },
+  {
     id: 'anthropic',
     message: 'Anthropic',
     logo: AnthropicLogo,
     selectedLogo: AnthropicLogoDark,
   },
   {
-    id: 'dspy',
-    message: 'DSPy',
-    logo: DspyLogo,
+    id: 'litellm',
+    message: 'LiteLLM',
+    logo: LiteLLMLogo,
   },
   {
     id: 'gemini',
@@ -63,11 +74,6 @@ const frameworks: FrameworkDefinition[] = [
     id: 'bedrock',
     message: 'Amazon Bedrock',
     logo: BedrockLogo,
-  },
-  {
-    id: 'litellm',
-    message: 'LiteLLM',
-    logo: LiteLLMLogo,
   },
   {
     id: 'llama_index',
@@ -85,6 +91,9 @@ const frameworks: FrameworkDefinition[] = [
     logo: CrewAILogo,
   },
 ];
+
+const MORE_INTEGRATIONS_URL =
+  'https://mlflow.org/docs/latest/genai/tracing/integrations';
 
 const CONFIGURE_EXPERIMENT_SNIPPET = `import mlflow
 
@@ -196,6 +205,25 @@ export const LogTracesDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose:
                 </button>
               );
             })}
+            <Spacer size="sm" />
+            <Link
+              to={MORE_INTEGRATIONS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              css={{
+                marginTop: theme.spacing.sm,
+                display: 'inline-flex',
+                gap: theme.spacing.xs,
+                alignItems: 'center',
+                fontWeight: theme.typography.typographyBoldFontWeight,
+              }}
+            >
+              <FormattedMessage
+                defaultMessage="Explore 15+ more integrations"
+                description="Link text directing users to additional tracing integrations"
+              />
+              <NewWindowIcon css={{ fontSize: 14 }} />
+            </Link>
           </aside>
           <div
             css={{
@@ -300,11 +328,21 @@ export const LogTracesDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose:
                       description="Instruction to open the experiments page from the log traces drawer"
                       values={{
                         experimentsLink: (
-                          <Link to={Routes.experimentsObservatoryRoute}>
+                          <Link
+                            to={Routes.experimentsObservatoryRoute}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            css={{
+                              display: 'inline-flex',
+                              gap: theme.spacing.xs,
+                              alignItems: 'center',
+                            }}
+                          >
                             <FormattedMessage
                               defaultMessage="Experiments"
                               description="Link label for the experiments page"
                             />
+                            <NewWindowIcon css={{ fontSize: 14 }} />
                           </Link>
                         ),
                       }}
@@ -312,7 +350,7 @@ export const LogTracesDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose:
                   </li>
                   <li>
                     <FormattedMessage
-                      defaultMessage="Select the experiment you configured for tracing."
+                      defaultMessage="Select the experiment you configured above."
                         description="Instruction to select the experiment configured for traces"
                       />
                   </li>
