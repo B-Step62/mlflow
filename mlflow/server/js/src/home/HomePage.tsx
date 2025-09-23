@@ -10,6 +10,7 @@ import { HomeHeader } from './components/HomeHeader';
 import { GetStarted } from './components/GetStarted';
 import { ExperimentsHomeView } from './components/ExperimentsHomeView';
 import { DiscoverNews } from './components/DiscoverNews';
+import { LogTracesDrawer } from './components/LogTracesDrawer';
 
 type ExperimentQueryKey = ['home', 'recent-experiments'];
 
@@ -19,6 +20,7 @@ const HomePage = () => {
   const { theme } = useDesignSystemTheme();
   const invalidateExperiments = useInvalidateExperimentList();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isLogTracesDrawerOpen, setIsLogTracesDrawerOpen] = useState(false);
 
   const { data, error, isLoading, refetch } = useQuery<
     SearchExperimentsApiResponse,
@@ -38,6 +40,8 @@ const HomePage = () => {
 
   const handleOpenCreateModal = () => setIsCreateModalOpen(true);
   const handleCloseCreateModal = () => setIsCreateModalOpen(false);
+  const handleOpenLogTracesDrawer = () => setIsLogTracesDrawerOpen(true);
+  const handleCloseLogTracesDrawer = () => setIsLogTracesDrawerOpen(false);
 
   const handleExperimentCreated = () => {
     handleCloseCreateModal();
@@ -62,7 +66,7 @@ const HomePage = () => {
         }}
       >
         <HomeHeader onCreateExperiment={handleOpenCreateModal} />
-        <GetStarted />
+        <GetStarted onLogTracesClick={handleOpenLogTracesDrawer} />
         <ExperimentsHomeView
           experiments={experiments}
           isLoading={isLoading}
@@ -78,6 +82,7 @@ const HomePage = () => {
         onClose={handleCloseCreateModal}
         onExperimentCreated={handleExperimentCreated}
       />
+      <LogTracesDrawer isOpen={isLogTracesDrawerOpen} onClose={handleCloseLogTracesDrawer} />
     </ScrollablePageWrapper>
   );
 };

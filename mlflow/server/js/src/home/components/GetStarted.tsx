@@ -13,7 +13,7 @@ import {
 
 type QuickAction = (typeof homeQuickActions)[number];
 
-const GetStartedCard = ({ action }: { action: QuickAction }) => {
+const GetStartedCard = ({ action, onLogTracesClick }: { action: QuickAction; onLogTracesClick?: () => void }) => {
   const { theme } = useDesignSystemTheme();
   const linkStyles = getStartedCardLinkStyles(theme);
   const containerStyles = getStartedCardContainerStyles(theme);
@@ -33,6 +33,27 @@ const GetStartedCard = ({ action }: { action: QuickAction }) => {
       </div>
     </div>
   );
+
+  if (action.id === 'log-traces' && onLogTracesClick) {
+    return (
+      <button
+        type="button"
+        onClick={onLogTracesClick}
+        css={{
+          ...linkStyles,
+          border: 0,
+          padding: 0,
+          background: 'transparent',
+          cursor: 'pointer',
+          font: 'inherit',
+          textAlign: 'left',
+        }}
+        data-component-id={action.componentId}
+      >
+        {card}
+      </button>
+    );
+  }
 
   if (action.link.type === 'internal') {
     return (
@@ -55,7 +76,7 @@ const GetStartedCard = ({ action }: { action: QuickAction }) => {
   );
 };
 
-export const GetStarted = () => {
+export const GetStarted = ({ onLogTracesClick }: { onLogTracesClick?: () => void }) => {
   const { theme } = useDesignSystemTheme();
 
   return (
@@ -73,7 +94,7 @@ export const GetStarted = () => {
           }}
         >
           {homeQuickActions.map((action) => (
-            <GetStartedCard key={action.id} action={action} />
+            <GetStartedCard key={action.id} action={action} onLogTracesClick={onLogTracesClick} />
           ))}
         </div>
       </section>
