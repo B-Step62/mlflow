@@ -11,37 +11,78 @@ import OpenAiLogo from '../../common/static/logos/openai.svg';
 import OpenAiLogoDark from '../../common/static/logos/openai-dark.svg';
 import LangChainLogo from '../../common/static/logos/langchain.svg';
 import LangChainLogoDark from '../../common/static/logos/langchain-dark.png';
+import AnthropicLogo from '../../common/static/logos/anthropic.svg';
+import AnthropicLogoDark from '../../common/static/logos/anthropic-dark.png';
+import BedrockLogo from '../../common/static/logos/bedrock.svg';
+import DspyLogo from '../../common/static/logos/dspy.png';
+import LiteLLMLogo from '../../common/static/logos/litellm.png';
+import GeminiLogo from '../../common/static/logos/gemini.png';
+import LlamaIndexLogo from '../../common/static/logos/llamaindex.png';
+import AutoGenLogo from '../../common/static/logos/autogen.png';
+import CrewAILogo from '../../common/static/logos/crewai.png';
 
-type SupportedQuickstartFlavor = Extract<QUICKSTART_FLAVOR, 'openai' | 'langchain'>;
+type SupportedQuickstartFlavor = QUICKSTART_FLAVOR;
 
 type FrameworkDefinition = {
   id: SupportedQuickstartFlavor;
-  message: {
-    defaultMessage: string;
-    description: string;
-  };
-  logo: string;
-  selectedLogo: string;
+  message: string;
+  logo?: string;
+  selectedLogo?: string;
 };
 
 const frameworks: FrameworkDefinition[] = [
   {
     id: 'openai',
-    message: {
-      defaultMessage: 'OpenAI',
-      description: 'Framework label in the log traces drawer for OpenAI',
-    },
+    message: 'OpenAI',
     logo: OpenAiLogo,
     selectedLogo: OpenAiLogoDark,
   },
   {
     id: 'langchain',
-    message: {
-      defaultMessage: 'LangChain',
-      description: 'Framework label in the log traces drawer for LangChain',
-    },
+    message: 'LangChain',
     logo: LangChainLogo,
     selectedLogo: LangChainLogoDark,
+  },
+  {
+    id: 'anthropic',
+    message: 'Anthropic',
+    logo: AnthropicLogo,
+    selectedLogo: AnthropicLogoDark,
+  },
+  {
+    id: 'dspy',
+    message: 'DSPy',
+    logo: DspyLogo,
+  },
+  {
+    id: 'gemini',
+    message: 'Gemini',
+    logo: GeminiLogo,
+  },
+  {
+    id: 'bedrock',
+    message: 'Amazon Bedrock',
+    logo: BedrockLogo,
+  },
+  {
+    id: 'litellm',
+    message: 'LiteLLM',
+    logo: LiteLLMLogo,
+  },
+  {
+    id: 'llama_index',
+    message: 'LlamaIndex',
+    logo: LlamaIndexLogo,
+  },
+  {
+    id: 'autogen',
+    message: 'AutoGen',
+    logo: AutoGenLogo,
+  },
+  {
+    id: 'crewai',
+    message: 'CrewAI',
+    logo: CrewAILogo,
   },
 ];
 
@@ -107,6 +148,7 @@ export const LogTracesDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose:
             </Typography.Title>
             {frameworks.map((framework) => {
               const isSelected = framework.id === selectedFramework;
+              const logoSrc = isSelected && framework.selectedLogo ? framework.selectedLogo : framework.logo;
               return (
                 <button
                   key={framework.id}
@@ -140,15 +182,17 @@ export const LogTracesDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose:
                     },
                   }}
                 >
-                  <img
-                    src={isSelected ? framework.selectedLogo : framework.logo}
-                    width={28}
-                    height={28}
-                    alt=""
-                    aria-hidden
-                    css={{ display: 'block' }}
-                  />
-                  {framework.message.defaultMessage}
+                  {logoSrc && (
+                    <img
+                      src={logoSrc}
+                      width={28}
+                      height={28}
+                      alt=""
+                      aria-hidden
+                      css={{ display: 'block' }}
+                    />
+                  )}
+                  {framework.message}
                 </button>
               );
             })}
