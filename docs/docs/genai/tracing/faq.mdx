@@ -2,64 +2,25 @@ import { APILink } from "@site/src/components/APILink";
 
 # Tracing FAQ
 
-## Getting Started and Basic Usage
+This section answers frequently asked questions about [MLflow Tracing](/genai/tracing).
 
-### Q: How do I start using MLflow Tracing?
+## Instrumentation
 
-The easiest way to start is with automatic tracing for supported libraries:
-
-```python
-import mlflow
-import openai
-
-# Enable automatic tracing for OpenAI
-mlflow.openai.autolog()
-
-# Your existing code now generates traces automatically
-client = openai.OpenAI()
-response = client.chat.completions.create(
-    model="gpt-4o-mini", messages=[{"role": "user", "content": "Hello!"}]
-)
-```
-
-For custom code, use the `@mlflow.trace` decorator:
-
-```python
-@mlflow.trace
-def my_function(input_data):
-    # Your logic here
-    return "processed result"
-```
-
-### Q: Which libraries does MLflow Tracing support automatically?
+### Q: Which libraries does MLflow Tracing support automatic instrumentation?
 
 MLflow provides automatic tracing (autolog) for 20+ popular libraries. See the complete list at [Automatic Tracing Integrations](/genai/tracing/integrations).
 
-## User Interface and Jupyter Integration
+### Q: Where can I request a new library integration?
 
-### Q: Can I view traces directly in Jupyter notebooks?
+If you don't see your favorite library in the list, you can [contribute](/genai/tracing/integrations/contribute) or [submit a feature request](https://github.com/mlflow/mlflow/issues/new?assignees=&labels=enhancement&projects=&template=feature_request_template.yaml&title=%5BFR%5D) to our Github repository.
 
-Yes! Jupyter integration is available in MLflow 2.20 and above. The trace UI automatically displays within notebooks when:
+### Q: Can I create custom manual traces and spans?
 
-1. Cell code generates a trace
-2. You call <APILink fn="mlflow.search_traces" />
-3. You display a trace object
+Yes, MLflow provides comprehensive manual tracing capabilities. Please refer to the [Manual Tracing](/genai/tracing/app-instrumentation/manual-tracing) guide for detailed information on creating traces and spans manually using decorators, context managers, and low-level APIs.
 
-```python
-import mlflow
+## UI and Display
 
-# Set tracking URI to your MLflow server
-mlflow.set_tracking_uri("http://localhost:5000")
-
-
-@mlflow.trace
-def my_function():
-    return "Hello World"
-
-
-# Trace UI will appear automatically in the notebook
-my_function()
-```
+### Q: How can I turn on/off in-line trace UI in Jupyter notebooks?
 
 To control the display:
 
@@ -292,6 +253,13 @@ mlflow.set_experiment("my-tracing-experiment")
 mlflow.openai.autolog()  # Call before using OpenAI
 ```
 
+### Q: `A trace with ID 'tr-...' already exists` error is thrown when starting a trace
+
+There can be several reasons for this error, but a common one is that you are setting seed for a RNG via `random.seed()`. MLflow Tracing depends on OpenTelemetry to generate unique trace IDs. The generation logic uses the `random` library and becomes a fixed sequence when you fix the seed. See [this Github issue](https://github.com/open-telemetry/opentelemetry-python/issues/2974) for more details.
+
+To workaround this, you can unset the random seed. Note that `numpy.random.seed()` does not have this issue.
+
+
 ## Multi-threading and Concurrency
 
 ### Q: My trace is split into multiple traces when doing multi-threading. How can I combine them into a single trace?
@@ -375,28 +343,6 @@ mlflow.tracing.enable()
 my_function()  # This will generate a trace
 ```
 
-### Q: Can I enable/disable tracing for my application without modifying code?
-
-Yes, you can use environment variables and global configuration:
-
-**Environment variable**: Set `MLFLOW_TRACING_ENABLED=false` to disable all tracing:
-
-```bash
-export MLFLOW_TRACING_ENABLED=false
-python your_app.py  # No traces will be generated
-```
-
-**Conditional tracing**: Use programmatic control:
-
-```python
-import mlflow
-import os
-
-# Only trace in development
-if os.getenv("ENVIRONMENT") == "development":
-    mlflow.openai.autolog()
-```
-
 ## MLflow Runs Integration
 
 ### Q: How do I associate traces with MLflow runs?
@@ -429,7 +375,7 @@ print(traces)
 
 ### Q: How do I delete traces?
 
-You can delete traces using the <APILink fn="mlflow.client.MlflowClient.delete_traces" /> method:
+You can delete traces using the <APILink fn="mlflow.MlflowClient.delete_traces" /> method:
 
 ```python
 from mlflow.client import MlflowClient
@@ -452,36 +398,6 @@ Deleting a trace is an irreversible process. Ensure that the settings provided w
 
 Read more about [trace deletion](/genai/tracing/observe-with-traces/delete-traces).
 
-### Q: Where are my traces stored?
-
-Traces are stored in your MLflow tracking backend:
-
-**Local filesystem**: When using `mlflow ui` locally, traces are stored in the `mlruns` directory
-
-**Remote tracking server**: When using a remote MLflow server, traces are stored in the configured backend (database + artifact store)
-
-**Database**: Trace metadata is stored in the MLflow tracking database
-
-**Artifact store**: Large trace data may be stored in the artifact store (filesystem, S3, etc.)
-
-## Integration and Compatibility
-
-### Q: Is MLflow Tracing compatible with other observability tools?
-
-Yes, MLflow Tracing is built on OpenTelemetry standards and can integrate with other observability tools:
-
-**OpenTelemetry export**: Export traces to OTLP-compatible systems
-
-**Custom exporters**: Build custom integrations for your observability stack
-
-**Standard formats**: Use industry-standard trace formats for interoperability
-
-For production monitoring, see [Production Tracing](/genai/tracing/prod-tracing) for integration patterns.
-
-### Q: Can I create custom manual traces and spans?
-
-Yes, MLflow provides comprehensive manual tracing capabilities. Please refer to the [Manual Tracing](/genai/tracing/app-instrumentation/manual-tracing) guide for detailed information on creating traces and spans manually using decorators, context managers, and low-level APIs.
-
 ## Getting Help
 
 ### Q: Where can I find more help or report issues?
@@ -491,8 +407,6 @@ Yes, MLflow provides comprehensive manual tracing capabilities. Please refer to 
 **GitHub Issues**: Report bugs or request features at [MLflow GitHub](https://github.com/mlflow/mlflow/issues)
 
 **Community**: Join discussions in the [MLflow Slack community](https://mlflow.org/slack)
-
-**Stack Overflow**: Search or ask questions tagged with `mlflow`
 
 **Databricks Support**: For managed MLflow features, contact Databricks support
 
