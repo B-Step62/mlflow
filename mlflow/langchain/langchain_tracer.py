@@ -187,7 +187,9 @@ class MlflowLangchainTracer(BaseCallbackHandler, metaclass=ExceptionSafeAbstract
 
         self._run_span_mapping = {}
 
-    def _assign_span_name(self, serialized: dict[str, Any], default_name="unknown") -> str:
+    def _assign_span_name(self, serialized: dict[str, Any] | None, default_name="unknown") -> str:
+        if serialized is None or not isinstance(serialized, dict):
+            return default_name
         return serialized.get("name", serialized.get("id", [default_name])[-1])
 
     def on_chat_model_start(
