@@ -53,6 +53,31 @@ export interface TraceOptions
   name?: string;
 }
 
+function getMlflowSpan(otelSpan: OTelSpan, options: SpanOptions): LiveSpan | NoOpSpan {
+  // MlflowSpanProcessor should have already registered the span
+  const traceManager = InMemoryTraceManager.getInstance();
+  const mlflowTraceId = traceManager.getMlflowTraceIdFromOtelId(otelSpan.spanContext().traceId);
+  let mlflowSpan;
+  if (mlflowTraceId != null) {
+    mlflowSpan = traceManager.getSpan(mlflowTraceId, otelSpan.spanContext().spanId);
+  }
+  if (mlflowSpan == null) {
+    mlflowSpan = new NoOpSpan();
+  }
+
+  // Set custom properties to the span
+  if (options.inputs) {
+    mlflowSpan.setInputs(options.inputs);
+  }
+  if (options.attributes) {
+    mlflowSpan.setAttributes(options.attributes);
+  }
+  if (options.spanType) {
+    mlflowSpan.setSpanType(options.spanType);
+  }
+  return mlflowSpan;
+}
+
 /**
  * Start a new span with the given name and span type.
  *
@@ -102,7 +127,7 @@ export function startSpan(options: SpanOptions): LiveSpan {
     const otelSpan = tracer.startSpan(
       options.name,
       { startTime: startTime },
-      parentContext
+      parentContext,
     ) as OTelSpan;
 
     // SpanProcessor should registered the mlflow span

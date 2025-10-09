@@ -6,14 +6,16 @@ import {
   ReadableSpan as OTelReadableSpan,
   SpanExporter
 } from '@opentelemetry/sdk-trace-base';
-import { Context } from '@opentelemetry/api';
+import { Context, SpanStatusCode as OTelSpanStatusCode } from '@opentelemetry/api';
 import { createAndRegisterMlflowSpan } from '../core/api';
 import { InMemoryTraceManager } from '../core/trace_manager';
 import { TraceInfo } from '../core/entities/trace_info';
 import { createTraceLocationFromExperimentId } from '../core/entities/trace_location';
 import { fromOtelStatus, TraceState } from '../core/entities/trace_state';
+import { createMlflowSpan, LiveSpan } from '../core/entities/span';
 import {
   SpanAttributeKey,
+  SpanType,
   TRACE_ID_PREFIX,
   TRACE_SCHEMA_VERSION,
   TraceMetadataKey
@@ -25,6 +27,7 @@ import {
 } from '../core/utils';
 import { getConfig } from '../core/config';
 import { MlflowClient } from '../clients';
+import { getOnSpanStartHooks, getOnSpanEndHooks } from './span_processor_hooks';
 
 /**
  * Generate a MLflow-compatible trace ID for the given span.
@@ -47,7 +50,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
    * returns true.
    * @param span the Span that just started.
    */
-  onStart(span: OTelSpan, _parentContext: Context): void {
+  onStart(span: OTelSpan, parentContext: Context): void {
     const otelTraceId = span.spanContext().traceId;
 
     let traceId: string;
@@ -90,6 +93,14 @@ export class MlflowSpanProcessor implements SpanProcessor {
    * @param span the Span that just ended.
    */
   onEnd(span: OTelReadableSpan): void {
+    for (const hook of getOnSpanEndHooks()) {
+      try {
+        hook(span);
+      } catch (error) {
+        console.debug('Error executing onEnd hook:', error);
+      }
+    }
+
     // Only trigger trace export for root span completion
     if (span.parentSpanContext?.spanId) {
       return;
@@ -108,6 +119,8 @@ export class MlflowSpanProcessor implements SpanProcessor {
       console.warn(`No trace found for span ${span.name}. Skipping.`);
       return;
     }
+
+    
 
     this.updateTraceInfo(trace.info, span);
     deduplicateSpanNamesInPlace(Array.from(trace.spanDict.values()));
