@@ -190,6 +190,7 @@ class RestStore(AbstractStore):
         endpoint=None,
         retry_timeout_seconds=None,
         response_proto=None,
+        retry_codes=None,
     ):
         if endpoint:
             # Allow customizing the endpoint for compatibility with dynamic endpoints, such as
@@ -205,6 +206,7 @@ class RestStore(AbstractStore):
             json_body,
             response_proto,
             retry_timeout_seconds=retry_timeout_seconds,
+            retry_codes=retry_codes,
         )
 
     def search_experiments(

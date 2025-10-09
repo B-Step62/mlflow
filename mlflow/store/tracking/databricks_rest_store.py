@@ -7,6 +7,7 @@ from mlflow.entities.assessment import ExpectationValue, FeedbackValue
 from mlflow.entities.trace_location import UCSchemaLocation as UCSchemaLocationEntity
 from mlflow.environment_variables import (
     MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT,
+    MLFLOW_DATABRICKS_ENDPOINT_HTTP_RETRY_TIMEOUT,
     MLFLOW_TRACING_SQL_WAREHOUSE_ID,
 )
 from mlflow.exceptions import MlflowException
@@ -49,6 +50,7 @@ from mlflow.utils.databricks_tracing_utils import (
 )
 from mlflow.utils.databricks_utils import get_databricks_workspace_client_config
 from mlflow.utils.proto_json_utils import message_to_json
+from mlflow.utils.request_utils import _TRANSIENT_FAILURE_RESPONSE_CODES
 from mlflow.utils.rest_utils import (
     _REST_API_PATH_PREFIX,
     _V4_REST_API_PATH_PREFIX,
@@ -63,6 +65,20 @@ from mlflow.utils.rest_utils import (
 DATABRICKS_UC_TABLE_HEADER = "X-Databricks-UC-Table-Name"
 
 _logger = logging.getLogger(__name__)
+
+
+def _get_trace_v4_retry_policy() -> dict[int, int]:
+    default_timeout = MLFLOW_DATABRICKS_ENDPOINT_HTTP_RETRY_TIMEOUT.get()
+    error_code_to_timeout = {
+        code: default_timeout
+        for code in _TRANSIENT_FAILURE_RESPONSE_CODES
+    }
+    # NB:
+    error_code_to_timeout[404] = 10
+    return {
+        "retry_timeout_seconds": error_code_to_timeout,
+        "retry_codes": list(error_code_to_timeout.keys()),
+    }
 
 
 class DatabricksTracingRestStore(RestStore):
@@ -147,6 +163,7 @@ class DatabricksTracingRestStore(RestStore):
             BatchGetTraces,
             req_body,
             endpoint=f"{_V4_TRACE_REST_API_PATH_PREFIX}/{location}/batchGet",
+            **_get_trace_v4_retry_policy(),
         )
         return [trace_from_proto(proto) for proto in response_proto.traces]
 
@@ -169,7 +186,12 @@ class DatabricksTracingRestStore(RestStore):
                 )
             )
             endpoint = f"{get_single_trace_endpoint_v4(location, trace_id)}/info"
-            response_proto = self._call_endpoint(GetTraceInfo, trace_v4_req_body, endpoint=endpoint)
+            response_proto = self._call_endpoint(
+                GetTraceInfo,
+                trace_v4_req_body,
+                endpoint=endpoint,
+                retry_timeout_seconds=_get_trace_v4_retry_policy(),
+            )
             return TraceInfo.from_proto(response_proto.trace.trace_info)
 
         return super().get_trace_info(trace_id)
@@ -590,3 +612,4 @@ class DatabricksTracingRestStore(RestStore):
         if sql_warehouse_id := MLFLOW_TRACING_SQL_WAREHOUSE_ID.get():
             return f"{endpoint}?sql_warehouse_id={sql_warehouse_id}"
         return endpoint
+

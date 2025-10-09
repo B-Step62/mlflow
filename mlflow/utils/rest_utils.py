@@ -95,6 +95,8 @@ def http_request(
         respect_retry_after_header: Whether to respect Retry-After header on status codes defined
             as Retry.RETRY_AFTER_STATUS_CODES or not.
         retry_timeout_seconds: Timeout for retries. Only effective when using Databricks SDK.
+            Can also be a dictionary mapping HTTP status codes to timeout values to use different
+            retry strategies for different error codes.
         kwargs: Additional keyword arguments to pass to `requests.Session.request()`
 
     Returns:
@@ -126,7 +128,7 @@ def http_request(
             host_creds.host,
             host_creds.token,
             host_creds.databricks_auth_profile,
-            retry_timeout_seconds=retry_timeout_seconds,
+            retry_timeout_seconds=retry_timeout_seconds if isinstance(retry_timeout_seconds, int) else None,
             timeout=timeout,
         )
 
@@ -393,7 +395,7 @@ def _retry_databricks_sdk_call_with_exponential_backoff(
     *,
     call_func: Callable[..., Any],
     retry_codes: list[int],
-    retry_timeout_seconds: int,
+    retry_timeout_seconds: int | dict[int, int],
     backoff_factor: int,
     backoff_jitter: float,
     max_retries: int,
@@ -404,7 +406,8 @@ def _retry_databricks_sdk_call_with_exponential_backoff(
     Args:
         call_func: Function to call that may raise DatabricksError
         retry_codes: Set of HTTP status codes that should trigger retries
-        retry_timeout_seconds: Maximum time to spend retrying in seconds
+        retry_timeout_seconds: Maximum time to spend retrying in seconds, or a dictionary mapping
+            HTTP status codes to timeout values.
         backoff_factor: Factor for exponential backoff
         backoff_jitter: Random jitter to add to backoff
         max_retries: Maximum number of retry attempts
@@ -428,6 +431,7 @@ def _retry_databricks_sdk_call_with_exponential_backoff(
             status_code = next(
                 (code for code, cls in STATUS_CODE_MAPPING.items() if isinstance(e, cls)), 500
             )
+            print(f"status_code: {status_code}")
             # Check if this is a retryable error
             if status_code not in retry_codes:
                 raise
@@ -448,10 +452,15 @@ def _retry_databricks_sdk_call_with_exponential_backoff(
                 if backoff_jitter > 0:
                     backoff_time += random.random() * backoff_jitter
 
+            if isinstance(retry_timeout_seconds, dict):
+                timeout = retry_timeout_seconds.get(status_code, retry_timeout_seconds)
+            else:
+                timeout = retry_timeout_seconds
+
             # Check if we've exceeded or would exceed timeout
             elapsed_time = time.time() - start_time
-            if elapsed_time + backoff_time >= retry_timeout_seconds:
-                _logger.warning(f"Retry timeout ({retry_timeout_seconds}s) exceeded: {e}")
+            if elapsed_time + backoff_time >= timeout:
+                _logger.warning(f"Retry timeout ({timeout}s) exceeded: {e}")
                 raise
 
             _logger.debug(
@@ -548,6 +557,7 @@ def call_endpoint(
     response_proto,
     extra_headers=None,
     retry_timeout_seconds=None,
+    retry_codes=None,
 ):
     # Convert json string to json dictionary, to pass to requests
     if json_body is not None:
@@ -561,6 +571,23 @@ def call_endpoint(
         call_kwargs["extra_headers"] = extra_headers
     if retry_timeout_seconds is not None:
         call_kwargs["retry_timeout_seconds"] = retry_timeout_seconds
+    if retry_codes is not None:
+        call_kwargs["retry_codes"] = retry_codes
+
+    if (
+        isinstance(retry_timeout_seconds, dict)
+        and set(retry_timeout_seconds.keys()) != set(retry_codes)
+    ):
+        raise MlflowException(
+            message=(
+                "When retry_timeout_seconds is a dictionary, it must contain exact set of error "
+                "codes that are specified in retry_codes.\n"
+                f"retry_codes: {retry_codes}\n "
+                f"retry_timeout_seconds: {retry_timeout_seconds}",
+            ),
+            error_code=INTERNAL_ERROR,
+        )
+
     if method == "GET":
         call_kwargs["params"] = json_body
         response = http_request(**call_kwargs)
