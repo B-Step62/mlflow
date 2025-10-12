@@ -20,9 +20,21 @@ export function ModelTraceExplorerConversation({ messages }: { messages: ModelTr
         gap: theme.spacing.sm,
       }}
     >
-      {messages.map((message, index) => (
-        <ModelTraceExplorerChatMessage key={index} message={message} />
-      ))}
+      {messages.map((message, index) => {
+        const isUserMessage = message.role === 'user';
+
+        return (
+          <div
+            key={index}
+            css={{
+              paddingLeft: isUserMessage ? theme.spacing.md : 0,
+              paddingRight: isUserMessage ? 0 : theme.spacing.md,
+            }}
+          >
+            <ModelTraceExplorerChatMessage message={message} />
+          </div>
+        );
+      })}
     </div>
   );
 }
