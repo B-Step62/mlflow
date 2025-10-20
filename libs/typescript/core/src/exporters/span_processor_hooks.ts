@@ -1,4 +1,6 @@
+import { Span as OTelSpan, ReadableSpan as OTelReadableSpan} from '@opentelemetry/sdk-trace-base';
 import { LiveSpan } from '../core/entities/span';
+import { InMemoryTraceManager } from '../core/trace_manager';
 
 /**
  * Hooks to be executed by the span processor.
@@ -14,14 +16,6 @@ export function registerOnSpanStartHook(hook: OnSpanStartHook): void {
   onSpanStartHooks.add(hook);
 }
 
-export function unregisterOnSpanStartHook(hook: OnSpanStartHook): void {
-  onSpanStartHooks.delete(hook);
-}
-
-export function clearOnSpanStartHooks(): void {
-  onSpanStartHooks.clear();
-}
-
 export function getOnSpanStartHooks(): OnSpanStartHook[] {
   return Array.from(onSpanStartHooks);
 }
@@ -30,14 +24,55 @@ export function registerOnSpanEndHook(hook: OnSpanEndHook): void {
   onSpanEndHooks.add(hook);
 }
 
-export function unregisterOnSpanEndHook(hook: OnSpanEndHook): void {
-  onSpanEndHooks.delete(hook);
-}
-
-export function clearOnSpanEndHooks(): void {
-  onSpanEndHooks.clear();
-}
-
 export function getOnSpanEndHooks(): OnSpanEndHook[] {
   return Array.from(onSpanEndHooks);
+}
+
+
+export function executeOnSpanStartHooks(span: OTelSpan): void {
+  // Execute onEnd hooks for autologging integrations
+  const hooks = getOnSpanStartHooks();
+  if (hooks.length === 0) {
+    return;
+  }
+
+  const mlflowSpan = getMlflowSpan(span);
+  if (!mlflowSpan) {
+    return;
+  }
+
+  for (const hook of hooks) {
+    try {
+      hook(mlflowSpan);
+    } catch (error) {
+      console.debug('Error executing onStart hook:', error);
+    }
+  }
+}
+
+
+export function executeOnSpanEndHooks(span: OTelReadableSpan): void {
+  const hooks = getOnSpanEndHooks();
+  if (hooks.length === 0) {
+    return;
+  }
+
+  const mlflowSpan = getMlflowSpan(span);
+  if (!mlflowSpan) {
+    return;
+  }
+
+  for (const hook of hooks) {
+    try {
+      hook(mlflowSpan);
+    } catch (error) {
+      console.debug('Error executing onEnd hook:', error);
+    }
+  }
+}
+
+function getMlflowSpan(span: OTelSpan | OTelReadableSpan): LiveSpan | null {
+  const traceManager = InMemoryTraceManager.getInstance();
+  const traceId = traceManager.getMlflowTraceIdFromOtelId(span.spanContext().traceId);
+  return traceManager.getSpan(traceId, span.spanContext().spanId);
 }

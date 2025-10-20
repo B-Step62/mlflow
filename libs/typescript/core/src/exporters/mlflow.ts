@@ -6,16 +6,14 @@ import {
   ReadableSpan as OTelReadableSpan,
   SpanExporter
 } from '@opentelemetry/sdk-trace-base';
-import { Context, SpanStatusCode as OTelSpanStatusCode } from '@opentelemetry/api';
+import { Context } from '@opentelemetry/api';
 import { createAndRegisterMlflowSpan } from '../core/api';
 import { InMemoryTraceManager } from '../core/trace_manager';
 import { TraceInfo } from '../core/entities/trace_info';
 import { createTraceLocationFromExperimentId } from '../core/entities/trace_location';
 import { fromOtelStatus, TraceState } from '../core/entities/trace_state';
-import { createMlflowSpan, LiveSpan } from '../core/entities/span';
 import {
   SpanAttributeKey,
-  SpanType,
   TRACE_ID_PREFIX,
   TRACE_SCHEMA_VERSION,
   TraceMetadataKey
@@ -27,7 +25,7 @@ import {
 } from '../core/utils';
 import { getConfig } from '../core/config';
 import { MlflowClient } from '../clients';
-import { getOnSpanStartHooks, getOnSpanEndHooks } from './span_processor_hooks';
+import { executeOnSpanEndHooks, executeOnSpanStartHooks } from './span_processor_hooks';
 
 /**
  * Generate a MLflow-compatible trace ID for the given span.
@@ -85,6 +83,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
     span.setAttribute(SpanAttributeKey.TRACE_ID, JSON.stringify(traceId));
 
     createAndRegisterMlflowSpan(span);
+    executeOnSpanStartHooks(span as OTelSpan);
   }
 
   /**
@@ -95,21 +94,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
   onEnd(span: OTelReadableSpan): void {
     const traceManager = InMemoryTraceManager.getInstance();
 
-    // Execute onEnd hooks for autologging integrations
-    const hooks = getOnSpanEndHooks();
-    if (hooks.length > 0) {
-      const traceId = this.getMlflowTraceId(span);
-      const mlflowSpan = traceManager.getSpan(traceId, span.spanContext().spanId);
-      if (mlflowSpan != null) {
-        for (const hook of getOnSpanEndHooks()) {
-          try {
-            hook(mlflowSpan);
-          } catch (error) {
-            console.debug('Error executing onEnd hook:', error);
-          }
-        }
-      }
-    }
+    executeOnSpanEndHooks(span);
 
     // Only trigger trace export for root span completion
     if (span.parentSpanContext?.spanId) {
@@ -117,7 +102,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
     }
 
     // Update trace info
-    const traceId = this.getMlflowTraceId(span);
+    const traceId = traceManager.getMlflowTraceIdFromOtelId(span.spanContext().traceId);
     if (!traceId) {
       console.warn(`No trace ID found for span ${span.name}. Skipping.`);
       return;
@@ -140,10 +125,6 @@ export class MlflowSpanProcessor implements SpanProcessor {
     }
 
     this._exporter.export([span], (_) => {});
-  }
-
-  getMlflowTraceId(otelSpan: OTelReadableSpan): string | null {
-    return InMemoryTraceManager.getInstance().getMlflowTraceIdFromOtelId(otelSpan.spanContext().traceId);
   }
 
   /**

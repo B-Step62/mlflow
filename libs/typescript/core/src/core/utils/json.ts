@@ -3,7 +3,7 @@ import fastStringify from 'fast-safe-stringify';
 
 // Configure json-bigint to handle large integers
 const JSONBig = JSONBigInt({
-  useNativeBigInt: true,
+  useNativeBigInt: false,
   alwaysParseAsBig: false,
   storeAsString: false
 });

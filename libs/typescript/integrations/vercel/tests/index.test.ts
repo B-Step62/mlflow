@@ -3,8 +3,9 @@
  */
 
 import * as mlflow from 'mlflow-tracing';
-import { generateText } from "ai";
+import { generateText, streamText, tool } from "ai";
 import { createOpenAI } from '@ai-sdk/openai';
+import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { openAIMockHandlers } from './mockOpenAIServer';
 
@@ -14,6 +15,7 @@ describe('vercel autologging integration', () => {
   let experimentId: string;
   let client: mlflow.MlflowClient;
   let server: ReturnType<typeof setupServer>;
+  let openai: any;
 
   beforeAll(async () => {
     // Setup MSW mock server
@@ -30,6 +32,9 @@ describe('vercel autologging integration', () => {
       trackingUri: TEST_TRACKING_URI,
       experimentId: experimentId
     });
+
+    // Create OpenAI client
+    openai = createOpenAI({ apiKey: 'test-key' });
   });
 
   afterAll(async () => {
@@ -55,13 +60,11 @@ describe('vercel autologging integration', () => {
 
   describe('generateText', () => {
     it('should trace ai.generatetext()', async () => {
-      const openai = createOpenAI({ apiKey: 'test-key' });
       const result = await generateText({
         model: openai("gpt-4o-mini"),
         prompt: "What is mlflow?",
         experimental_telemetry: { isEnabled: true },
       });
-      console.log(result.text);
 
       const trace = await getLastActiveTrace();
       expect(trace.info.state).toBe('OK');
@@ -72,31 +75,152 @@ describe('vercel autologging integration', () => {
       expect(typeof tokenUsage?.output_tokens).toBe('number');
       expect(typeof tokenUsage?.total_tokens).toBe('number');
 
+      expect(trace.data.spans.length).toBe(2);
       const span = trace.data.spans[0];
-      expect(span.name).toBe('Completions');
+      expect(span.name).toBe('ai.generateText');
       expect(span.spanType).toBe(mlflow.SpanType.LLM);
-      expect(span.status.statusCode).toBe(mlflow.SpanStatusCode.OK);
-      expect(span.inputs).toEqual({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: 'Hello!' }]
-      });
-      expect(span.outputs).toEqual(result);
+      expect(span.inputs).toEqual({prompt: 'What is mlflow?'});
+      expect(span.outputs).toEqual(result.text);
       expect(span.startTime).toBeDefined();
       expect(span.endTime).toBeDefined();
 
-      // Check that token usage is stored at span level
-      const spanTokenUsage = span.attributes[mlflow.SpanAttributeKey.TOKEN_USAGE];
-      expect(spanTokenUsage).toBeDefined();
-      expect(typeof spanTokenUsage[mlflow.TokenUsageKey.INPUT_TOKENS]).toBe('number');
-      expect(typeof spanTokenUsage[mlflow.TokenUsageKey.OUTPUT_TOKENS]).toBe('number');
-      expect(typeof spanTokenUsage[mlflow.TokenUsageKey.TOTAL_TOKENS]).toBe('number');
+      expect(trace.data.spans[1].name).toBe('ai.generateText.doGenerate');
+      expect(trace.data.spans[1].spanType).toBe(mlflow.SpanType.LLM);
+      expect(trace.data.spans[1].inputs).toHaveProperty('messages');
+      expect(trace.data.spans[1].startTime).toBeDefined();
+      expect(trace.data.spans[1].endTime).toBeDefined();
     });
 
-    it('should handle chat completion errors properly', async () => {
+    it('should trace ai.generatetext() with system prompt', async () => {
+      const result = await generateText({
+        model: openai("gpt-4o-mini"),
+        system: "You are a helpful assistant.",
+        prompt: "What is mlflow?",
+        experimental_telemetry: { isEnabled: true },
+      });
 
+      const trace = await getLastActiveTrace();
+      expect(trace.info.state).toBe('OK');
+
+      const span = trace.data.spans[0];
+      expect(span.name).toBe('ai.generateText');
+      expect(span.spanType).toBe(mlflow.SpanType.LLM);
+      expect(span.inputs).toEqual({system: "You are a helpful assistant.", prompt: "What is mlflow?"});
+      expect(span.outputs).toEqual(result.text);
+      expect(span.startTime).toBeDefined();
+      expect(span.endTime).toBeDefined();
+    });
+
+    it('should trace ai.generatetext() with messages', async () => {
+      const result = await generateText({
+        model: openai("gpt-4o-mini"),
+        messages: [{ role: 'user', content: 'What is mlflow?' }],
+        experimental_telemetry: { isEnabled: true },
+      });
+
+      const trace = await getLastActiveTrace();
+      expect(trace.info.state).toBe('OK');
+
+      const span = trace.data.spans[0];
+      expect(span.name).toBe('ai.generateText');
+      expect(span.spanType).toBe(mlflow.SpanType.LLM);
+      expect(span.inputs).toEqual({messages: [{ role: 'user', content: 'What is mlflow?' }],
+      });
+      expect(span.outputs).toEqual(result.text);
+      expect(span.startTime).toBeDefined();
+      expect(span.endTime).toBeDefined();
+    });
+
+    it('should handle ai.streamText()', async () => {
+      const result = await streamText({
+        model: openai("gpt-4o-mini"),
+        prompt: "What is mlflow?",
+        experimental_telemetry: { isEnabled: true },
+      });
+
+      for await (const textPart of result.textStream) {
+        console.log(textPart);
+      }
+
+      const trace = await getLastActiveTrace();
+      expect(trace.info.state).toBe('OK');
+
+      const span = trace.data.spans[0];
+      expect(span.name).toBe('ai.streamText');
+      expect(span.spanType).toBe(mlflow.SpanType.LLM);
+      expect(span.inputs).toEqual({prompt: 'What is mlflow?'});
+      // Vercel AI SDK doesn't propagate streaming response to telemetry
+      expect(span.outputs).toBeUndefined();
+      expect(span.startTime).toBeDefined();
+      expect(span.endTime).toBeDefined();
+    });
+
+    it('should handle endpoint errors properly', async () => {
+      // Configure MSW to return rate limit error
+      server.use(
+        http.post('https://api.openai.com/v1/responses', () => {
+          return HttpResponse.json(
+            {
+              error: {
+                type: 'requests',
+                message: 'Rate limit exceeded'
+              }
+            },
+            { status: 429 }
+          );
+        })
+      );
+
+      const openai = createOpenAI({ apiKey: 'test-key' });
+      await expect(
+        generateText({
+          model: openai("gpt-4o-mini"),
+          prompt: "What is mlflow?",
+          experimental_telemetry: { isEnabled: true },
+        })
+      ).rejects.toThrow();
+
+      const trace = await getLastActiveTrace();
+      expect(trace.info.state).toBe('ERROR');
+
+      const span = trace.data.spans[0];
+      expect(span.status.statusCode).toBe(mlflow.SpanStatusCode.ERROR);
+      expect(span.inputs).toEqual({prompt: "What is mlflow?"});
+      expect(span.outputs).toBeUndefined();
+      expect(span.startTime).toBeDefined();
+      expect(span.endTime).toBeDefined();
     });
 
     it('should trace request wrapped in a parent span', async () => {
+      const result = await mlflow.withSpan(
+        async (_span) => {
+          const response = await generateText({
+            model: openai("gpt-4o-mini"),
+            prompt: "What is mlflow?",
+            experimental_telemetry: { isEnabled: true },
+          });
+          return response.text;
+        },
+        {
+          name: 'predict',
+          spanType: mlflow.SpanType.CHAIN,
+          inputs: 'Hello!'
+        }
+      );
+
+      const trace = await getLastActiveTrace();
+      expect(trace.info.state).toBe('OK');
+      expect(trace.data.spans.length).toBe(3);
+
+      const parentSpan = trace.data.spans[0];
+      expect(parentSpan.name).toBe('predict');
+      expect(parentSpan.spanType).toBe(mlflow.SpanType.CHAIN);
+
+      const childSpan = trace.data.spans[1];
+      expect(childSpan.name).toBe('ai.generateText');
+      expect(childSpan.spanType).toBe(mlflow.SpanType.LLM);
+      expect(childSpan.inputs).toEqual({prompt: 'What is mlflow?'});
+      expect(childSpan.outputs).toEqual(result);
     });
   });
 });

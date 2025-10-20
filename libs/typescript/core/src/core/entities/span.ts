@@ -72,6 +72,9 @@ export class Span implements ISpan {
   readonly _span: OTelSpan;
   readonly _attributesRegistry: SpanAttributesRegistry;
 
+  // Internal only flag to allow mutating the ended span
+  _allowMutatingEndedSpan: boolean = false;
+
   /**
    * Create a new MLflowSpan
    * @param span OpenTelemetry span
@@ -292,6 +295,7 @@ export class LiveSpan extends Span {
    * Set an attribute on the span
    * @param key Attribute key
    * @param value Attribute value
+   * @param force Whether to force the attribute to be set even if the span has ended
    */
   setAttribute(key: string, value: any): void {
     this._attributesRegistry.set(key, value, this.allowMutatingEndedSpan);
@@ -386,6 +390,17 @@ export class LiveSpan extends Span {
     } catch (error) {
       console.error(`Failed to end span ${this.spanId}: ${String(error)}.`);
     }
+  }
+
+  /**
+   * Allow mutating the ended span to set the custom outputs and token usage
+   * Without this, OpenTelemetry blocks setting attributes because the span is ended.
+   * https://github.com/open-telemetry/opentelemetry-js/blob/3bb5717f955b8dfb1140282e5a94f8d664c03870/packages/opentelemetry-sdk-trace-base/src/Span.ts#L150
+   * This method is internal only and should not be used by the user.
+   * @internal
+  */
+  allowMutatingEndedSpan(): void {
+    this._allowMutatingEndedSpan = true;
   }
 }
 
@@ -482,6 +497,7 @@ export class NoOpSpan implements ISpan {
       events: []
     };
   }
+  allowMutatingEndedSpan(): void {};
 }
 
 export interface SerializedSpan {
