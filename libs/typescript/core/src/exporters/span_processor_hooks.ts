@@ -1,4 +1,4 @@
-import { Span as OTelSpan, ReadableSpan as OTelReadableSpan} from '@opentelemetry/sdk-trace-base';
+import { Span as OTelSpan, ReadableSpan as OTelReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { LiveSpan } from '../core/entities/span';
 import { InMemoryTraceManager } from '../core/trace_manager';
 
@@ -28,7 +28,6 @@ export function getOnSpanEndHooks(): OnSpanEndHook[] {
   return Array.from(onSpanEndHooks);
 }
 
-
 export function executeOnSpanStartHooks(span: OTelSpan): void {
   // Execute onEnd hooks for autologging integrations
   const hooks = getOnSpanStartHooks();
@@ -49,7 +48,6 @@ export function executeOnSpanStartHooks(span: OTelSpan): void {
     }
   }
 }
-
 
 export function executeOnSpanEndHooks(span: OTelReadableSpan): void {
   const hooks = getOnSpanEndHooks();

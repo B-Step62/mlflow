@@ -1,7 +1,4 @@
-const OPTIONAL_INTEGRATIONS = [
-  'mlflow-openai',
-  'mlflow-vercel',
-];
+const OPTIONAL_INTEGRATIONS = ['mlflow-openai', 'mlflow-vercel'];
 
 /**
  * Attempt to load optional integration packages when they are installed.

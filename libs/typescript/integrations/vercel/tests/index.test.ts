@@ -3,25 +3,21 @@
  */
 
 import * as mlflow from 'mlflow-tracing';
-import { generateText, streamText, tool } from "ai";
+import { generateText, streamText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
-import { openAIMockHandlers } from './mockOpenAIServer';
+import { openAIMswServer, useMockOpenAIServer } from '../../../tests/helpers/mockOpenAIServer';
 
 const TEST_TRACKING_URI = 'http://localhost:5000';
 
 describe('vercel autologging integration', () => {
+  useMockOpenAIServer();
+
   let experimentId: string;
   let client: mlflow.MlflowClient;
-  let server: ReturnType<typeof setupServer>;
   let openai: any;
 
   beforeAll(async () => {
-    // Setup MSW mock server
-    server = setupServer(...openAIMockHandlers);
-    server.listen();
-
     // Setup MLflow client and experiment
     client = new mlflow.MlflowClient({ trackingUri: TEST_TRACKING_URI, host: TEST_TRACKING_URI });
 
@@ -38,7 +34,6 @@ describe('vercel autologging integration', () => {
   });
 
   afterAll(async () => {
-    server.close();
     await client.deleteExperiment(experimentId);
   });
 
@@ -49,11 +44,6 @@ describe('vercel autologging integration', () => {
     return trace;
   };
 
-  beforeEach(() => {
-    // Reset MSW handlers for each test
-    server.resetHandlers();
-  });
-
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -61,9 +51,9 @@ describe('vercel autologging integration', () => {
   describe('generateText', () => {
     it('should trace ai.generatetext()', async () => {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
-        prompt: "What is mlflow?",
-        experimental_telemetry: { isEnabled: true },
+        model: openai('gpt-4o-mini'),
+        prompt: 'What is mlflow?',
+        experimental_telemetry: { isEnabled: true }
       });
 
       const trace = await getLastActiveTrace();
@@ -79,7 +69,7 @@ describe('vercel autologging integration', () => {
       const span = trace.data.spans[0];
       expect(span.name).toBe('ai.generateText');
       expect(span.spanType).toBe(mlflow.SpanType.LLM);
-      expect(span.inputs).toEqual({prompt: 'What is mlflow?'});
+      expect(span.inputs).toEqual({ prompt: 'What is mlflow?' });
       expect(span.outputs).toEqual(result.text);
       expect(span.startTime).toBeDefined();
       expect(span.endTime).toBeDefined();
@@ -93,10 +83,10 @@ describe('vercel autologging integration', () => {
 
     it('should trace ai.generatetext() with system prompt', async () => {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
-        system: "You are a helpful assistant.",
-        prompt: "What is mlflow?",
-        experimental_telemetry: { isEnabled: true },
+        model: openai('gpt-4o-mini'),
+        system: 'You are a helpful assistant.',
+        prompt: 'What is mlflow?',
+        experimental_telemetry: { isEnabled: true }
       });
 
       const trace = await getLastActiveTrace();
@@ -105,7 +95,10 @@ describe('vercel autologging integration', () => {
       const span = trace.data.spans[0];
       expect(span.name).toBe('ai.generateText');
       expect(span.spanType).toBe(mlflow.SpanType.LLM);
-      expect(span.inputs).toEqual({system: "You are a helpful assistant.", prompt: "What is mlflow?"});
+      expect(span.inputs).toEqual({
+        system: 'You are a helpful assistant.',
+        prompt: 'What is mlflow?'
+      });
       expect(span.outputs).toEqual(result.text);
       expect(span.startTime).toBeDefined();
       expect(span.endTime).toBeDefined();
@@ -113,9 +106,9 @@ describe('vercel autologging integration', () => {
 
     it('should trace ai.generatetext() with messages', async () => {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
+        model: openai('gpt-4o-mini'),
         messages: [{ role: 'user', content: 'What is mlflow?' }],
-        experimental_telemetry: { isEnabled: true },
+        experimental_telemetry: { isEnabled: true }
       });
 
       const trace = await getLastActiveTrace();
@@ -124,18 +117,17 @@ describe('vercel autologging integration', () => {
       const span = trace.data.spans[0];
       expect(span.name).toBe('ai.generateText');
       expect(span.spanType).toBe(mlflow.SpanType.LLM);
-      expect(span.inputs).toEqual({messages: [{ role: 'user', content: 'What is mlflow?' }],
-      });
+      expect(span.inputs).toEqual({ messages: [{ role: 'user', content: 'What is mlflow?' }] });
       expect(span.outputs).toEqual(result.text);
       expect(span.startTime).toBeDefined();
       expect(span.endTime).toBeDefined();
     });
 
     it('should handle ai.streamText()', async () => {
-      const result = await streamText({
-        model: openai("gpt-4o-mini"),
-        prompt: "What is mlflow?",
-        experimental_telemetry: { isEnabled: true },
+      const result = streamText({
+        model: openai('gpt-4o-mini'),
+        prompt: 'What is mlflow?',
+        experimental_telemetry: { isEnabled: true }
       });
 
       for await (const textPart of result.textStream) {
@@ -148,7 +140,7 @@ describe('vercel autologging integration', () => {
       const span = trace.data.spans[0];
       expect(span.name).toBe('ai.streamText');
       expect(span.spanType).toBe(mlflow.SpanType.LLM);
-      expect(span.inputs).toEqual({prompt: 'What is mlflow?'});
+      expect(span.inputs).toEqual({ prompt: 'What is mlflow?' });
       // Vercel AI SDK doesn't propagate streaming response to telemetry
       expect(span.outputs).toBeUndefined();
       expect(span.startTime).toBeDefined();
@@ -157,7 +149,7 @@ describe('vercel autologging integration', () => {
 
     it('should handle endpoint errors properly', async () => {
       // Configure MSW to return rate limit error
-      server.use(
+      openAIMswServer.use(
         http.post('https://api.openai.com/v1/responses', () => {
           return HttpResponse.json(
             {
@@ -174,9 +166,9 @@ describe('vercel autologging integration', () => {
       const openai = createOpenAI({ apiKey: 'test-key' });
       await expect(
         generateText({
-          model: openai("gpt-4o-mini"),
-          prompt: "What is mlflow?",
-          experimental_telemetry: { isEnabled: true },
+          model: openai('gpt-4o-mini'),
+          prompt: 'What is mlflow?',
+          experimental_telemetry: { isEnabled: true }
         })
       ).rejects.toThrow();
 
@@ -185,7 +177,7 @@ describe('vercel autologging integration', () => {
 
       const span = trace.data.spans[0];
       expect(span.status.statusCode).toBe(mlflow.SpanStatusCode.ERROR);
-      expect(span.inputs).toEqual({prompt: "What is mlflow?"});
+      expect(span.inputs).toEqual({ prompt: 'What is mlflow?' });
       expect(span.outputs).toBeUndefined();
       expect(span.startTime).toBeDefined();
       expect(span.endTime).toBeDefined();
@@ -195,9 +187,9 @@ describe('vercel autologging integration', () => {
       const result = await mlflow.withSpan(
         async (_span) => {
           const response = await generateText({
-            model: openai("gpt-4o-mini"),
-            prompt: "What is mlflow?",
-            experimental_telemetry: { isEnabled: true },
+            model: openai('gpt-4o-mini'),
+            prompt: 'What is mlflow?',
+            experimental_telemetry: { isEnabled: true }
           });
           return response.text;
         },
@@ -219,7 +211,7 @@ describe('vercel autologging integration', () => {
       const childSpan = trace.data.spans[1];
       expect(childSpan.name).toBe('ai.generateText');
       expect(childSpan.spanType).toBe(mlflow.SpanType.LLM);
-      expect(childSpan.inputs).toEqual({prompt: 'What is mlflow?'});
+      expect(childSpan.inputs).toEqual({ prompt: 'What is mlflow?' });
       expect(childSpan.outputs).toEqual(result);
     });
   });

@@ -48,7 +48,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
    * returns true.
    * @param span the Span that just started.
    */
-  onStart(span: OTelSpan, parentContext: Context): void {
+  onStart(span: OTelSpan, _parentContext: Context): void {
     const otelTraceId = span.spanContext().traceId;
 
     let traceId: string;
@@ -83,7 +83,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
     span.setAttribute(SpanAttributeKey.TRACE_ID, JSON.stringify(traceId));
 
     createAndRegisterMlflowSpan(span);
-    executeOnSpanStartHooks(span as OTelSpan);
+    executeOnSpanStartHooks(span);
   }
 
   /**

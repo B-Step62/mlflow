@@ -1,4 +1,10 @@
-import { LiveSpan, registerOnSpanEndHook, registerOnSpanStartHook, SpanAttributeKey, SpanType } from 'mlflow-tracing';
+import {
+  LiveSpan,
+  registerOnSpanEndHook,
+  registerOnSpanStartHook,
+  SpanAttributeKey,
+  SpanType
+} from 'mlflow-tracing';
 
 const VERCEL_OPERATION_ID_ATTRIBUTE = 'ai.operationId';
 const VERCEL_PROMPT_ATTRIBUTE = 'ai.prompt';
@@ -6,7 +12,6 @@ const VERCEL_PROMPT_MESSAGES_ATTRIBUTE = 'ai.prompt.messages';
 const VERCEL_RESPONSE_TEXT_ATTRIBUTE = 'ai.response.text';
 const VERCEL_INPUT_TOKEN_USAGE_ATTRIBUTE = 'ai.usage.promptTokens';
 const VERCEL_OUTPUT_TOKEN_USAGE_ATTRIBUTE = 'ai.usage.completionTokens';
-
 
 const VERCEL_MESSAGE_FORMAT = 'vercel_ai';
 
@@ -24,12 +29,12 @@ export function vercelOnSpanStartHook(span: LiveSpan) {
   }
 }
 
-export function vercelOnSpanEndHook(span: LiveSpan) : void {
+export function vercelOnSpanEndHook(span: LiveSpan): void {
   if (!isVercelAISpan(span)) {
     return undefined;
   }
 
-  span.allowMutatingEndedSpan();
+  span.allowMutatingEndedSpan = true;
 
   const outputs = extractOutputs(span);
   if (outputs) {
@@ -59,7 +64,7 @@ function extractInputs(span: LiveSpan): Record<string, unknown> | undefined {
   }
 
   if (Object.prototype.hasOwnProperty.call(span.attributes, VERCEL_PROMPT_ATTRIBUTE)) {
-    return span.attributes[VERCEL_PROMPT_ATTRIBUTE];
+    return span.attributes[VERCEL_PROMPT_ATTRIBUTE] as Record<string, unknown>;
   }
 
   return undefined;
@@ -71,7 +76,6 @@ function extractOutputs(span: LiveSpan): string | undefined {
   }
 
   if (Object.prototype.hasOwnProperty.call(span.attributes, VERCEL_RESPONSE_TEXT_ATTRIBUTE)) {
-    console.error('response text', span.attributes[VERCEL_RESPONSE_TEXT_ATTRIBUTE]);
     return span.attributes[VERCEL_RESPONSE_TEXT_ATTRIBUTE] as string;
   }
 
@@ -91,7 +95,7 @@ function extractTokenUsage(span: LiveSpan): Record<string, unknown> | undefined 
   return {
     input_tokens: inputToken,
     output_tokens: outputToken,
-    total_tokens: inputToken + outputToken,
+    total_tokens: inputToken + outputToken
   };
 }
 
