@@ -1,8 +1,11 @@
-import { Context } from '@opentelemetry/api';
-import { Span as OTelSpan, ReadableSpan as OTelReadableSpan } from '@opentelemetry/sdk-trace-base';
+import { LiveSpan } from '../core/entities/span';
 
-type OnSpanStartHook = (span: OTelSpan, parentContext: Context) => void;
-type OnSpanEndHook = (span: OTelReadableSpan) => void;
+/**
+ * Hooks to be executed by the span processor.
+ * Primary used for adding custom processing to the span for autologging integrations.
+ */
+type OnSpanStartHook = (span: LiveSpan) => void;
+type OnSpanEndHook = (span: LiveSpan) => void;
 
 const onSpanStartHooks: Set<OnSpanStartHook> = new Set();
 const onSpanEndHooks: Set<OnSpanEndHook> = new Set();

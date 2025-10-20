@@ -93,11 +93,21 @@ export class MlflowSpanProcessor implements SpanProcessor {
    * @param span the Span that just ended.
    */
   onEnd(span: OTelReadableSpan): void {
-    for (const hook of getOnSpanEndHooks()) {
-      try {
-        hook(span);
-      } catch (error) {
-        console.debug('Error executing onEnd hook:', error);
+    const traceManager = InMemoryTraceManager.getInstance();
+
+    // Execute onEnd hooks for autologging integrations
+    const hooks = getOnSpanEndHooks();
+    if (hooks.length > 0) {
+      const traceId = this.getMlflowTraceId(span);
+      const mlflowSpan = traceManager.getSpan(traceId, span.spanContext().spanId);
+      if (mlflowSpan != null) {
+        for (const hook of getOnSpanEndHooks()) {
+          try {
+            hook(mlflowSpan);
+          } catch (error) {
+            console.debug('Error executing onEnd hook:', error);
+          }
+        }
       }
     }
 
@@ -107,8 +117,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
     }
 
     // Update trace info
-    const otelTraceId = span.spanContext().traceId;
-    const traceId = InMemoryTraceManager.getInstance().getMlflowTraceIdFromOtelId(otelTraceId);
+    const traceId = this.getMlflowTraceId(span);
     if (!traceId) {
       console.warn(`No trace ID found for span ${span.name}. Skipping.`);
       return;
@@ -119,8 +128,6 @@ export class MlflowSpanProcessor implements SpanProcessor {
       console.warn(`No trace found for span ${span.name}. Skipping.`);
       return;
     }
-
-    
 
     this.updateTraceInfo(trace.info, span);
     deduplicateSpanNamesInPlace(Array.from(trace.spanDict.values()));
@@ -133,6 +140,10 @@ export class MlflowSpanProcessor implements SpanProcessor {
     }
 
     this._exporter.export([span], (_) => {});
+  }
+
+  getMlflowTraceId(otelSpan: OTelReadableSpan): string | null {
+    return InMemoryTraceManager.getInstance().getMlflowTraceIdFromOtelId(otelSpan.spanContext().traceId);
   }
 
   /**

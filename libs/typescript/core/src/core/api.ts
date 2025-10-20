@@ -57,13 +57,7 @@ function getMlflowSpan(otelSpan: OTelSpan, options: SpanOptions): LiveSpan | NoO
   // MlflowSpanProcessor should have already registered the span
   const traceManager = InMemoryTraceManager.getInstance();
   const mlflowTraceId = traceManager.getMlflowTraceIdFromOtelId(otelSpan.spanContext().traceId);
-  let mlflowSpan;
-  if (mlflowTraceId != null) {
-    mlflowSpan = traceManager.getSpan(mlflowTraceId, otelSpan.spanContext().spanId);
-  }
-  if (mlflowSpan == null) {
-    mlflowSpan = new NoOpSpan();
-  }
+  const mlflowSpan = traceManager.getSpan(mlflowTraceId, otelSpan.spanContext().spanId) || new NoOpSpan();
 
   // Set custom properties to the span
   if (options.inputs) {

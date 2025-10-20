@@ -1,7 +1,4 @@
-import { Context } from '@opentelemetry/api';
-import { Span as OTelSpan } from '@opentelemetry/sdk-trace-base';
-import { SpanType } from '@mlflow/core/src/core/constants';
-import { LiveSpan, registerOnSpanStartHook, SpanAttributeKey } from 'mlflow-tracing';
+import { LiveSpan, registerOnSpanStartHook, SpanAttributeKey, SpanType } from 'mlflow-tracing';
 
 const VERCEL_OPERATION_ID_ATTRIBUTE = 'ai.operationId';
 const VERCEL_PROMPT_ATTRIBUTE = 'ai.prompt';
