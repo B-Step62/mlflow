@@ -4,13 +4,9 @@ import { useParams } from '../../../common/utils/RoutingUtils';
 import {
   useDesignSystemTheme,
   Button,
-  DropdownMenu,
-  Input,
   LegacySkeleton,
   LegacyTooltip,
   Header,
-  Breadcrumb,
-  OverflowIcon,
   ChevronDownIcon,
   ChevronUpIcon,
 } from '@databricks/design-system';
@@ -19,6 +15,9 @@ import AiLogoUrl from './components/ai-logo.svg';
 import { useInsightClusterDetails } from './hooks/useInsightClusterDetails';
 import { IconButton } from '../../../common/components/IconButton';
 import { RUNS_COLOR_PALETTE } from '../../../common/color-palette';
+import { getAssessmentValueBarBackgroundColor } from '../../../shared/web-shared/genai-traces-table/utils/Colors';
+import { KnownEvaluationResultAssessmentStringValue, type AssessmentInfo } from '../../../shared/web-shared/genai-traces-table';
+import { InsightQueryBanner } from './components/InsightQueryBanner';
 import type { InsightClusterNode } from './utils';
 
 /**
@@ -132,15 +131,40 @@ const TraceCountBar: React.FC<{ percent: number; color?: string }> = ({ percent,
 
 const MetricMiniBar: React.FC<{ value: number }> = ({ value }) => {
   const { theme } = useDesignSystemTheme();
-  // Fake split between pass/fail for skeleton look
-  const greenWidth = Math.round(value * 70) + 10; // 10..80
-  const redWidth = 100 - greenWidth;
-  const green = theme.isDarkMode ? theme.colors.green400 : theme.colors.green600;
-  const red = theme.isDarkMode ? theme.colors.red400 : theme.colors.red600;
+  // Treat value as pass ratio (0..1)
+  const passPct = Math.max(0, Math.min(1, value));
+  const passWidth = Math.round(passPct * 100);
+  const failWidth = 100 - passWidth;
+  const passFailInfo: AssessmentInfo = {
+    name: 'pass-fail',
+    displayName: 'Assessment',
+    isKnown: true,
+    isOverall: true,
+    metricName: 'assessment',
+    source: undefined,
+    isCustomMetric: false,
+    isEditable: false,
+    isRetrievalAssessment: false,
+    dtype: 'pass-fail',
+    uniqueValues: new Set(),
+    docsLink: '',
+    missingTooltip: '',
+    description: '',
+  };
+  const green = getAssessmentValueBarBackgroundColor(
+    theme,
+    passFailInfo,
+    KnownEvaluationResultAssessmentStringValue.YES,
+  );
+  const red = getAssessmentValueBarBackgroundColor(
+    theme,
+    passFailInfo,
+    KnownEvaluationResultAssessmentStringValue.NO,
+  );
   return (
     <div css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span css={{ width: 28, textAlign: 'right', color: theme.colors.textSecondary, fontSize: 12 }}>
-        {value.toFixed(2)}
+        {passPct.toFixed(2)}
       </span>
       <div
         aria-hidden
@@ -154,8 +178,8 @@ const MetricMiniBar: React.FC<{ value: number }> = ({ value }) => {
           overflow: 'hidden',
         }}
       >
-        <div css={{ width: `${greenWidth}%`, background: green }} />
-        <div css={{ width: `${redWidth}%`, background: red }} />
+        <div css={{ width: `${passWidth}%`, background: green }} />
+        <div css={{ width: `${failWidth}%`, background: red }} />
       </div>
     </div>
   );
@@ -458,7 +482,6 @@ const ExperimentInsightDetailsPage: React.FC<{
   invariant(insightId, 'insightId must be provided');
 
   const { theme } = useDesignSystemTheme();
-  const [qaValue, setQaValue] = useState('');
   const { data: clusterDetails, isLoading: isLoadingClusters } = useInsightClusterDetails(insightId);
 
   // Placeholder header metadata from route params
@@ -475,84 +498,7 @@ const ExperimentInsightDetailsPage: React.FC<{
     [insightId],
   );
 
-  const bannerInputRef = useRef<HTMLInputElement | null>(null);
-  const [bannerValue, setBannerValue] = useState('');
-  const renderCreateInsightBanner = () => {
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          // TODO: Wire up to actual ask questions about insight flow once backend is ready.
-        }}
-        onClick={() => bannerInputRef.current?.focus()}
-        css={{
-          // Layout
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          width: '100%',
-          padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-          textAlign: 'left',
-          cursor: 'text',
-
-          // Shape
-          borderRadius: theme.borders.borderRadiusMd,
-          border: '1px solid transparent',
-
-          // Gradient border around a white fill using the padding-box/border-box trick
-          background:
-            'linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, rgb(74, 174, 255) 20.5%, rgb(202, 66, 224) 46.91%, rgb(255, 95, 70) 79.5%) border-box',
-
-          // Motion + hover
-          transition: 'transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
-          boxShadow: '0 0 0 0 rgba(0,0,0,0)',
-          '&:hover': {
-            transform: 'translateY(-0.5px)',
-            boxShadow: '0 1px 2px rgba(16, 24, 40, 0.06)'
-          },
-          '&:active': {
-            transform: 'translateY(0)'
-          },
-          '&:focus-within': {
-            outline: `2px solid ${theme.colors.actionPrimaryTextDefault}`,
-            outlineOffset: 2,
-          },
-        }}
-      >
-        <span
-          css={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          aria-hidden
-        >
-          <img src={AiLogoUrl} alt="" width={20} height={20} css={{ display: 'block' }} />
-        </span>
-        <input
-          ref={bannerInputRef}
-          type="text"
-          value={bannerValue}
-          onChange={(e) => setBannerValue(e.target.value)}
-          placeholder={'Ask questions about the insight report. E.g., "what are the top three question topics with the lowest user groundedness?"'}
-          aria-label="Create a new Insight"
-          css={{
-            flex: 1,
-            minWidth: 0,
-            border: 0,
-            outline: 'none',
-            background: 'transparent',
-            color: theme.colors.textPrimary,
-            fontSize: 14,
-            lineHeight: '20px',
-            '::placeholder': {
-              color: theme.colors.textSecondary,
-            },
-          }}
-        />
-      </form>
-    );
-  };
+  
 
   return (
     <ScrollablePageWrapper>
@@ -599,10 +545,14 @@ const ExperimentInsightDetailsPage: React.FC<{
         </SectionCard>
         </div>
 
-      {/* Q&A strip */}
-      {renderCreateInsightBanner()}
+      {/* Q&A strip (shared) */}
+      <InsightQueryBanner
+        placeholder={'Ask questions about the insight report. E.g., "what are the top three question topics with the lowest user groundedness?"'}
+        ariaLabel="Ask question about the insight"
+        size="compact"
+      />
       {/* Results table */}
-        <SectionCard title="Results">
+        <SectionCard title="Cluster Analysis">
           {isLoadingClusters && <ResultsTableSkeleton />}
           {!isLoadingClusters && clusterDetails?.clusters?.length ? (
             <ResultsTable clusters={clusterDetails.clusters} />

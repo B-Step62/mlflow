@@ -1,4 +1,5 @@
 import { useDesignSystemTheme } from '@databricks/design-system';
+import { InsightQueryBanner } from '../../../pages/experiment-insights/components/InsightQueryBanner';
 import { TracesView } from '../../traces/TracesView';
 import {
   shouldEnableTracesV3View,
@@ -19,6 +20,11 @@ export const ExperimentViewTraces = ({ experimentIds }: { experimentIds: string[
         overflow: 'hidden',
       }}
     >
+      <InsightQueryBanner
+        placeholder={'What Insight do you want to find from your traces? E.g. "What kind of questions are users asking?"'}
+        ariaLabel="Create a new Insight"
+        size="compact"
+      />
       <TracesComponent experimentIds={experimentIds} />
     </div>
   );
