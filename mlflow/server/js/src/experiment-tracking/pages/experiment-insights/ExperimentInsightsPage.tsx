@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
 import { useDesignSystemTheme, Input, SearchIcon, TableFilterLayout, DropdownMenu, Button } from '@databricks/design-system';
 import AiLogoUrl from './components/ai-logo.svg';
+import { InsightQueryBanner } from './components/InsightQueryBanner';
 import { useExperimentInsightsRuns } from './hooks/useExperimentInsightsRuns';
 import { ExperimentInsightsTable } from './components/ExperimentInsightsTable';
 import ExperimentInsightDetailsPage from './ExperimentInsightDetailsPage';
@@ -46,85 +47,13 @@ const ExperimentInsightsPage = () => {
     setHiddenColumns((prev) => (prev.includes(columnId) ? prev.filter((c) => c !== columnId) : [...prev, columnId]));
   }, []);
 
-  const bannerInputRef = useRef<HTMLInputElement | null>(null);
-  const [bannerValue, setBannerValue] = useState('');
-
-  const renderCreateInsightBanner = () => {
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleCreateInsight();
-        }}
-        onClick={() => bannerInputRef.current?.focus()}
-        css={{
-          // Layout
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          width: '100%',
-          padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-          textAlign: 'left',
-          cursor: 'text',
-
-          // Shape
-          borderRadius: theme.borders.borderRadiusMd,
-          border: '1px solid transparent',
-
-          // Gradient border around a white fill using the padding-box/border-box trick
-          background:
-            'linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, rgb(74, 174, 255) 20.5%, rgb(202, 66, 224) 46.91%, rgb(255, 95, 70) 79.5%) border-box',
-
-          // Motion + hover
-          transition: 'transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
-          boxShadow: '0 0 0 0 rgba(0,0,0,0)',
-          '&:hover': {
-            transform: 'translateY(-0.5px)',
-            boxShadow: '0 1px 2px rgba(16, 24, 40, 0.06)'
-          },
-          '&:active': {
-            transform: 'translateY(0)'
-          },
-          '&:focus-within': {
-            outline: `2px solid ${theme.colors.actionPrimaryTextDefault}`,
-            outlineOffset: 2,
-          },
-        }}
-      >
-        <span
-          css={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          aria-hidden
-        >
-          <img src={AiLogoUrl} alt="" width={20} height={20} css={{ display: 'block' }} />
-        </span>
-        <input
-          ref={bannerInputRef}
-          type="text"
-          value={bannerValue}
-          onChange={(e) => setBannerValue(e.target.value)}
-          placeholder={'What Insight do you want to find from your traces? E.g. "What kind of questions are users asking?"'}
-          aria-label="Create a new Insight"
-          css={{
-            flex: 1,
-            minWidth: 0,
-            border: 0,
-            outline: 'none',
-            background: 'transparent',
-            color: theme.colors.textPrimary,
-            fontSize: 14,
-            lineHeight: '20px',
-            '::placeholder': {
-              color: theme.colors.textSecondary,
-            },
-          }}
-        />
-      </form>
-    );
-  };
+  const renderCreateInsightBanner = () => (
+    <InsightQueryBanner
+      placeholder={'What Insight do you want to find from your traces? E.g. "What kind of questions are users asking?"'}
+      ariaLabel="Create a new Insight"
+      onSubmit={handleCreateInsight}
+    />
+  );
 
   return (
     <div
