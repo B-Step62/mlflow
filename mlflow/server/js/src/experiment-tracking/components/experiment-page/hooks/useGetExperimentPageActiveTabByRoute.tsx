@@ -10,6 +10,7 @@ const ExperimentPageRoutePathToTabNameMap = map(
   {
     [RoutePaths.experimentPageTabRuns]: ExperimentPageTabName.Runs,
     [RoutePaths.experimentPageTabTraces]: ExperimentPageTabName.Traces,
+    [RoutePaths.experimentPageTabInsights]: ExperimentPageTabName.Insights,
     [RoutePaths.experimentPageTabModels]: ExperimentPageTabName.Models,
   },
   (tabName, routePath) => ({ routePath, tabName }),

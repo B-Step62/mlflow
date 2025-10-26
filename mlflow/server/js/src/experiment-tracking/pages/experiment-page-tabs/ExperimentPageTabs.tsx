@@ -25,6 +25,7 @@ import { useNavigateToExperimentPageTab } from '../../components/experiment-page
 
 const ExperimentRunsPage = React.lazy(() => import('../experiment-runs/ExperimentRunsPage'));
 const ExperimentTracesPage = React.lazy(() => import('../experiment-traces/ExperimentTracesPage'));
+const ExperimentInsightsPage = React.lazy(() => import('../experiment-insights/ExperimentInsightsPage'));
 
 const ExperimentLoggedModelListPage = React.lazy(
   () => import('../experiment-logged-models/ExperimentLoggedModelListPage'),
@@ -190,6 +191,7 @@ const ExperimentPageTabsImpl = () => {
         ) : (
           <>
             {activeTab === ExperimentPageTabName.Traces && <ExperimentTracesPage />}
+            {activeTab === ExperimentPageTabName.Insights && <ExperimentInsightsPage />}
             {activeTab === ExperimentPageTabName.Runs && <ExperimentRunsPage />}
             {activeTab === ExperimentPageTabName.Models && <ExperimentLoggedModelListPage />}
             {activeTab === ExperimentPageTabName.EvaluationRuns && <ExperimentEvaluationRunsPage />}
