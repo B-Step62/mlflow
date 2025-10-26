@@ -26,6 +26,7 @@ export enum PageId {
   compareRuns = 'mlflow.experiment.run.compare',
   metricPage = 'mlflow.metric.details',
   experimentPrompt = 'mlflow.experiment.prompt',
+  insightDetailsPage = 'mlflow.experiment.insight.details',
 }
 
 // Route path definitions (used in defining route elements)
@@ -82,6 +83,9 @@ export class RoutePaths {
   }
   static get experimentPrompt() {
     return createMLflowRoutePath('/experiments/:experimentId/prompts/:promptName');
+  }
+  static get insightDetailsPage() {
+    return createMLflowRoutePath('/experiments/:experimentId/insights/:insightId');
   }
   static get runPageDirect() {
     return createMLflowRoutePath('/runs/:runUuid');
@@ -276,6 +280,16 @@ class Routes {
 
   static getPromptDetailsPageRoute(promptName: string) {
     return generatePath(RoutePaths.promptDetailsPage, { promptName });
+  }
+
+  /**
+   * Routes for insight details page
+   */
+  static get insightDetailsPageRoute() {
+    return RoutePaths.insightDetailsPage;
+  }
+  static getInsightDetailsPageRoute(experimentId: string, insightId: string) {
+    return generatePath(RoutePaths.insightDetailsPage, { experimentId, insightId });
   }
 }
 

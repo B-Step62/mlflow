@@ -52,6 +52,7 @@ const getExperimentPageRouteDefs = () => {
             pageId: PageId.experimentPageTabInsights,
             element: createLazyRouteElement(() => import('./pages/experiment-insights/ExperimentInsightsPage')),
           },
+          // Details view is handled within the Insights tab via a query param
           {
             path: RoutePaths.experimentPageTabModels,
             pageId: PageId.experimentPageTabModels,
@@ -102,6 +103,7 @@ export const getRouteDefs = () => [
     pageId: PageId.home,
   },
   ...getExperimentPageRouteDefs(),
+  // Standalone insight details route removed; handled inside the Insights tab
   {
     path: RoutePaths.experimentLoggedModelDetailsPageTab,
     element: createLazyRouteElement(() => import('./pages/experiment-logged-models/ExperimentLoggedModelDetailsPage')),

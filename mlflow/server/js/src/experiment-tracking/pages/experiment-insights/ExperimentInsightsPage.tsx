@@ -5,42 +5,29 @@ import { useDesignSystemTheme, Input, SearchIcon, TableFilterLayout, DropdownMen
 import AiLogoUrl from './components/ai-logo.svg';
 import { useExperimentInsightsRuns } from './hooks/useExperimentInsightsRuns';
 import { ExperimentInsightsTable } from './components/ExperimentInsightsTable';
+import ExperimentInsightDetailsPage from './ExperimentInsightDetailsPage';
 
-const SELECTED_RUN_QUERY_PARAM = 'insightRunId';
+const SELECTED_INSIGHT_QUERY_PARAM = 'selectedInsightId';
 
 const ExperimentInsightsPage = () => {
   const { experimentId } = useParams();
   invariant(experimentId, 'Experiment ID must be defined');
 
   const { theme } = useDesignSystemTheme();
-  const { runs, loading, error, refetch } = useExperimentInsightsRuns({ experimentId });
-
+  const { runs, loading } = useExperimentInsightsRuns({ experimentId });
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedRunUuid = searchParams.get(SELECTED_RUN_QUERY_PARAM) ?? undefined;
+  const selectedInsightId = searchParams.get(SELECTED_INSIGHT_QUERY_PARAM) ?? undefined;
 
-  const selectRun = useCallback(
-    (runUuid: string | undefined) => {
-      setSearchParams((params) => {
-        if (!runUuid) {
-          params.delete(SELECTED_RUN_QUERY_PARAM);
-        } else {
-          params.set(SELECTED_RUN_QUERY_PARAM, runUuid);
-        }
-        return params;
-      });
-    },
-    [setSearchParams],
-  );
-
-  useEffect(() => {
-    if (loading || !runs.length) {
-      return;
-    }
-    const hasSelectedRun = selectedRunUuid && runs.some((run) => run.info.runUuid === selectedRunUuid);
-    if (!hasSelectedRun) {
-      selectRun(runs[0].info.runUuid);
-    }
-  }, [runs, loading, selectedRunUuid, selectRun]);
+  const openInsightDetails = (insightId?: string) => {
+    setSearchParams((params) => {
+      if (!insightId) {
+        params.delete(SELECTED_INSIGHT_QUERY_PARAM);
+      } else {
+        params.set(SELECTED_INSIGHT_QUERY_PARAM, insightId);
+      }
+      return params;
+    });
+  };
 
   const handleCreateInsight = useCallback(() => {
     // TODO(ML-INSIGHTS): Wire up to actual create insight flow once backend is ready.
@@ -157,68 +144,75 @@ const ExperimentInsightsPage = () => {
           flexDirection: 'column',
           minHeight: 0,
           overflow: 'hidden',
-          padding: `0 ${theme.spacing.lg}px ${theme.spacing.lg}px ${theme.spacing.lg}px`,
           gap: theme.spacing.lg,
         }}
       >
-        {renderCreateInsightBanner()}
-        <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <TableFilterLayout css={{ marginBottom: 0 }}>
-            <Input
-              placeholder="Search insights"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              prefix={<SearchIcon />}
-              allowClear
-              onClear={() => setFilterText('')}
-              css={{ width: 360 }}
+        {!selectedInsightId && (
+          <>
+            {renderCreateInsightBanner()}
+            <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TableFilterLayout css={{ marginBottom: 0 }}>
+                <Input
+                  placeholder="Search insights"
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  prefix={<SearchIcon />}
+                  allowClear
+                  onClear={() => setFilterText('')}
+                  css={{ width: 360 }}
+                />
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <Button size="large">
+                      {(() => {
+                        switch (sortBy) {
+                          case 'createdAtAsc':
+                            return 'Sort: Created ↑';
+                          case 'nameAsc':
+                            return 'Sort: Name ↑';
+                          case 'nameDesc':
+                            return 'Sort: Name ↓';
+                          case 'traceCountAsc':
+                            return 'Sort: Trace Count ↑';
+                          case 'traceCountDesc':
+                            return 'Sort: Trace Count ↓';
+                          case 'createdAtDesc':
+                          default:
+                            return 'Sort: Created ↓';
+                        }
+                      })()}
+                    </Button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="start">
+                    <DropdownMenu.Item onClick={() => setSortBy('createdAtDesc')}>Created ↓</DropdownMenu.Item>
+                    <DropdownMenu.Item onClick={() => setSortBy('createdAtAsc')}>Created ↑</DropdownMenu.Item>
+                    <DropdownMenu.Separator />
+                    <DropdownMenu.Item onClick={() => setSortBy('nameAsc')}>Name ↑</DropdownMenu.Item>
+                    <DropdownMenu.Item onClick={() => setSortBy('nameDesc')}>Name ↓</DropdownMenu.Item>
+                    <DropdownMenu.Separator />
+                    <DropdownMenu.Item onClick={() => setSortBy('traceCountDesc')}>Trace Count ↓</DropdownMenu.Item>
+                    <DropdownMenu.Item onClick={() => setSortBy('traceCountAsc')}>Trace Count ↑</DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </TableFilterLayout>
+            </div>
+            <ExperimentInsightsTable
+              runs={runs}
+              loading={loading}
+              onSelect={(runUuid) => openInsightDetails(runUuid)}
+              onCreateInsight={handleCreateInsight}
+              filterText={filterText}
+              sortBy={sortBy}
+              hiddenColumns={hiddenColumns}
+              toggleHiddenColumn={toggleHiddenColumn}
             />
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <Button size="large">
-                  {(() => {
-                    switch (sortBy) {
-                      case 'createdAtAsc':
-                        return 'Sort: Created ↑';
-                      case 'nameAsc':
-                        return 'Sort: Name ↑';
-                      case 'nameDesc':
-                        return 'Sort: Name ↓';
-                      case 'traceCountAsc':
-                        return 'Sort: Trace Count ↑';
-                      case 'traceCountDesc':
-                        return 'Sort: Trace Count ↓';
-                      case 'createdAtDesc':
-                      default:
-                        return 'Sort: Created ↓';
-                    }
-                  })()}
-                </Button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content align="start">
-                <DropdownMenu.Item onClick={() => setSortBy('createdAtDesc')}>Created ↓</DropdownMenu.Item>
-                <DropdownMenu.Item onClick={() => setSortBy('createdAtAsc')}>Created ↑</DropdownMenu.Item>
-                <DropdownMenu.Separator />
-                <DropdownMenu.Item onClick={() => setSortBy('nameAsc')}>Name ↑</DropdownMenu.Item>
-                <DropdownMenu.Item onClick={() => setSortBy('nameDesc')}>Name ↓</DropdownMenu.Item>
-                <DropdownMenu.Separator />
-                <DropdownMenu.Item onClick={() => setSortBy('traceCountDesc')}>Trace Count ↓</DropdownMenu.Item>
-                <DropdownMenu.Item onClick={() => setSortBy('traceCountAsc')}>Trace Count ↑</DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
-          </TableFilterLayout>
-        </div>
-        <ExperimentInsightsTable
-          runs={runs}
-          loading={loading}
-          selectedRunUuid={selectedRunUuid}
-          onSelect={(runUuid) => selectRun(runUuid)}
-          onCreateInsight={handleCreateInsight}
-          filterText={filterText}
-          sortBy={sortBy}
-          hiddenColumns={hiddenColumns}
-          toggleHiddenColumn={toggleHiddenColumn}
-        />
+          </>
+        )}
+        {selectedInsightId && (
+          <div css={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            <ExperimentInsightDetailsPage experimentId={experimentId!} insightId={selectedInsightId} />
+          </div>
+        )}
       </div>
     </div>
   );
