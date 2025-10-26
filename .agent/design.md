@@ -56,11 +56,7 @@ Entry points today:
 - **Creation modal** (`mocks/insight-creation-modal.png`): wizard-like form capturing instruction, trace scope, naming. Shows validation errors and estimated cost/duration if available.
 
 ## Backend Components
-- **Insight Service API**: REST/gRPC endpoint to create and fetch Insights, wrapping MLflow run interactions.
-- **Insight Job Runner**: orchestrates summary generation, clustering, and logging. Leverages existing inference infrastructure (LLM provider) configured with guardrails.
-- **Trace Store Adapter**: fetches trace content/metadata given selection or filters.
-- **Assessment Logger**: reusable helper to write Assessment artifacts and tags to traces.
-- **Notification/Webhook (optional)**: enqueue async event when job completes for UI refresh.
+TBA. I have a separate design for this, but you don't need to implement it now. For product demo I used static pipeline running in notebooks.
 
 ## Open Questions
 - How do we handle very large trace selections? Need batching and async pagination for the job.
