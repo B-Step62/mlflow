@@ -11,9 +11,15 @@ import {
   Header,
   Breadcrumb,
   OverflowIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from '@databricks/design-system';
 import { ScrollablePageWrapper } from '../../../common/components/ScrollablePageWrapper';
 import AiLogoUrl from './components/ai-logo.svg';
+import { useInsightClusterDetails } from './hooks/useInsightClusterDetails';
+import { IconButton } from '../../../common/components/IconButton';
+import { RUNS_COLOR_PALETTE } from '../../../common/color-palette';
+import type { InsightClusterNode } from './utils';
 
 /**
  * Insight Details — skeleton-first implementation.
@@ -94,6 +100,353 @@ const BarsSkeleton: React.FC<{ count?: number; height?: number }> = ({ count = 2
   );
 };
 
+// --- Results table skeleton -------------------------------------------------
+const TraceCountBar: React.FC<{ percent: number; color?: string }> = ({ percent, color }) => {
+  const { theme } = useDesignSystemTheme();
+  return (
+    <div css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div
+        aria-hidden
+        css={{
+          position: 'relative',
+          height: 8,
+          borderRadius: 8,
+          background: theme.colors.backgroundSecondary,
+          flex: 1,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          css={{
+            position: 'absolute',
+            inset: 0,
+            width: `${Math.max(6, Math.min(100, percent))}%`,
+            background: color || theme.colors.primary,
+          }}
+        />
+      </div>
+      <span css={{ color: theme.colors.textSecondary, fontSize: 12 }}>{percent.toFixed(1)}%</span>
+    </div>
+  );
+};
+
+const MetricMiniBar: React.FC<{ value: number }> = ({ value }) => {
+  const { theme } = useDesignSystemTheme();
+  // Fake split between pass/fail for skeleton look
+  const greenWidth = Math.round(value * 70) + 10; // 10..80
+  const redWidth = 100 - greenWidth;
+  const green = theme.isDarkMode ? theme.colors.green400 : theme.colors.green600;
+  const red = theme.isDarkMode ? theme.colors.red400 : theme.colors.red600;
+  return (
+    <div css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span css={{ width: 28, textAlign: 'right', color: theme.colors.textSecondary, fontSize: 12 }}>
+        {value.toFixed(2)}
+      </span>
+      <div
+        aria-hidden
+        css={{
+          display: 'flex',
+          gap: 2,
+          width: '100%',
+          height: 8,
+          borderRadius: 8,
+          background: theme.colors.backgroundSecondary,
+          overflow: 'hidden',
+        }}
+      >
+        <div css={{ width: `${greenWidth}%`, background: green }} />
+        <div css={{ width: `${redWidth}%`, background: red }} />
+      </div>
+    </div>
+  );
+};
+
+const ResultsTableSkeleton: React.FC = () => {
+  const { theme } = useDesignSystemTheme();
+
+  // Static shape to mimic hierarchy in mock
+  const rows = [
+    { id: 'r1', label: 'Usage of MLflow Tracing', level: 0, expanded: true, isGroup: true, highlight: true },
+    { id: 'r2', label: 'Different between autologging and manual tracing', level: 0 },
+    { id: 'r3', label: 'Multi-thread handling', level: 0 },
+    { id: 'r4', label: 'LangGraph Support', level: 0, expanded: true, isGroup: true },
+    { id: 'r4-1', label: 'Is MLflow support Async Agent', level: 1 },
+    { id: 'r4-2', label: 'How to trace custom nodes', level: 1 },
+    { id: 'r5', label: 'MLflow Tracking Server Setup', level: 0 },
+    { id: 'r6', label: 'Installation Problems', level: 0 },
+    { id: 'r7', label: 'Tracking URI Configuration…', level: 0 },
+  ];
+
+  return (
+    <div
+      role="table"
+      css={{
+        border: `1px solid ${theme.colors.borderDecorative}`,
+        borderRadius: theme.borders.borderRadiusSm,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header (two rows to group Assessments) */}
+      <div
+        role="rowgroup"
+        css={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          background: theme.colors.backgroundPrimary,
+          borderBottom: `1px solid ${theme.colors.borderStrong}`,
+        }}
+      >
+        <div
+          role="row"
+          css={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr) 260px 1fr 1fr',
+            alignItems: 'center',
+            columnGap: 12,
+            padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
+            color: theme.colors.textSecondary,
+            fontWeight: 600,
+          }}
+        >
+          <div>Category</div>
+          <div>Description</div>
+          <div>Trace Count</div>
+          <div css={{ gridColumn: '4 / span 2', textAlign: 'center' }}>Assessments</div>
+        </div>
+        <div
+          role="row"
+          css={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr) 260px 1fr 1fr',
+            alignItems: 'center',
+            columnGap: 12,
+            padding: `0 ${theme.spacing.md}px ${theme.spacing.xs}px`,
+            color: theme.colors.textSecondary,
+            fontSize: 12,
+          }}
+        >
+          <div />
+          <div />
+          <div />
+          <div>Correctness</div>
+          <div>Groundedness</div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div role="rowgroup">
+        {rows.map((row, idx) => (
+          <div
+            key={row.id}
+            role="row"
+            className="insight-results-row"
+            css={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr) 260px 1fr 1fr',
+              columnGap: 12,
+              alignItems: 'center',
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+              borderTop: `1px solid ${theme.colors.borderDecorative}`,
+              backgroundColor: row.highlight ? theme.colors.primaryBackgroundHover : 'transparent',
+            }}
+          >
+            {/* Category with tree chevrons and indent */}
+            <div css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span css={{ width: row.level * 16 }} aria-hidden />
+              {row.isGroup ? (
+                <ChevronDownIcon css={{ color: theme.colors.textSecondary }} />
+              ) : (
+                <span css={{ width: 16 }} />
+              )}
+              <LegacySkeleton css={{ height: 16, width: 240 }} />
+            </div>
+
+            {/* Description */}
+            <LegacySkeleton css={{ height: 14, width: '70%' }} />
+
+            {/* Trace Count inline bar */}
+            <TraceCountBar percent={32 - (idx % 5) * 3 + 18} />
+
+            {/* Assessments two metrics */}
+            <MetricMiniBar value={0.66} />
+            <MetricMiniBar value={0.66} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const countTraces = (node: InsightClusterNode): number => {
+  const own = (node.traceIds?.length ?? 0) as number;
+  const child = (node.children ?? []).reduce((acc, n) => acc + countTraces(n), 0);
+  return own + child;
+};
+
+const flattenWithDepth = (nodes: InsightClusterNode[], depth = 0): Array<InsightClusterNode & { depth: number; topId: string }> =>
+  nodes.flatMap((n) => [
+    { ...n, depth, topId: depth === 0 ? n.id : (n as any).topId },
+    ...flattenWithDepth((n.children ?? []).map((c) => ({ ...c, topId: (n as any).topId ?? n.id } as any)), depth + 1),
+  ]);
+
+const sortClustersByCount = (nodes: InsightClusterNode[]): InsightClusterNode[] => {
+  const sorted = [...nodes]
+    .map((n) => ({ ...n, children: sortClustersByCount(n.children ?? []) }))
+    .sort((a, b) => countTraces(b) - countTraces(a));
+  return sorted;
+};
+
+const ResultsTable: React.FC<{ clusters: InsightClusterNode[] }> = ({ clusters }) => {
+  const { theme } = useDesignSystemTheme();
+  const sortedClusters = useMemo(() => sortClustersByCount(clusters), [clusters]);
+  const total = useMemo(() => sortedClusters.reduce((acc, n) => acc + countTraces(n), 0) || 1, [sortedClusters]);
+  const rows = useMemo(() => flattenWithDepth(sortedClusters), [sortedClusters]);
+  const topLevelColors = useMemo(() => {
+    const map = new Map<string, string>();
+    sortedClusters.forEach((node, idx) => {
+      map.set(node.id, RUNS_COLOR_PALETTE[idx % RUNS_COLOR_PALETTE.length]);
+    });
+    return map;
+  }, [sortedClusters]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+
+  return (
+    <div
+      role="table"
+      css={{
+        border: `1px solid ${theme.colors.borderDecorative}`,
+        borderRadius: theme.borders.borderRadiusSm,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        role="rowgroup"
+        css={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          background: theme.colors.backgroundPrimary,
+          borderBottom: `1px solid ${theme.colors.borderStrong}`,
+        }}
+      >
+        <div
+          role="row"
+          css={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr) 260px 1fr 1fr',
+            alignItems: 'center',
+            columnGap: 12,
+            padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
+            color: theme.colors.textSecondary,
+            fontWeight: 600,
+          }}
+        >
+          <div>Category</div>
+          <div>Description</div>
+          <div>Trace Count</div>
+          <div css={{ gridColumn: '4 / span 2', textAlign: 'center' }}>Assessments</div>
+        </div>
+        <div
+          role="row"
+          css={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr) 260px 1fr 1fr',
+            alignItems: 'center',
+            columnGap: 12,
+            padding: `0 ${theme.spacing.md}px ${theme.spacing.xs}px`,
+            color: theme.colors.textSecondary,
+            fontSize: 12,
+          }}
+        >
+          <div />
+          <div />
+          <div />
+          <div>Correctness</div>
+          <div>Groundedness</div>
+        </div>
+      </div>
+
+      <div role="rowgroup">
+        {rows.map((row) => {
+          const traceCount = countTraces(row);
+          const percent = (traceCount / total) * 100;
+          return (
+            <div
+              key={row.id}
+              role="row"
+              className="insight-results-row"
+              css={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr) 260px 1fr 1fr',
+                columnGap: 12,
+                alignItems: 'center',
+                padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+                borderTop: `1px solid ${theme.colors.borderDecorative}`,
+              }}
+            >
+              <div css={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span css={{ width: row.depth * 16 }} aria-hidden />
+                {/* Show chevron placeholder for groups; v1 can toggle expansion */}
+                {(row.children?.length ?? 0) > 0 ? (
+                  <ChevronDownIcon css={{ color: theme.colors.textSecondary }} />
+                ) : (
+                  <span css={{ width: 16 }} />
+                )}
+                <span css={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.title}
+                </span>
+              </div>
+
+              <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'baseline', minWidth: 0 }}>
+                <span
+                  css={{
+                    color: theme.colors.textSecondary,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: expanded.has(row.id) ? 'block' : '-webkit-box',
+                    WebkitLineClamp: expanded.has(row.id) ? 'unset' : 2,
+                    WebkitBoxOrient: 'vertical',
+                    whiteSpace: expanded.has(row.id) ? 'normal' : 'unset',
+                    wordBreak: 'break-word',
+                    flex: 1,
+                  }}
+                >
+                  {row.summary || '—'}
+                </span>
+                {row.summary && row.summary.length > 140 && (
+                  <IconButton
+                    onClick={() => toggleExpanded(row.id)}
+                    icon={expanded.has(row.id) ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                    style={{ lineHeight: 1 }}
+                    aria-label={expanded.has(row.id) ? 'Collapse description' : 'Expand description'}
+                  />
+                )}
+              </div>
+
+              <TraceCountBar percent={percent} color={topLevelColors.get((row as any).topId) || undefined} />
+
+              {/* Metrics not yet provided by artifact; show placeholders */}
+              <MetricMiniBar value={0.66} />
+              <MetricMiniBar value={0.66} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const ExperimentInsightDetailsPage: React.FC<{
   experimentId?: string;
   insightId?: string;
@@ -106,6 +459,7 @@ const ExperimentInsightDetailsPage: React.FC<{
 
   const { theme } = useDesignSystemTheme();
   const [qaValue, setQaValue] = useState('');
+  const { data: clusterDetails, isLoading: isLoadingClusters } = useInsightClusterDetails(insightId);
 
   // Placeholder header metadata from route params
   const metaChips = useMemo(
@@ -247,40 +601,12 @@ const ExperimentInsightDetailsPage: React.FC<{
 
       {/* Q&A strip */}
       {renderCreateInsightBanner()}
-      {/* Results table skeleton */}
+      {/* Results table */}
         <SectionCard title="Results">
-        {/* Column headers with disabled sorting affordances */}
-        <div
-          css={{
-            display: 'grid',
-            gridTemplateColumns: '240px 1fr 200px 220px',
-            gap: 12,
-            marginBottom: theme.spacing.sm,
-            color: theme.colors.textSecondary,
-            fontWeight: 600,
-          }}
-        >
-          <div>Category</div>
-          <div>Description</div>
-          <div>Trace Count</div>
-          <div>Assessments: Correctness • Groundedness</div>
-        </div>
-        <div css={{ display: 'grid', gridTemplateColumns: '240px 1fr 200px 220px', gap: 12 }}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <React.Fragment key={i}>
-              <LegacySkeleton css={{ height: 18 }} />
-              <LegacySkeleton css={{ height: 18 }} />
-              <LegacySkeleton css={{ height: 18 }} />
-              <div css={{ display: 'flex', gap: 8 }}>
-                <LegacySkeleton css={{ height: 18, width: 64 }} />
-                <LegacySkeleton css={{ height: 18, width: 64 }} />
-              </div>
-            </React.Fragment>
-          ))}
-        </div>
-          <LegacyTooltip title={`Experiment ${experimentId}`}>
-            <span css={{ color: theme.colors.textSecondary, fontSize: 12 }}>Experiment context</span>
-          </LegacyTooltip>
+          {isLoadingClusters && <ResultsTableSkeleton />}
+          {!isLoadingClusters && clusterDetails?.clusters?.length ? (
+            <ResultsTable clusters={clusterDetails.clusters} />
+          ) : null}
         </SectionCard>
       </div>
     </ScrollablePageWrapper>
