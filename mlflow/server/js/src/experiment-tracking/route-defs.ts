@@ -98,6 +98,7 @@ export const getRouteDefs = () => [
     pageId: PageId.home,
   },
   ...getExperimentPageRouteDefs(),
+  // Standalone insight details route removed; handled inside the Insights tab
   {
     path: RoutePaths.experimentLoggedModelDetailsPageTab,
     element: createLazyRouteElement(() => import('./pages/experiment-logged-models/ExperimentLoggedModelDetailsPage')),
