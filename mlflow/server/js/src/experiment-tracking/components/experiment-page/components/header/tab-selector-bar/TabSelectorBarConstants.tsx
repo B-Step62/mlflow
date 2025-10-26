@@ -9,6 +9,7 @@ import {
   PlusMinusSquareIcon,
   UserIcon,
   TextBoxIcon,
+  SparkleIcon,
 } from '@databricks/design-system';
 import { ExperimentPageTabName } from '@mlflow/mlflow/src/experiment-tracking/constants';
 import { FormattedMessage } from 'react-intl';
@@ -37,6 +38,17 @@ const TracesTabConfig = {
   ),
   icon: <ListBorderIcon />,
   getRoute: (experimentId: string) => Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Traces),
+};
+
+const InsightsTabConfig = {
+  label: (
+    <FormattedMessage
+      defaultMessage="Insights"
+      description="Label for the insights tab in the MLflow experiment navbar"
+    />
+  ),
+  icon: <SparkleIcon />,
+  getRoute: (experimentId: string) => Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Insights),
 };
 
 const EvaluationsTabConfig = {
@@ -78,6 +90,7 @@ export const getGenAIExperimentTabConfigMap = ({
 }: GenAIExperimentTabConfigMapProps = {}): TabConfigMap => ({
   ...(includeRunsTab && { [ExperimentPageTabName.Runs]: RunsTabConfig }),
   [ExperimentPageTabName.Traces]: TracesTabConfig,
+  [ExperimentPageTabName.Insights]: InsightsTabConfig,
   [ExperimentPageTabName.EvaluationRuns]: EvaluationsTabConfig,
   [ExperimentPageTabName.Models]: ModelsTabConfig,
   ...(enableScorersUI() && { [ExperimentPageTabName.Judges]: ScorersTabConfig }),
@@ -88,25 +101,29 @@ export const getGenAIExperimentWithPromptsTabConfigMap = ({
 }: GenAIExperimentTabConfigMapProps = {}): TabConfigMap => ({
   ...(includeRunsTab && { [ExperimentPageTabName.Runs]: RunsTabConfig }),
   [ExperimentPageTabName.Traces]: TracesTabConfig,
+  [ExperimentPageTabName.Insights]: InsightsTabConfig,
   [ExperimentPageTabName.Models]: ModelsTabConfig,
   ...(enableScorersUI() && { [ExperimentPageTabName.Judges]: ScorersTabConfig }),
 });
 
 export const GenAIExperimentWithPromptsTabConfigMap = getGenAIExperimentTabConfigMap();
 
+const CustomModelsTabConfig = {
+  ...ModelsTabConfig,
+  label: (
+    <FormattedMessage
+      defaultMessage="Models"
+      description="Label for the logged models tab in the MLflow experiment navbar"
+    />
+  ),
+};
+
 export const CustomExperimentTabConfigMap: TabConfigMap = {
   [ExperimentPageTabName.Runs]: RunsTabConfig,
-  [ExperimentPageTabName.Models]: {
-    ...ModelsTabConfig,
-    label: (
-      <FormattedMessage
-        defaultMessage="Models"
-        description="Label for the logged models tab in the MLflow experiment navbar"
-      />
-    ),
-  },
   [ExperimentPageTabName.Traces]: TracesTabConfig,
   ...(enableScorersUI() && { [ExperimentPageTabName.Judges]: ScorersTabConfig }),
+  [ExperimentPageTabName.Insights]: InsightsTabConfig,
+  [ExperimentPageTabName.Models]: CustomModelsTabConfig,
 };
 
 export const DefaultTabConfigMap: TabConfigMap = {
