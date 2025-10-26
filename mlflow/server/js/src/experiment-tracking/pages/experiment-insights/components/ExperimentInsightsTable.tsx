@@ -10,6 +10,10 @@ import {
   Tag,
   Typography,
   useDesignSystemTheme,
+  DropdownMenu,
+  TableRowAction,
+  ColumnsIcon,
+  ListBorderIcon,
 } from '@databricks/design-system';
 import type { Interpolation, Theme } from '@emotion/react';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -36,6 +40,11 @@ export interface ExperimentInsightsTableProps {
   selectedRunUuid?: string;
   onSelect: (runUuid: string) => void;
   onCreateInsight?: () => void;
+  // UI enhancements
+  filterText?: string;
+  sortBy?: 'createdAtDesc' | 'createdAtAsc' | 'nameAsc' | 'nameDesc' | 'traceCountDesc' | 'traceCountAsc';
+  hiddenColumns?: string[];
+  toggleHiddenColumn?: (columnId: string) => void;
 }
 
 type InsightRow = {
@@ -47,6 +56,7 @@ type InsightRow = {
   instruction?: string;
   overview?: string;
   traceCountLabel: string;
+  traceCount?: number | null;
   createdAtLabel: string;
   filters: string[];
 };
@@ -66,6 +76,10 @@ const buildRow = (run: RunEntity): InsightRow => {
         ? traceCountRaw
         : Number(traceCountRaw).toLocaleString()
       : '—';
+  const traceCount =
+    typeof traceCountRaw === 'string' && traceCountRaw.trim().length > 0 && !Number.isNaN(Number(traceCountRaw))
+      ? Number(traceCountRaw)
+      : null;
   const createdAtLabel = run.info.startTime ? Utils.formatTimestamp(run.info.startTime) : '—';
   const filters = parseInsightFiltersTag(tags[INSIGHT_FILTERS_TAG]);
 
@@ -78,6 +92,7 @@ const buildRow = (run: RunEntity): InsightRow => {
     instruction,
     overview,
     traceCountLabel,
+    traceCount,
     createdAtLabel,
     filters,
   };
@@ -89,10 +104,48 @@ export const ExperimentInsightsTable = ({
   selectedRunUuid,
   onSelect,
   onCreateInsight,
+  filterText,
+  sortBy = 'createdAtDesc',
+  hiddenColumns = [],
+  toggleHiddenColumn,
 }: ExperimentInsightsTableProps) => {
   const { theme } = useDesignSystemTheme();
 
-  const rows = useMemo(() => runs.map((run) => buildRow(run)), [runs]);
+  const rows = useMemo(() => {
+    // Build base rows
+    const base = runs.map((run) => buildRow(run));
+    // Filter by simple substring across name, overview, instruction and filters
+    const filtered = (filterText || '').trim()
+      ? base.filter((r) => {
+          const q = (filterText || '').toLowerCase();
+          return (
+            r.name.toLowerCase().includes(q) ||
+            (r.instruction || '').toLowerCase().includes(q) ||
+            (r.overview || '').toLowerCase().includes(q) ||
+            r.filters.some((f) => f.toLowerCase().includes(q))
+          );
+        })
+      : base;
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'createdAtAsc':
+          return (a.run.info.startTime || 0) - (b.run.info.startTime || 0);
+        case 'nameAsc':
+          return a.name.localeCompare(b.name);
+        case 'nameDesc':
+          return b.name.localeCompare(a.name);
+        case 'traceCountAsc':
+          return (a.traceCount ?? -Infinity) - (b.traceCount ?? -Infinity);
+        case 'traceCountDesc':
+          return (b.traceCount ?? -Infinity) - (a.traceCount ?? -Infinity);
+        case 'createdAtDesc':
+        default:
+          return (b.run.info.startTime || 0) - (a.run.info.startTime || 0);
+      }
+    });
+    return sorted;
+  }, [runs, filterText, sortBy]);
 
   const columns = useMemo<InsightsColumnDef[]>(
     () => [
@@ -103,22 +156,22 @@ export const ExperimentInsightsTable = ({
         ),
         accessorKey: 'status',
         cell: ({ row }) => (
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
             <RunStatusIcon status={row.original.status || ''} />
           </div>
         ),
-        meta: { styles: { width: 60, maxWidth: 60 } },
+        meta: { styles: { width: 60, maxWidth: 60, alignItems: 'center' } },
       },
       {
         id: 'name',
         header: <FormattedMessage defaultMessage="Name" description="Experiment insights table name header" />,
         accessorKey: 'name',
         cell: ({ row }) => (
-          <Link to={Routes.getRunPageRoute(row.original.experimentId, row.original.runUuid)}>
+          <Link to={Routes.getRunPageRoute(row.original.experimentId, row.original.runUuid)} css={{ height: '100%' }}>
             {row.original.name}
           </Link>
         ),
-        meta: { styles: { minWidth: 200, flex: 1 } },
+        meta: { styles: { minWidth: 240, maxWidth: 240, alignItems: 'center' } },
       },
       {
         id: 'overview',
@@ -132,7 +185,7 @@ export const ExperimentInsightsTable = ({
           ) : (
             <Typography.Text type="secondary">—</Typography.Text>
           ),
-        meta: { styles: { minWidth: 240, flex: 2 } },
+        meta: { styles: { alignItems: 'center' } },
       },
       {
         id: 'traceCount',
@@ -140,8 +193,22 @@ export const ExperimentInsightsTable = ({
           <FormattedMessage defaultMessage="Trace Count" description="Experiment insights trace count header" />
         ),
         accessorKey: 'traceCountLabel',
-        cell: ({ row }) => <Typography.Text>{row.original.traceCountLabel}</Typography.Text>,
-        meta: { styles: { width: 140 } },
+        cell: ({ row }) => (
+          <div
+            css={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              padding: `${theme.spacing.xs}px ${theme.spacing.xs}px`,
+              backgroundColor: theme.colors.backgroundSecondary,
+              borderRadius: theme.borders.borderRadiusSm,
+            }}
+          >
+            <ListBorderIcon css={{ color: theme.colors.textSecondary, fontSize: 14 }} />
+            <Typography.Text>{row.original.traceCountLabel}</Typography.Text>
+          </div>
+        ),
+        meta: { styles: { width: 140, maxWidth: 140, alignItems: 'center' } },
       },
       {
         id: 'createdAt',
@@ -150,7 +217,7 @@ export const ExperimentInsightsTable = ({
         ),
         accessorKey: 'createdAtLabel',
         cell: ({ row }) => <Typography.Text>{row.original.createdAtLabel}</Typography.Text>,
-        meta: { styles: { width: 200 } },
+        meta: { styles: { width: 200, maxWidth: 200, alignItems: 'center' } },
       },
       {
         id: 'filters',
@@ -166,15 +233,38 @@ export const ExperimentInsightsTable = ({
           ) : (
             <Typography.Text type="secondary">—</Typography.Text>
           ),
-        meta: { styles: { minWidth: 160, flex: 1 } },
+        meta: { styles: { minWidth: 160, alignItems: 'center' } },
+      },
+      {
+        id: 'rowActions',
+        header: '',
+        cell: ({ row }) => (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button
+                size="small"
+                type="link"
+                aria-label="More actions"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => e.stopPropagation()}
+                css={{ fontSize: 18, lineHeight: 1, padding: 0 }}
+              >
+                ⋯
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu.Item disabled>Coming soon</DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        ),
+        meta: { styles: { width: 56, maxWidth: 56, textAlign: 'right' as const, alignItems: 'center' } },
       },
     ],
-    [theme.spacing.xs],
+    [theme.spacing.xs, theme.colors.backgroundSecondary, theme.colors.textSecondary, theme.borders.borderRadiusSm],
   );
 
   const table = useReactTable({
     data: rows,
-    columns,
+    columns: columns.filter((c) => !hiddenColumns.includes(c.id as string)),
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.runUuid,
   });
@@ -193,7 +283,7 @@ export const ExperimentInsightsTable = ({
   );
 
   return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, height: '100%' }}>
       <Table scrollable empty={isEmpty ? emptyComponent : undefined}>
         <TableRow isHeader>
           {table.getLeafHeaders().map((header) => (
@@ -205,6 +295,33 @@ export const ExperimentInsightsTable = ({
               {flexRender(header.column.columnDef.header, header.getContext())}
             </TableHeader>
           ))}
+          {toggleHiddenColumn && (
+            <TableRowAction>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <Button
+                    componentId="experiment-insights-table.column_selector_dropdown"
+                    icon={<ColumnsIcon />}
+                    size="small"
+                    aria-label="Select columns"
+                  />
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end">
+                  {columns.map(({ id, header }) => (
+                    <DropdownMenu.CheckboxItem
+                      key={id as string}
+                      componentId="experiment-insights-table.column_toggle_button"
+                      checked={!hiddenColumns.includes(id as string)}
+                      onClick={() => toggleHiddenColumn(id as string)}
+                    >
+                      <DropdownMenu.ItemIndicator />
+                      {flexRender(header, { table } as any)}
+                    </DropdownMenu.CheckboxItem>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </TableRowAction>
+          )}
         </TableRow>
         {loading ? (
           <TableSkeletonRows table={table} />

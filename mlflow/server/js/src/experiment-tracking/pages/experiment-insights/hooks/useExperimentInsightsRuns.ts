@@ -34,7 +34,7 @@ const createHardcodedInsightRun = (experimentId: string): RunEntity => {
       tags: [
         {
           key: INSIGHT_OVERVIEW_TAG,
-          value: 'Identified common user questions about billing and...',
+          value: 'Identified common user questions about billing and platform...',
         },
         {
           key: INSIGHT_TRACE_COUNT_TAG,
