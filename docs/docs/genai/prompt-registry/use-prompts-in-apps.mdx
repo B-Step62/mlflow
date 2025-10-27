@@ -26,6 +26,9 @@ mlflow.genai.load_prompt(name_or_uri=f"prompts:/{prompt_name}/1")
 
 # Load by alias (assuming an alias 'staging' points to a version of a prompt)
 mlflow.genai.load_prompt(name_or_uri=f"prompts:/{prompt_name}@staging")
+
+# Load the latest version of the prompt
+mlflow.genai.load_prompt(name_or_uri=f"prompts:/{prompt_name}@latest")
 ```
 
 ## Formatting Prompts with Variables

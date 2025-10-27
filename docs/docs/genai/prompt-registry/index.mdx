@@ -183,6 +183,8 @@ MLflow Projects, MLflow Models, and MLflow Registry.
 
 # Load the prompt
 prompt = mlflow.genai.load_prompt("prompts:/summarization-prompt/2")
+# Or load the latest version of the prompt
+prompt = mlflow.genai.load_prompt("prompts:/summarization-prompt@latest")
 
 # Use the prompt with an LLM
 client = openai.OpenAI()
@@ -349,7 +351,7 @@ import mlflow
 from langchain.prompts import PromptTemplate
 
 # Load prompt from MLflow
-prompt = mlflow.genai.load_prompt("question_answering")
+prompt = mlflow.genai.load_prompt("prompts:/question_answering@latest")
 
 # Convert the prompt to single brace format for LangChain (MLflow uses double braces),
 # using the `to_single_brace_format` method.
