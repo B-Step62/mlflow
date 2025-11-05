@@ -96,11 +96,12 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
             header: `Expectations (${expectationKeys.size} ${expectationKeys.size === 1 ? 'column' : 'columns'})`,
             columns: Array.from(expectationKeys)
               .sort()
-              .map((key) => ({
+              .map((key, index) => ({
                 id: `${EXPECTATIONS_COLUMN_ID}.${key}`,
                 header: key,
                 accessorFn: (row: EvaluationDatasetRecord) => (row as any).expectations?.[key],
                 cell: JsonCell,
+                meta: { section: 'expectations', isFirstLeaf: index === 0 },
               })),
           }
         : {
@@ -108,31 +109,23 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
             header: 'Expectations',
             accessorFn: (row: EvaluationDatasetRecord) => (row as any).expectations,
             cell: JsonCell,
+            meta: { section: 'expectations', isFirstLeaf: true },
           };
 
-    // If any group exists (inputs/expectations), show Outputs label in the first header row by
-    // wrapping it as a group with a single child that has an empty subheader.
-    const hasGroups = inputKeys.size > 0 || expectationKeys.size > 0;
-    const outputsCol: ColumnDef<EvaluationDatasetRecord, any> = hasGroups
-      ? {
-          id: OUTPUTS_COLUMN_ID,
-          header: 'Outputs',
-          columns: [
-            {
-              id: `${OUTPUTS_COLUMN_ID}.value`,
-              header: '',
-              accessorFn: (row: EvaluationDatasetRecord) => (row as any).outputs,
-              cell: JsonCell,
-            },
-          ],
-        }
-      : {
-          id: OUTPUTS_COLUMN_ID,
+    // Outputs as a group with second header label "output"
+    const outputsCol: ColumnDef<EvaluationDatasetRecord, any> = {
+      id: OUTPUTS_COLUMN_ID,
+      header: 'Outputs',
+      columns: [
+        {
+          id: `${OUTPUTS_COLUMN_ID}.output`,
+          header: 'output',
           accessorFn: (row: EvaluationDatasetRecord) => (row as any).outputs,
-          header: 'Outputs',
-          enableResizing: false,
           cell: JsonCell,
-        };
+          meta: { section: 'outputs', isFirstLeaf: true },
+        },
+      ],
+    };
 
     // Order: Inputs group, Outputs, Expectations group
     return [inputColumns, outputsCol, expectationsColumns] as ColumnDef<EvaluationDatasetRecord, any>[];
@@ -216,7 +209,13 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
       >
         {table.getHeaderGroups().map((headerGroup, depth) => (
           <TableRow isHeader key={headerGroup.id}>
-            {headerGroup.headers.map((header) => (
+            {headerGroup.headers.map((header) => {
+              const colId = String(header.column.id);
+              const isTopSectionHeader = depth === 0 && (colId === OUTPUTS_COLUMN_ID || colId === EXPECTATIONS_COLUMN_ID);
+              const meta = (header.column.columnDef as any)?.meta || {};
+              const isFirstLeaf = depth > 0 && meta?.isFirstLeaf && (meta?.section === 'outputs' || meta?.section === 'expectations');
+              const isSectionBoundary = isTopSectionHeader || isFirstLeaf;
+              return (
               <TableHeader
                 key={header.id}
                 componentId={`mlflow.eval-dataset-records.${header.column.id}-header`}
@@ -227,18 +226,31 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
                   top: depth * 32,
                   zIndex: 1,
                   ...(depth > 0 && { color: theme.colors.textSecondary, fontWeight: 400 }),
+                  ...(isSectionBoundary && { borderLeft: `1px solid ${theme.colors.border}` }),
                 }}
               >
-                {!header.isPlaceholder && flexRender(header.column.columnDef.header, header.getContext())}
+                {!header.isPlaceholder && (
+                  depth > 0 ? (
+                    <span css={{ fontWeight: 400 }}>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                  ) : (
+                    flexRender(header.column.columnDef.header, header.getContext())
+                  )
+                )}
               </TableHeader>
-            ))}
+              );})}
           </TableRow>
         ))}
         {table.getRowModel().rows.map((row) => (
           <TableRow key={row.id}>
-            {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-            ))}
+            {row.getVisibleCells().map((cell) => {
+              const meta = (cell.column.columnDef as any)?.meta || {};
+              const isSectionBoundary = meta?.isFirstLeaf && (meta?.section === 'outputs' || meta?.section === 'expectations');
+              return (
+                <TableCell key={cell.id} css={isSectionBoundary ? { borderLeft: `1px solid ${theme.colors.border}` } : undefined}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </TableCell>
+              );
+            })}
           </TableRow>
         ))}
         {(isLoading || isFetching) && <TableSkeletonRows table={table} />}
