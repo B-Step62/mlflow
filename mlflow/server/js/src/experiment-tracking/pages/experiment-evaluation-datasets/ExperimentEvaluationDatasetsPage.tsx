@@ -3,7 +3,7 @@ import { useDesignSystemTheme } from '@databricks/design-system';
 import { ResizableBox } from 'react-resizable';
 import { ExperimentViewRunsTableResizerHandle } from '../../components/experiment-page/components/runs/ExperimentViewRunsTableResizer';
 import { useState } from 'react';
-import { useParams } from '../../../common/utils/RoutingUtils';
+import { useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
 import invariant from 'invariant';
 import { ExperimentEvaluationDatasetsListTable } from './components/ExperimentEvaluationDatasetsListTable';
 import { ExperimentEvaluationDatasetRecordsTable } from './components/ExperimentEvaluationDatasetRecordsTable';
@@ -19,6 +19,8 @@ const ExperimentEvaluationDatasetsPageImpl = () => {
   const [datasetListHidden, setDatasetListHidden] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<EvaluationDataset | undefined>(undefined);
   const [isDatasetsLoading, setIsDatasetsLoading] = useState(false);
+  const [searchParams] = useSearchParams();
+  const initialSelectedDatasetId = searchParams.get('selectedDatasetId') ?? undefined;
 
   invariant(experimentId, 'Experiment ID must be defined');
 
@@ -52,6 +54,7 @@ const ExperimentEvaluationDatasetsPageImpl = () => {
           <ExperimentEvaluationDatasetsListTable
             setIsLoading={setIsDatasetsLoading}
             experimentId={experimentId}
+            initialSelectedDatasetId={initialSelectedDatasetId}
             selectedDataset={selectedDataset}
             setSelectedDataset={setSelectedDataset}
           />
