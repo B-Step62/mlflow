@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGetDatasetRecords } from '../hooks/useGetDatasetRecords';
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { Empty, TableCell, TableHeader, TableRow, TableSkeletonRows } from '@databricks/design-system';
+import { Empty, TableCell, TableHeader, TableRow, TableSkeletonRows, useDesignSystemTheme } from '@databricks/design-system';
 import { Table } from '@databricks/design-system';
 import { useIntl } from 'react-intl';
 import { JsonCell } from './ExperimentEvaluationDatasetJsonCell';
@@ -13,33 +13,18 @@ const INPUTS_COLUMN_ID = 'inputs';
 const OUTPUTS_COLUMN_ID = 'outputs';
 const EXPECTATIONS_COLUMN_ID = 'expectations';
 
-const columns: ColumnDef<EvaluationDatasetRecord, string>[] = [
-  {
-    id: INPUTS_COLUMN_ID,
-    accessorKey: 'inputs',
-    header: 'Inputs',
-    enableResizing: false,
-    cell: JsonCell,
-  },
-  {
-    id: OUTPUTS_COLUMN_ID,
-    accessorKey: 'outputs',
-    header: 'Outputs',
-    enableResizing: false,
-    cell: JsonCell,
-  },
-  {
-    id: EXPECTATIONS_COLUMN_ID,
-    accessorKey: 'expectations',
-    header: 'Expectations',
-    enableResizing: false,
-    cell: JsonCell,
-  },
-];
+// Render a single field value (stringify objects, handle nulls)
+const FieldValueCell: ColumnDef<EvaluationDatasetRecord>['cell'] = ({ getValue }) => {
+  const value = getValue<any>();
+  if (value === null || value === undefined) return <span>-</span>;
+  if (typeof value === 'object') return <span title={JSON.stringify(value)}>{JSON.stringify(value)}</span>;
+  return <span title={String(value)}>{String(value)}</span>;
+};
 
 export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: EvaluationDataset }) => {
   const intl = useIntl();
   const datasetId = dataset.dataset_id;
+  const { theme } = useDesignSystemTheme();
 
   const [rowSize, setRowSize] = useState<'sm' | 'md' | 'lg'>('sm');
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
@@ -66,8 +51,109 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
     fetchNextPage,
   });
 
+  // Build dynamic columns: expand inputs/expectations keys into sub-columns
+  const dynamicColumns = useMemo(() => {
+    const records = datasetRecords ?? [];
+    const inputKeys = new Set<string>();
+    const expectationKeys = new Set<string>();
+
+    for (const rec of records) {
+      if ((rec as any).inputs && typeof (rec as any).inputs === 'object') {
+        Object.keys(rec.inputs).forEach((k) => inputKeys.add(k));
+      }
+      if ((rec as any).expectations && typeof (rec as any).expectations === 'object') {
+        Object.keys(rec.expectations).forEach((k) => expectationKeys.add(k));
+      }
+    }
+
+    // Inputs: group with keys or single column if no keys
+    const inputColumns: ColumnDef<EvaluationDatasetRecord, any> =
+      inputKeys.size > 0
+        ? {
+            id: INPUTS_COLUMN_ID,
+            header: `Inputs (${inputKeys.size} ${inputKeys.size === 1 ? 'column' : 'columns'})`,
+            columns: Array.from(inputKeys)
+              .sort()
+              .map((key) => ({
+                id: `${INPUTS_COLUMN_ID}.${key}`,
+                header: key,
+                accessorFn: (row: EvaluationDatasetRecord) => (row as any).inputs?.[key],
+                cell: JsonCell,
+              })),
+          }
+        : {
+            id: INPUTS_COLUMN_ID,
+            header: 'Inputs',
+            accessorFn: (row: EvaluationDatasetRecord) => (row as any).inputs,
+            cell: JsonCell,
+          };
+
+    // Expectations: group with keys or single column if no keys
+    const expectationsColumns: ColumnDef<EvaluationDatasetRecord, any> =
+      expectationKeys.size > 0
+        ? {
+            id: EXPECTATIONS_COLUMN_ID,
+            header: `Expectations (${expectationKeys.size} ${expectationKeys.size === 1 ? 'column' : 'columns'})`,
+            columns: Array.from(expectationKeys)
+              .sort()
+              .map((key) => ({
+                id: `${EXPECTATIONS_COLUMN_ID}.${key}`,
+                header: key,
+                accessorFn: (row: EvaluationDatasetRecord) => (row as any).expectations?.[key],
+                cell: JsonCell,
+              })),
+          }
+        : {
+            id: EXPECTATIONS_COLUMN_ID,
+            header: 'Expectations',
+            accessorFn: (row: EvaluationDatasetRecord) => (row as any).expectations,
+            cell: JsonCell,
+          };
+
+    // If any group exists (inputs/expectations), show Outputs label in the first header row by
+    // wrapping it as a group with a single child that has an empty subheader.
+    const hasGroups = inputKeys.size > 0 || expectationKeys.size > 0;
+    const outputsCol: ColumnDef<EvaluationDatasetRecord, any> = hasGroups
+      ? {
+          id: OUTPUTS_COLUMN_ID,
+          header: 'Outputs',
+          columns: [
+            {
+              id: `${OUTPUTS_COLUMN_ID}.value`,
+              header: '',
+              accessorFn: (row: EvaluationDatasetRecord) => (row as any).outputs,
+              cell: JsonCell,
+            },
+          ],
+        }
+      : {
+          id: OUTPUTS_COLUMN_ID,
+          accessorFn: (row: EvaluationDatasetRecord) => (row as any).outputs,
+          header: 'Outputs',
+          enableResizing: false,
+          cell: JsonCell,
+        };
+
+    // Order: Inputs group, Outputs, Expectations group
+    return [inputColumns, outputsCol, expectationsColumns] as ColumnDef<EvaluationDatasetRecord, any>[];
+  }, [datasetRecords]);
+
+  // Flat leaf columns for column selector UI
+  const flatLeafColumns = useMemo(() => {
+    const collectLeaves = (cols: ColumnDef<EvaluationDatasetRecord, any>[]): ColumnDef<EvaluationDatasetRecord, any>[] => {
+      const acc: ColumnDef<EvaluationDatasetRecord, any>[] = [];
+      cols.forEach((c) => {
+        // @ts-expect-error columns is allowed by react-table
+        if (c.columns && Array.isArray(c.columns)) acc.push(...collectLeaves(c.columns));
+        else acc.push(c);
+      });
+      return acc;
+    };
+    return collectLeaves(dynamicColumns);
+  }, [dynamicColumns]);
+
   const table = useReactTable({
-    columns,
+    columns: dynamicColumns,
     data: datasetRecords ?? [],
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.dataset_record_id,
@@ -77,6 +163,21 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
       columnVisibility,
     },
   });
+
+  // Ensure new dynamic columns become visible by default
+  useEffect(() => {
+    const nextState: Record<string, boolean> = { ...columnVisibility };
+    flatLeafColumns.forEach((col) => {
+      const id = col.id as string;
+      if (!(id in nextState)) {
+        nextState[id] = true;
+      }
+    });
+    if (JSON.stringify(nextState) !== JSON.stringify(columnVisibility)) {
+      setColumnVisibility(nextState);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatLeafColumns]);
 
   return (
     <div
@@ -92,7 +193,7 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
       <ExperimentEvaluationDatasetRecordsToolbar
         dataset={dataset}
         datasetRecords={datasetRecords ?? []}
-        columns={columns}
+        columns={flatLeafColumns}
         columnVisibility={columnVisibility}
         setColumnVisibility={setColumnVisibility}
         rowSize={rowSize}
@@ -113,22 +214,26 @@ export const ExperimentEvaluationDatasetRecordsTable = ({ dataset }: { dataset: 
         scrollable
         onScroll={(e) => fetchMoreOnBottomReached(e.currentTarget as HTMLDivElement)}
       >
-        <TableRow isHeader>
-          {table.getLeafHeaders().map(
-            (header) =>
-              header.column.getIsVisible() && (
-                <TableHeader
-                  key={header.id}
-                  componentId={`mlflow.eval-dataset-records.${header.column.id}-header`}
-                  header={header}
-                  column={header.column}
-                  css={{ position: 'sticky', top: 0, zIndex: 1 }}
-                >
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHeader>
-              ),
-          )}
-        </TableRow>
+        {table.getHeaderGroups().map((headerGroup, depth) => (
+          <TableRow isHeader key={headerGroup.id}>
+            {headerGroup.headers.map((header) => (
+              <TableHeader
+                key={header.id}
+                componentId={`mlflow.eval-dataset-records.${header.column.id}-header`}
+                header={header}
+                column={header.column}
+                css={{
+                  position: 'sticky',
+                  top: depth * 32,
+                  zIndex: 1,
+                  ...(depth > 0 && { color: theme.colors.textSecondary, fontWeight: 400 }),
+                }}
+              >
+                {!header.isPlaceholder && flexRender(header.column.columnDef.header, header.getContext())}
+              </TableHeader>
+            ))}
+          </TableRow>
+        ))}
         {table.getRowModel().rows.map((row) => (
           <TableRow key={row.id}>
             {row.getVisibleCells().map((cell) => (
