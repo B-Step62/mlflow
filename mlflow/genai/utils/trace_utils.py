@@ -282,7 +282,7 @@ def parse_inputs_to_str(value: Any) -> str:
 
     value = _to_dict(value)
 
-    if (messages := value.get(_MESSAGES_KEY)) and len(messages) > 0:
+    if isinstance(value, dict) and (messages := value.get(_MESSAGES_KEY)) and len(messages) > 0:
         contents = [m.get(_CONTENT_KEY) for m in messages]
         if len(contents) > 1 and all(isinstance(c, str) for c in contents):
             return json.dumps(messages)
@@ -303,6 +303,10 @@ def parse_outputs_to_str(value: Any) -> str:
         return parse_outputs_to_str(value[0])
 
     value = _to_dict(value)
+
+    if not isinstance(value, dict):
+        return str(value)
+
     if _is_chat_choices(value.get(_CHOICES_KEY)):
         content = value[_CHOICES_KEY][0][_MESSAGE_KEY][_CONTENT_KEY]
     elif _is_chat_messages(value.get(_MESSAGES_KEY)):

@@ -1,0 +1,169 @@
+import { APILink } from "@site/src/components/APILink";
+import ImageBox from '@site/src/components/ImageBox';
+import WorkflowSteps from '@site/src/components/WorkflowSteps';
+import TilesGrid from '@site/src/components/TilesGrid';
+import TileCard from '@site/src/components/TileCard';
+import { Database, FileText, CheckCircle, Play } from 'lucide-react';
+import ServerSetup from "@site/src/content/setup_server.mdx";
+
+# Evaluating Datasets (Answer Sheets)
+
+Many teams keep an “answer sheet”, a static dataset with inputs, outputs, and ground truths, to validate agent quality. MLflow lets you evaluate these datasets directly using a simple list of dictionaries with precomputed outputs.
+
+<ImageBox src="/images/mlflow-3/eval-monitor/quickstart-eval-hero.png" alt="Dataset Evaluation Overview" width="95%"/>
+
+## Workflow
+
+<WorkflowSteps
+  steps={[
+    {
+      icon: FileText,
+      title: "Prepare dataset",
+      description: "Create a list with inputs, outputs, and expectations."
+    },
+    {
+      icon: CheckCircle,
+      title: "Choose scorers",
+      description: "Use built‑ins like Correctness/Equivalence or write custom scorers."
+    },
+    {
+      icon: Play,
+      title: "Run evaluation",
+      description: "Execute and review metrics and per‑row assessments in MLflow UI."
+    },
+  ]}
+/>
+
+## Example: Evaluate a Static QA Answer Sheet
+
+### Prerequisites
+
+First, install the required package:
+
+```bash
+pip install --upgrade mlflow>=3.3
+```
+
+MLflow stores evaluation results in a tracking server. Connect your environment by one of the following methods.
+
+<ServerSetup />
+
+### Step 1: Define the dataset in memory
+
+Provide a Python list of dictionaries. Each item should include:
+- `inputs`: a dictionary of inputs (e.g., `{ "question": "..." }`).
+- `outputs`: the precomputed answer to evaluate.
+- `expectations`: ground truths, must be a dictionary with the label name as the key (e.g., `{ "expected_response": "..." }`).
+
+```python
+# Example QA answer sheet with precomputed outputs
+eval_dataset = [
+    {
+        "inputs": {"question": "What is MLflow?"},
+        "outputs": "MLflow is an open-source platform for ML lifecycle management.",
+        "expectations": {"expected_response": "An open-source platform for ML lifecycle"},
+        # Optionally add tags for filtering/analysis
+        "tags": {"topic": "ml"},
+    },
+    {
+        "inputs": {"question": "What is 15% of 240?"},
+        "outputs": 36,
+        "expectations": {"expected_response": 36},
+        "tags": {"topic": "math"},
+    },
+    {
+        "inputs": {"question": "Name two key steps in the water cycle"},
+        "outputs": "Evaporation and condensation.",
+        "expectations": {"expected_response": "evaporation, condensation"},
+        "tags": {"topic": "science"},
+    },
+]
+```
+
+:::tip Register the dataset to MLflow
+
+Optionally, you can register the dataset to MLflow using <APILink fn="mlflow.genai.create_dataset" /> API. This will allow you to manage versions 
+
+```python
+from mlflow.genai.datasets import create_dataset
+
+# Create a managed dataset in MLflow
+managed_dataset = create_dataset(
+    name="qa_evaluation_v1",
+    tags={"environment": "production", "version": "1.0"},
+)
+# Insert the records into the dataset
+managed_dataset.merge_recorts(eval_dataset)
+```
+
+:::
+
+### Step 2: Define task-specific scorers
+
+Choose scorers to evaluate quality. Here we use built-in [LLM-as-a-Judge](/genai/eval-monitor/scorers/llm-judge) scorers:
+
+```python
+from mlflow.genai.scorers import Correctness, RelevanceToQuery, Guidelines
+
+scorers = [
+    Correctness(),
+    RelevanceToQuery(),
+    Guidelines(name="is_concise", guidelines="Be concise and to the point."),
+]
+```
+
+:::note
+
+Some scorers such as `Correctness` requires a particular key in the `expectations` dictionary. See the [Available Scorers](scorers/llm-judge/predefined/#available-scorers) page for more details.
+
+:::
+
+### Step 3: Run evaluation
+
+Call <APILink fn="mlflow.genai.evaluate" /> with the dataset and scorers defined in the previous steps.
+
+```python
+import mlflow
+
+results = mlflow.genai.evaluate(
+    data=eval_dataset,             # Has inputs/outputs/expectations
+    scorers=scorers,               # e.g., Equivalence / Correctness / Guidelines
+)
+```
+
+### Review results
+
+Open the MLflow UI and navigate to the experiment run to compare metrics and inspect per‑row assessments. Since no prediction function is used, there are no new model traces for these rows; scorer rationales are still available per row.
+
+
+## Next steps
+
+<TilesGrid>
+  <TileCard
+    icon={Database}
+    iconSize={48}
+    title="Managing Datasets"
+    description="Manage and version datasets used for evaluation across teams."
+    href="/genai/datasets"
+    linkText="Manage datasets →"
+    containerHeight={64}
+  />
+  <TileCard
+    icon={CheckCircle}
+    iconSize={48}
+    title="Choose the Right Scorers"
+    description="Explore built‑in judges and learn how to craft custom scorers."
+    href="/genai/eval-monitor/scorers"
+    linkText="Explore scorers →"
+    containerHeight={64}
+  />
+  <TileCard
+    icon={FileText}
+    iconSize={48}
+    title="Evaluate Production Traces"
+    description="Reuse real‑world traces for fast, low‑cost offline evaluation."
+    href="/genai/eval-monitor/running-evaluation/traces"
+    linkText="Evaluate traces →"
+    containerHeight={64}
+  />
+</TilesGrid>

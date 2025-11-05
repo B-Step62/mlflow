@@ -257,6 +257,11 @@ const sidebarsGenAI: SidebarsConfig = {
               id: 'eval-monitor/running-evaluation/traces',
               label: 'Evaluate Traces',
             },
+            {
+              type: 'doc',
+              id: 'eval-monitor/running-evaluation/datasets',
+              label: 'Evaluate Datasets',
+            },
           ],
         },
         {
