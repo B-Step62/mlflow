@@ -132,11 +132,13 @@ const ExperimentEvaluationDatasetsTableRow: React.FC<
 
 export const ExperimentEvaluationDatasetsListTable = ({
   experimentId,
+  initialSelectedDatasetId,
   selectedDataset,
   setSelectedDataset,
   setIsLoading,
 }: {
   experimentId: string;
+  initialSelectedDatasetId?: string;
   selectedDataset?: EvaluationDataset;
   setSelectedDataset: (dataset: EvaluationDataset | undefined) => void;
   setIsLoading: (isLoading: boolean) => void;
@@ -204,10 +206,18 @@ export const ExperimentEvaluationDatasetsListTable = ({
   // set the selected dataset to the first one if the is no selected dataset,
   // or if the selected dataset went out of scope (e.g. was deleted / not in search)
   if (!selectedDataset || !datasets.some((d) => d.dataset_id === selectedDataset.dataset_id)) {
-    // Use the sorted data from the table to respect the current sort order
-    const sortedRows = table.getRowModel().rows;
-    if (sortedRows.length > 0) {
-      setSelectedDataset(sortedRows[0].original);
+    // Prefer a dataset specified via URL (?selectedDatasetId=...)
+    const preferred = initialSelectedDatasetId
+      ? datasets.find((d) => d.dataset_id === initialSelectedDatasetId)
+      : undefined;
+    if (preferred) {
+      setSelectedDataset(preferred);
+    } else {
+      // Use the sorted data from the table to respect the current sort order
+      const sortedRows = table.getRowModel().rows;
+      if (sortedRows.length > 0) {
+        setSelectedDataset(sortedRows[0].original);
+      }
     }
   }
 

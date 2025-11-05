@@ -15,9 +15,10 @@ import {
 } from '@databricks/design-system';
 import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
 import { DatasetSourceTypes, RunEntity } from '../../types';
-import { Link } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
+import { Link, generatePath } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
 import { useGetLoggedModelQuery } from '../../hooks/logged-models/useGetLoggedModelQuery';
 import Routes from '../../routes';
+import { RoutePaths } from '../../routes';
 import { FormattedMessage } from 'react-intl';
 import { RunPageTabName } from '../../constants';
 import { useSaveExperimentRunColor } from '../../components/experiment-page/hooks/useExperimentRunColor';
@@ -144,18 +145,10 @@ export const DatasetCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
     return <div>-</div>;
   }
 
-  const openDatasetDrawer = () => {
-    (meta as any).setSelectedDatasetWithRun({
-      datasetWithTags: { dataset: displayedDataset },
-      runData: {
-        experimentId: run.info?.experimentId,
-        runUuid: run.info?.runUuid ?? '',
-        runName: run.info?.runName,
-        datasets: datasets,
-      },
-    });
-    (meta as any).setIsDrawerOpen(true);
-  };
+  // Build link to the datasets tab and preselect this dataset via query param
+  const datasetsTabHref = `${generatePath(RoutePaths.experimentPageTabDatasets, {
+    experimentId: run.info?.experimentId,
+  })}?selectedDatasetId=${encodeURIComponent(displayedDataset.dataset_id)}`;
 
   const baseTagContent = (
     <div
@@ -178,14 +171,11 @@ export const DatasetCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
   return (
     <div>
       <Tooltip componentId="mlflow.eval-runs.dataset-cell-tooltip" content={displayedDataset.name}>
-        <Tag
-          componentId="mlflow.eval-runs.dataset-cell"
-          onClick={openDatasetDrawer}
-          id="dataset-cell"
-          css={{ maxWidth: '100%', marginRight: 0 }}
-        >
-          {tagContent}
-        </Tag>
+        <Link to={datasetsTabHref} target="_blank" rel="noreferrer" css={{ maxWidth: '100%' }}>
+          <Tag componentId="mlflow.eval-runs.dataset-cell" id="dataset-cell" css={{ maxWidth: '100%', marginRight: 0 }}>
+            {tagContent}
+          </Tag>
+        </Link>
       </Tooltip>
     </div>
   );
