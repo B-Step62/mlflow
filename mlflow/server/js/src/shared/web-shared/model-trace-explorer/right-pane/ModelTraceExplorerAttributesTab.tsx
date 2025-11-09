@@ -18,7 +18,7 @@ export function ModelTraceExplorerAttributesTab({
 }) {
   const { theme } = useDesignSystemTheme();
   const { attributes } = activeSpan;
-  const { appliedSavedView } = useModelTraceExplorerViewState();
+  const { appliedSavedView, showSavedViewEditor } = useModelTraceExplorerViewState();
   const attrKeys = keys(attributes);
   const getAttrKeysForSpan = (): string[] | undefined => {
     const fields = appliedSavedView?.definition.fields as any;
@@ -26,19 +26,25 @@ export function ModelTraceExplorerAttributesTab({
     const typeKey = (activeSpan?.type as string | undefined) ?? 'UNKNOWN';
     const byType = fields[typeKey]?.attributes?.keys as string[] | undefined;
     const all = fields['ALL']?.attributes?.keys as string[] | undefined;
-    const chosen = byType ?? all;
-    if (chosen === undefined) return undefined; // no filter -> show all
-    // If user added an Attributes row without a key (""), treat as show-all
-    const hasBlank = (chosen ?? []).some((k) => !k || String(k).trim() === '');
-    if (hasBlank) return undefined;
-    return chosen;
+    const chosen = (byType ?? all);
+    if (chosen === undefined) return undefined; // no filter defined
+    // Remove blank keys; blanks no longer imply show-all
+    return chosen.filter((k: string) => !!k && String(k).trim() !== '');
   };
+  const keysFilter = getAttrKeysForSpan();
+  const allowed = keysFilter ? new Set(keysFilter) : undefined;
   const visibleAttrKeys = (() => {
-    const keysFilter = getAttrKeysForSpan();
+    // While editor is open, show all attributes, but order so that
+    // filtered keys are at the top in their original order
+    if (showSavedViewEditor) {
+      if (!keysFilter || keysFilter.length === 0) return attrKeys;
+      const top = attrKeys.filter((k) => (allowed as Set<string>).has(k));
+      const rest = attrKeys.filter((k) => !(allowed as Set<string>).has(k));
+      return [...top, ...rest];
+    }
     if (keysFilter === undefined) return attrKeys;
     if ((keysFilter ?? []).length === 0) return [] as string[];
-    const allowed = new Set(keysFilter);
-    return attrKeys.filter((k) => allowed.has(k));
+    return attrKeys.filter((k) => (allowed as Set<string>).has(k));
   })();
   const containsAttributes = visibleAttrKeys.length > 0;
   const isActiveMatchSpan = !isNil(activeMatch) && activeMatch.span.key === activeSpan.key;
@@ -67,16 +73,22 @@ export function ModelTraceExplorerAttributesTab({
         padding: theme.spacing.md,
       }}
     >
-      {visibleAttrKeys.map((key) => (
-        <ModelTraceExplorerCodeSnippet
-          key={key}
-          title={key}
-          data={JSON.stringify(attributes[key], null, 2)}
-          searchFilter={searchFilter}
-          activeMatch={activeMatch}
-          containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'attributes' && activeMatch.key === key}
-        />
-      ))}
+      {visibleAttrKeys.map((key) => {
+        const isDimmed = !!showSavedViewEditor && !!keysFilter && !(allowed as Set<string>)?.has(key);
+        return (
+          <div key={key} css={{ opacity: isDimmed ? 0.4 : 1 }}>
+            <ModelTraceExplorerCodeSnippet
+              title={key}
+              data={JSON.stringify(attributes[key], null, 2)}
+              searchFilter={searchFilter}
+              activeMatch={activeMatch}
+              containsActiveMatch={
+                isActiveMatchSpan && activeMatch.section === 'attributes' && activeMatch.key === key
+              }
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
