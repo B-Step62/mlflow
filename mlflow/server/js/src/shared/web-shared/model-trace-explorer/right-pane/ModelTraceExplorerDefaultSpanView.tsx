@@ -8,6 +8,7 @@ import type { ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
 import { createListFromObject } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
+import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 
 export function ModelTraceExplorerDefaultSpanView({
   activeSpan,
@@ -23,13 +24,33 @@ export function ModelTraceExplorerDefaultSpanView({
   const { theme } = useDesignSystemTheme();
   const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
   const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
+  const { appliedViewConfig } = useModelTraceExplorerViewState();
+
+  const filterByVisibility = (
+    list: { key: string; value: string }[],
+    vis?: { mode: 'all' | 'none' | 'keys'; keys?: string[] },
+  ) => {
+    if (!vis || vis.mode === 'all') return list;
+    if (vis.mode === 'none') return [];
+    const allowed = new Set(vis.keys ?? []);
+    return list.filter(({ key }) => allowed.has(key));
+  };
+
+  const visibleInputs = useMemo(
+    () => filterByVisibility(inputList, appliedViewConfig?.visibility?.inputs),
+    [inputList, appliedViewConfig?.visibility?.inputs],
+  );
+  const visibleOutputs = useMemo(
+    () => filterByVisibility(outputList, appliedViewConfig?.visibility?.outputs),
+    [outputList, appliedViewConfig?.visibility?.outputs],
+  );
 
   if (isNil(activeSpan)) {
     return null;
   }
 
-  const containsInputs = inputList.length > 0;
-  const containsOutputs = outputList.length > 0;
+  const containsInputs = visibleInputs.length > 0;
+  const containsOutputs = visibleOutputs.length > 0;
 
   const isActiveMatchSpan = !isNil(activeMatch) && activeMatch.span.key === activeSpan.key;
 
@@ -58,7 +79,7 @@ export function ModelTraceExplorerDefaultSpanView({
           }
         >
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-            {inputList.map(({ key, value }, index) => (
+            {visibleInputs.map(({ key, value }, index) => (
               <ModelTraceExplorerCodeSnippet
                 key={key || index}
                 title={key}
@@ -85,7 +106,7 @@ export function ModelTraceExplorerDefaultSpanView({
           }
         >
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-            {outputList.map(({ key, value }) => (
+            {visibleOutputs.map(({ key, value }) => (
               <ModelTraceExplorerCodeSnippet
                 key={key}
                 title={key}

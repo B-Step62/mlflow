@@ -58,6 +58,7 @@ export const ModelTraceExplorerDetailView = ({
     setSelectedNode,
     activeTab,
     setActiveTab,
+    appliedViewConfig,
   } = useModelTraceExplorerViewState();
 
   const { expandedKeys, setExpandedKeys } = useTimelineTreeExpandedNodes({
@@ -83,6 +84,33 @@ export const ModelTraceExplorerDetailView = ({
     setExpandedKeys,
     modelTraceInfo: modelTrace?.info,
   });
+
+  // Apply saved view configuration (search, span types, flags) when it changes
+  useLayoutEffect(() => {
+    if (!appliedViewConfig) return;
+    if (appliedViewConfig.search !== undefined) {
+      setSearchFilter(appliedViewConfig.search);
+    }
+    if (
+      appliedViewConfig.showSpanTypes !== undefined ||
+      appliedViewConfig.showParents !== undefined ||
+      appliedViewConfig.showExceptions !== undefined
+    ) {
+      setSpanFilterState((prev) => {
+        const currentTypes = Object.keys(prev.spanTypeDisplayState);
+        const allowed = new Set(appliedViewConfig.showSpanTypes ?? currentTypes);
+        return {
+          ...prev,
+          showParents: appliedViewConfig.showParents ?? prev.showParents,
+          showExceptions: appliedViewConfig.showExceptions ?? prev.showExceptions,
+          spanTypeDisplayState: currentTypes.reduce<Record<string, boolean>>((acc, t) => {
+            acc[t] = allowed.has(t);
+            return acc;
+          }, {}),
+        };
+      });
+    }
+  }, [appliedViewConfig, setSearchFilter, setSpanFilterState]);
 
   const onSelectNode = (node?: ModelTraceSpanNode) => {
     setSelectedNode(node);

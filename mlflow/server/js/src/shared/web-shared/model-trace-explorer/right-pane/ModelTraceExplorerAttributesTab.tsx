@@ -5,6 +5,7 @@ import { FormattedMessage } from '@databricks/i18n';
 
 import type { ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
 import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
+import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 
 export function ModelTraceExplorerAttributesTab({
   activeSpan,
@@ -17,7 +18,16 @@ export function ModelTraceExplorerAttributesTab({
 }) {
   const { theme } = useDesignSystemTheme();
   const { attributes } = activeSpan;
-  const containsAttributes = keys(attributes).length > 0;
+  const { appliedViewConfig } = useModelTraceExplorerViewState();
+  const attrVis = appliedViewConfig?.visibility?.attributes;
+  const attrKeys = keys(attributes);
+  const visibleAttrKeys = (() => {
+    if (!attrVis || attrVis.mode === 'all') return attrKeys;
+    if (attrVis.mode === 'none') return [] as string[];
+    const allowed = new Set(attrVis.keys ?? []);
+    return attrKeys.filter((k) => allowed.has(k));
+  })();
+  const containsAttributes = visibleAttrKeys.length > 0;
   const isActiveMatchSpan = !isNil(activeMatch) && activeMatch.span.key === activeSpan.key;
 
   if (!containsAttributes || isNil(attributes)) {
@@ -44,11 +54,11 @@ export function ModelTraceExplorerAttributesTab({
         padding: theme.spacing.md,
       }}
     >
-      {Object.entries(attributes).map(([key, value]) => (
+      {visibleAttrKeys.map((key) => (
         <ModelTraceExplorerCodeSnippet
           key={key}
           title={key}
-          data={JSON.stringify(value, null, 2)}
+          data={JSON.stringify(attributes[key], null, 2)}
           searchFilter={searchFilter}
           activeMatch={activeMatch}
           containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'attributes' && activeMatch.key === key}

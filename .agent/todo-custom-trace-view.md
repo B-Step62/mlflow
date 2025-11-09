@@ -6,14 +6,14 @@
 - Keep server/API work out of v0; add clean seams for future integration.
 
 **Phase 1 — Apply Views (Mocked)**
-- [ ] Introduce `mockSavedViews` constant in frontend (scoped per experiment for now).
-- [ ] Add header control `Saved View` dropdown in Trace modal using mock data.
-- [ ] Implement `applySavedView(view)` to update span filters in store/selectors.
-- [ ] Implement visibility application for inputs/outputs/attributes.
+- [x] Introduce `mockSavedViews` constant in frontend (scoped per experiment for now).
+- [x] Add header control `Saved View` dropdown in Trace modal using mock data.
+- [x] Implement `applySavedView(view)` to update span filters in store/selectors.
+- [x] Implement visibility application for inputs/outputs/attributes.
 - [ ] Apply optional columns/sort if present in view definition.
-- [ ] Ensure span tree/list honors filter predicates (hide or de-emphasize per UX decision).
-- [ ] Ensure IO/attribute panels honor visibility rules.
-- [ ] Persist last-applied view per experiment in `localStorage` (`mlflow:traceView:<experimentId>`).
+- [x] Ensure span tree/list honors filter predicates (hide or de-emphasize per UX decision).
+- [x] Ensure IO/attribute panels honor visibility rules.
+- [x] Persist last-applied view per experiment in `localStorage` (`mlflow:traceView:<experimentId>`).
 - [ ] Add empty-state when no views exist (mock array empty).
 
 **Phase 2 — CRUD UI (Local Only)**

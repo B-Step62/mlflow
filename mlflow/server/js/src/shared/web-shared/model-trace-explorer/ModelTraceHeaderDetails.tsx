@@ -8,13 +8,15 @@ import {
   ClockIcon,
 } from '@databricks/design-system';
 import { Notification } from '@databricks/design-system';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { ModelTrace, ModelTraceInfoV3 } from './ModelTrace.types';
 import { getModelTraceId } from './ModelTraceExplorer.utils';
 import { spanTimeFormatter } from './timeline-tree/TimelineTree.utils';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
+import { DropdownMenu, ChevronDownIcon } from '@databricks/design-system';
+import { getMockSavedViews, getLastAppliedSavedViewId, setLastAppliedSavedViewId } from './mock_saved_views';
 import { isUserFacingTag, parseJSONSafe, truncateToFirstLineWithMaxLength } from './TagUtils';
 
 const BASE_TAG_COMPONENT_ID = 'mlflow.model_trace_explorer.header_details';
@@ -75,11 +77,23 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
   const [showNotification, setShowNotification] = useState(false);
-  const { rootNode } = useModelTraceExplorerViewState();
+  const { rootNode, setAppliedViewConfig, selectedSavedViewId, setSelectedSavedViewId } =
+    useModelTraceExplorerViewState();
 
   const tags = Object.entries(modelTrace.info.tags ?? {}).filter(([key]) => isUserFacingTag(key));
 
   const modelTraceId = getModelTraceId(modelTrace);
+
+  // Extract experiment id if available (v3), fallback to "global"
+  const experimentId = useMemo(() => {
+    const info = modelTrace.info as any;
+    if (info?.trace_location?.type === 'MLFLOW_EXPERIMENT') {
+      return info?.trace_location?.mlflow_experiment?.experiment_id ?? 'global';
+    }
+    return info?.experiment_id ?? 'global';
+  }, [modelTrace.info]);
+
+  const savedViews = useMemo(() => getMockSavedViews(experimentId), [experimentId]);
 
   const tokenUsage = useMemo(() => {
     const tokenUsage = parseJSONSafe(
@@ -107,6 +121,38 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
 
   const getTruncatedLabel = (label: string) => truncateToFirstLineWithMaxLength(label, 40);
 
+  // auto-apply last used view per experiment on mount
+  useEffect(() => {
+    const lastId = getLastAppliedSavedViewId(experimentId);
+    if (!lastId) return;
+    const view = savedViews.find((v) => v.id === lastId);
+    if (!view) return;
+    setSelectedSavedViewId(view.id);
+    setAppliedViewConfig(view.apply);
+  }, [experimentId, savedViews, setAppliedViewConfig, setSelectedSavedViewId]);
+
+  const currentViewName = useMemo(() => {
+    if (!selectedSavedViewId) return undefined;
+    return savedViews.find((v) => v.id === selectedSavedViewId)?.name;
+  }, [selectedSavedViewId, savedViews]);
+
+  const applyView = useCallback(
+    (id?: string) => {
+      if (!id) {
+        setSelectedSavedViewId(undefined);
+        setAppliedViewConfig(undefined);
+        setLastAppliedSavedViewId(experimentId, undefined);
+        return;
+      }
+      const view = savedViews.find((v) => v.id === id);
+      if (!view) return;
+      setSelectedSavedViewId(id);
+      setAppliedViewConfig(view.apply);
+      setLastAppliedSavedViewId(experimentId, id);
+    },
+    [experimentId, savedViews, setAppliedViewConfig, setSelectedSavedViewId],
+  );
+
   const handleCopy = useCallback(() => {
     setShowNotification(true);
     setTimeout(() => setShowNotification(false), 2000);
@@ -114,7 +160,37 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
 
   return (
     <>
-      <div css={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.md, flexWrap: 'wrap' }}>
+      <div css={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.md, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Saved View selector */}
+        <div>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Tag componentId={`${BASE_TAG_COMPONENT_ID}.saved-view`} css={{ cursor: 'pointer' }}>
+                <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <Typography.Text size="sm" color="secondary">
+                    {currentViewName ?? intl.formatMessage({ defaultMessage: 'Saved View', description: 'Saved View dropdown label' })}
+                  </Typography.Text>
+                  <ChevronDownIcon />
+                </span>
+              </Tag>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content>
+              <DropdownMenu.RadioGroup value={selectedSavedViewId ?? ''} onValueChange={(value) => applyView(value || undefined)}>
+                <DropdownMenu.RadioItem value="">
+                  <DropdownMenu.ItemIndicator />
+                  <FormattedMessage defaultMessage="Clear view" description="Trace header: clear saved view option" />
+                </DropdownMenu.RadioItem>
+                {savedViews.map((v) => (
+                  <DropdownMenu.RadioItem key={v.id} value={v.id}>
+                    <DropdownMenu.ItemIndicator />
+                    {v.name}
+                  </DropdownMenu.RadioItem>
+                ))}
+              </DropdownMenu.RadioGroup>
+              <DropdownMenu.Arrow />
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </div>
         {modelTraceId && (
           <ModelTraceHeaderMetricSection
             label={<FormattedMessage defaultMessage="ID" description="Label for the ID section" />}
