@@ -39,8 +39,8 @@ As a developer debugging agent quality issues, I save a view that hides verbose 
       "show_exceptions": boolean,
     },
     "fields": {
-      "inputs": { "keys": ["field1.child1[0].grandchild1....", "field2.child2.grandchild2...."] },
-      "outputs": { "keys": ["field1.child1.grandchild1....", "field2[0].child2.grandchild2...."] },
+      "inputs": { "keys": ["field1.child1.0.grandchild1....", "field2.child2.grandchild2...."] },
+      "outputs": { "keys": ["field1.child1.grandchild1....", "field2.0.child2.grandchild2...."] },
       "attributes": { "keys": ["field1.child1.grandchild1....", "field2.child2.grandchild2...."] },
     }
   }

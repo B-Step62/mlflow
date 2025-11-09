@@ -22,25 +22,104 @@ export function ModelTraceExplorerDefaultSpanView({
   activeMatch: SearchMatch | null;
 }) {
   const { theme } = useDesignSystemTheme();
-  const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
-  const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
   const { appliedSavedView } = useModelTraceExplorerViewState();
 
-  const filterByKeys = (list: { key: string; value: string }[], keys?: string[]) => {
-    if (keys === undefined) return list; // treat undefined as "all"
-    if (keys.length === 0) return [];
-    const allowed = new Set(keys);
-    return list.filter(({ key }) => allowed.has(key));
+  // Filter logic supporting dotted paths with array indices, e.g. "messages.0.content" or "0.content"
+  const filterValueByKeys = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value: any,
+    keys?: string[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any => {
+    if (keys === undefined) return value; // no filtering
+    if (!keys || keys.length === 0) return undefined; // show none
+
+    const getAtPath = (src: any, segments: string[]) => {
+      let cur = src;
+      for (const seg of segments) {
+        if (cur === undefined || cur === null) return undefined;
+        const isIndex = String(Number(seg)) === seg;
+        if (Array.isArray(cur)) {
+          if (!isIndex) return undefined;
+          cur = cur[Number(seg)];
+          continue;
+        }
+        if (typeof cur === 'object') {
+          if (!(seg in cur)) return undefined;
+          cur = (cur as Record<string, unknown>)[seg];
+          continue;
+        }
+        return undefined;
+      }
+      // Deep clone objects/arrays to avoid mutating originals
+      return Array.isArray(cur) || (typeof cur === 'object' && cur !== null)
+        ? JSON.parse(JSON.stringify(cur))
+        : cur;
+    };
+
+    // Single key → unwrap and return the leaf value directly
+    if (keys.length === 1) {
+      const leaf = getAtPath(value, (keys[0] || '').split('.').filter(Boolean));
+      return leaf;
+    }
+
+    // Multiple keys → return an object keyed by full path → leaf value
+    const out: Record<string, unknown> = {};
+    for (const path of keys) {
+      const leaf = getAtPath(value, (path || '').split('.').filter(Boolean));
+      if (leaf !== undefined) {
+        out[path] = leaf;
+      }
+    }
+    return out;
   };
 
-  const visibleInputs = useMemo(
-    () => filterByKeys(inputList, appliedSavedView?.definition.fields.inputs?.keys),
-    [inputList, appliedSavedView?.definition.fields.inputs?.keys],
-  );
-  const visibleOutputs = useMemo(
-    () => filterByKeys(outputList, appliedSavedView?.definition.fields.outputs?.keys),
-    [outputList, appliedSavedView?.definition.fields.outputs?.keys],
-  );
+  const filteredInputs = useMemo(() => {
+    const keys = appliedSavedView?.definition.fields.inputs?.keys;
+    return filterValueByKeys(activeSpan?.inputs, keys);
+  }, [activeSpan, appliedSavedView?.definition.fields.inputs?.keys]);
+
+  const filteredOutputs = useMemo(() => {
+    const keys = appliedSavedView?.definition.fields.outputs?.keys;
+    return filterValueByKeys(activeSpan?.outputs, keys);
+  }, [activeSpan, appliedSavedView?.definition.fields.outputs?.keys]);
+
+  const inputList = useMemo(() => {
+    const keysFromView = appliedSavedView?.definition.fields.inputs?.keys;
+    const isSingleKey = (keysFromView?.length ?? 0) === 1;
+    if (isSingleKey) {
+      if (typeof filteredInputs === 'undefined') {
+        return [];
+      }
+      return [
+        {
+          key: keysFromView?.[0] ?? '',
+          value: JSON.stringify(filteredInputs ?? null, null, 2) ?? 'null',
+        },
+      ];
+    }
+    return createListFromObject(filteredInputs);
+  }, [filteredInputs, appliedSavedView?.definition.fields.inputs?.keys]);
+
+  const outputList = useMemo(() => {
+    const keysFromView = appliedSavedView?.definition.fields.outputs?.keys;
+    const isSingleKey = (keysFromView?.length ?? 0) === 1;
+    if (isSingleKey) {
+      if (typeof filteredOutputs === 'undefined') {
+        return [];
+      }
+      return [
+        {
+          key: keysFromView?.[0] ?? '',
+          value: JSON.stringify(filteredOutputs ?? null, null, 2) ?? 'null',
+        },
+      ];
+    }
+    return createListFromObject(filteredOutputs);
+  }, [filteredOutputs, appliedSavedView?.definition.fields.outputs?.keys]);
+
+  const visibleInputs = inputList;
+  const visibleOutputs = outputList;
 
   if (isNil(activeSpan)) {
     return null;
@@ -76,16 +155,24 @@ export function ModelTraceExplorerDefaultSpanView({
           }
         >
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-            {visibleInputs.map(({ key, value }, index) => (
+            {visibleInputs.map(({ key, value }, index) => {
+              const keysFromView = appliedSavedView?.definition.fields.inputs?.keys;
+              const isSingleKeyUnwrapped = (keysFromView?.length ?? 0) === 1;
+              const pathTitle = isSingleKeyUnwrapped
+                ? (keysFromView?.[0] ?? '').split('.').filter(Boolean).join(' > ')
+                : (key || '').split('.').filter(Boolean).join(' > ');
+              const title = pathTitle || key;
+              return (
               <ModelTraceExplorerCodeSnippet
                 key={key || index}
-                title={key}
+                title={title}
                 data={value}
                 searchFilter={searchFilter}
                 activeMatch={activeMatch}
                 containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'inputs' && activeMatch.key === key}
               />
-            ))}
+              );
+            })}
           </div>
         </ModelTraceExplorerCollapsibleSection>
       )}
@@ -103,16 +190,24 @@ export function ModelTraceExplorerDefaultSpanView({
           }
         >
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-            {visibleOutputs.map(({ key, value }) => (
+            {visibleOutputs.map(({ key, value }, index) => {
+              const keysFromView = appliedSavedView?.definition.fields.outputs?.keys;
+              const isSingleKeyUnwrapped = (keysFromView?.length ?? 0) === 1;
+              const pathTitle = isSingleKeyUnwrapped
+                ? (keysFromView?.[0] ?? '').split('.').filter(Boolean).join(' > ')
+                : (key || '').split('.').filter(Boolean).join(' > ');
+              const title = pathTitle || key;
+              return (
               <ModelTraceExplorerCodeSnippet
-                key={key}
-                title={key}
+                key={key || index}
+                title={title}
                 data={value}
                 searchFilter={searchFilter}
                 activeMatch={activeMatch}
                 containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'outputs' && activeMatch.key === key}
               />
-            ))}
+              );
+            })}
           </div>
         </ModelTraceExplorerCollapsibleSection>
       )}
