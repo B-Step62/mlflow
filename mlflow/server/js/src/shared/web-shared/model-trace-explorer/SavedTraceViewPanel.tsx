@@ -125,6 +125,10 @@ export const SavedTraceViewPanel = ({
   const [selectedId, setSelectedId] = useState<string>('');
   const [working, setWorking] = useState<SavedTraceView | undefined>();
   const [isEditingName, setIsEditingName] = useState(false);
+  const [collapsedCards, setCollapsedCards] = useState<Record<string, boolean>>({});
+
+  const toggleCard = (spanType: string) =>
+    setCollapsedCards((prev) => ({ ...prev, [spanType]: !prev[spanType] }));
 
   const loadViews = useCallback(() => {
     setViews(getSavedViews(experimentId));
@@ -211,9 +215,9 @@ export const SavedTraceViewPanel = ({
             size="small"
             componentId="trace-view-editor.span-type-selector"
             endIcon={<ChevronDownIcon />}
-            css={{ width: '100%', justifyContent: 'space-between' }}
+            css={{ width: '100%', justifyContent: 'space-between'}}
           >
-            <FormattedMessage defaultMessage="Select span types " description="Span types selector label" />
+            <FormattedMessage defaultMessage="Select span types to show" description="Span types selector label"/>
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" minWidth={240}>
@@ -391,9 +395,10 @@ export const SavedTraceViewPanel = ({
             <FormattedMessage defaultMessage="Span Types and Field Filters" description="Span types label" />
           </FormUI.Label>
         {renderSpanTypeSelector()}
-        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
+        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm }}>
           {(working?.definition.spans.span_types ?? []).map((spanType) => {
             const fields = working?.definition.fields?.[spanType] || {};
+            const isCollapsed = !!collapsedCards[spanType];
             return (
               <div
                 key={spanType}
@@ -403,23 +408,41 @@ export const SavedTraceViewPanel = ({
                   padding: theme.spacing.sm,
                 }}
               >
-                <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                  <ModelTraceExplorerIcon type={getIconTypeForSpan(spanType)} isRootSpan={spanType === 'ROOT'} />
-                  <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
-                </span>
-                <FieldKeysByTargetEditor
-                  componentPrefix={`trace-view-editor.${spanType}`}
-                  fields={fields}
-                  onChange={(next: any) =>
-                    setWorkingDefinition((prev) => ({
-                      ...prev,
-                      fields: {
-                        ...prev.fields,
-                        [spanType]: next,
-                      },
-                    }))
-                  }
-                />
+                <div
+                  css={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => toggleCard(spanType)}
+                >
+                  <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                    <ModelTraceExplorerIcon type={getIconTypeForSpan(spanType)} isRootSpan={spanType === 'ROOT'} />
+                    <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
+                  </span>
+                  <ChevronDownIcon
+                    css={{
+                      transition: 'transform 150ms ease',
+                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    }}
+                  />
+                </div>
+                {!isCollapsed && (
+                  <FieldKeysByTargetEditor
+                    componentPrefix={`trace-view-editor.${spanType}`}
+                    fields={fields}
+                    onChange={(next: any) =>
+                      setWorkingDefinition((prev) => ({
+                        ...prev,
+                        fields: {
+                          ...prev.fields,
+                          [spanType]: next,
+                        },
+                      }))
+                    }
+                  />
+                )}
               </div>
             );
           })}
@@ -453,18 +476,6 @@ export const SavedTraceViewPanel = ({
                 }
               >
                 <FormattedMessage defaultMessage="Show exceptions" description="Option: show exceptions" />
-              </Checkbox>
-              <Checkbox
-                componentId={`trace-view-editor.toggle-show-root_${!working?.definition.spans.show_root_span}`}
-                isChecked={!!working?.definition.spans.show_root_span}
-                onChange={() =>
-                  setWorkingDefinition((prev) => ({
-                    ...prev,
-                    spans: { ...prev.spans, show_root_span: !prev.spans.show_root_span },
-                  }))
-                }
-              >
-                <FormattedMessage defaultMessage="Show root span" description="Option: show root span" />
               </Checkbox>
             </div>
           </div>
@@ -525,7 +536,10 @@ const FieldKeysByTargetEditor = ({
   };
 
   return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, marginTop: theme.spacing.sm }}>
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, marginTop: theme.spacing.md, marginLeft: theme.spacing.md, marginBottom: theme.spacing.md}}>
+      <FormUI.Label>
+        <FormattedMessage defaultMessage="Field filters" description="Field filters label" />
+      </FormUI.Label>
       {items.map((item, idx) => (
         <div key={idx} css={{ display: 'grid', gridTemplateColumns: '100px 1fr auto', gap: theme.spacing.xs }}>
           <SimpleSelect
