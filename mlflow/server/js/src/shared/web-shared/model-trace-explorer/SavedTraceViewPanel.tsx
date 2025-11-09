@@ -12,6 +12,8 @@ import {
   Typography,
   useDesignSystemTheme,
   CloseIcon,
+  ChevronDownIcon,
+  ListBorderIcon,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
 
@@ -22,7 +24,7 @@ import {
   setLastAppliedSavedViewId,
   upsertLocalSavedView,
 } from './mock_saved_views';
-import { ModelSpanType } from './ModelTrace.types';
+import { ModelSpanType, ModelIconType } from './ModelTrace.types';
 import { getDisplayNameForSpanType, getIconTypeForSpan } from './ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from './ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
@@ -201,7 +203,7 @@ export const SavedTraceViewPanel = ({
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <Button size="small" componentId="trace-view-editor.span-type-selector">
-            <FormattedMessage defaultMessage="Span types" description="Span types selector label" />
+            <FormattedMessage defaultMessage="Span types " description="Span types selector label" />
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" minWidth={240}>
@@ -273,28 +275,22 @@ export const SavedTraceViewPanel = ({
           </Typography.Text>
         </div>
         <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
-          <Button type="primary" onClick={handleSave} size="small" disabled={!working} componentId="trace-view-editor.save">
-            <FormattedMessage defaultMessage="Save" description="Save saved view" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div css={{ padding: theme.spacing.md, overflow: 'auto', flex: 1, gap: theme.spacing.md }}>
-        {/* View selector */}
-        <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <Button componentId="trace-view-editor.view-selector">{selectedOrNewLabel}</Button>
+              <Button componentId="trace-view-editor.header-view" endIcon={<ChevronDownIcon />}>Editing: {selectedOrNewLabel}</Button>
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="start">
+            <DropdownMenu.Content align="end">
               {views.map((v) => (
-                <DropdownMenu.Item key={v.id} componentId={`trace-view-editor.select-${v.id}`} onClick={() => handleSelectExisting(v.id)}>
+                <DropdownMenu.Item
+                  key={v.id}
+                  componentId={`trace-view-editor.header-select-${v.id}`}
+                  onClick={() => handleSelectExisting(v.id)}
+                >
                   {v.name}
                 </DropdownMenu.Item>
               ))}
               <DropdownMenu.Separator />
-              <DropdownMenu.Item componentId="trace-view-editor.create-new" onClick={handleCreateNew}>
+              <DropdownMenu.Item componentId="trace-view-editor.header-create-new" onClick={handleCreateNew}>
                 <PlusIcon />
                 <span css={{ marginLeft: theme.spacing.xs }}>
                   <FormattedMessage defaultMessage="Create new view" description="Menu option to create new view" />
@@ -302,19 +298,31 @@ export const SavedTraceViewPanel = ({
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
-          {working?.id && (
-            <Button componentId="trace-view-editor.delete" danger icon={<TrashIcon />} onClick={handleDelete}>
-              <FormattedMessage defaultMessage="Delete" description="Delete saved view" />
-            </Button>
-          )}
         </div>
+      </div>
+
+      {/* Body */}
+      <div css={{ padding: theme.spacing.md, overflow: 'auto', flex: 1, gap: theme.spacing.md }}>
 
         {/* Edit UI */}
         <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
           <div>
-            <FormUI.Label>
-              <FormattedMessage defaultMessage="Name" description="Saved view name label" />
-            </FormUI.Label>
+            <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}></div>
+              <FormUI.Label>
+                <FormattedMessage defaultMessage="Name" description="Saved view name label" />
+              </FormUI.Label>
+              {working?.id && (
+              <Button componentId="trace-view-editor.header-delete" danger icon={<TrashIcon />} onClick={handleDelete}/>
+              )}
+              <Button
+                componentId="trace-view-editor.header-save"
+                type="primary"
+                onClick={handleSave}
+                size="small"
+                icon={<ModelTraceExplorerIcon type={ModelIconType.SAVE} />}
+                aria-label={"Save"}
+                title="Save"
+              />
             <Input
               componentId="trace-view-editor.name"
               value={working?.name || ''}
@@ -324,31 +332,12 @@ export const SavedTraceViewPanel = ({
           </div>
           <div>
             <FormUI.Label>
-              <FormattedMessage defaultMessage="Description" description="Saved view description label" />
-            </FormUI.Label>
-            <Input.TextArea
-              componentId="trace-view-editor.description"
-              value={(working as any)?.description || ''}
-              rows={2}
-              onChange={(e) => setWorking((w) => (w ? ({ ...(w as any), description: e.target.value } as any) : w))}
-              placeholder={intl.formatMessage({
-                defaultMessage: 'Optional description',
-                description: 'Saved view description placeholder',
-              })}
-            />
-          </div>
-          <div>
-            <FormUI.Label>
-              <FormattedMessage defaultMessage="Span types" description="Span types label" />
+              <FormattedMessage defaultMessage="Span Types and Field Filters" description="Span types label" />
             </FormUI.Label>
             {renderSpanTypeSelector()}
           </div>
-        </div>
 
         {/* Field filters per span type */}
-        <SectionHeader>
-          <FormattedMessage defaultMessage="Field filters" description="Section label for field filters" />
-        </SectionHeader>
         <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
           {(working?.definition.spans.span_types ?? []).map((spanType) => {
             const fields = working?.definition.fields?.[spanType] || {};
@@ -423,6 +412,7 @@ export const SavedTraceViewPanel = ({
               </Checkbox>
             </div>
           </div>
+        </div>
       </div>
     </div>
   );

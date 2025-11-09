@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ModelTrace, ModelTraceExplorerTab, ModelTraceSpanNode } from './ModelTrace.types';
 import type { SavedTraceView } from './mock_saved_views';
@@ -97,10 +97,16 @@ export const ModelTraceExplorerViewStateProvider = ({
   const [alwaysShowRootSpan, setAlwaysShowRootSpan] = useState<boolean>(true);
   const [showSavedViewEditor, setShowSavedViewEditor] = useState<boolean>(false);
 
+  // Initialize active tab only on the very first selection to avoid
+  // resetting user's tab choice on unrelated state updates (e.g. editing view fields)
+  const initializedActiveTabRef = useRef(false);
   useEffect(() => {
-    const defaultActiveTab = getDefaultActiveTab(selectedNode);
-    setActiveTab(defaultActiveTab);
-  }, [selectedNode]);
+    if (!initializedActiveTabRef.current && selectedNode) {
+      const defaultActiveTab = getDefaultActiveTab(selectedNode);
+      setActiveTab(defaultActiveTab);
+      initializedActiveTabRef.current = true;
+    }
+  }, [selectedNode, initializedActiveTabRef]);
 
   const value = useMemo(
     () => ({
