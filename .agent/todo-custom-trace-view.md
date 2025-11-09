@@ -7,7 +7,7 @@
 
 **Phase 1 — Apply Views (Mocked)**
 - [x] Introduce `mockSavedViews` constant in frontend (scoped per experiment for now).
-- [x] Add header control `Saved View` dropdown in Trace modal using mock data.
+- [x] Add header control `Select View` dropdown in Trace modal using mock data.
 - [x] Implement `applySavedView(view)` to update span filters in store/selectors.
 - [x] Implement visibility application for inputs/outputs/attributes.
 - [ ] Apply optional columns/sort if present in view definition.
@@ -17,9 +17,31 @@
 - [x] Add empty-state when no views exist (mock array empty).
 
 **Phase 2 — CRUD UI (Local Only)**
-- [ ] The CRUD UI 
-- [ ] Validate name uniqueness within experiment scope; friendly errors.
-- [ ] Add non-destructive migration path for stored views (`version` field).
+- [ ] Add the CRUD UI for views.
+   - When user clicks the "Select View" button, a modal should be opened (overlay)
+   - The modal should show
+     - A title "Select View"
+     - A list of views as a drop down menu.
+       - It should include all the views and "+ Create New View" option at the bottom.
+     - "Apply" button at the top right of the modal, as well as close button.
+     - The edit UI for the view.
+       - The edit UI should include the following fields:
+         - Name
+         - Description
+         - Span types to show (dropdown with checkbox, same as the span filter dropdown)
+         - Field filter for each span type. Each span type should be shown as a box with the following fields:
+             - Inputs
+             - Outputs
+             - Attribute
+           - Filter keys for each field is shown as a list of text inputs (editable) with a trash can icon to remove the field.
+           - It should have a "+" button to add a new key.
+         - Other options as checkbox:
+           - Show parents
+           - Show exceptions
+           - Show root span
+         - It should have a "Save" button at the top right of the modal.
+      - The modal should be closed when the "Save" button is clicked, while the view is applied to the trace.
+      - During edit, the trace display should be live-updated to show the changes.
 
 **Phase 3 — Backend Integration**
 - [ ] Introduce client adapter interface; default to local no-op implementation.
