@@ -74,18 +74,30 @@ export function ModelTraceExplorerDefaultSpanView({
     return out;
   };
 
+  const getSectionKeys = (
+    section: 'inputs' | 'outputs',
+    spanType?: string,
+  ): string[] | undefined => {
+    const fields = appliedSavedView?.definition.fields as any;
+    if (!fields) return undefined;
+    const typeKey = spanType ?? 'UNKNOWN';
+    const byType = fields[typeKey]?.[section]?.keys as string[] | undefined;
+    const all = fields['ALL']?.[section]?.keys as string[] | undefined;
+    return byType ?? all;
+  };
+
   const filteredInputs = useMemo(() => {
-    const keys = appliedSavedView?.definition.fields.inputs?.keys;
+    const keys = getSectionKeys('inputs', activeSpan?.type as string | undefined);
     return filterValueByKeys(activeSpan?.inputs, keys);
-  }, [activeSpan, appliedSavedView?.definition.fields.inputs?.keys]);
+  }, [activeSpan, appliedSavedView?.definition.fields]);
 
   const filteredOutputs = useMemo(() => {
-    const keys = appliedSavedView?.definition.fields.outputs?.keys;
+    const keys = getSectionKeys('outputs', activeSpan?.type as string | undefined);
     return filterValueByKeys(activeSpan?.outputs, keys);
-  }, [activeSpan, appliedSavedView?.definition.fields.outputs?.keys]);
+  }, [activeSpan, appliedSavedView?.definition.fields]);
 
   const inputList = useMemo(() => {
-    const keysFromView = appliedSavedView?.definition.fields.inputs?.keys;
+    const keysFromView = getSectionKeys('inputs', activeSpan?.type as string | undefined);
     const isSingleKey = (keysFromView?.length ?? 0) === 1;
     if (isSingleKey) {
       if (typeof filteredInputs === 'undefined') {
@@ -102,7 +114,7 @@ export function ModelTraceExplorerDefaultSpanView({
   }, [filteredInputs, appliedSavedView?.definition.fields.inputs?.keys]);
 
   const outputList = useMemo(() => {
-    const keysFromView = appliedSavedView?.definition.fields.outputs?.keys;
+    const keysFromView = getSectionKeys('outputs', activeSpan?.type as string | undefined);
     const isSingleKey = (keysFromView?.length ?? 0) === 1;
     if (isSingleKey) {
       if (typeof filteredOutputs === 'undefined') {

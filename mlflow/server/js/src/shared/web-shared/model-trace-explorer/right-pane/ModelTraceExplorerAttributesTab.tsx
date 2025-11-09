@@ -20,8 +20,16 @@ export function ModelTraceExplorerAttributesTab({
   const { attributes } = activeSpan;
   const { appliedSavedView } = useModelTraceExplorerViewState();
   const attrKeys = keys(attributes);
+  const getAttrKeysForSpan = (): string[] | undefined => {
+    const fields = appliedSavedView?.definition.fields as any;
+    if (!fields) return undefined;
+    const typeKey = (activeSpan?.type as string | undefined) ?? 'UNKNOWN';
+    const byType = fields[typeKey]?.attributes?.keys as string[] | undefined;
+    const all = fields['ALL']?.attributes?.keys as string[] | undefined;
+    return byType ?? all;
+  };
   const visibleAttrKeys = (() => {
-    const keysFilter = appliedSavedView?.definition.fields.attributes?.keys;
+    const keysFilter = getAttrKeysForSpan();
     if (keysFilter === undefined) return attrKeys;
     if ((keysFilter ?? []).length === 0) return [] as string[];
     const allowed = new Set(keysFilter);
