@@ -28,6 +28,9 @@ export type ModelTraceExplorerViewState = {
   // Controls whether to always display the root span (set by saved view)
   alwaysShowRootSpan: boolean;
   setAlwaysShowRootSpan: (v: boolean) => void;
+  // Controls the right-side saved view editor panel visibility
+  showSavedViewEditor: boolean;
+  setShowSavedViewEditor: (v: boolean) => void;
 };
 
 export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplorerViewState>({
@@ -50,6 +53,8 @@ export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplor
   setAppliedSavedView: () => {},
   alwaysShowRootSpan: true,
   setAlwaysShowRootSpan: () => {},
+  showSavedViewEditor: false,
+  setShowSavedViewEditor: () => {},
 });
 
 export const useModelTraceExplorerViewState = () => {
@@ -90,6 +95,7 @@ export const ModelTraceExplorerViewStateProvider = ({
   const [selectedSavedViewId, setSelectedSavedViewId] = useState<string | undefined>(undefined);
   const [appliedSavedView, setAppliedSavedView] = useState<SavedTraceView | undefined>();
   const [alwaysShowRootSpan, setAlwaysShowRootSpan] = useState<boolean>(true);
+  const [showSavedViewEditor, setShowSavedViewEditor] = useState<boolean>(false);
 
   useEffect(() => {
     const defaultActiveTab = getDefaultActiveTab(selectedNode);
@@ -117,6 +123,8 @@ export const ModelTraceExplorerViewStateProvider = ({
       setAppliedSavedView,
       alwaysShowRootSpan,
       setAlwaysShowRootSpan,
+      showSavedViewEditor,
+      setShowSavedViewEditor,
     }),
     [
       activeView,
@@ -132,6 +140,7 @@ export const ModelTraceExplorerViewStateProvider = ({
       selectedSavedViewId,
       appliedSavedView,
       alwaysShowRootSpan,
+      showSavedViewEditor,
     ],
   );
 

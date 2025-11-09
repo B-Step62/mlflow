@@ -16,9 +16,9 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import type { ModelTrace, ModelTraceInfoV3 } from './ModelTrace.types';
 import { getModelTraceId } from './ModelTraceExplorer.utils';
 import { spanTimeFormatter } from './timeline-tree/TimelineTree.utils';
+import { ChevronDownIcon, DropdownMenu, GearIcon } from '@databricks/design-system';
+import { getSavedViews, getLastAppliedSavedViewId, setLastAppliedSavedViewId } from './mock_saved_views';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
-import { DropdownMenu, ChevronDownIcon } from '@databricks/design-system';
-import { getMockSavedViews, getLastAppliedSavedViewId, setLastAppliedSavedViewId } from './mock_saved_views';
 import { isUserFacingTag, parseJSONSafe, truncateToFirstLineWithMaxLength } from './TagUtils';
 
 const BASE_TAG_COMPONENT_ID = 'mlflow.model_trace_explorer.header_details';
@@ -79,7 +79,7 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
   const [showNotification, setShowNotification] = useState(false);
-  const { rootNode, setAppliedSavedView, selectedSavedViewId, setSelectedSavedViewId } =
+  const { rootNode, setAppliedSavedView, selectedSavedViewId, setSelectedSavedViewId, setShowSavedViewEditor } =
     useModelTraceExplorerViewState();
 
   const tags = Object.entries(modelTrace.info.tags ?? {}).filter(([key]) => isUserFacingTag(key));
@@ -95,7 +95,7 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
     return info?.experiment_id ?? 'global';
   }, [modelTrace.info]);
 
-  const savedViews = useMemo(() => getMockSavedViews(experimentId), [experimentId]);
+  const savedViews = useMemo(() => getSavedViews(experimentId), [experimentId]);
 
   const tokenUsage = useMemo(() => {
     const tokenUsage = parseJSONSafe(
@@ -160,6 +160,8 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
     setShowNotification(true);
     setTimeout(() => setShowNotification(false), 2000);
   }, []);
+
+  // side panel visibility controlled from context in parent container
 
   return (
     <>
@@ -271,6 +273,13 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
                   </DropdownMenu.RadioItem>
                 ))}
               </DropdownMenu.RadioGroup>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item onClick={() => setShowSavedViewEditor(true)}>
+                <GearIcon />
+                <span css={{ marginLeft: theme.spacing.xs }}>
+                  <FormattedMessage defaultMessage="Create/Edit View" description="Open saved view editor" />
+                </span>
+              </DropdownMenu.Item>
               <DropdownMenu.Arrow />
             </DropdownMenu.Content>
           </DropdownMenu.Root>
@@ -290,6 +299,8 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
           <Notification.Viewport />
         </Notification.Provider>
       )}
+
+      {/* SavedTraceViewPanel is rendered in ModelTraceExplorerContent to stay within viewer */}
     </>
   );
 };

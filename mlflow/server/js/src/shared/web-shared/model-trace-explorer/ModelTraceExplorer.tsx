@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 
 import { Tabs, useDesignSystemTheme } from '@databricks/design-system';
@@ -18,6 +18,7 @@ import {
 import { useGetModelTraceInfoV3 } from './hooks/useGetModelTraceInfoV3';
 import { ModelTraceExplorerSummaryView } from './summary-view/ModelTraceExplorerSummaryView';
 import { ModelTraceHeaderDetails } from './ModelTraceHeaderDetails';
+import SavedTraceViewPanel from './SavedTraceViewPanel';
 
 const ModelTraceExplorerContent = ({
   modelTrace,
@@ -31,10 +32,21 @@ const ModelTraceExplorerContent = ({
   onSelectSpan?: (selectedSpanId?: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const { activeView, setActiveView } = useModelTraceExplorerViewState();
+  const { activeView, setActiveView, showSavedViewEditor, setShowSavedViewEditor } =
+    useModelTraceExplorerViewState();
+  
+  // compute experiment id for view storage the same way as header
+  const experimentId = useMemo(() => {
+    const info: any = modelTrace.info as any;
+    if (info?.trace_location?.type === 'MLFLOW_EXPERIMENT') {
+      return info?.trace_location?.mlflow_experiment?.experiment_id ?? 'global';
+    }
+    return info?.experiment_id ?? 'global';
+  }, [modelTrace.info]);
 
   return (
-    <Tabs.Root
+    <div css={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Tabs.Root
       componentId="model-trace-explorer"
       value={activeView}
       onValueChange={(value) => setActiveView(value as 'summary' | 'detail')}
@@ -93,7 +105,13 @@ const ModelTraceExplorerContent = ({
           onSelectSpan={onSelectSpan}
         />
       </Tabs.Content>
-    </Tabs.Root>
+      </Tabs.Root>
+      <SavedTraceViewPanel
+        open={showSavedViewEditor}
+        experimentId={experimentId}
+        onClose={() => setShowSavedViewEditor(false)}
+      />
+    </div>
   );
 };
 

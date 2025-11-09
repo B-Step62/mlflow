@@ -41,6 +41,7 @@ export type SavedTraceView = {
 
 // Local storage helpers
 const STORAGE_KEY = (experimentId: string) => `mlflow:traceView:${experimentId}`;
+const VIEWS_STORAGE_KEY = (experimentId: string) => `mlflow:traceViews:${experimentId}`;
 
 export function getLastAppliedSavedViewId(experimentId: string): string | undefined {
   try {
@@ -92,11 +93,67 @@ const MOCK_SAVED_VIEWS: Record<string, SavedTraceView[]> = {
   ],
 };
 
-export function getMockSavedViews(experimentId?: string): SavedTraceView[] {
-  if (experimentId && MOCK_SAVED_VIEWS[experimentId]) {
-    return MOCK_SAVED_VIEWS[experimentId];
+function readLocalSavedViews(experimentId: string): SavedTraceView[] {
+  try {
+    const raw = localStorage.getItem(VIEWS_STORAGE_KEY(experimentId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as SavedTraceView[];
+    return [];
+  } catch {
+    return [];
   }
-  return MOCK_SAVED_VIEWS.global ?? [];
+}
+
+function writeLocalSavedViews(experimentId: string, views: SavedTraceView[]) {
+  try {
+    localStorage.setItem(VIEWS_STORAGE_KEY(experimentId), JSON.stringify(views));
+  } catch {
+    // ignore
+  }
+}
+
+function generateId() {
+  return `local-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Returns all views available for given experiment, combining locally saved
+ * views (persisted in localStorage) with built-in mock defaults.
+ */
+export function getSavedViews(experimentId?: string): SavedTraceView[] {
+  const expId = experimentId || 'global';
+  const local = readLocalSavedViews(expId);
+  const mocks = MOCK_SAVED_VIEWS[expId] || MOCK_SAVED_VIEWS.global || [];
+  // Local views should appear first, then mocks
+  return [...local, ...mocks];
+}
+
+/** Create or update a local view and persist to localStorage */
+export function upsertLocalSavedView(experimentId: string, view: SavedTraceView): SavedTraceView {
+  const expId = experimentId || 'global';
+  const current = readLocalSavedViews(expId);
+  const idx = current.findIndex((v) => v.id === view.id);
+  let next: SavedTraceView[];
+  let saved: SavedTraceView;
+  if (idx >= 0) {
+    saved = { ...current[idx], ...view };
+    next = [...current];
+    next[idx] = saved;
+  } else {
+    saved = { ...view, id: view.id || generateId(), experiment_id: expId } as SavedTraceView;
+    next = [saved, ...current];
+  }
+  writeLocalSavedViews(expId, next);
+  return saved;
+}
+
+/** Delete a local saved view by id */
+export function deleteLocalSavedView(experimentId: string, viewId: string) {
+  const expId = experimentId || 'global';
+  const current = readLocalSavedViews(expId);
+  const next = current.filter((v) => v.id !== viewId);
+  writeLocalSavedViews(expId, next);
 }
 
 // Utility to merge a view's span types into an existing SpanFilterState
