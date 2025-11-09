@@ -22,6 +22,7 @@ import {
 } from './mock_saved_views';
 import { ModelSpanType } from './ModelTrace.types';
 import { getDisplayNameForSpanType, getIconTypeForSpan } from './ModelTraceExplorer.utils';
+import { SimpleSelect, SimpleSelectOption } from '@databricks/design-system';
 import { ModelTraceExplorerIcon } from './ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
 
@@ -215,7 +216,16 @@ export const SavedTraceViewModal = ({
             <FormattedMessage defaultMessage="Span type" description="Span type section label in selector" />
           </Typography.Text>
           {SELECTABLE_SPAN_TYPES.map((t) => (
-            <DropdownMenu.CheckboxItem key={t} checked={selectedTypes.has(t)} onCheckedChange={() => toggleType(t)}>
+            <DropdownMenu.CheckboxItem
+              key={t}
+              checked={selectedTypes.has(t)}
+              onCheckedChange={() => toggleType(t)}
+              onSelect={(e) => {
+                e.preventDefault();
+              }}
+              componentId={`trace-view-modal.span-type-${t}`}
+            >
+              <DropdownMenu.ItemIndicator />
               <span css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ModelTraceExplorerIcon type={getIconTypeForSpan(t)} />
                 <Typography.Text>{getDisplayNameForSpanType(t)}</Typography.Text>
@@ -289,38 +299,78 @@ export const SavedTraceViewModal = ({
       <SectionHeader>
         <FormattedMessage defaultMessage="Details" description="Section label for view details" />
       </SectionHeader>
-      <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm }}>
-        <div>
-          <FormUI.Label>
-            <FormattedMessage defaultMessage="Name" description="Saved view name label" />
-          </FormUI.Label>
-          <Input
-            value={working?.name || ''}
-            onChange={(e) => setWorking((w) => (w ? { ...w, name: e.target.value } : w))}
-            placeholder={intl.formatMessage({ defaultMessage: 'Enter name', description: 'Saved view name PH' })}
-          />
+        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm }}>
+          <div>
+            <FormUI.Label>
+              <FormattedMessage defaultMessage="Name" description="Saved view name label" />
+            </FormUI.Label>
+            <Input
+              value={working?.name || ''}
+              onChange={(e) => setWorking((w) => (w ? { ...w, name: e.target.value } : w))}
+              placeholder={intl.formatMessage({ defaultMessage: 'Enter name', description: 'Saved view name PH' })}
+            />
+          </div>
+          <div>
+            <FormUI.Label>
+              <FormattedMessage defaultMessage="Description" description="Saved view description label" />
+            </FormUI.Label>
+            <Input.TextArea
+              value={(working as any)?.description || ''}
+              rows={2}
+              onChange={(e) => setWorking((w) => (w ? ({ ...(w as any), description: e.target.value } as any) : w))}
+              placeholder={intl.formatMessage({
+                defaultMessage: 'Optional description',
+                description: 'Saved view description placeholder',
+              })}
+            />
+          </div>
+          <div>
+            <FormUI.Label>
+              <FormattedMessage defaultMessage="Span types to show" description="Span types label" />
+            </FormUI.Label>
+            {renderSpanTypeSelector()}
+          </div>
         </div>
-        <div>
-          <FormUI.Label>
-            <FormattedMessage defaultMessage="Description" description="Saved view description label" />
-          </FormUI.Label>
-          <Input.TextArea
-            value={(working as any)?.description || ''}
-            rows={2}
-            onChange={(e) => setWorking((w) => (w ? ({ ...(w as any), description: e.target.value } as any) : w))}
-            placeholder={intl.formatMessage({
-              defaultMessage: 'Optional description',
-              description: 'Saved view description placeholder',
-            })}
-          />
+
+      {/* Field filters per span type */}
+      <SectionHeader>
+        <FormattedMessage defaultMessage="Field filters" description="Section label for field filters" />
+      </SectionHeader>
+        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
+          {(working?.definition.spans.span_types ?? []).map((spanType) => {
+            const fields = working?.definition.fields?.[spanType] || {};
+          return (
+            <div
+              key={spanType}
+              css={{
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.general.borderRadiusBase,
+                padding: theme.spacing.sm,
+              }}
+            >
+              <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
+              <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
+                <div>
+                  <FormUI.Label>
+                    <FormattedMessage defaultMessage="Inputs" description="Inputs label" />
+                  </FormUI.Label>
+                  <KeyListEditor
+                    value={fields.inputs?.keys}
+                    onChange={(next) =>
+                      setWorkingDefinition((prev) => ({
+                        ...prev,
+                        fields: {
+                          ...prev.fields,
+                          [spanType]: { ...fields, inputs: { keys: next } },
+                        },
+                      }))
+                    }
+                    placeholder={intl.formatMessage({ defaultMessage: 'Input key', description: 'Input key PH' })}
+                  />
         </div>
-        <div>
-          <FormUI.Label>
-            <FormattedMessage defaultMessage="Span types to show" description="Span types label" />
-          </FormUI.Label>
-          {renderSpanTypeSelector()}
-        </div>
-        <div>
+
+        {/* Other options at the bottom */}
+        <div css={{ marginTop: theme.spacing.md }}>
           <FormUI.Label>
             <FormattedMessage defaultMessage="Other options" description="Other options label" />
           </FormUI.Label>
@@ -363,80 +413,19 @@ export const SavedTraceViewModal = ({
             </Checkbox>
           </div>
         </div>
-      </div>
-
-      {/* Field filters per span type */}
-      <SectionHeader>
-        <FormattedMessage defaultMessage="Field filters" description="Section label for field filters" />
-      </SectionHeader>
-      <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
-        {(working?.definition.spans.span_types || ALL_SPAN_TYPES).map((spanType) => {
-          const fields = working?.definition.fields?.[spanType] || {};
-          return (
-            <div
-              key={spanType}
-              css={{
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: theme.general.borderRadiusBase,
-                padding: theme.spacing.sm,
-              }}
-            >
-              <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
-              <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
-                <div>
-                  <FormUI.Label>
-                    <FormattedMessage defaultMessage="Inputs" description="Inputs label" />
-                  </FormUI.Label>
-                  <KeyListEditor
-                    value={fields.inputs?.keys}
-                    onChange={(next) =>
-                      setWorkingDefinition((prev) => ({
-                        ...prev,
-                        fields: {
-                          ...prev.fields,
-                          [spanType]: { ...fields, inputs: { keys: next } },
-                        },
-                      }))
-                    }
-                    placeholder={intl.formatMessage({ defaultMessage: 'Input key', description: 'Input key PH' })}
-                  />
-                </div>
-                <div>
-                  <FormUI.Label>
-                    <FormattedMessage defaultMessage="Outputs" description="Outputs label" />
-                  </FormUI.Label>
-                  <KeyListEditor
-                    value={fields.outputs?.keys}
-                    onChange={(next) =>
-                      setWorkingDefinition((prev) => ({
-                        ...prev,
-                        fields: {
-                          ...prev.fields,
-                          [spanType]: { ...fields, outputs: { keys: next } },
-                        },
-                      }))
-                    }
-                    placeholder={intl.formatMessage({ defaultMessage: 'Output key', description: 'Output key PH' })}
-                  />
-                </div>
-                <div>
-                  <FormUI.Label>
-                    <FormattedMessage defaultMessage="Attributes" description="Attributes label" />
-                  </FormUI.Label>
-                  <KeyListEditor
-                    value={fields.attributes?.keys}
-                    onChange={(next) =>
-                      setWorkingDefinition((prev) => ({
-                        ...prev,
-                        fields: {
-                          ...prev.fields,
-                          [spanType]: { ...fields, attributes: { keys: next } },
-                        },
-                      }))
-                    }
-                    placeholder={intl.formatMessage({ defaultMessage: 'Attribute key', description: 'Attr key PH' })}
-                  />
-                </div>
+                <FieldKeysByTargetEditor
+                  componentPrefix={`trace-view-modal.${spanType}`}
+                  fields={fields}
+                  onChange={(next) =>
+                    setWorkingDefinition((prev) => ({
+                      ...prev,
+                      fields: {
+                        ...prev.fields,
+                        [spanType]: next,
+                      },
+                    }))
+                  }
+                />
               </div>
             </div>
           );

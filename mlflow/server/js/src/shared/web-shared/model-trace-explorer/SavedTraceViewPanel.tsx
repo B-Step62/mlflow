@@ -5,6 +5,8 @@ import {
   DropdownMenu,
   FormUI,
   Input,
+  SimpleSelect,
+  SimpleSelectOption,
   PlusIcon,
   TrashIcon,
   Typography,
@@ -27,8 +29,7 @@ import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateCon
 
 type EditorFields = SavedTraceView['definition'];
 
-const ALL_SPAN_TYPES: string[] = Object.values(ModelSpanType);
-const SELECTABLE_SPAN_TYPES: string[] = [
+const SELECTABLE_SPAN_TYPES: ModelSpanType[] = [
   ModelSpanType.CHAIN,
   ModelSpanType.CHAT_MODEL,
   ModelSpanType.LLM,
@@ -82,16 +83,17 @@ const KeyListEditor = ({
       {list.map((val, idx) => (
         <div key={idx} css={{ display: 'flex', gap: theme.spacing.xs }}>
           <Input
+            componentId="trace-view-editor.key-input"
             value={val}
             placeholder={placeholder}
             onChange={(e) => handleChange(idx, e.target.value)}
             allowClear
           />
-          <Button icon={<TrashIcon />} onClick={() => handleRemove(idx)} />
+          <Button icon={<TrashIcon />} onClick={() => handleRemove(idx)} componentId="trace-view-editor.remove-key" />
         </div>
       ))}
       <div>
-        <Button icon={<PlusIcon />} onClick={handleAdd}>
+        <Button icon={<PlusIcon />} onClick={handleAdd} componentId="trace-view-editor.add-key">
           <FormattedMessage defaultMessage="Add" description="Add new key to list" />
         </Button>
       </div>
@@ -189,8 +191,8 @@ export const SavedTraceViewPanel = ({
     const toggleType = (t: string) => {
       setWorkingDefinition((prev) => {
         const curr = new Set(prev.spans.span_types || []);
-        if (curr.has(t)) curr.delete(t);
-        else curr.add(t);
+        if (curr.has(t as any)) curr.delete(t as any);
+        else curr.add(t as any);
         return { ...prev, spans: { ...prev.spans, span_types: Array.from(curr) } } as EditorFields;
       });
       return;
@@ -198,8 +200,8 @@ export const SavedTraceViewPanel = ({
     return (
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <Button size="small">
-            {intl.formatMessage({ defaultMessage: 'Span types', description: 'Span types selector label' })}
+          <Button size="small" componentId="trace-view-editor.span-type-selector">
+            <FormattedMessage defaultMessage="Span types" description="Span types selector label" />
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" minWidth={240}>
@@ -207,7 +209,17 @@ export const SavedTraceViewPanel = ({
             <FormattedMessage defaultMessage="Span type" description="Span type section label in selector" />
           </Typography.Text>
           {SELECTABLE_SPAN_TYPES.map((t) => (
-            <DropdownMenu.CheckboxItem key={t} checked={selectedTypes.has(t)} onCheckedChange={() => toggleType(t)}>
+            <DropdownMenu.CheckboxItem
+              key={t}
+              checked={selectedTypes.has(t as any)}
+              onCheckedChange={() => toggleType(t)}
+              // Keep menu open while toggling
+              onSelect={(e) => {
+                e.preventDefault();
+              }}
+              componentId={`trace-view-editor.span-type-${t}`}
+            >
+              <DropdownMenu.ItemIndicator />
               <span css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ModelTraceExplorerIcon type={getIconTypeForSpan(t)} />
                 <Typography.Text>{getDisplayNameForSpanType(t)}</Typography.Text>
@@ -255,25 +267,25 @@ export const SavedTraceViewPanel = ({
         }}
       >
         <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-          <Button icon={<CloseIcon />} onClick={onClose} size="small" />
+          <Button icon={<CloseIcon />} onClick={onClose} size="small" componentId="trace-view-editor.close" />
           <Typography.Text size="lg" bold css={{ margin: 0, lineHeight: '20px' }}>
             <FormattedMessage defaultMessage="Configure View" description="Title for saved trace view panel" />
           </Typography.Text>
         </div>
         <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
-          <Button type="primary" onClick={handleSave} size="small" disabled={!working}>
+          <Button type="primary" onClick={handleSave} size="small" disabled={!working} componentId="trace-view-editor.save">
             <FormattedMessage defaultMessage="Save" description="Save saved view" />
           </Button>
         </div>
       </div>
 
       {/* Body */}
-      <div css={{ padding: theme.spacing.md, overflow: 'auto', flex: 1 }}>
+      <div css={{ padding: theme.spacing.md, overflow: 'auto', flex: 1, gap: theme.spacing.md }}>
         {/* View selector */}
         <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <Button>{selectedOrNewLabel}</Button>
+              <Button componentId="trace-view-editor.view-selector">{selectedOrNewLabel}</Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="start">
               {views.map((v) => (
@@ -298,7 +310,7 @@ export const SavedTraceViewPanel = ({
         </div>
 
         {/* Edit UI */}
-        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm }}>
+        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
           <div>
             <FormUI.Label>
               <FormattedMessage defaultMessage="Name" description="Saved view name label" />
@@ -327,11 +339,48 @@ export const SavedTraceViewPanel = ({
           </div>
           <div>
             <FormUI.Label>
-              <FormattedMessage defaultMessage="Span types to show" description="Span types label" />
+              <FormattedMessage defaultMessage="Span types" description="Span types label" />
             </FormUI.Label>
             {renderSpanTypeSelector()}
           </div>
-          <div>
+        </div>
+
+        {/* Field filters per span type */}
+        <SectionHeader>
+          <FormattedMessage defaultMessage="Field filters" description="Section label for field filters" />
+        </SectionHeader>
+        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
+          {(working?.definition.spans.span_types ?? []).map((spanType) => {
+            const fields = working?.definition.fields?.[spanType] || {};
+            return (
+              <div
+                key={spanType}
+                css={{
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.general.borderRadiusBase,
+                  padding: theme.spacing.sm,
+                }}
+              >
+                <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
+                <FieldKeysByTargetEditor
+                  componentPrefix={`trace-view-editor.${spanType}`}
+                  fields={fields}
+                  onChange={(next: any) =>
+                    setWorkingDefinition((prev) => ({
+                      ...prev,
+                      fields: {
+                        ...prev.fields,
+                        [spanType]: next,
+                      },
+                    }))
+                  }
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <div>
             <FormUI.Label>
               <FormattedMessage defaultMessage="Other options" description="Other options label" />
             </FormUI.Label>
@@ -374,85 +423,89 @@ export const SavedTraceViewPanel = ({
               </Checkbox>
             </div>
           </div>
-        </div>
+      </div>
+    </div>
+  );
+};
 
-        {/* Field filters per span type */}
-        <SectionHeader>
-          <FormattedMessage defaultMessage="Field filters" description="Section label for field filters" />
-        </SectionHeader>
-        <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
-          {(working?.definition.spans.span_types || ALL_SPAN_TYPES).map((spanType) => {
-            const fields = working?.definition.fields?.[spanType] || {};
-            return (
-              <div
-                key={spanType}
-                css={{
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.general.borderRadiusBase,
-                  padding: theme.spacing.sm,
-                }}
-              >
-                <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
-                <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
-                  <div>
-                    <FormUI.Label>
-                      <FormattedMessage defaultMessage="Inputs" description="Inputs label" />
-                    </FormUI.Label>
-                    <KeyListEditor
-                      value={fields.inputs?.keys}
-                      onChange={(next) =>
-                        setWorkingDefinition((prev) => ({
-                          ...prev,
-                          fields: {
-                            ...prev.fields,
-                            [spanType]: { ...fields, inputs: { keys: next } },
-                          },
-                        }))
-                      }
-                      placeholder={intl.formatMessage({ defaultMessage: 'Input key', description: 'Input key PH' })}
-                    />
-                  </div>
-                  <div>
-                    <FormUI.Label>
-                      <FormattedMessage defaultMessage="Outputs" description="Outputs label" />
-                    </FormUI.Label>
-                    <KeyListEditor
-                      value={fields.outputs?.keys}
-                      onChange={(next) =>
-                        setWorkingDefinition((prev) => ({
-                          ...prev,
-                          fields: {
-                            ...prev.fields,
-                            [spanType]: { ...fields, outputs: { keys: next } },
-                          },
-                        }))
-                      }
-                      placeholder={intl.formatMessage({ defaultMessage: 'Output key', description: 'Output key PH' })}
-                    />
-                  </div>
-                  <div>
-                    <FormUI.Label>
-                      <FormattedMessage defaultMessage="Attributes" description="Attributes label" />
-                    </FormUI.Label>
-                    <KeyListEditor
-                      value={fields.attributes?.keys}
-                      onChange={(next) =>
-                        setWorkingDefinition((prev) => ({
-                          ...prev,
-                          fields: {
-                            ...prev.fields,
-                            [spanType]: { ...fields, attributes: { keys: next } },
-                          },
-                        }))
-                      }
-                      placeholder={intl.formatMessage({ defaultMessage: 'Attribute key', description: 'Attr key PH' })}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+// Unified field-keys editor: renders rows of [target dropdown][key input][trash],
+// backed by the SavedTraceView schema fields object for a given span type.
+const FieldKeysByTargetEditor = ({
+  fields,
+  onChange,
+  componentPrefix,
+}: {
+  fields: { inputs?: { keys?: string[] }; outputs?: { keys?: string[] }; attributes?: { keys?: string[] } };
+  onChange: (next: { inputs?: { keys?: string[] }; outputs?: { keys?: string[] }; attributes?: { keys?: string[] } }) => void;
+  componentPrefix: string;
+}) => {
+  const { theme } = useDesignSystemTheme();
+
+  type Kind = 'inputs' | 'outputs' | 'attributes';
+
+  const items = [
+    ...(fields.inputs?.keys ?? []).map((k) => ({ kind: 'inputs' as Kind, key: k })),
+    ...(fields.outputs?.keys ?? []).map((k) => ({ kind: 'outputs' as Kind, key: k })),
+    ...(fields.attributes?.keys ?? []).map((k) => ({ kind: 'attributes' as Kind, key: k })),
+  ];
+
+  const applyItems = (list: { kind: Kind; key: string }[]) => {
+    const next = {
+      inputs: list.filter((i) => i.kind === 'inputs').map((i) => i.key),
+      outputs: list.filter((i) => i.kind === 'outputs').map((i) => i.key),
+      attributes: list.filter((i) => i.kind === 'attributes').map((i) => i.key),
+    };
+    onChange({
+      inputs: next.inputs.length ? { keys: next.inputs } : undefined,
+      outputs: next.outputs.length ? { keys: next.outputs } : undefined,
+      attributes: next.attributes.length ? { keys: next.attributes } : undefined,
+    });
+  };
+
+  const handleChangeKind = (index: number, newKind: Kind) => {
+    const next = items.map((it, i) => (i === index ? { ...it, kind: newKind } : it));
+    applyItems(next);
+  };
+  const handleChangeKey = (index: number, newKey: string) => {
+    const next = items.map((it, i) => (i === index ? { ...it, key: newKey } : it));
+    applyItems(next);
+  };
+  const handleRemove = (index: number) => {
+    const next = items.filter((_, i) => i !== index);
+    applyItems(next);
+  };
+  const handleAdd = () => {
+    applyItems([...items, { kind: 'inputs', key: '' }]);
+  };
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, marginTop: theme.spacing.sm }}>
+      {items.map((item, idx) => (
+        <div key={idx} css={{ display: 'grid', gridTemplateColumns: '100px 1fr auto', gap: theme.spacing.xs }}>
+          <SimpleSelect
+            id={`${componentPrefix}.row-${idx}.kind`}
+            componentId={`${componentPrefix}.row-${idx}.kind`}
+            value={item.kind}
+            onChange={(e) => handleChangeKind(idx, e.target.value as Kind)}
+            css={{ width: 100 }}
+          >
+            <SimpleSelectOption value="inputs">Inputs</SimpleSelectOption>
+            <SimpleSelectOption value="outputs">Outputs</SimpleSelectOption>
+            <SimpleSelectOption value="attributes">Attributes</SimpleSelectOption>
+          </SimpleSelect>
+          <Input
+            componentId={`${componentPrefix}.row-${idx}.key`}
+            value={item.key}
+            placeholder="Key (e.g. messages.0.content)"
+            onChange={(e) => handleChangeKey(idx, e.target.value)}
+          />
+          <Button componentId={`${componentPrefix}.row-${idx}.delete`} icon={<TrashIcon />} onClick={() => handleRemove(idx)} />
         </div>
+      ))}
+      <div>
+        <Button componentId={`${componentPrefix}.add`} icon={<PlusIcon />} onClick={handleAdd}>
+          <FormattedMessage defaultMessage="Add" description="Add new key to list" />
+        </Button>
       </div>
     </div>
   );
