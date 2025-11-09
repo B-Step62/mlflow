@@ -21,12 +21,25 @@ import {
   upsertLocalSavedView,
 } from './mock_saved_views';
 import { ModelSpanType } from './ModelTrace.types';
-import { getDisplayNameForSpanType } from './ModelTraceExplorer.utils';
+import { getDisplayNameForSpanType, getIconTypeForSpan } from './ModelTraceExplorer.utils';
+import { ModelTraceExplorerIcon } from './ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
 
 type EditorFields = SavedTraceView['definition'];
 
 const ALL_SPAN_TYPES: string[] = Object.values(ModelSpanType);
+const SELECTABLE_SPAN_TYPES: string[] = [
+  ModelSpanType.CHAIN,
+  ModelSpanType.CHAT_MODEL,
+  ModelSpanType.LLM,
+  ModelSpanType.TOOL,
+  ModelSpanType.AGENT,
+  ModelSpanType.RETRIEVER,
+  ModelSpanType.PARSER,
+  ModelSpanType.EMBEDDING,
+  ModelSpanType.RERANKER,
+  ModelSpanType.MEMORY,
+];
 
 function ensureEditor(def?: Partial<EditorFields>): EditorFields {
   return {
@@ -189,14 +202,18 @@ export const SavedTraceViewPanel = ({
             {intl.formatMessage({ defaultMessage: 'Span types', description: 'Span types selector label' })}
           </Button>
         </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="start">
-          <DropdownMenu.CheckboxItemIndicatorGroup>
-            {ALL_SPAN_TYPES.map((t) => (
-              <DropdownMenu.CheckboxItem key={t} checked={selectedTypes.has(t)} onCheckedChange={() => toggleType(t)}>
-                {getDisplayNameForSpanType(t)}
-              </DropdownMenu.CheckboxItem>
-            ))}
-          </DropdownMenu.CheckboxItemIndicatorGroup>
+        <DropdownMenu.Content align="start" minWidth={240}>
+          <Typography.Text color="secondary" css={{ padding: '4px 8px', display: 'block' }}>
+            <FormattedMessage defaultMessage="Span type" description="Span type section label in selector" />
+          </Typography.Text>
+          {SELECTABLE_SPAN_TYPES.map((t) => (
+            <DropdownMenu.CheckboxItem key={t} checked={selectedTypes.has(t)} onCheckedChange={() => toggleType(t)}>
+              <span css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ModelTraceExplorerIcon type={getIconTypeForSpan(t)} />
+                <Typography.Text>{getDisplayNameForSpanType(t)}</Typography.Text>
+              </span>
+            </DropdownMenu.CheckboxItem>
+          ))}
           <DropdownMenu.Arrow />
         </DropdownMenu.Content>
       </DropdownMenu.Root>
@@ -260,12 +277,12 @@ export const SavedTraceViewPanel = ({
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="start">
               {views.map((v) => (
-                <DropdownMenu.Item key={v.id} onClick={() => handleSelectExisting(v.id)}>
+                <DropdownMenu.Item key={v.id} componentId={`trace-view-editor.select-${v.id}`} onClick={() => handleSelectExisting(v.id)}>
                   {v.name}
                 </DropdownMenu.Item>
               ))}
               <DropdownMenu.Separator />
-              <DropdownMenu.Item onClick={handleCreateNew}>
+              <DropdownMenu.Item componentId="trace-view-editor.create-new" onClick={handleCreateNew}>
                 <PlusIcon />
                 <span css={{ marginLeft: theme.spacing.xs }}>
                   <FormattedMessage defaultMessage="Create new view" description="Menu option to create new view" />
@@ -274,7 +291,9 @@ export const SavedTraceViewPanel = ({
             </DropdownMenu.Content>
           </DropdownMenu.Root>
           {working?.id && (
-            <Button danger icon={<TrashIcon />} onClick={handleDelete}/>
+            <Button componentId="trace-view-editor.delete" danger icon={<TrashIcon />} onClick={handleDelete}>
+              <FormattedMessage defaultMessage="Delete" description="Delete saved view" />
+            </Button>
           )}
         </div>
 
@@ -285,6 +304,7 @@ export const SavedTraceViewPanel = ({
               <FormattedMessage defaultMessage="Name" description="Saved view name label" />
             </FormUI.Label>
             <Input
+              componentId="trace-view-editor.name"
               value={working?.name || ''}
               onChange={(e) => setWorking((w) => (w ? { ...w, name: e.target.value } : w))}
               placeholder={intl.formatMessage({ defaultMessage: 'Enter name', description: 'Saved view name PH' })}
@@ -295,6 +315,7 @@ export const SavedTraceViewPanel = ({
               <FormattedMessage defaultMessage="Description" description="Saved view description label" />
             </FormUI.Label>
             <Input.TextArea
+              componentId="trace-view-editor.description"
               value={(working as any)?.description || ''}
               rows={2}
               onChange={(e) => setWorking((w) => (w ? ({ ...(w as any), description: e.target.value } as any) : w))}
@@ -316,6 +337,7 @@ export const SavedTraceViewPanel = ({
             </FormUI.Label>
             <div css={{ display: 'flex', gap: theme.spacing.lg }}>
               <Checkbox
+                componentId={`trace-view-editor.toggle-show-parents_${!working?.definition.spans.show_parents}`}
                 isChecked={!!working?.definition.spans.show_parents}
                 onChange={() =>
                   setWorkingDefinition((prev) => ({
@@ -327,6 +349,7 @@ export const SavedTraceViewPanel = ({
                 <FormattedMessage defaultMessage="Show parents" description="Option: show parents" />
               </Checkbox>
               <Checkbox
+                componentId={`trace-view-editor.toggle-show-exceptions_${!working?.definition.spans.show_exceptions}`}
                 isChecked={!!working?.definition.spans.show_exceptions}
                 onChange={() =>
                   setWorkingDefinition((prev) => ({
@@ -338,6 +361,7 @@ export const SavedTraceViewPanel = ({
                 <FormattedMessage defaultMessage="Show exceptions" description="Option: show exceptions" />
               </Checkbox>
               <Checkbox
+                componentId={`trace-view-editor.toggle-show-root_${!working?.definition.spans.show_root_span}`}
                 isChecked={!!working?.definition.spans.show_root_span}
                 onChange={() =>
                   setWorkingDefinition((prev) => ({
