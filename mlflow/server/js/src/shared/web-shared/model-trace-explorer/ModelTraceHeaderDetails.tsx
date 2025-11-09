@@ -6,6 +6,8 @@ import {
   useDesignSystemTheme,
   Tooltip,
   ClockIcon,
+  Button,
+  ListBorderIcon,
 } from '@databricks/design-system';
 import { Notification } from '@databricks/design-system';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -161,37 +163,16 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
 
   return (
     <>
-      <div css={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.md, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Saved View selector */}
-        <div>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <Tag componentId={`${BASE_TAG_COMPONENT_ID}.saved-view`} css={{ cursor: 'pointer' }}>
-                <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                  <Typography.Text size="sm" color="secondary">
-                    {currentViewName ?? intl.formatMessage({ defaultMessage: 'Saved View', description: 'Saved View dropdown label' })}
-                  </Typography.Text>
-                  <ChevronDownIcon />
-                </span>
-              </Tag>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content>
-              <DropdownMenu.RadioGroup value={selectedSavedViewId ?? CLEAR_VALUE} onValueChange={(value) => applyView(value)}>
-                <DropdownMenu.RadioItem value={CLEAR_VALUE}>
-                  <DropdownMenu.ItemIndicator />
-                  <FormattedMessage defaultMessage="Clear view" description="Trace header: clear saved view option" />
-                </DropdownMenu.RadioItem>
-                {savedViews.map((v) => (
-                  <DropdownMenu.RadioItem key={v.id} value={v.id}>
-                    <DropdownMenu.ItemIndicator />
-                    {v.name}
-                  </DropdownMenu.RadioItem>
-                ))}
-              </DropdownMenu.RadioGroup>
-              <DropdownMenu.Arrow />
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        </div>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: theme.spacing.md,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          paddingRight: theme.spacing.sm,
+        }}
+      >
         {modelTraceId && (
           <ModelTraceHeaderMetricSection
             label={<FormattedMessage defaultMessage="ID" description="Label for the ID section" />}
@@ -263,6 +244,37 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
             </Overflow>
           </div>
         )}
+
+        {/* Saved View selector (moved to the right) */}
+        <div css={{ marginLeft: 'auto', paddingRight: theme.spacing.xs }}>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button
+                componentId={`${BASE_TAG_COMPONENT_ID}.saved-view`}
+                icon={<ListBorderIcon />}
+                endIcon={<ChevronDownIcon />}
+              >
+                {currentViewName ??
+                  intl.formatMessage({ defaultMessage: 'Saved View', description: 'Saved View dropdown label' })}
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end">
+              <DropdownMenu.RadioGroup value={selectedSavedViewId ?? CLEAR_VALUE} onValueChange={(value) => applyView(value)}>
+                <DropdownMenu.RadioItem value={CLEAR_VALUE}>
+                  <DropdownMenu.ItemIndicator />
+                  <FormattedMessage defaultMessage="Clear view" description="Trace header: clear saved view option" />
+                </DropdownMenu.RadioItem>
+                {savedViews.map((v) => (
+                  <DropdownMenu.RadioItem key={v.id} value={v.id}>
+                    <DropdownMenu.ItemIndicator />
+                    {v.name}
+                  </DropdownMenu.RadioItem>
+                ))}
+              </DropdownMenu.RadioGroup>
+              <DropdownMenu.Arrow />
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </div>
       </div>
 
       {showNotification && (

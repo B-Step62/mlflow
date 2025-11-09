@@ -14,12 +14,10 @@
 - [x] Ensure span tree/list honors filter predicates (hide or de-emphasize per UX decision).
 - [x] Ensure IO/attribute panels honor visibility rules.
 - [x] Persist last-applied view per experiment in `localStorage` (`mlflow:traceView:<experimentId>`).
-- [ ] Add empty-state when no views exist (mock array empty).
+- [x] Add empty-state when no views exist (mock array empty).
 
 **Phase 2 — CRUD UI (Local Only)**
-- [ ] Add `Create View` from current state (name + optional default toggle); store in memory + `localStorage`.
-- [ ] Add `Update View` (overwrite with current state).
-- [ ] Add `Delete View` with confirm dialog.
+- [ ] The CRUD UI 
 - [ ] Validate name uniqueness within experiment scope; friendly errors.
 - [ ] Add non-destructive migration path for stored views (`version` field).
 
