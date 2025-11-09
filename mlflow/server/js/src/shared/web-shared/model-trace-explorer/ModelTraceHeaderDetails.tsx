@@ -261,7 +261,7 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="end">
-              <DropdownMenu.RadioGroup value={selectedSavedViewId ?? CLEAR_VALUE} onValueChange={(value) => applyView(value)}>
+              <DropdownMenu.RadioGroup componentId={`${BASE_TAG_COMPONENT_ID}.saved-view-radio-group`} value={selectedSavedViewId ?? CLEAR_VALUE} onValueChange={(value) => applyView(value)}>
                 <DropdownMenu.RadioItem value={CLEAR_VALUE}>
                   <DropdownMenu.ItemIndicator />
                   <FormattedMessage defaultMessage="Clear view" description="Trace header: clear saved view option" />
@@ -274,11 +274,11 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
                 ))}
               </DropdownMenu.RadioGroup>
               <DropdownMenu.Separator />
-              <DropdownMenu.Item onClick={() => setShowSavedViewEditor(true)}>
-                <GearIcon />
-                <span css={{ marginLeft: theme.spacing.xs }}>
-                  <FormattedMessage defaultMessage="Create/Edit View" description="Open saved view editor" />
-                </span>
+              <DropdownMenu.Item
+                style={{ margin: theme.spacing.xs, gap: theme.spacing.sm }}
+                componentId={`${BASE_TAG_COMPONENT_ID}.create-edit-view`} onClick={() => setShowSavedViewEditor(true)}>
+                <GearIcon style={{ color: theme.colors.textSecondary }} />
+                <FormattedMessage defaultMessage="Create/Edit View" description="Open saved view editor" />
               </DropdownMenu.Item>
               <DropdownMenu.Arrow />
             </DropdownMenu.Content>

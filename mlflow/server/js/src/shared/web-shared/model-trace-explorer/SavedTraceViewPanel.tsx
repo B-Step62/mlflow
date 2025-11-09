@@ -151,13 +151,6 @@ export const SavedTraceViewPanel = ({
     });
   };
 
-  const handleApply = () => {
-    if (!working) return;
-    setAppliedSavedView(working);
-    setSelectedSavedViewId(working.id || undefined);
-    setLastAppliedSavedViewId(experimentId, working.id || undefined);
-  };
-
   const handleSave = () => {
     if (!working) return;
     const saved = upsertLocalSavedView(experimentId, working);
@@ -240,19 +233,17 @@ export const SavedTraceViewPanel = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+          minHeight: 44,
           borderBottom: `1px solid ${theme.colors.border}`,
         }}
       >
         <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
           <Button icon={<CloseIcon />} onClick={onClose} size="small" />
-          <Typography.Title level={4} css={{ margin: 0 }}>
-            <FormattedMessage defaultMessage="Select View" description="Title for saved trace view panel" />
-          </Typography.Title>
+          <Typography.Text size="lg" bold css={{ margin: 0, lineHeight: '20px' }}>
+            <FormattedMessage defaultMessage="Configure View" description="Title for saved trace view panel" />
+          </Typography.Text>
         </div>
-        <div css={{ display: 'flex', gap: theme.spacing.xs }}>
-          <Button onClick={handleApply} size="small">
-            <FormattedMessage defaultMessage="Apply" description="Apply saved view without closing" />
-          </Button>
+        <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
           <Button type="primary" onClick={handleSave} size="small" disabled={!working}>
             <FormattedMessage defaultMessage="Save" description="Save saved view" />
           </Button>
@@ -262,9 +253,6 @@ export const SavedTraceViewPanel = ({
       {/* Body */}
       <div css={{ padding: theme.spacing.md, overflow: 'auto', flex: 1 }}>
         {/* View selector */}
-        <SectionHeader>
-          <FormattedMessage defaultMessage="View" description="Section label for view selection" />
-        </SectionHeader>
         <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -286,16 +274,11 @@ export const SavedTraceViewPanel = ({
             </DropdownMenu.Content>
           </DropdownMenu.Root>
           {working?.id && (
-            <Button danger icon={<TrashIcon />} onClick={handleDelete}>
-              <FormattedMessage defaultMessage="Delete" description="Delete saved view" />
-            </Button>
+            <Button danger icon={<TrashIcon />} onClick={handleDelete}/>
           )}
         </div>
 
         {/* Edit UI */}
-        <SectionHeader>
-          <FormattedMessage defaultMessage="Details" description="Section label for view details" />
-        </SectionHeader>
         <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.sm }}>
           <div>
             <FormUI.Label>
