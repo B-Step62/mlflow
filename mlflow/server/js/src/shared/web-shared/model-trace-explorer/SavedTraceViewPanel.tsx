@@ -9,6 +9,8 @@ import {
   SimpleSelectOption,
   PlusIcon,
   TrashIcon,
+  PencilIcon,
+  CheckIcon,
   Typography,
   useDesignSystemTheme,
   CloseIcon,
@@ -31,7 +33,9 @@ import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateCon
 
 type EditorFields = SavedTraceView['definition'];
 
-const SELECTABLE_SPAN_TYPES: ModelSpanType[] = [
+// Include special UI-only span type 'ROOT' for configuring root span filters
+const SELECTABLE_SPAN_TYPES: (ModelSpanType | 'ROOT')[] = [
+  'ROOT',
   ModelSpanType.CHAIN,
   ModelSpanType.CHAT_MODEL,
   ModelSpanType.LLM,
@@ -120,6 +124,7 @@ export const SavedTraceViewPanel = ({
   const [views, setViews] = useState<SavedTraceView[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [working, setWorking] = useState<SavedTraceView | undefined>();
+  const [isEditingName, setIsEditingName] = useState(false);
 
   const loadViews = useCallback(() => {
     setViews(getSavedViews(experimentId));
@@ -202,8 +207,13 @@ export const SavedTraceViewPanel = ({
     return (
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <Button size="small" componentId="trace-view-editor.span-type-selector">
-            <FormattedMessage defaultMessage="Span types " description="Span types selector label" />
+          <Button
+            size="small"
+            componentId="trace-view-editor.span-type-selector"
+            endIcon={<ChevronDownIcon />}
+            css={{ width: '100%', justifyContent: 'space-between' }}
+          >
+            <FormattedMessage defaultMessage="Select span types " description="Span types selector label" />
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" minWidth={240}>
@@ -223,7 +233,7 @@ export const SavedTraceViewPanel = ({
             >
               <DropdownMenu.ItemIndicator />
               <span css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ModelTraceExplorerIcon type={getIconTypeForSpan(t)} />
+                <ModelTraceExplorerIcon type={getIconTypeForSpan(t)} isRootSpan={t === 'ROOT'} />
                 <Typography.Text>{getDisplayNameForSpanType(t)}</Typography.Text>
               </span>
             </DropdownMenu.CheckboxItem>
@@ -306,13 +316,63 @@ export const SavedTraceViewPanel = ({
 
         {/* Edit UI */}
         <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
-          <div>
-            <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}></div>
-              <FormUI.Label>
-                <FormattedMessage defaultMessage="Name" description="Saved view name label" />
-              </FormUI.Label>
+          {/* Subheader row: name + edit, with delete/save on the right */}
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, minWidth: 0 }}>
+              {isEditingName ? (
+                <>
+                  <Input
+                    componentId="trace-view-editor.name"
+                    value={working?.name || ''}
+                    onChange={(e) => setWorking((w) => (w ? { ...w, name: e.target.value } : w))}
+                    placeholder={intl.formatMessage({ defaultMessage: 'Enter name', description: 'Saved view name PH' })}
+                    autoFocus
+                    size="small"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') setIsEditingName(false);
+                      if (e.key === 'Escape') setIsEditingName(false);
+                    }}
+                    css={{ maxWidth: '100%' }}
+                  />
+                  <Button
+                    componentId="trace-view-editor.name-confirm"
+                    icon={<CheckIcon />}
+                    size="small"
+                    aria-label={intl.formatMessage({ defaultMessage: 'Confirm name', description: 'Confirm edited name' })}
+                    onClick={() => setIsEditingName(false)}
+                  />
+                </>
+              ) : (
+                  <div css={{ display: 'flex', textAlign: 'center', gap: theme.spacing.xs }}>
+                    <Typography.Title level={3} css={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                      {working?.name || intl.formatMessage({ defaultMessage: 'Untitled view', description: 'Default new view name' })}
+                    </Typography.Title>
+                    <Button
+                      componentId="trace-view-editor.name-edit"
+                      icon={<PencilIcon />}
+                      size="small"
+                      aria-label={intl.formatMessage({ defaultMessage: 'Edit name', description: 'Edit name button' })}
+                      onClick={() => setIsEditingName(true)}
+                    />
+                  </div>
+              )}
+            </div>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
               {working?.id && (
-              <Button componentId="trace-view-editor.header-delete" danger icon={<TrashIcon />} onClick={handleDelete}/>
+                <Button
+                  componentId="trace-view-editor.header-delete"
+                  danger
+                  icon={<TrashIcon />}
+                  onClick={handleDelete}
+                  aria-label={intl.formatMessage({ defaultMessage: 'Delete view', description: 'Delete saved view' })}
+                  title={intl.formatMessage({ defaultMessage: 'Delete', description: 'Delete tooltip' })}
+                />
               )}
               <Button
                 componentId="trace-view-editor.header-save"
@@ -320,24 +380,17 @@ export const SavedTraceViewPanel = ({
                 onClick={handleSave}
                 size="small"
                 icon={<ModelTraceExplorerIcon type={ModelIconType.SAVE} />}
-                aria-label={"Save"}
-                title="Save"
+                aria-label={intl.formatMessage({ defaultMessage: 'Save', description: 'Save button aria label' })}
+                title={intl.formatMessage({ defaultMessage: 'Save', description: 'Save tooltip' })}
               />
-            <Input
-              componentId="trace-view-editor.name"
-              value={working?.name || ''}
-              onChange={(e) => setWorking((w) => (w ? { ...w, name: e.target.value } : w))}
-              placeholder={intl.formatMessage({ defaultMessage: 'Enter name', description: 'Saved view name PH' })}
-            />
-          </div>
-          <div>
-            <FormUI.Label>
-              <FormattedMessage defaultMessage="Span Types and Field Filters" description="Span types label" />
-            </FormUI.Label>
-            {renderSpanTypeSelector()}
-          </div>
+            </div>
+        </div>
 
         {/* Field filters per span type */}
+        <FormUI.Label>
+            <FormattedMessage defaultMessage="Span Types and Field Filters" description="Span types label" />
+          </FormUI.Label>
+        {renderSpanTypeSelector()}
         <div css={{ display: 'grid', gridTemplateColumns: '1fr', gap: theme.spacing.md }}>
           {(working?.definition.spans.span_types ?? []).map((spanType) => {
             const fields = working?.definition.fields?.[spanType] || {};
@@ -350,7 +403,10 @@ export const SavedTraceViewPanel = ({
                   padding: theme.spacing.sm,
                 }}
               >
-                <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
+                <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <ModelTraceExplorerIcon type={getIconTypeForSpan(spanType)} isRootSpan={spanType === 'ROOT'} />
+                  <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
+                </span>
                 <FieldKeysByTargetEditor
                   componentPrefix={`trace-view-editor.${spanType}`}
                   fields={fields}

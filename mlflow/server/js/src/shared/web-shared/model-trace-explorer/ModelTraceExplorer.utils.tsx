@@ -69,6 +69,8 @@ export const displayErrorNotification = (errorMessage: string) => {
 
 export function getIconTypeForSpan(spanType: ModelSpanType | string): ModelIconType {
   switch (spanType) {
+    case 'ROOT':
+      return ModelIconType.CHAIN;
     case ModelSpanType.LLM:
       return ModelIconType.MODELS;
     case ModelSpanType.CHAIN:
@@ -100,6 +102,8 @@ export function getIconTypeForSpan(spanType: ModelSpanType | string): ModelIconT
 
 export function getDisplayNameForSpanType(spanType: ModelSpanType | string): string {
   switch (spanType) {
+    case 'ROOT':
+      return 'Root';
     case ModelSpanType.LLM:
       return 'LLM';
     case ModelSpanType.CHAIN:

@@ -20,6 +20,7 @@ export type SavedTraceView = {
         | 'EMBEDDING'
         | 'RERANKER'
         | 'MEMORY'
+        | 'ROOT'
         | 'UNKNOWN'
       >;
       span_name_pattern?: string;
