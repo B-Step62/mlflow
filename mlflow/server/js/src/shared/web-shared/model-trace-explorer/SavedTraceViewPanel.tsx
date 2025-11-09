@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   FormUI,
   Input,
+  Tag,
   SimpleSelect,
   SimpleSelectOption,
   PlusIcon,
@@ -18,6 +19,7 @@ import {
   ListBorderIcon,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
+import Utils from '../../../common/utils/Utils';
 
 import type { SavedTraceView } from './mock_saved_views';
 import {
@@ -30,6 +32,7 @@ import { ModelSpanType, ModelIconType } from './ModelTrace.types';
 import { getDisplayNameForSpanType, getIconTypeForSpan } from './ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from './ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
+import { getTimelineTreeNodesList } from './timeline-tree/TimelineTree.utils';
 
 type EditorFields = SavedTraceView['definition'];
 
@@ -51,9 +54,10 @@ const SELECTABLE_SPAN_TYPES: (ModelSpanType | 'ROOT')[] = [
 function ensureEditor(def?: Partial<EditorFields>): EditorFields {
   return {
     spans: {
-      span_types: def?.spans?.span_types ?? [],
+      // Default to showing Root configuration card
+      span_types: def?.spans?.span_types ?? (['ROOT'] as any),
       span_name_pattern: def?.spans?.span_name_pattern ?? '',
-      show_parents: def?.spans?.show_parents ?? true,
+      show_parents: def?.spans?.show_parents ?? false,
       show_root_span: def?.spans?.show_root_span ?? true,
       show_exceptions: def?.spans?.show_exceptions ?? true,
     },
@@ -118,7 +122,7 @@ export const SavedTraceViewPanel = ({
 }) => {
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
-  const { setAppliedSavedView, setSelectedSavedViewId, setAlwaysShowRootSpan } =
+  const { rootNode, setAppliedSavedView, setSelectedSavedViewId, setAlwaysShowRootSpan, selectedSavedViewId, savedViewEditorMode, setSavedViewEditorMode } =
     useModelTraceExplorerViewState();
 
   const [views, setViews] = useState<SavedTraceView[]>([]);
@@ -130,6 +134,19 @@ export const SavedTraceViewPanel = ({
   const toggleCard = (spanType: string) =>
     setCollapsedCards((prev) => ({ ...prev, [spanType]: !prev[spanType] }));
 
+  // Default newly appearing cards to collapsed
+  useEffect(() => {
+    const types = working?.definition.spans.span_types ?? [];
+    if (!types.length) return;
+    setCollapsedCards((prev) => {
+      const next = { ...prev };
+      types.forEach((t) => {
+        if (next[t] === undefined) next[t] = true;
+      });
+      return next;
+    });
+  }, [working?.definition.spans.span_types]);
+
   const loadViews = useCallback(() => {
     setViews(getSavedViews(experimentId));
   }, [experimentId]);
@@ -139,6 +156,25 @@ export const SavedTraceViewPanel = ({
       loadViews();
     }
   }, [open, loadViews]);
+
+  // Initialize editor action on open
+  useEffect(() => {
+    if (!open) return;
+    // Wait until views are loaded
+    if (!views) return;
+    if (savedViewEditorMode === 'create') {
+      // Always initialize a fresh unsaved view on create
+      handleCreateNew();
+      setSavedViewEditorMode('edit');
+      return;
+    }
+    if (!working && selectedSavedViewId) {
+      const v = views.find((x) => x.id === selectedSavedViewId);
+      if (v) {
+        handleSelectExisting(selectedSavedViewId);
+      }
+    }
+  }, [open, views, savedViewEditorMode, selectedSavedViewId]);
 
   const selectedName = useMemo(() => views.find((v) => v.id === selectedId)?.name, [views, selectedId]);
 
@@ -153,14 +189,45 @@ export const SavedTraceViewPanel = ({
     setSelectedId(id);
     const v = views.find((x) => x.id === id);
     if (v) {
-      setWorking({ ...v });
-      setAppliedSavedView(v);
-      setAlwaysShowRootSpan(v.definition.spans.show_root_span ?? true);
+      // Ensure ROOT appears by default in editor UI
+      const withRoot = (() => {
+        const types = new Set<string>(v.definition.spans.span_types || []);
+        if (!types.has('ROOT')) types.add('ROOT');
+        return {
+          ...v,
+          definition: {
+            ...v.definition,
+            spans: { ...v.definition.spans, span_types: Array.from(types) as any },
+          },
+        } as SavedTraceView;
+      })();
+      setWorking({ ...withRoot });
+      setAppliedSavedView(withRoot);
+      setAlwaysShowRootSpan(withRoot.definition.spans.show_root_span ?? true);
     }
   };
 
   const handleCreateNew = () => {
     const v = createEmptyView();
+    // Preselect span types based on the current trace (plus ROOT)
+    try {
+      const typesFromTrace = rootNode
+        ? Array.from(
+            new Set(
+              (getTimelineTreeNodesList([rootNode]) as any[])
+                .map((n: any) => n?.type)
+                .filter((t: any): t is string => !!t),
+            ),
+          )
+        : [];
+      const defaultSpanTypes = Array.from(new Set(['ROOT', ...typesFromTrace])) as any;
+      v.definition = {
+        ...v.definition,
+        spans: { ...v.definition.spans, span_types: defaultSpanTypes },
+      } as any;
+    } catch {
+      // fallback already contains ROOT by default via ensureEditor in this panel
+    }
     setWorking(v);
     setSelectedId(v.id);
     setAppliedSavedView(v);
@@ -184,7 +251,9 @@ export const SavedTraceViewPanel = ({
     setSelectedSavedViewId(saved.id);
     setLastAppliedSavedViewId(experimentId, saved.id);
     loadViews();
-    onClose();
+    Utils.displayGlobalInfoNotification(
+      intl.formatMessage({ defaultMessage: 'View saved', description: 'Saved trace view success toast' }),
+    );
   };
 
   const handleDelete = () => {
@@ -399,6 +468,10 @@ export const SavedTraceViewPanel = ({
           {(working?.definition.spans.span_types ?? []).map((spanType) => {
             const fields = working?.definition.fields?.[spanType] || {};
             const isCollapsed = !!collapsedCards[spanType];
+            const filtersCount =
+              (fields.inputs?.keys?.length || 0) +
+              (fields.outputs?.keys?.length || 0) +
+              (fields.attributes?.keys?.length || 0);
             return (
               <div
                 key={spanType}
@@ -421,12 +494,15 @@ export const SavedTraceViewPanel = ({
                     <ModelTraceExplorerIcon type={getIconTypeForSpan(spanType)} isRootSpan={spanType === 'ROOT'} />
                     <Typography.Text bold>{getDisplayNameForSpanType(spanType)}</Typography.Text>
                   </span>
-                  <ChevronDownIcon
-                    css={{
-                      transition: 'transform 150ms ease',
-                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                    }}
-                  />
+                  <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                    <Tag color="default">{filtersCount} filters</Tag>
+                    <ChevronDownIcon
+                      css={{
+                        transition: 'transform 150ms ease',
+                        transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      }}
+                    />
+                  </span>
                 </div>
                 {!isCollapsed && (
                   <FieldKeysByTargetEditor

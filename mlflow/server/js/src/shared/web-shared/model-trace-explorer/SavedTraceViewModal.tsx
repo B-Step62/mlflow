@@ -46,7 +46,7 @@ function ensureEditor(def?: Partial<EditorFields>): EditorFields {
     spans: {
       span_types: def?.spans?.span_types ?? [],
       span_name_pattern: def?.spans?.span_name_pattern ?? '',
-      show_parents: def?.spans?.show_parents ?? true,
+      show_parents: def?.spans?.show_parents ?? false,
       show_root_span: def?.spans?.show_root_span ?? true,
       show_exceptions: def?.spans?.show_exceptions ?? true,
     },

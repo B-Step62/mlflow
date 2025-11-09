@@ -102,13 +102,17 @@ export const ModelTraceExplorerDetailView = ({
     // apply span type visibility + exceptions/parents
     setSpanFilterState((prev) => {
       const currentTypes = Object.keys(prev.spanTypeDisplayState);
-      const allowed = new Set(def.spans.span_types ?? currentTypes);
+      // Treat 'ROOT' as a UI-only pseudo-type that should not restrict
+      // span type visibility. If only 'ROOT' is selected, allow all types.
+      const requested = def.spans.span_types ?? currentTypes;
+      const requestedWithoutRoot = requested.filter((t) => t !== 'ROOT');
+      const allowedSet = new Set(requestedWithoutRoot.length ? requestedWithoutRoot : currentTypes);
       return {
         ...prev,
         showParents: def.spans.show_parents ?? prev.showParents,
         showExceptions: def.spans.show_exceptions ?? prev.showExceptions,
         spanTypeDisplayState: currentTypes.reduce<Record<string, boolean>>((acc, t) => {
-          acc[t] = allowed.has(t);
+          acc[t] = allowedSet.has(t);
           return acc;
         }, {}),
       };

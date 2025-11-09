@@ -31,6 +31,9 @@ export type ModelTraceExplorerViewState = {
   // Controls the right-side saved view editor panel visibility
   showSavedViewEditor: boolean;
   setShowSavedViewEditor: (v: boolean) => void;
+  // Indicates how the editor should initialize when opened
+  savedViewEditorMode: 'edit' | 'create';
+  setSavedViewEditorMode: (v: 'edit' | 'create') => void;
 };
 
 export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplorerViewState>({
@@ -55,6 +58,8 @@ export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplor
   setAlwaysShowRootSpan: () => {},
   showSavedViewEditor: false,
   setShowSavedViewEditor: () => {},
+  savedViewEditorMode: 'edit',
+  setSavedViewEditorMode: () => {},
 });
 
 export const useModelTraceExplorerViewState = () => {
@@ -96,6 +101,7 @@ export const ModelTraceExplorerViewStateProvider = ({
   const [appliedSavedView, setAppliedSavedView] = useState<SavedTraceView | undefined>();
   const [alwaysShowRootSpan, setAlwaysShowRootSpan] = useState<boolean>(true);
   const [showSavedViewEditor, setShowSavedViewEditor] = useState<boolean>(false);
+  const [savedViewEditorMode, setSavedViewEditorMode] = useState<'edit' | 'create'>('edit');
 
   // Initialize active tab only on the very first selection to avoid
   // resetting user's tab choice on unrelated state updates (e.g. editing view fields)
@@ -131,6 +137,8 @@ export const ModelTraceExplorerViewStateProvider = ({
       setAlwaysShowRootSpan,
       showSavedViewEditor,
       setShowSavedViewEditor,
+      savedViewEditorMode,
+      setSavedViewEditorMode,
     }),
     [
       activeView,
@@ -147,6 +155,7 @@ export const ModelTraceExplorerViewStateProvider = ({
       appliedSavedView,
       alwaysShowRootSpan,
       showSavedViewEditor,
+      savedViewEditorMode,
     ],
   );
 

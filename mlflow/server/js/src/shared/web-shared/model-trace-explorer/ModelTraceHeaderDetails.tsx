@@ -8,6 +8,7 @@ import {
   ClockIcon,
   Button,
   ListBorderIcon,
+  PlusIcon,
 } from '@databricks/design-system';
 import { Notification } from '@databricks/design-system';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -79,7 +80,7 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
   const [showNotification, setShowNotification] = useState(false);
-  const { rootNode, setAppliedSavedView, selectedSavedViewId, setSelectedSavedViewId, setShowSavedViewEditor } =
+  const { rootNode, setAppliedSavedView, selectedSavedViewId, setSelectedSavedViewId, setShowSavedViewEditor, setActiveView, setSavedViewEditorMode } =
     useModelTraceExplorerViewState();
 
   const tags = Object.entries(modelTrace.info.tags ?? {}).filter(([key]) => isUserFacingTag(key));
@@ -131,6 +132,8 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
     if (!view) return;
     setSelectedSavedViewId(view.id);
     setAppliedSavedView(view);
+    // Switch to Details & Timeline when a saved view is applied automatically
+    setActiveView('detail');
   }, [experimentId, savedViews, setAppliedSavedView, setSelectedSavedViewId]);
 
   const currentViewName = useMemo(() => {
@@ -152,8 +155,10 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
       setSelectedSavedViewId(view.id);
       setAppliedSavedView(view);
       setLastAppliedSavedViewId(experimentId, view.id);
+      // Ensure Details & Timeline tab is shown when a saved view is selected
+      setActiveView('detail');
     },
-    [experimentId, savedViews, setAppliedSavedView, setSelectedSavedViewId],
+    [experimentId, savedViews, setAppliedSavedView, setSelectedSavedViewId, setActiveView],
   );
 
   const handleCopy = useCallback(() => {
@@ -257,14 +262,14 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
                 endIcon={<ChevronDownIcon />}
               >
                 {currentViewName ??
-                  intl.formatMessage({ defaultMessage: 'Saved View', description: 'Saved View dropdown label' })}
+                  intl.formatMessage({ defaultMessage: 'Select View', description: 'Saved View dropdown label' })}
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="end">
               <DropdownMenu.RadioGroup componentId={`${BASE_TAG_COMPONENT_ID}.saved-view-radio-group`} value={selectedSavedViewId ?? CLEAR_VALUE} onValueChange={(value) => applyView(value)}>
                 <DropdownMenu.RadioItem value={CLEAR_VALUE}>
                   <DropdownMenu.ItemIndicator />
-                  <FormattedMessage defaultMessage="Clear view" description="Trace header: clear saved view option" />
+                  <FormattedMessage defaultMessage="Default (No view)" description="Trace header: clear saved view option" />
                 </DropdownMenu.RadioItem>
                 {savedViews.map((v) => (
                   <DropdownMenu.RadioItem key={v.id} value={v.id}>
@@ -276,9 +281,30 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
               <DropdownMenu.Separator />
               <DropdownMenu.Item
                 style={{ margin: theme.spacing.xs, gap: theme.spacing.sm }}
-                componentId={`${BASE_TAG_COMPONENT_ID}.create-edit-view`} onClick={() => setShowSavedViewEditor(true)}>
+                componentId={`${BASE_TAG_COMPONENT_ID}.edit-view`}
+                disabled={!selectedSavedViewId}
+                onClick={() => {
+                  setSavedViewEditorMode('edit');
+                  setShowSavedViewEditor(true);
+                }}
+              >
                 <GearIcon style={{ color: theme.colors.textSecondary }} />
-                <FormattedMessage defaultMessage="Create/Edit View" description="Open saved view editor" />
+                <FormattedMessage defaultMessage="Edit View" description="Open editor to edit selected view" />
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                style={{ margin: theme.spacing.xs, gap: theme.spacing.sm }}
+                componentId={`${BASE_TAG_COMPONENT_ID}.create-new-view`}
+                onClick={() => {
+                  // Clear current selection and applied view, then open editor in create mode
+                  setSelectedSavedViewId(undefined);
+                  setAppliedSavedView(undefined);
+                  setSavedViewEditorMode('create');
+                  setShowSavedViewEditor(true);
+                  setActiveView('detail');
+                }}
+              >
+                <PlusIcon />
+                <FormattedMessage defaultMessage="Create New View" description="Open editor to create new view" />
               </DropdownMenu.Item>
               <DropdownMenu.Arrow />
             </DropdownMenu.Content>

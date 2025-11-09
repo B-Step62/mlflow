@@ -10,6 +10,7 @@ export type SavedTraceView = {
   definition: {
     spans: {
       span_types?: Array<
+        | 'ROOT'
         | 'LLM'
         | 'CHAIN'
         | 'AGENT'
@@ -75,12 +76,16 @@ const MOCK_SAVED_VIEWS: Record<string, SavedTraceView[]> = {
       experiment_id: 'global',
       definition: {
         spans: {
-          span_types: ['LLM', 'TOOL', 'CHAT_MODEL'],
+          span_types: ['ROOT', 'TOOL', 'CHAT_MODEL'],
           span_name_pattern: '',
           show_parents: false,
           show_exceptions: true,
         },
         fields: {
+          ROOT: {
+            inputs: { keys: ['messages.0.content'] },
+            outputs: { keys: ['messages.-1.content'] },
+          },
           CHAIN: {
             inputs: { keys: ['messages.0.content'] },
             outputs: { keys: ['messages.-1.content'] },
@@ -163,7 +168,11 @@ export function applyViewDefinitionToSpanFilterState(
   view: SavedTraceView,
 ): SpanFilterState {
   const currentTypes = Object.keys(spanFilterState.spanTypeDisplayState);
-  const allowed = new Set(view.definition.spans.span_types ?? currentTypes);
+  // Ignore 'ROOT' when computing visible span types; if only 'ROOT' is
+  // requested, do not restrict types (show all types instead).
+  const requested = view.definition.spans.span_types ?? currentTypes;
+  const requestedWithoutRoot = requested.filter((t) => t !== 'ROOT');
+  const allowed = new Set(requestedWithoutRoot.length ? requestedWithoutRoot : currentTypes);
   return {
     ...spanFilterState,
     showParents: view.definition.spans.show_parents ?? spanFilterState.showParents,
