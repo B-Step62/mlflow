@@ -77,7 +77,7 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
   const [showNotification, setShowNotification] = useState(false);
-  const { rootNode, setAppliedViewConfig, selectedSavedViewId, setSelectedSavedViewId } =
+  const { rootNode, setAppliedSavedView, selectedSavedViewId, setSelectedSavedViewId } =
     useModelTraceExplorerViewState();
 
   const tags = Object.entries(modelTrace.info.tags ?? {}).filter(([key]) => isUserFacingTag(key));
@@ -128,29 +128,30 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
     const view = savedViews.find((v) => v.id === lastId);
     if (!view) return;
     setSelectedSavedViewId(view.id);
-    setAppliedViewConfig(view.apply);
-  }, [experimentId, savedViews, setAppliedViewConfig, setSelectedSavedViewId]);
+    setAppliedSavedView(view);
+  }, [experimentId, savedViews, setAppliedSavedView, setSelectedSavedViewId]);
 
   const currentViewName = useMemo(() => {
     if (!selectedSavedViewId) return undefined;
     return savedViews.find((v) => v.id === selectedSavedViewId)?.name;
   }, [selectedSavedViewId, savedViews]);
 
+  const CLEAR_VALUE = '__clear__';
   const applyView = useCallback(
-    (id?: string) => {
-      if (!id) {
+    (idOrClear: string) => {
+      if (idOrClear === CLEAR_VALUE) {
         setSelectedSavedViewId(undefined);
-        setAppliedViewConfig(undefined);
+        setAppliedSavedView(undefined);
         setLastAppliedSavedViewId(experimentId, undefined);
         return;
       }
-      const view = savedViews.find((v) => v.id === id);
+      const view = savedViews.find((v) => v.id === idOrClear);
       if (!view) return;
-      setSelectedSavedViewId(id);
-      setAppliedViewConfig(view.apply);
-      setLastAppliedSavedViewId(experimentId, id);
+      setSelectedSavedViewId(view.id);
+      setAppliedSavedView(view);
+      setLastAppliedSavedViewId(experimentId, view.id);
     },
-    [experimentId, savedViews, setAppliedViewConfig, setSelectedSavedViewId],
+    [experimentId, savedViews, setAppliedSavedView, setSelectedSavedViewId],
   );
 
   const handleCopy = useCallback(() => {
@@ -175,8 +176,8 @@ export const ModelTraceHeaderDetails = ({ modelTrace }: { modelTrace: ModelTrace
               </Tag>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content>
-              <DropdownMenu.RadioGroup value={selectedSavedViewId ?? ''} onValueChange={(value) => applyView(value || undefined)}>
-                <DropdownMenu.RadioItem value="">
+              <DropdownMenu.RadioGroup value={selectedSavedViewId ?? CLEAR_VALUE} onValueChange={(value) => applyView(value)}>
+                <DropdownMenu.RadioItem value={CLEAR_VALUE}>
                   <DropdownMenu.ItemIndicator />
                   <FormattedMessage defaultMessage="Clear view" description="Trace header: clear saved view option" />
                 </DropdownMenu.RadioItem>

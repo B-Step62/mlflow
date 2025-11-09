@@ -18,13 +18,13 @@ export function ModelTraceExplorerAttributesTab({
 }) {
   const { theme } = useDesignSystemTheme();
   const { attributes } = activeSpan;
-  const { appliedViewConfig } = useModelTraceExplorerViewState();
-  const attrVis = appliedViewConfig?.visibility?.attributes;
+  const { appliedSavedView } = useModelTraceExplorerViewState();
   const attrKeys = keys(attributes);
   const visibleAttrKeys = (() => {
-    if (!attrVis || attrVis.mode === 'all') return attrKeys;
-    if (attrVis.mode === 'none') return [] as string[];
-    const allowed = new Set(attrVis.keys ?? []);
+    const keysFilter = appliedSavedView?.definition.fields.attributes?.keys;
+    if (keysFilter === undefined) return attrKeys;
+    if ((keysFilter ?? []).length === 0) return [] as string[];
+    const allowed = new Set(keysFilter);
     return attrKeys.filter((k) => allowed.has(k));
   })();
   const containsAttributes = visibleAttrKeys.length > 0;

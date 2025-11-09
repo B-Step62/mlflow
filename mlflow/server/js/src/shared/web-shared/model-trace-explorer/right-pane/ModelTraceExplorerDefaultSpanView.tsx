@@ -24,25 +24,22 @@ export function ModelTraceExplorerDefaultSpanView({
   const { theme } = useDesignSystemTheme();
   const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
   const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
-  const { appliedViewConfig } = useModelTraceExplorerViewState();
+  const { appliedSavedView } = useModelTraceExplorerViewState();
 
-  const filterByVisibility = (
-    list: { key: string; value: string }[],
-    vis?: { mode: 'all' | 'none' | 'keys'; keys?: string[] },
-  ) => {
-    if (!vis || vis.mode === 'all') return list;
-    if (vis.mode === 'none') return [];
-    const allowed = new Set(vis.keys ?? []);
+  const filterByKeys = (list: { key: string; value: string }[], keys?: string[]) => {
+    if (keys === undefined) return list; // treat undefined as "all"
+    if (keys.length === 0) return [];
+    const allowed = new Set(keys);
     return list.filter(({ key }) => allowed.has(key));
   };
 
   const visibleInputs = useMemo(
-    () => filterByVisibility(inputList, appliedViewConfig?.visibility?.inputs),
-    [inputList, appliedViewConfig?.visibility?.inputs],
+    () => filterByKeys(inputList, appliedSavedView?.definition.fields.inputs?.keys),
+    [inputList, appliedSavedView?.definition.fields.inputs?.keys],
   );
   const visibleOutputs = useMemo(
-    () => filterByVisibility(outputList, appliedViewConfig?.visibility?.outputs),
-    [outputList, appliedViewConfig?.visibility?.outputs],
+    () => filterByKeys(outputList, appliedSavedView?.definition.fields.outputs?.keys),
+    [outputList, appliedSavedView?.definition.fields.outputs?.keys],
   );
 
   if (isNil(activeSpan)) {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { ModelTrace, ModelTraceExplorerTab, ModelTraceSpanNode } from './ModelTrace.types';
+import type { SavedTraceView } from './mock_saved_views';
 import { getDefaultActiveTab, parseModelTraceToTree, searchTreeBySpanId } from './ModelTraceExplorer.utils';
 import { getTimelineTreeNodesMap } from './timeline-tree/TimelineTree.utils';
 import { isNil } from 'lodash';
@@ -22,18 +23,8 @@ export type ModelTraceExplorerViewState = {
   // Saved View application (frontend-only v0)
   selectedSavedViewId?: string;
   setSelectedSavedViewId: (id?: string) => void;
-  appliedViewConfig?: {
-    search?: string;
-    showParents?: boolean;
-    showExceptions?: boolean;
-    showSpanTypes?: string[];
-    visibility?: {
-      inputs?: { mode: 'all' | 'none' | 'keys'; keys?: string[] };
-      outputs?: { mode: 'all' | 'none' | 'keys'; keys?: string[] };
-      attributes?: { mode: 'all' | 'none' | 'keys'; keys?: string[] };
-    };
-  };
-  setAppliedViewConfig: (cfg?: ModelTraceExplorerViewState['appliedViewConfig']) => void;
+  appliedSavedView?: SavedTraceView;
+  setAppliedSavedView: (v?: SavedTraceView) => void;
 };
 
 export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplorerViewState>({
@@ -52,8 +43,8 @@ export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplor
   assessmentsPaneEnabled: true,
   selectedSavedViewId: undefined,
   setSelectedSavedViewId: () => {},
-  appliedViewConfig: undefined,
-  setAppliedViewConfig: () => {},
+  appliedSavedView: undefined,
+  setAppliedSavedView: () => {},
 });
 
 export const useModelTraceExplorerViewState = () => {
@@ -92,7 +83,7 @@ export const ModelTraceExplorerViewStateProvider = ({
   const [showTimelineTreeGantt, setShowTimelineTreeGantt] = useState(false);
   const [assessmentsPaneExpanded, setAssessmentsPaneExpanded] = useState(hasAssessments);
   const [selectedSavedViewId, setSelectedSavedViewId] = useState<string | undefined>(undefined);
-  const [appliedViewConfig, setAppliedViewConfig] = useState<ModelTraceExplorerViewState['appliedViewConfig']>();
+  const [appliedSavedView, setAppliedSavedView] = useState<SavedTraceView | undefined>();
 
   useEffect(() => {
     const defaultActiveTab = getDefaultActiveTab(selectedNode);
@@ -116,8 +107,8 @@ export const ModelTraceExplorerViewStateProvider = ({
       assessmentsPaneEnabled,
       selectedSavedViewId,
       setSelectedSavedViewId,
-      appliedViewConfig,
-      setAppliedViewConfig,
+      appliedSavedView,
+      setAppliedSavedView,
     }),
     [
       activeView,
@@ -131,7 +122,7 @@ export const ModelTraceExplorerViewStateProvider = ({
       setAssessmentsPaneExpanded,
       assessmentsPaneEnabled,
       selectedSavedViewId,
-      appliedViewConfig,
+      appliedSavedView,
     ],
   );
 

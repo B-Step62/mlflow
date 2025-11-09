@@ -58,7 +58,7 @@ export const ModelTraceExplorerDetailView = ({
     setSelectedNode,
     activeTab,
     setActiveTab,
-    appliedViewConfig,
+    appliedSavedView,
   } = useModelTraceExplorerViewState();
 
   const { expandedKeys, setExpandedKeys } = useTimelineTreeExpandedNodes({
@@ -85,32 +85,48 @@ export const ModelTraceExplorerDetailView = ({
     modelTraceInfo: modelTrace?.info,
   });
 
-  // Apply saved view configuration (search, span types, flags) when it changes
+  // Apply saved view configuration when it changes
   useLayoutEffect(() => {
-    if (!appliedViewConfig) return;
-    if (appliedViewConfig.search !== undefined) {
-      setSearchFilter(appliedViewConfig.search);
+    if (!appliedSavedView) return;
+    const def = appliedSavedView.definition;
+    // apply name pattern to search (best-effort; plain contains match)
+    if (def.spans.span_name_pattern !== undefined) {
+      setSearchFilter(def.spans.span_name_pattern || '');
     }
-    if (
-      appliedViewConfig.showSpanTypes !== undefined ||
-      appliedViewConfig.showParents !== undefined ||
-      appliedViewConfig.showExceptions !== undefined
-    ) {
-      setSpanFilterState((prev) => {
-        const currentTypes = Object.keys(prev.spanTypeDisplayState);
-        const allowed = new Set(appliedViewConfig.showSpanTypes ?? currentTypes);
-        return {
-          ...prev,
-          showParents: appliedViewConfig.showParents ?? prev.showParents,
-          showExceptions: appliedViewConfig.showExceptions ?? prev.showExceptions,
-          spanTypeDisplayState: currentTypes.reduce<Record<string, boolean>>((acc, t) => {
-            acc[t] = allowed.has(t);
-            return acc;
-          }, {}),
-        };
-      });
-    }
-  }, [appliedViewConfig, setSearchFilter, setSpanFilterState]);
+    // apply span type visibility + exceptions/parents
+    setSpanFilterState((prev) => {
+      const currentTypes = Object.keys(prev.spanTypeDisplayState);
+      const allowed = new Set(def.spans.span_types ?? currentTypes);
+      return {
+        ...prev,
+        showParents: def.spans.show_parents ?? prev.showParents,
+        showExceptions: def.spans.show_exceptions ?? prev.showExceptions,
+        spanTypeDisplayState: currentTypes.reduce<Record<string, boolean>>((acc, t) => {
+          acc[t] = allowed.has(t);
+          return acc;
+        }, {}),
+      };
+    });
+  }, [appliedSavedView, setSearchFilter, setSpanFilterState]);
+
+  // Reset filters when clearing the applied view
+  useLayoutEffect(() => {
+    if (appliedSavedView) return;
+    // Reset to sensible defaults: no text search, show all types, keep parents and exceptions visible
+    setSearchFilter('');
+    setSpanFilterState((prev) => {
+      const allTypes = Object.keys(prev.spanTypeDisplayState);
+      return {
+        ...prev,
+        showParents: true,
+        showExceptions: true,
+        spanTypeDisplayState: allTypes.reduce<Record<string, boolean>>((acc, t) => {
+          acc[t] = true;
+          return acc;
+        }, {}),
+      };
+    });
+  }, [appliedSavedView, setSearchFilter, setSpanFilterState]);
 
   const onSelectNode = (node?: ModelTraceSpanNode) => {
     setSelectedNode(node);

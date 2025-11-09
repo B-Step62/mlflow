@@ -35,10 +35,8 @@ As a developer debugging agent quality issues, I save a view that hides verbose 
     "spans": {            // predicate combined via AND unless specified
       "span_types": ["LLM|CHAIN|AGENT|TOOL|CHAT_MODEL|RETRIEVER|PARSER|EMBEDDING|RERANKER|MEMORY|UNKNOWN"],
       "span_name_pattern": "",
-      "settings": {
-        "show_all_spans": boolean,
-        "show_exceptions": boolean,
-      }
+      "show_all_spans": boolean,
+      "show_exceptions": boolean,
     },
     "fields": {
       "inputs": { "keys": ["field1.child1[0].grandchild1....", "field2.child2.grandchild2...."] },
