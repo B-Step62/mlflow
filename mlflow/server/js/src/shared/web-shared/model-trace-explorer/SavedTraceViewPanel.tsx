@@ -468,10 +468,11 @@ export const SavedTraceViewPanel = ({
           {(working?.definition.spans.span_types ?? []).map((spanType) => {
             const fields = working?.definition.fields?.[spanType] || {};
             const isCollapsed = !!collapsedCards[spanType];
+            const countNonEmpty = (arr?: string[]) => (arr ? arr.filter((k) => (k ?? '').trim().length > 0).length : 0);
             const filtersCount =
-              (fields.inputs?.keys?.length || 0) +
-              (fields.outputs?.keys?.length || 0) +
-              (fields.attributes?.keys?.length || 0);
+              countNonEmpty(fields.inputs?.keys) +
+              countNonEmpty(fields.outputs?.keys) +
+              countNonEmpty(fields.attributes?.keys);
             return (
               <div
                 key={spanType}

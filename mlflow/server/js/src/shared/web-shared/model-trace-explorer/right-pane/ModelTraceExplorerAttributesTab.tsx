@@ -26,7 +26,12 @@ export function ModelTraceExplorerAttributesTab({
     const typeKey = (activeSpan?.type as string | undefined) ?? 'UNKNOWN';
     const byType = fields[typeKey]?.attributes?.keys as string[] | undefined;
     const all = fields['ALL']?.attributes?.keys as string[] | undefined;
-    return byType ?? all;
+    const chosen = byType ?? all;
+    if (chosen === undefined) return undefined; // no filter -> show all
+    // If user added an Attributes row without a key (""), treat as show-all
+    const hasBlank = (chosen ?? []).some((k) => !k || String(k).trim() === '');
+    if (hasBlank) return undefined;
+    return chosen;
   };
   const visibleAttrKeys = (() => {
     const keysFilter = getAttrKeysForSpan();
