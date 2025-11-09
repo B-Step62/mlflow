@@ -58,6 +58,9 @@ export const ModelTraceExplorerDetailView = ({
     setSelectedNode,
     activeTab,
     setActiveTab,
+    setActiveView,
+    alwaysShowRootSpan,
+    setAlwaysShowRootSpan,
     appliedSavedView,
   } = useModelTraceExplorerViewState();
 
@@ -83,12 +86,15 @@ export const ModelTraceExplorerDetailView = ({
     setActiveTab,
     setExpandedKeys,
     modelTraceInfo: modelTrace?.info,
+    alwaysShowRootSpan,
   });
 
   // Apply saved view configuration when it changes
   useLayoutEffect(() => {
     if (!appliedSavedView) return;
     const def = appliedSavedView.definition;
+    // Switch to Details & Timeline when a custom view is applied
+    setActiveView('detail');
     // apply name pattern to search (best-effort; plain contains match)
     if (def.spans.span_name_pattern !== undefined) {
       setSearchFilter(def.spans.span_name_pattern || '');
@@ -107,7 +113,9 @@ export const ModelTraceExplorerDetailView = ({
         }, {}),
       };
     });
-  }, [appliedSavedView, setSearchFilter, setSpanFilterState]);
+    // control root span visibility (default true)
+    setAlwaysShowRootSpan(def.spans.show_root_span ?? true);
+  }, [appliedSavedView, setSearchFilter, setSpanFilterState, setActiveView, setAlwaysShowRootSpan]);
 
   // Reset filters when clearing the applied view
   useLayoutEffect(() => {

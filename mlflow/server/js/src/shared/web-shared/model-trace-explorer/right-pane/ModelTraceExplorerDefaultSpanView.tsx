@@ -38,10 +38,17 @@ export function ModelTraceExplorerDefaultSpanView({
       let cur = src;
       for (const seg of segments) {
         if (cur === undefined || cur === null) return undefined;
-        const isIndex = String(Number(seg)) === seg;
+        const isIndex = /^-?\d+$/.test(seg);
         if (Array.isArray(cur)) {
           if (!isIndex) return undefined;
-          cur = cur[Number(seg)];
+          let idx = Number(seg);
+          if (!Number.isInteger(idx)) return undefined;
+          if (idx < 0) {
+            // Support negative indices, e.g., -1 = last element
+            idx = cur.length + idx;
+          }
+          if (idx < 0 || idx >= cur.length) return undefined;
+          cur = cur[idx];
           continue;
         }
         if (typeof cur === 'object') {

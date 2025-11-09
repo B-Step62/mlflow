@@ -56,6 +56,7 @@ export const useModelTraceSearch = ({
   setActiveTab,
   setExpandedKeys,
   modelTraceInfo,
+  alwaysShowRootSpan = false,
 }: {
   treeNode: ModelTraceSpanNode | null;
   selectedNode: ModelTraceSpanNode | undefined;
@@ -63,6 +64,7 @@ export const useModelTraceSearch = ({
   setActiveTab: (tab: ModelTraceExplorerTab) => void;
   setExpandedKeys: React.Dispatch<React.SetStateAction<Set<string | number>>>;
   modelTraceInfo: ModelTrace['info'] | null;
+  alwaysShowRootSpan?: boolean;
 }): {
   searchFilter: string;
   setSearchFilter: (filter: string) => void;
@@ -88,12 +90,22 @@ export const useModelTraceSearch = ({
       };
     }
 
-    return searchTree(treeNode, searchFilter, spanFilterState);
+    const res = searchTree(treeNode, searchFilter, spanFilterState);
+    // Ensure root span is displayed if requested
+    if (alwaysShowRootSpan && res.filteredTreeNodes.length > 0) {
+      if (res.filteredTreeNodes[0]?.key !== treeNode.key) {
+        return {
+          filteredTreeNodes: [{ ...treeNode, children: res.filteredTreeNodes }],
+          matches: res.matches,
+        };
+      }
+    }
+    return res;
     // use the span ID to determine whether the state should be recomputed.
     // using the whole object seems to cause the state to be reset at
     // unexpected times.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [treeNode?.key, searchFilter, spanFilterState, modelTraceInfo]);
+  }, [treeNode?.key, searchFilter, spanFilterState, modelTraceInfo, alwaysShowRootSpan]);
 
   const nodeMap = useMemo(() => {
     return getTimelineTreeNodesMap(filteredTreeNodes);
