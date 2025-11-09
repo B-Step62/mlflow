@@ -49,6 +49,7 @@ const SELECTABLE_SPAN_TYPES: (ModelSpanType | 'ROOT')[] = [
   ModelSpanType.EMBEDDING,
   ModelSpanType.RERANKER,
   ModelSpanType.MEMORY,
+  ModelSpanType.UNKNOWN,
 ];
 
 function ensureEditor(def?: Partial<EditorFields>): EditorFields {
@@ -211,16 +212,14 @@ export const SavedTraceViewPanel = ({
     const v = createEmptyView();
     // Preselect span types based on the current trace (plus ROOT)
     try {
-      const typesFromTrace = rootNode
-        ? Array.from(
-            new Set(
-              (getTimelineTreeNodesList([rootNode]) as any[])
-                .map((n: any) => n?.type)
-                .filter((t: any): t is string => !!t),
-            ),
-          )
-        : [];
-      const defaultSpanTypes = Array.from(new Set(['ROOT', ...typesFromTrace])) as any;
+      const nodes: any[] = rootNode ? (getTimelineTreeNodesList([rootNode]) as any[]) : [];
+      const typeSet = new Set<string>(['ROOT']);
+      nodes.forEach((n) => {
+        const t = n?.type as string | undefined;
+        if (t && t.length > 0) typeSet.add(t);
+        else typeSet.add('UNKNOWN');
+      });
+      const defaultSpanTypes = Array.from(typeSet) as any;
       v.definition = {
         ...v.definition,
         spans: { ...v.definition.spans, span_types: defaultSpanTypes },

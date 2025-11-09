@@ -286,7 +286,8 @@ export function searchTree(
 
   // check if the span passes the text and type filters
   const nodeMatchesSearch = spanMatches.length > 0 || spanName.includes(searchFilterLowercased);
-  const spanTypeIsDisplayed = rootNode.type ? spanFilterState.spanTypeDisplayState[rootNode.type] : true;
+  const spanTypeKey = (rootNode.type ?? 'UNKNOWN') as string;
+  const spanTypeIsDisplayed = spanFilterState.spanTypeDisplayState[spanTypeKey] ?? true;
   const nodePassesSpanFilters = nodeMatchesSearch && spanTypeIsDisplayed;
 
   const hasMatchingChild = filteredChildren.length > 0;

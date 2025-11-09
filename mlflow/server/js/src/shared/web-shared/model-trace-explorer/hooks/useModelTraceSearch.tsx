@@ -18,13 +18,19 @@ import {
 const getDefaultSpanFilterState = (treeNode: ModelTraceSpanNode | null): SpanFilterState => {
   const spanTypeDisplayState: Record<string, boolean> = {};
 
-  // populate the spanTypeDisplayState with
-  // all span types that exist on the trace
   if (treeNode) {
-    const allSpanTypes = compact(getTimelineTreeNodesList<ModelTraceSpanNode>([treeNode]).map((node) => node.type));
-    allSpanTypes.forEach((spanType) => {
-      spanTypeDisplayState[spanType] = true;
+    const nodes = getTimelineTreeNodesList<ModelTraceSpanNode>([treeNode]);
+    let hasUnknown = false;
+    nodes.forEach((node) => {
+      if (node.type) {
+        spanTypeDisplayState[node.type] = true;
+      } else {
+        hasUnknown = true;
+      }
     });
+    if (hasUnknown) {
+      spanTypeDisplayState['UNKNOWN'] = true;
+    }
   }
 
   return {
