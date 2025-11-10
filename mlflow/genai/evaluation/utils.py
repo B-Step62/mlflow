@@ -2,17 +2,12 @@ import json
 import logging
 import math
 from concurrent.futures import Future, as_completed
-from typing import TYPE_CHECKING, Any, Collection
+from typing import TYPE_CHECKING, Any, Collection, Literal
 
-from mlflow.entities import Assessment, Trace, TraceData
+from mlflow.entities import Trace, TraceData
 from mlflow.entities.assessment import DEFAULT_FEEDBACK_NAME, Feedback
 from mlflow.entities.assessment_source import AssessmentSource, AssessmentSourceType
 from mlflow.exceptions import MlflowException
-from mlflow.genai.evaluation.constant import (
-    AgentEvaluationReserverKey,
-)
-from mlflow.genai.scorers import Scorer
-from mlflow.models import EvaluationMetric
 
 try:
     # `pandas` is not required for `mlflow-skinny`.
@@ -104,23 +99,10 @@ def _convert_eval_set_to_df(data: "EvaluationDatasetTypes") -> "pd.DataFrame":
 def _convert_to_eval_set(data: "EvaluationDatasetTypes") -> "pd.DataFrame":
     """
     Takes in a dataset in the multiple format that mlflow.genai.evaluate() expects and converts it
-    into standardized Pandas DataFrame.
-    The expected schema can be found at:
-    https://docs.databricks.com/aws/en/generative-ai/agent-evaluation/evaluation-schema
-
-    NB: The harness secretly support 'expectations' column as well. It accepts a dictionary of
-        expectations, which is same as the schema that mlflow.genai.evaluate() expects.
-        Therefore, we can simply pass through expectations column.
+    into standardized Pandas DataFrame with unwrapped inputs, outputs, and expectations columns.
     """
-    column_mapping = {
-        "inputs": "request",
-        "outputs": "response",
-    }
-
-    df = _convert_eval_set_to_df(data)
-
     return (
-        df.rename(columns=column_mapping)
+        _convert_eval_set_to_df(data)
         .pipe(_deserialize_trace_column_if_needed)
         .pipe(_extract_request_response_from_trace)
         .pipe(_extract_expectations_from_trace)
@@ -180,15 +162,16 @@ def _extract_request_response_from_trace(df: "pd.DataFrame") -> "pd.DataFrame":
     if "trace" not in df.columns:
         return df
 
-    def _extract_attribute(trace_data: TraceData, attribute_name: str) -> Any:
-        if att := getattr(trace_data, attribute_name, None):
-            return json.loads(att)
-        return None
+    def _extract(trace_data: TraceData, field: Literal["inputs", "outputs"]) -> Any:
+        root_span = trace_data._get_root_span()
+        if root_span is None:
+            return None
+        return getattr(root_span, field)
 
-    if "request" not in df.columns:
-        df["request"] = df["trace"].apply(lambda trace: _extract_attribute(trace.data, "request"))
-    if "response" not in df.columns:
-        df["response"] = df["trace"].apply(lambda trace: _extract_attribute(trace.data, "response"))
+    if "inputs" not in df.columns:
+        df["inputs"] = df["trace"].apply(lambda trace: _extract(trace.data, "inputs"))
+    if "outputs" not in df.columns:
+        df["outputs"] = df["trace"].apply(lambda trace: _extract(trace.data, "outputs"))
     return df
 
 
@@ -213,69 +196,6 @@ def _extract_expectations_from_trace(df: "pd.DataFrame") -> "pd.DataFrame":
 
     df["expectations"] = expectations_column
     return df
-
-
-def _convert_scorer_to_legacy_metric(scorer: Scorer) -> EvaluationMetric:
-    """
-    Takes in a Scorer object and converts it into a legacy MLflow 2.x
-    Metric object.
-    """
-    try:
-        from databricks.agents.evals import metric
-    except ImportError:
-        raise ImportError(
-            "The `databricks-agents` package is required to use mlflow.genai.evaluate() "
-            "Please install it with `pip install databricks-agents`."
-        )
-
-    from mlflow.genai.scorers.builtin_scorers import BuiltInScorer
-    from mlflow.types.llm import ChatCompletionRequest
-
-    def eval_fn(
-        request_id: str,
-        request: ChatCompletionRequest | str,
-        response: Any | None,
-        expected_response: Any | None,
-        trace: Trace | None,
-        guidelines: list[str] | dict[str, list[str]] | None,
-        expected_facts: list[str] | None,
-        expected_retrieved_context: list[dict[str, str]] | None,
-        custom_expected: dict[str, Any] | None,
-        **kwargs,
-    ) -> int | float | bool | str | Assessment | list[Assessment]:
-        # Condense all expectations into a single dict
-        expectations = {}
-        if expected_response is not None:
-            expectations[AgentEvaluationReserverKey.EXPECTED_RESPONSE] = expected_response
-        if expected_facts is not None:
-            expectations[AgentEvaluationReserverKey.EXPECTED_FACTS] = expected_facts
-        if expected_retrieved_context is not None:
-            expectations[AgentEvaluationReserverKey.EXPECTED_RETRIEVED_CONTEXT] = (
-                expected_retrieved_context
-            )
-        if guidelines is not None:
-            expectations[AgentEvaluationReserverKey.GUIDELINES] = guidelines
-        if custom_expected is not None:
-            expectations.update(custom_expected)
-
-        merged = {
-            "inputs": request,
-            "outputs": response,
-            "expectations": expectations,
-            "trace": trace,
-        }
-        return scorer.run(**merged)
-
-    metric_instance = metric(
-        eval_fn=eval_fn,
-        name=scorer.name,
-    )
-    # Add aggregations as an attribute since the metric decorator doesn't accept it
-    metric_instance.aggregations = scorer.aggregations
-    # Add attribute to indicate if this is a built-in scorer
-    metric_instance._is_builtin_scorer = isinstance(scorer, BuiltInScorer)
-
-    return metric_instance
 
 
 def standardize_scorer_value(scorer_name: str, value: Any) -> list[Feedback]:

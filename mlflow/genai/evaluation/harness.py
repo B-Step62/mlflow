@@ -130,8 +130,6 @@ def _run_single(
         ctx = context.get_context()
         ctx.set_mlflow_run_id(run_id)
 
-    # TODO: Support another pattern that are currently supported in the DBX agent harness,
-    # which is when traces are given as dataset
     if predict_fn:
         # NB: Setting prediction context let us retrieve the trace by a custom ID. Setting
         # is_evaluate=True disables async trace logging to make sure the trace is available.

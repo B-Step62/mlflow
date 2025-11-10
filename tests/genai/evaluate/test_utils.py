@@ -1,7 +1,6 @@
 import json
-import sys
 from typing import Any, Literal
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -14,14 +13,11 @@ from mlflow.exceptions import MlflowException
 from mlflow.genai import scorer
 from mlflow.genai.datasets import create_dataset
 from mlflow.genai.evaluation.utils import (
-    _convert_scorer_to_legacy_metric,
     _convert_to_eval_set,
     validate_tags,
 )
 from mlflow.genai.scorers.builtin_scorers import RelevanceToQuery
 from mlflow.utils.spark_utils import is_spark_connect_mode
-
-from tests.genai.conftest import databricks_only
 
 
 @pytest.fixture(scope="module")
@@ -449,83 +445,6 @@ def test_predict_fn_receives_correct_data(data_fixture, request):
     ][:row_count]
     # Using set because eval harness runs predict_fn in parallel
     assert set(received_args) == set(expected_contents)
-
-
-def test_convert_scorer_to_legacy_metric_aggregations_attribute(monkeypatch):
-    mock_metric_instance = MagicMock()
-
-    # NB: Mocking the behavior of databricks-agents, which does not have the aggregations
-    # argument for the evaluation interface for a metric.
-    def mock_metric_decorator(**kwargs):
-        if "aggregations" in kwargs:
-            raise TypeError("metric() got an unexpected keyword argument 'aggregations'")
-        assert set(kwargs.keys()) <= {"eval_fn", "name"}
-        return mock_metric_instance
-
-    mock_evals = Mock(metric=mock_metric_decorator)
-    mock_evals.judges = Mock()  # Add the judges submodule to prevent AttributeError
-
-    monkeypatch.setitem(sys.modules, "databricks.agents.evals", mock_evals)
-    monkeypatch.setitem(sys.modules, "databricks.agents.evals.judges", mock_evals.judges)
-
-    mock_scorer = Mock()
-    mock_scorer.name = "test_scorer"
-    mock_scorer.aggregations = ["mean", "max", "p90"]
-    mock_scorer.run = Mock(return_value={"score": 1.0})
-
-    result = _convert_scorer_to_legacy_metric(mock_scorer)
-
-    assert result.aggregations == ["mean", "max", "p90"]
-
-
-@databricks_only
-def test_convert_scorer_to_legacy_metric():
-    """Test that _convert_scorer_to_legacy_metric correctly sets _is_builtin_scorer attribute."""
-    # Test with a built-in scorer
-    builtin_scorer = RelevanceToQuery()
-    legacy_metric = _convert_scorer_to_legacy_metric(builtin_scorer)
-
-    # Verify the metric has the _is_builtin_scorer attribute set to True
-    assert hasattr(legacy_metric, "_is_builtin_scorer")
-    assert legacy_metric._is_builtin_scorer is True
-    assert legacy_metric.name == builtin_scorer.name
-
-    # Test with a custom scorer
-    @scorer(name="custom_scorer", aggregations=["mean", "max"])
-    def custom_scorer_func(inputs, outputs=None, expectations=None, **kwargs):
-        return {"score": 1.0}
-
-    custom_scorer_instance = custom_scorer_func
-    legacy_metric_custom = _convert_scorer_to_legacy_metric(custom_scorer_instance)
-
-    # Verify the metric has the _is_builtin_scorer attribute set to False
-    assert hasattr(legacy_metric_custom, "_is_builtin_scorer")
-    assert legacy_metric_custom._is_builtin_scorer is False
-    assert legacy_metric_custom.name == custom_scorer_instance.name
-    assert legacy_metric_custom.aggregations == custom_scorer_instance.aggregations
-
-
-@pytest.mark.parametrize(
-    "aggregations",
-    [
-        ["mean", "max", "mean", "median", "variance", "p90"],
-        [sum, max],
-    ],
-)
-@databricks_only
-def test_scorer_pass_through_aggregations(aggregations):
-    @scorer(name="custom_scorer", aggregations=aggregations)
-    def custom_scorer_func(outputs):
-        return {"score": 1.0}
-
-    legacy_metric_custom = _convert_scorer_to_legacy_metric(custom_scorer_func)
-    assert legacy_metric_custom.name == "custom_scorer"
-    assert legacy_metric_custom.aggregations == aggregations
-
-    builtin_scorer = RelevanceToQuery(aggregations=aggregations)
-    legacy_metric_builtin = _convert_scorer_to_legacy_metric(builtin_scorer)
-    assert legacy_metric_builtin.name == "relevance_to_query"
-    assert legacy_metric_builtin.aggregations == builtin_scorer.aggregations
 
 
 @pytest.mark.parametrize(

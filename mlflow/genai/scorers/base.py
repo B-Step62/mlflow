@@ -8,7 +8,7 @@ from typing import Any, Callable, Literal, TypeAlias
 from pydantic import BaseModel, PrivateAttr
 
 import mlflow
-from mlflow.entities import Assessment, Feedback
+from mlflow.entities import Feedback
 from mlflow.entities.assessment import DEFAULT_FEEDBACK_NAME
 from mlflow.entities.trace import Trace
 from mlflow.exceptions import MlflowException
@@ -377,8 +377,6 @@ class Scorer(BaseModel):
         return scorer_instance
 
     def run(self, *, inputs=None, outputs=None, expectations=None, trace=None):
-        from mlflow.evaluation import Assessment as LegacyAssessment
-
         merged = {
             "inputs": inputs,
             "outputs": outputs,
@@ -390,12 +388,8 @@ class Scorer(BaseModel):
         filtered = {k: v for k, v in merged.items() if k in sig.parameters}
         result = self(**filtered)
         if not (
-            # TODO: Replace 'Assessment' with 'Feedback' once we migrate from the agent eval harness
-            isinstance(result, (int, float, bool, str, Assessment, LegacyAssessment))
-            or (
-                isinstance(result, list)
-                and all(isinstance(item, (Assessment, LegacyAssessment)) for item in result)
-            )
+            isinstance(result, (int, float, bool, str, Feedback))
+            or (isinstance(result, list) and all(isinstance(item, Feedback) for item in result))
             # Allow None to represent an empty assessment from the scorer.
             or result is None
         ):
