@@ -41,9 +41,9 @@ export const FeedbackHistoryItem = ({ feedback }: { feedback: FeedbackAssessment
           <FeedbackErrorItem error={feedback.feedback.error} />
         ) : (
           <>
-            <Typography.Text size="sm" color="secondary">
-              <FormattedMessage defaultMessage="Feedback" description="Label for the value of an feedback assessment" />
-            </Typography.Text>
+          <Typography.Text size="sm" color="secondary">
+            <FormattedMessage defaultMessage="Feedback" description="Label for the value of an feedback assessment" />
+          </Typography.Text>
             <div>
               <AssessmentDisplayValue jsonValue={JSON.stringify(value)} />
             </div>

@@ -97,7 +97,7 @@ export function ModelTraceExplorerCodeSnippetBody({
           css={{
             padding: theme.spacing.md,
             backgroundColor: hasFeedback
-              ? theme.colors.actionPrimaryBackgroundTransparent
+              ? theme.colors.backgroundPrimary
               : theme.colors.backgroundSecondary,
             marginBottom: -theme.spacing.md,
           }}

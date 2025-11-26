@@ -99,15 +99,15 @@ export const FeedbackItemContent = ({ feedback }: { feedback: FeedbackAssessment
       {isNil(feedback.feedback.error) && (
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
           <Typography.Text size="sm" color="secondary">
-            <FormattedMessage defaultMessage="Feedback" description="Label for the value of an feedback assessment" />
+            {isSelectionFeedback ? (
+              <FormattedMessage defaultMessage="Rating" description="Label for the value of a comment assessment" />
+            ) : (
+              <FormattedMessage defaultMessage="Feedback" description="Label for the value of an feedback assessment" />
+            )}
           </Typography.Text>
           <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
             {isSelectionFeedback ? (
-              value === true ? (
-                <ThumbsUpIcon css={{ color: theme.colors.actionPositiveTextDefault }} />
-              ) : (
-                <ThumbsDownIcon css={{ color: theme.colors.actionDangerPrimaryTextDefault }} />
-              )
+              value === true ? <ThumbsUpIcon /> : <ThumbsDownIcon />
             ) : (
               <AssessmentDisplayValue jsonValue={JSON.stringify(value)} />
             )}
@@ -146,7 +146,7 @@ export const FeedbackItemContent = ({ feedback }: { feedback: FeedbackAssessment
               css={{
                 position: 'relative',
                 border: `1px solid ${theme.colors.border}`,
-                borderLeft: `4px solid ${theme.colors.actionPrimaryBorderDefault}`,
+                borderLeft: `4px solid ${theme.colors.primary}`,
                 borderRadius: theme.borders.borderRadiusSm,
                 backgroundColor: theme.colors.backgroundSecondary,
                 padding: theme.spacing.sm,

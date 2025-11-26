@@ -184,7 +184,7 @@ const TextSelectionFeedbackForm = ({
         const element = container as HTMLElement;
         element.style.backgroundColor = '#fff8d6';
         element.style.boxShadow = 'inset 0 0 0 1px #f0c200';
-        element.style.borderRadius = theme.borders.borderRadiusSm;
+        element.style.borderRadius = `${theme.borders.borderRadiusSm}px`;
         element.setAttribute('data-selection-highlight', 'true');
         highlightRef.current = element;
       }
@@ -241,7 +241,7 @@ const TextSelectionFeedbackForm = ({
         feedback: {
           value: thumbValue,
         },
-      },
+      } as any,
     };
 
     createAssessmentMutation(payload);
@@ -260,13 +260,9 @@ const TextSelectionFeedbackForm = ({
         backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <Typography.Text size="sm" color="secondary">
-        <FormattedMessage
-          defaultMessage="Select any text in the trace to give free-form feedback."
-          description="Helper text for text selection feedback flow"
-        />
+      <Typography.Text strong>
+        <FormattedMessage defaultMessage="Add New Comment" description="Title for new comment creation widget" />
       </Typography.Text>
-
       <div
         css={{
           border: `1px solid ${theme.colors.border}`,
@@ -371,7 +367,7 @@ const TextSelectionFeedbackForm = ({
       </div>
 
       {error && (
-        <Typography.Text size="sm" color="danger">
+        <Typography.Text size="sm" color="error">
           {error}
         </Typography.Text>
       )}

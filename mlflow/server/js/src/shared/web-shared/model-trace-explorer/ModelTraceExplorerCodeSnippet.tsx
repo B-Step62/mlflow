@@ -118,8 +118,8 @@ export function ModelTraceExplorerCodeSnippet({
         css={{
           borderRadius: theme.borders.borderRadiusSm,
           border: `1px solid ${theme.colors.border}`,
-          boxShadow: hasFeedbackBadge ? `inset 0 0 0 2px ${theme.colors.actionPrimaryBorderDefault}` : undefined,
-          backgroundColor: hasFeedbackBadge ? theme.colors.actionPrimaryBackgroundTransparent : undefined,
+          boxShadow: hasFeedbackBadge ? `inset 0 0 0 2px ${theme.colors.backgroundPrimary}` : undefined,
+          backgroundColor: hasFeedbackBadge ? theme.colors.backgroundPrimary : undefined,
           overflow: 'hidden',
         }}
       >

@@ -1,7 +1,7 @@
 import { isNil, partition } from 'lodash';
 import { useMemo, useState } from 'react';
 
-import { Button, CloseIcon, Tooltip, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Button, CloseIcon, Tooltip, Typography, useDesignSystemTheme, Tabs } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import { AssessmentCreateForm } from './AssessmentCreateForm';
@@ -11,6 +11,7 @@ import { FeedbackGroup } from './FeedbackGroup';
 import { TextSelectionFeedback } from './TextSelectionFeedback';
 import type { Assessment, FeedbackAssessment } from '../ModelTrace.types';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
+import { CommentGroup } from './CommentGroup';
 
 type GroupedFeedbacksByValue = { [value: string]: FeedbackAssessment[] };
 
@@ -56,12 +57,21 @@ export const AssessmentsPane = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const { setAssessmentsPaneExpanded } = useModelTraceExplorerViewState();
-  const [createMode, setCreateMode] = useState<'free' | 'schema'>('schema');
+  const [activeTab, setActiveTab] = useState<'assessments' | 'comments'>('assessments');
   const [feedbacks, expectations] = useMemo(
     () => partition(assessments, (assessment) => 'feedback' in assessment),
     [assessments],
   );
-  const groupedFeedbacks = useMemo(() => groupFeedbacks(feedbacks), [feedbacks]);
+  const isCommentFeedback = (feedback: FeedbackAssessment) =>
+    feedback.assessment_name === 'comment' || feedback.metadata?.['feedback_type'] === 'comment';
+
+  const [commentFeedbacks, otherFeedbacks] = useMemo(
+    () => partition(feedbacks, isCommentFeedback),
+    [feedbacks],
+  );
+
+  const groupedFeedbacks = useMemo(() => groupFeedbacks(otherFeedbacks), [otherFeedbacks]);
+  const groupedCommentFeedbacks = useMemo(() => groupFeedbacks(commentFeedbacks), [commentFeedbacks]);
   const sortedExpectations = expectations.toSorted((left, right) =>
     left.assessment_name.localeCompare(right.assessment_name),
   );
@@ -106,63 +116,72 @@ export const AssessmentsPane = ({
           </Tooltip>
         )}
       </div>
-      {groupedFeedbacks.map(([name, valuesMap]) => (
-        <FeedbackGroup key={name} name={name} valuesMap={valuesMap} traceId={traceId} activeSpanId={activeSpanId} />
-      ))}
-      {sortedExpectations.length > 0 && (
-        <>
-          <Typography.Text color="secondary" css={{ marginBottom: theme.spacing.sm }}>
-            <FormattedMessage
-              defaultMessage="Expectations"
-              description="Label for the expectations section in the assessments pane"
-            />
-          </Typography.Text>
-          <div
-            css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginBottom: theme.spacing.sm }}
-          >
-            {sortedExpectations.map((expectation) => (
-              <ExpectationItem expectation={expectation} key={expectation.assessment_id} />
-            ))}
-          </div>
-        </>
-      )}
-      <div
-        css={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: theme.spacing.sm,
-          marginTop: theme.spacing.sm,
-        }}
+      <Tabs.Root
+        value={activeTab}
+        onValueChange={(tab) => setActiveTab(tab as 'assessments' | 'comments')}
+        componentId="shared.model-trace-explorer.assessments-comments-tabs"
       >
-        <div css={{ display: 'flex', gap: theme.spacing.xs }}>
-          <Button
-            type={createMode === 'free' ? 'primary' : 'tertiary'}
-            size="small"
-            componentId="shared.model-trace-explorer.create-mode-free"
-            onClick={() => setCreateMode('free')}
-          >
-            <FormattedMessage defaultMessage="Free" description="Tab label for free-form feedback mode" />
-          </Button>
-          <Button
-            type={createMode === 'schema' ? 'primary' : 'tertiary'}
-            size="small"
-            componentId="shared.model-trace-explorer.create-mode-schema"
-            onClick={() => setCreateMode('schema')}
-          >
-            <FormattedMessage defaultMessage="Schema" description="Tab label for schema-based feedback mode" />
-          </Button>
-        </div>
-        {createMode === 'free' ? (
-          <TextSelectionFeedback traceId={traceId} spanId={activeSpanId} autoStart />
-        ) : (
+        <Tabs.List css={{ marginBottom: theme.spacing.sm }}>
+          <Tabs.Trigger value="assessments">
+            <FormattedMessage defaultMessage="Assessments" description="Tab label for assessments view" />
+          </Tabs.Trigger>
+          <Tabs.Trigger value="comments">
+            <FormattedMessage defaultMessage="Comments" description="Tab label for comments view" />
+          </Tabs.Trigger>
+        </Tabs.List>
+
+        <Tabs.Content value="assessments" css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+          {groupedFeedbacks.map(([name, valuesMap]) => (
+            <FeedbackGroup
+              key={name}
+              name={name}
+              valuesMap={valuesMap}
+              traceId={traceId}
+              activeSpanId={activeSpanId}
+            />
+          ))}
+          {sortedExpectations.length > 0 && (
+            <>
+              <Typography.Text color="secondary" css={{ marginBottom: theme.spacing.sm }}>
+                <FormattedMessage
+                  defaultMessage="Expectations"
+                  description="Label for the expectations section in the assessments pane"
+                />
+              </Typography.Text>
+              <div
+                css={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: theme.spacing.sm,
+                  marginBottom: theme.spacing.sm,
+                }}
+              >
+                {sortedExpectations.map((expectation) => (
+                  <ExpectationItem expectation={expectation} key={expectation.assessment_id} />
+                ))}
+              </div>
+            </>
+          )}
           <AssessmentCreateForm
             assessmentName={undefined}
             spanId={activeSpanId}
             traceId={traceId}
             setExpanded={() => {}}
           />
-        )}
-      </div>
+        </Tabs.Content>
+
+        <Tabs.Content value="comments" css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+          {groupedCommentFeedbacks.length === 0 && (
+            <Typography.Text color="secondary" size="sm" css={{ marginBottom: theme.spacing.sm }}>
+              <FormattedMessage defaultMessage="No comments yet" description="Empty state for comments tab" />
+            </Typography.Text>
+          )}
+          <CommentGroup comments={commentFeedbacks} />
+          <div id="add-comment-form">
+            <TextSelectionFeedback traceId={traceId} spanId={activeSpanId} autoStart={false} />
+          </div>
+        </Tabs.Content>
+      </Tabs.Root>
     </div>
   );
 };

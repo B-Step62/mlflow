@@ -1,11 +1,21 @@
 import { isNil } from 'lodash';
 import { useState } from 'react';
 
-import { useDesignSystemTheme, Typography, Button, PlusIcon, Tooltip, DangerIcon } from '@databricks/design-system';
+import {
+  useDesignSystemTheme,
+  Typography,
+  Button,
+  PlusIcon,
+  Tooltip,
+  DangerIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+} from '@databricks/design-system';
 
 import { AssessmentCreateForm } from './AssessmentCreateForm';
 import { getAssessmentDisplayName } from './AssessmentsPane.utils';
 import { FeedbackValueGroup } from './FeedbackValueGroup';
+import { CommentItem } from './CommentItem';
 import type { FeedbackAssessment } from '../ModelTrace.types';
 
 export const FeedbackGroup = ({
@@ -13,18 +23,25 @@ export const FeedbackGroup = ({
   valuesMap,
   traceId,
   activeSpanId,
+  alwaysExpanded = false,
+  renderCommentsAsComments = false,
 }: {
   name: string;
   valuesMap: { [value: string]: FeedbackAssessment[] };
   traceId: string;
   activeSpanId?: string;
+  alwaysExpanded?: boolean;
+  renderCommentsAsComments?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const displayName = getAssessmentDisplayName(name);
+  const displayName = renderCommentsAsComments ? 'Comment History' : getAssessmentDisplayName(name);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const hasError = Object.values(valuesMap)
     .flat()
     .some((feedback) => !isNil(feedback.feedback.error));
+
+  const isExpanded = alwaysExpanded ? true : expanded;
 
   return (
     <div
@@ -49,6 +66,16 @@ export const FeedbackGroup = ({
         }}
       >
         <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flex: 1, minWidth: 0 }}>
+          {!alwaysExpanded && (
+            <Button
+              componentId="shared.model-trace-explorer.toggle-feedback-group"
+              type="tertiary"
+              size="small"
+              icon={expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+              onClick={() => setExpanded(!expanded)}
+              css={{ flexShrink: 0, padding: theme.spacing.xs, minHeight: theme.spacing.lg * 1.5 }}
+            />
+          )}
           <Typography.Text bold css={{ overflow: 'hidden', textOverflow: 'ellipsis', textWrap: 'nowrap' }}>
             {displayName}
           </Typography.Text>
@@ -64,16 +91,26 @@ export const FeedbackGroup = ({
           />
         </Tooltip>
       </div>
-      {Object.entries(valuesMap).map(([jsonValue, feedbacks]) => (
-        <FeedbackValueGroup jsonValue={jsonValue} feedbacks={feedbacks} key={jsonValue} />
-      ))}
-      {showCreateForm && (
-        <AssessmentCreateForm
-          assessmentName={name}
-          spanId={activeSpanId}
-          traceId={traceId}
-          setExpanded={setShowCreateForm}
-        />
+      {isExpanded && (
+        <>
+          {Object.entries(valuesMap).map(([jsonValue, feedbacks]) => (
+            <FeedbackValueGroup
+              jsonValue={jsonValue}
+              feedbacks={feedbacks}
+              key={jsonValue}
+              forceExpanded={alwaysExpanded}
+              itemRenderer={renderCommentsAsComments ? CommentItem : undefined}
+            />
+          ))}
+          {showCreateForm && (
+            <AssessmentCreateForm
+              assessmentName={name}
+              spanId={activeSpanId}
+              traceId={traceId}
+              setExpanded={setShowCreateForm}
+            />
+          )}
+        </>
       )}
     </div>
   );
