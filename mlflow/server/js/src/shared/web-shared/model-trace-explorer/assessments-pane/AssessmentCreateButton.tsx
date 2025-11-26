@@ -9,11 +9,13 @@ export const AssessmentCreateButton = ({
   assessmentName,
   spanId,
   traceId,
+  onClickOverride,
 }: {
   title: React.ReactNode;
   assessmentName?: string;
   spanId?: string;
   traceId: string;
+  onClickOverride?: () => void;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -31,7 +33,13 @@ export const AssessmentCreateButton = ({
         size="small"
         componentId="shared.model-trace-explorer.add-new-assessment"
         icon={<PlusIcon />}
-        onClick={() => setExpanded(true)}
+        onClick={() => {
+          if (onClickOverride) {
+            onClickOverride();
+            return;
+          }
+          setExpanded(true);
+        }}
       >
         {title}
       </Button>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Button, Input, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Button, Input, Typography, useDesignSystemTheme, ThumbsDownIcon, ThumbsUpIcon } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 import { getUser } from '@databricks/web-shared/global-settings';
 
@@ -20,34 +20,35 @@ type SelectedSnippet = {
 type TextSelectionFeedbackProps = {
   traceId: string;
   spanId?: string;
+  onDone?: () => void;
+  autoStart?: boolean;
 };
 
-export const TextSelectionFeedback = ({ traceId, spanId }: TextSelectionFeedbackProps) => {
+export const TextSelectionFeedback = ({ traceId, spanId, onDone, autoStart = false }: TextSelectionFeedbackProps) => {
   const { theme } = useDesignSystemTheme();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(autoStart);
+
+  useEffect(() => {
+    if (autoStart) {
+      setExpanded(true);
+    }
+  }, [autoStart]);
+
+  if (!expanded) {
+    return null;
+  }
 
   return (
     <div css={{ marginTop: theme.spacing.md }}>
-      {!expanded && (
-        <Button
-          componentId="shared.model-trace-explorer.select-text-feedback"
-          type="tertiary"
-          onClick={() => setExpanded(true)}
-        >
-          <FormattedMessage
-            defaultMessage="Select text to give feedback"
-            description="Button label to start text selection feedback flow"
-          />
-        </Button>
-      )}
-      {expanded && (
-        <TextSelectionFeedbackForm
-          traceId={traceId}
-          spanId={spanId}
-          onClose={() => setExpanded(false)}
-          autoActivateSelection
-        />
-      )}
+      <TextSelectionFeedbackForm
+        traceId={traceId}
+        spanId={spanId}
+        onClose={() => {
+          setExpanded(false);
+          onDone?.();
+        }}
+        autoActivateSelection
+      />
     </div>
   );
 };
@@ -253,97 +254,102 @@ const TextSelectionFeedbackForm = ({
         display: 'flex',
         flexDirection: 'column',
         gap: theme.spacing.sm,
-        marginTop: theme.spacing.sm,
         padding: theme.spacing.sm,
         border: `1px solid ${theme.colors.border}`,
         borderRadius: theme.borders.borderRadiusSm,
-        backgroundColor: theme.colors.backgroundSecondary,
+        backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: theme.spacing.sm }}>
-        <Typography.Text bold>
-          <FormattedMessage
-            defaultMessage="Select text to give feedback"
-            description="Header for text selection feedback form"
-          />
-        </Typography.Text>
-        <Button
-          componentId="shared.model-trace-explorer.cancel-select-text-feedback"
-          size="small"
-          onClick={() => {
-            setSelectionMode(false);
-            clearHighlight();
-            onClose();
-          }}
-        >
-          <FormattedMessage defaultMessage="Cancel" description="Button label to cancel text selection feedback form" />
-        </Button>
-      </div>
-
       <Typography.Text size="sm" color="secondary">
         <FormattedMessage
-          defaultMessage="Select any text in Inputs/Outputs; release to capture."
+          defaultMessage="Select any text in the trace to give free-form feedback."
           description="Helper text for text selection feedback flow"
         />
       </Typography.Text>
 
-      <div css={{ display: 'flex', gap: theme.spacing.xs }}>
-        <Button
-          componentId="shared.model-trace-explorer.thumb-up"
-          type={thumbValue === true ? 'primary' : 'tertiary'}
-          onClick={() => setThumbValue(true)}
-          disabled={isLoading}
-        >
-          <FormattedMessage defaultMessage="Thumbs up" description="Thumbs up selection for feedback" />
-        </Button>
-        <Button
-          componentId="shared.model-trace-explorer.thumb-down"
-          type={thumbValue === false ? 'primary' : 'tertiary'}
-          onClick={() => setThumbValue(false)}
-          disabled={isLoading}
-        >
-          <FormattedMessage defaultMessage="Thumbs down" description="Thumbs down selection for feedback" />
-        </Button>
-      </div>
-
       <div
         css={{
-          border: `1px dashed ${theme.colors.border}`,
+          border: `1px solid ${theme.colors.border}`,
           borderRadius: theme.borders.borderRadiusSm,
           padding: theme.spacing.sm,
-          backgroundColor: theme.colors.backgroundPrimary,
+          backgroundColor: theme.colors.backgroundSecondary,
         }}
       >
         {selectedSnippet ? (
-          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-            <Typography.Text size="sm" bold>
-              <FormattedMessage
-                defaultMessage="Selected text"
-                description="Label for the captured text snippet preview"
-              />
-            </Typography.Text>
-            <Typography.Text size="sm" css={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {selectedSnippet.text}
-            </Typography.Text>
-            <Typography.Text size="xs" color="secondary">
-              {selectedSnippet.jsonPath}
-              {selectedSnippet.wasTruncated && ' (truncated)'}
-            </Typography.Text>
-            <Typography.Text size="xs" color="secondary">
-              <FormattedMessage
-                defaultMessage="Reselect to replace the snippet."
-                description="Helper text indicating a new selection overwrites the previous one"
-              />
-            </Typography.Text>
-          </div>
+          <Typography.Text size="sm" css={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {selectedSnippet.text}
+            {selectedSnippet.wasTruncated && ' ...'}
+          </Typography.Text>
         ) : (
           <Typography.Text size="sm" color="secondary">
             <FormattedMessage
-              defaultMessage="Select any text from the trace to attach it here."
+              defaultMessage="Select any text in Inputs/Outputs; release to capture."
               description="Placeholder text before any snippet is captured"
             />
           </Typography.Text>
         )}
+      </div>
+
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        <Typography.Text size="sm" color="secondary">
+          <FormattedMessage defaultMessage="Rating" description="Label for thumbs up/down selection" />
+        </Typography.Text>
+        <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+          <button
+            aria-label="Thumbs up"
+            onClick={() => setThumbValue(true)}
+            disabled={isLoading}
+            css={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+              border: `1px solid ${thumbValue === true ? '#10b981' : theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: thumbValue === true ? '#10b981' : theme.colors.backgroundPrimary,
+              color: thumbValue === true ? '#ffffff' : theme.colors.textPrimary,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              opacity: isLoading ? 0.5 : 1,
+              '&:hover:not(:disabled)': {
+                backgroundColor: thumbValue === true ? '#059669' : theme.colors.actionTertiaryBackgroundHover,
+                borderColor: thumbValue === true ? '#059669' : theme.colors.actionTertiaryBackgroundHover,
+              },
+              '&:active:not(:disabled)': {
+                transform: 'scale(0.95)',
+              },
+            }}
+          >
+            <ThumbsUpIcon />
+          </button>
+          <button
+            aria-label="Thumbs down"
+            onClick={() => setThumbValue(false)}
+            disabled={isLoading}
+            css={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+              border: `1px solid ${thumbValue === false ? '#ef4444' : theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: thumbValue === false ? '#ef4444' : theme.colors.backgroundPrimary,
+              color: thumbValue === false ? '#ffffff' : theme.colors.textPrimary,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              opacity: isLoading ? 0.5 : 1,
+              '&:hover:not(:disabled)': {
+                backgroundColor: thumbValue === false ? '#dc2626' : theme.colors.actionTertiaryBackgroundHover,
+                borderColor: thumbValue === false ? '#dc2626' : theme.colors.actionTertiaryBackgroundHover,
+              },
+              '&:active:not(:disabled)': {
+                transform: 'scale(0.95)',
+              },
+            }}
+          >
+            <ThumbsDownIcon />
+          </button>
+        </div>
       </div>
 
       <div>
@@ -380,7 +386,7 @@ const TextSelectionFeedbackForm = ({
           }}
           disabled={isLoading}
         >
-          <FormattedMessage defaultMessage="Close" description="Close button for text selection feedback form" />
+          <FormattedMessage defaultMessage="Cancel" description="Button label for cancelling the creation of an assessment" />
         </Button>
         <Button
           type="primary"

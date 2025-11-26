@@ -1,10 +1,10 @@
 import { isNil, partition } from 'lodash';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button, CloseIcon, Tooltip, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
-import { AssessmentCreateButton } from './AssessmentCreateButton';
+import { AssessmentCreateForm } from './AssessmentCreateForm';
 import { ASSESSMENT_PANE_MIN_WIDTH } from './AssessmentsPane.utils';
 import { ExpectationItem } from './ExpectationItem';
 import { FeedbackGroup } from './FeedbackGroup';
@@ -56,6 +56,7 @@ export const AssessmentsPane = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const { setAssessmentsPaneExpanded } = useModelTraceExplorerViewState();
+  const [createMode, setCreateMode] = useState<'free' | 'schema'>('schema');
   const [feedbacks, expectations] = useMemo(
     () => partition(assessments, (assessment) => 'feedback' in assessment),
     [assessments],
@@ -125,17 +126,43 @@ export const AssessmentsPane = ({
           </div>
         </>
       )}
-      <TextSelectionFeedback traceId={traceId} spanId={activeSpanId} />
-      <AssessmentCreateButton
-        title={
-          <FormattedMessage
-            defaultMessage="Add new assessment"
-            description="Label for the button to add a new assessment"
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
+          marginTop: theme.spacing.sm,
+        }}
+      >
+        <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+          <Button
+            type={createMode === 'free' ? 'primary' : 'tertiary'}
+            size="small"
+            componentId="shared.model-trace-explorer.create-mode-free"
+            onClick={() => setCreateMode('free')}
+          >
+            <FormattedMessage defaultMessage="Free" description="Tab label for free-form feedback mode" />
+          </Button>
+          <Button
+            type={createMode === 'schema' ? 'primary' : 'tertiary'}
+            size="small"
+            componentId="shared.model-trace-explorer.create-mode-schema"
+            onClick={() => setCreateMode('schema')}
+          >
+            <FormattedMessage defaultMessage="Schema" description="Tab label for schema-based feedback mode" />
+          </Button>
+        </div>
+        {createMode === 'free' ? (
+          <TextSelectionFeedback traceId={traceId} spanId={activeSpanId} autoStart />
+        ) : (
+          <AssessmentCreateForm
+            assessmentName={undefined}
+            spanId={activeSpanId}
+            traceId={traceId}
+            setExpanded={() => {}}
           />
-        }
-        spanId={activeSpanId}
-        traceId={traceId}
-      />
+        )}
+      </div>
     </div>
   );
 };
