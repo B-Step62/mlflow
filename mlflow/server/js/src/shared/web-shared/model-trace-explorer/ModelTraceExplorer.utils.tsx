@@ -266,6 +266,8 @@ export function searchTree(
   const children = rootNode.children ?? [];
   const filteredChildren: ModelTraceSpanNode[] = [];
   const matches: SearchMatch[] = [];
+  let filteredDescendantCount = 0;
+  
   children.forEach((child) => {
     const { filteredTreeNodes: childNodes, matches: childMatches } = searchTree(
       child,
@@ -275,6 +277,15 @@ export function searchTree(
 
     filteredChildren.push(...childNodes);
     matches.push(...childMatches);
+    
+    // Count filtered descendants
+    childNodes.forEach((node) => {
+      if (node.isFiltered) {
+        filteredDescendantCount += 1 + (node.filteredDescendantCount ?? 0);
+      } else {
+        filteredDescendantCount += node.filteredDescendantCount ?? 0;
+      }
+    });
   });
 
   const spanName = ((rootNode.title as string) ?? '').toLowerCase();
@@ -297,12 +308,34 @@ export function searchTree(
 
   if (nodeShouldBeDisplayed) {
     return {
-      filteredTreeNodes: [{ ...rootNode, children: filteredChildren }],
+      filteredTreeNodes: [{ 
+        ...rootNode, 
+        children: filteredChildren,
+        filteredDescendantCount: filteredDescendantCount > 0 ? filteredDescendantCount : undefined,
+      }],
       matches: spanMatches.concat(matches),
     };
   }
 
-  // otherwise cut the span out of the tree by returning the children directly
+  // If the node failed ONLY the span type filter (but passed text search or has no text search),
+  // keep it but mark it as filtered. This allows us to show a collapsed representation.
+  // However, if it failed the text search filter, cut it out as before.
+  const failedOnlySpanTypeFilter = !spanTypeIsDisplayed && (nodeMatchesSearch || searchFilterLowercased === '');
+  
+  if (failedOnlySpanTypeFilter) {
+    return {
+      filteredTreeNodes: [{
+        ...rootNode,
+        children: filteredChildren,
+        isFiltered: true,
+        filteredDescendantCount: filteredDescendantCount > 0 ? filteredDescendantCount : undefined,
+      }],
+      matches,
+    };
+  }
+
+  // Otherwise cut the span out of the tree by returning the children directly
+  // (this is the old behavior for text search filtering)
   return {
     filteredTreeNodes: filteredChildren,
     matches,

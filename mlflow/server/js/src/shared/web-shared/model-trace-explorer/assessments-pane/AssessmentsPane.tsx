@@ -8,6 +8,7 @@ import { AssessmentCreateButton } from './AssessmentCreateButton';
 import { ASSESSMENT_PANE_MIN_WIDTH } from './AssessmentsPane.utils';
 import { ExpectationItem } from './ExpectationItem';
 import { FeedbackGroup } from './FeedbackGroup';
+import { TextSelectionFeedback } from './TextSelectionFeedback';
 import type { Assessment, FeedbackAssessment } from '../ModelTrace.types';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 
@@ -124,6 +125,7 @@ export const AssessmentsPane = ({
           </div>
         </>
       )}
+      <TextSelectionFeedback traceId={traceId} spanId={activeSpanId} />
       <AssessmentCreateButton
         title={
           <FormattedMessage

@@ -249,6 +249,10 @@ export interface ModelTraceSpanNode extends TimelineTreeNode, Pick<ModelTraceSpa
   chatTools?: ModelTraceChatTool[];
   parentId?: string | null;
   traceId: string;
+  // marks if this span is filtered out by span filters (but not removed from tree)
+  isFiltered?: boolean;
+  // count of filtered descendant spans (for display purposes)
+  filteredDescendantCount?: number;
 }
 
 export type ModelTraceExplorerTab = 'chat' | 'content' | 'attributes' | 'events';

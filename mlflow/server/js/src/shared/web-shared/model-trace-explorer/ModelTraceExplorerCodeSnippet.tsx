@@ -43,6 +43,8 @@ export function ModelTraceExplorerCodeSnippet({
   activeMatch = null,
   containsActiveMatch = false,
   initialRenderMode,
+  jsonPath,
+  spanId,
 }: {
   title: string;
   tokens?: number;
@@ -54,6 +56,9 @@ export function ModelTraceExplorerCodeSnippet({
   // current active match (either in the key or value)
   containsActiveMatch?: boolean;
   initialRenderMode?: CodeSnippetRenderMode;
+  // optional metadata used when users select text for feedback
+  jsonPath?: string;
+  spanId?: string;
 }) {
   const parsedData = useMemo(() => JSON.parse(data), [data]);
   const dataIsString = isString(parsedData);
@@ -64,6 +69,13 @@ export function ModelTraceExplorerCodeSnippet({
   );
   const isTitleMatch = containsActiveMatch && (activeMatch?.isKeyMatch ?? false);
   const shouldShowRenderModeDropdown = dataIsString && !searchFilter;
+  const selectionAttributes = useMemo(
+    () => ({
+      'data-json-path': jsonPath ?? '',
+      ...(spanId ? { 'data-span-id': spanId } : {}),
+    }),
+    [jsonPath, spanId],
+  );
 
   // we need to reset the render mode when the data changes
   useEffect(() => {
@@ -156,13 +168,15 @@ export function ModelTraceExplorerCodeSnippet({
             </div>
           </div>
         )}
-        <ModelTraceExplorerCodeSnippetBody
-          data={data}
-          searchFilter={searchFilter}
-          activeMatch={activeMatch}
-          containsActiveMatch={containsActiveMatch}
-          renderMode={renderMode}
-        />
+        <div {...selectionAttributes}>
+          <ModelTraceExplorerCodeSnippetBody
+            data={data}
+            searchFilter={searchFilter}
+            activeMatch={activeMatch}
+            containsActiveMatch={containsActiveMatch}
+            renderMode={renderMode}
+          />
+        </div>
       </div>
     </div>
   );

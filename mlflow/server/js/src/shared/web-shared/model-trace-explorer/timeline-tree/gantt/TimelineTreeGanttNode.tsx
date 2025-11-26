@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 
 import { useDesignSystemTheme, Typography, Button, ChevronDownIcon, ChevronRightIcon } from '@databricks/design-system';
+import { FormattedMessage } from '@databricks/i18n';
 
 import type { ModelTraceSpanNode } from '../../ModelTrace.types';
 import { spanTimeFormatter, TimelineTreeZIndex } from '../TimelineTree.utils';
@@ -30,6 +31,7 @@ export const TimelineTreeGanttNode = ({
   const backgroundColor = isActive ? theme.colors.actionDefaultBackgroundHover : 'transparent';
   const hasChildren = (node.children ?? []).length > 0;
   const expanded = expandedKeys.has(node.key);
+  const totalFiltered = node.isFiltered ? 1 + (node.filteredDescendantCount ?? 0) : 0;
 
   useLayoutEffect(() => {
     if (!titleInBarRef.current || !titleBesideBarRef.current) {
@@ -46,6 +48,73 @@ export const TimelineTreeGanttNode = ({
       titleBesideBarRef.current.style.display = 'inline';
     }
   }, [theme.spacing.sm, width]);
+
+  // Render a collapsed/filtered span indicator if this span is filtered
+  if (node.isFiltered) {
+    return (
+      <div
+        key={node.key}
+        data-testid={`collapsed-gantt-span-${node.key}`}
+        css={{
+          display: 'flex',
+          flexDirection: 'row',
+          cursor: 'default',
+          boxSizing: 'border-box',
+          paddingLeft: theme.spacing.xs,
+          paddingRight: theme.spacing.sm,
+          paddingTop: theme.spacing.xs,
+          paddingBottom: theme.spacing.xs,
+          backgroundColor: 'transparent',
+          alignItems: 'center',
+          opacity: 0.5,
+          zIndex: TimelineTreeZIndex.NORMAL,
+        }}
+      >
+        <div css={{ width: 24, marginRight: theme.spacing.xs }} />
+        <div css={{ width: leftOffset, flexShrink: 0 }} />
+        <div
+          css={{
+            position: 'relative',
+            width,
+            height: theme.typography.lineHeightBase,
+            backgroundColor: theme.colors.backgroundSecondary,
+            borderRadius: theme.borders.borderRadiusSm,
+            border: `1px dashed ${theme.colors.borderDecorative}`,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography.Text
+            css={{
+              fontFamily: 'monospace',
+              color: theme.colors.textSecondary,
+              fontSize: theme.typography.fontSizeSm,
+            }}
+          >
+            {'< >'}
+          </Typography.Text>
+        </div>
+        <div css={{ flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+          <Typography.Text
+            color="secondary"
+            css={{
+              marginLeft: theme.spacing.xs,
+              fontSize: theme.typography.fontSizeSm,
+              fontStyle: 'italic',
+            }}
+          >
+            <FormattedMessage
+              defaultMessage="{count, plural, one {# filtered span} other {# filtered spans}}"
+              description="Label showing the count of filtered spans in gantt view"
+              values={{ count: totalFiltered }}
+            />
+          </Typography.Text>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TimelineTreeSpanTooltip span={node}>

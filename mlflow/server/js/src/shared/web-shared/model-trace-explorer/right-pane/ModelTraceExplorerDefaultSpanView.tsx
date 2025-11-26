@@ -32,6 +32,7 @@ export function ModelTraceExplorerDefaultSpanView({
   const containsOutputs = outputList.length > 0;
 
   const isActiveMatchSpan = !isNil(activeMatch) && activeMatch.span.key === activeSpan.key;
+  const activeSpanKey = activeSpan ? String(activeSpan.key) : undefined;
 
   return (
     <div data-testid="model-trace-explorer-default-span-view">
