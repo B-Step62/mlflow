@@ -2,7 +2,6 @@ import { useState } from 'react';
 
 import { Button, ChevronDownIcon, ChevronRightIcon, useDesignSystemTheme } from '@databricks/design-system';
 
-import { AssessmentDisplayValue } from './AssessmentDisplayValue';
 import { FeedbackItem } from './FeedbackItem';
 import { FeedbackValueGroupSourceCounts } from './FeedbackValueGroupSourceCounts';
 import type { FeedbackAssessment } from '../ModelTrace.types';
@@ -17,6 +16,10 @@ export const FeedbackValueGroup = ({
   const { theme } = useDesignSystemTheme();
   const [expanded, setExpanded] = useState(false);
 
+  const isSelectionFeedbackGroup = feedbacks.some(
+    (feedback) => feedback.assessment_name === 'comment' || feedback.metadata?.['feedback_type'] === 'comment',
+  );
+
   return (
     <div css={{ display: 'flex', flexDirection: 'column' }}>
       <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
@@ -27,7 +30,7 @@ export const FeedbackValueGroup = ({
           icon={expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
           onClick={() => setExpanded(!expanded)}
         />
-        <AssessmentDisplayValue jsonValue={jsonValue} />
+        {!isSelectionFeedbackGroup && <AssessmentDisplayValue jsonValue={jsonValue} />}
         <FeedbackValueGroupSourceCounts feedbacks={feedbacks} />
       </div>
       {expanded && (

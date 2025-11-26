@@ -1,7 +1,7 @@
 import { isNil } from 'lodash';
 import { useState } from 'react';
 
-import { Tooltip, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Tooltip, Typography, useDesignSystemTheme, ThumbsDownIcon, ThumbsUpIcon } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 import { GenAIMarkdownRenderer } from '@databricks/web-shared/genai-markdown-renderer';
 
@@ -12,12 +12,43 @@ import { SpanNameDetailViewLink } from './SpanNameDetailViewLink';
 import type { FeedbackAssessment } from '../ModelTrace.types';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 
+type SelectionRationale = {
+  jsonPath?: string;
+  target?: string;
+  comment?: string;
+};
+
+const parseSelectionRationale = (rationale?: string): SelectionRationale | null => {
+  if (!rationale) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rationale);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+
+    return {
+      jsonPath: typeof parsed.jsonPath === 'string' ? parsed.jsonPath : undefined,
+      target: typeof parsed.target === 'string' ? parsed.target : undefined,
+      comment: typeof parsed.comment === 'string' ? parsed.comment : undefined,
+    };
+  } catch (e) {
+    return null;
+  }
+};
+
 export const FeedbackItemContent = ({ feedback }: { feedback: FeedbackAssessment }) => {
   const [isHistoryModalVisible, setIsHistoryModalVisible] = useState(false);
   const { theme } = useDesignSystemTheme();
   const { nodeMap, activeView } = useModelTraceExplorerViewState();
 
   const value = feedback.feedback.value;
+
+  const isSelectionFeedback =
+    feedback.assessment_name === 'comment' || feedback.metadata?.['feedback_type'] === 'comment';
+  const selectionRationale = isSelectionFeedback ? parseSelectionRationale(feedback.rationale) : null;
 
   const associatedSpan = feedback.span_id ? nodeMap[feedback.span_id] : null;
   // the summary view displays all assessments regardless of span, so
@@ -70,8 +101,16 @@ export const FeedbackItemContent = ({ feedback }: { feedback: FeedbackAssessment
           <Typography.Text size="sm" color="secondary">
             <FormattedMessage defaultMessage="Feedback" description="Label for the value of an feedback assessment" />
           </Typography.Text>
-          <div css={{ display: 'flex', gap: theme.spacing.xs }}>
-            <AssessmentDisplayValue jsonValue={JSON.stringify(value)} />
+          <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
+            {isSelectionFeedback ? (
+              value === true ? (
+                <ThumbsUpIcon css={{ color: theme.colors.actionPositiveTextDefault }} />
+              ) : (
+                <ThumbsDownIcon css={{ color: theme.colors.actionDangerPrimaryTextDefault }} />
+              )
+            ) : (
+              <AssessmentDisplayValue jsonValue={JSON.stringify(value)} />
+            )}
             {feedback.overriddenAssessment && (
               <>
                 <span onClick={() => setIsHistoryModalVisible(true)}>
@@ -100,18 +139,65 @@ export const FeedbackItemContent = ({ feedback }: { feedback: FeedbackAssessment
           </div>
         </div>
       )}
-      {feedback.rationale && (
+      {selectionRationale ? (
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-          <Typography.Text size="sm" color="secondary">
-            <FormattedMessage
-              defaultMessage="Rationale"
-              description="Label for the rationale of an expectation assessment"
-            />
-          </Typography.Text>
-          <div css={{ '& > div:last-of-type': { marginBottom: 0 } }}>
-            <GenAIMarkdownRenderer>{feedback.rationale}</GenAIMarkdownRenderer>
-          </div>
+          {selectionRationale.target && (
+            <div
+              css={{
+                position: 'relative',
+                border: `1px solid ${theme.colors.border}`,
+                borderLeft: `4px solid ${theme.colors.actionPrimaryBorderDefault}`,
+                borderRadius: theme.borders.borderRadiusSm,
+                backgroundColor: theme.colors.backgroundSecondary,
+                padding: theme.spacing.sm,
+                paddingLeft: theme.spacing.md,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              <span
+                aria-hidden
+                css={{
+                  position: 'absolute',
+                  left: theme.spacing.xs,
+                  top: theme.spacing.xs,
+                  color: theme.colors.textSecondary,
+                  fontSize: theme.typography.fontSizeSm,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+              </span>
+              <Typography.Text size="sm" css={{ fontStyle: 'italic' }}>
+                {selectionRationale.target}
+              </Typography.Text>
+            </div>
+          )}
+          {selectionRationale.comment && selectionRationale.comment.trim().length > 0 && (
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs / 2 }}>
+              <Typography.Text size="sm" color="secondary">
+                <FormattedMessage defaultMessage="Comment" description="Label for selection feedback comment" />
+              </Typography.Text>
+              <Typography.Text size="sm" css={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {selectionRationale.comment}
+              </Typography.Text>
+            </div>
+          )}
         </div>
+      ) : (
+        feedback.rationale && (
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+            <Typography.Text size="sm" color="secondary">
+              <FormattedMessage
+                defaultMessage="Rationale"
+                description="Label for the rationale of an expectation assessment"
+              />
+            </Typography.Text>
+            <div css={{ '& > div:last-of-type': { marginBottom: 0 } }}>
+              <GenAIMarkdownRenderer>{feedback.rationale}</GenAIMarkdownRenderer>
+            </div>
+          </div>
+        )
       )}
       {shouldShowCostSection && (
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
