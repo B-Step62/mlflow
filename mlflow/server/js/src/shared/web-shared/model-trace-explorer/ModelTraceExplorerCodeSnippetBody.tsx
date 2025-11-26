@@ -23,6 +23,7 @@ export function ModelTraceExplorerCodeSnippetBody({
   containsActiveMatch = false,
   renderMode = CodeSnippetRenderMode.JSON,
   initialExpanded = false,
+  hasFeedback = false,
 }: {
   data: string;
   searchFilter?: string;
@@ -30,6 +31,7 @@ export function ModelTraceExplorerCodeSnippetBody({
   containsActiveMatch?: boolean;
   renderMode?: CodeSnippetRenderMode;
   initialExpanded?: boolean;
+  hasFeedback?: boolean;
 }) {
   const containsMatches = Boolean(searchFilter) && !isNil(activeMatch) && data.toLowerCase().includes(searchFilter);
   const { theme } = useDesignSystemTheme();
@@ -94,7 +96,9 @@ export function ModelTraceExplorerCodeSnippetBody({
         <div
           css={{
             padding: theme.spacing.md,
-            backgroundColor: theme.colors.backgroundSecondary,
+            backgroundColor: hasFeedback
+              ? theme.colors.actionPrimaryBackgroundTransparent
+              : theme.colors.backgroundSecondary,
             marginBottom: -theme.spacing.md,
           }}
         >

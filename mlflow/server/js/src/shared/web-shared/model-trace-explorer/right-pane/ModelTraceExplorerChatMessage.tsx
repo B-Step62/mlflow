@@ -46,6 +46,7 @@ function ModelTraceExplorerChatMessageContent({
         activeMatch={null}
         containsActiveMatch={false}
         renderMode={CodeSnippetRenderMode.JSON}
+        hasFeedback={false}
       />
     );
   }

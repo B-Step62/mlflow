@@ -54,7 +54,7 @@ export function ModelTraceExplorerToolCallMessage({ toolCall }: { toolCall: Mode
           }}
         />
       </Typography.Text>
-      <ModelTraceExplorerCodeSnippetBody data={toolCall.function.arguments} />
+      <ModelTraceExplorerCodeSnippetBody data={toolCall.function.arguments} hasFeedback={false} />
     </div>
   );
 }

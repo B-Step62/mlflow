@@ -76,6 +76,7 @@ export const ModelTraceExplorerTraceTooLargeView = ({
             data={getExampleCode(traceId)}
             renderMode={CodeSnippetRenderMode.PYTHON}
             initialExpanded
+            hasFeedback={false}
           />
         </div>
       }

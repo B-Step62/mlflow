@@ -4,10 +4,33 @@ import { useMemo } from 'react';
 import { useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
-import type { ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
+import type { Assessment, ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
 import { createListFromObject } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
+
+const getSelectionFeedbackCounts = (assessments?: Assessment[]): Record<string, number> => {
+  const counts: Record<string, number> = {};
+
+  (assessments ?? []).forEach((assessment) => {
+    const isSelectionFeedback =
+      assessment?.assessment_name === 'comment' || assessment?.metadata?.['feedback_type'] === 'comment';
+    if (!isSelectionFeedback || !assessment?.rationale) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(assessment.rationale as string);
+      const path = parsed?.jsonPath || 'inputs/outputs';
+      counts[path] = (counts[path] ?? 0) + 1;
+    } catch (e) {
+      // swallow parsing errors; malformed rationales should not break the UI
+      return;
+    }
+  });
+
+  return counts;
+};
 
 export function ModelTraceExplorerDefaultSpanView({
   activeSpan,
@@ -23,6 +46,7 @@ export function ModelTraceExplorerDefaultSpanView({
   const { theme } = useDesignSystemTheme();
   const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
   const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
+  const feedbackCounts = useMemo(() => getSelectionFeedbackCounts(activeSpan?.assessments), [activeSpan?.assessments]);
 
   if (isNil(activeSpan)) {
     return null;
@@ -67,6 +91,9 @@ export function ModelTraceExplorerDefaultSpanView({
                 searchFilter={searchFilter}
                 activeMatch={activeMatch}
                 containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'inputs' && activeMatch.key === key}
+                jsonPath={`inputs.${key}`}
+                spanId={activeSpanKey}
+                feedbackCount={feedbackCounts[`inputs.${key}`]}
               />
             ))}
           </div>
@@ -94,6 +121,9 @@ export function ModelTraceExplorerDefaultSpanView({
                 searchFilter={searchFilter}
                 activeMatch={activeMatch}
                 containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'outputs' && activeMatch.key === key}
+                jsonPath={`outputs.${key}`}
+                spanId={activeSpanKey}
+                feedbackCount={feedbackCounts[`outputs.${key}`]}
               />
             ))}
           </div>
