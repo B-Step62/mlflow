@@ -15,7 +15,6 @@ import { TimelineTreeSpanTooltip } from './TimelineTreeSpanTooltip';
 import { type ModelTraceSpanNode } from '../ModelTrace.types';
 import { getSpanExceptionCount } from '../ModelTraceExplorer.utils';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
-import { CollapsedSpanIndicator } from './CollapsedSpanIndicator';
 
 export const TimelineTreeNode = ({
   node,
@@ -52,11 +51,6 @@ export const TimelineTreeNode = ({
   const hasException = getSpanExceptionCount(node) > 0;
 
   const backgroundColor = isActive ? theme.colors.actionDefaultBackgroundHover : 'transparent';
-
-  // If this span is filtered, show a collapsed indicator instead
-  if (node.isFiltered) {
-    return <CollapsedSpanIndicator node={node} linesToRender={linesToRender} />;
-  }
 
   return (
     <>
