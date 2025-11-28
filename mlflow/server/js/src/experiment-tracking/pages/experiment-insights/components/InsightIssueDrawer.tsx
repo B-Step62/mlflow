@@ -3,25 +3,16 @@ import {
   Drawer,
   Typography,
   Button,
-  Tag,
   useDesignSystemTheme,
   CopyIcon,
-  Spacer,
   WrenchSparkleIcon,
-  ArrowLeftIcon,
   MenuIcon,
   LightningIcon,
-  SpeechBubbleIcon,
   UserGroupIcon,
   SchemaIcon,
 } from '@databricks/design-system';
 import { SeverityIcon } from './SeverityIcon';
 import { FeedbackBubble } from './FeedbackBubble';
-import { TracesView } from '../../../components/traces/TracesView';
-import { 
-  shouldEnableTracesV3View, 
-  isExperimentEvalResultsMonitoringUIEnabled 
-} from '../../../../common/utils/FeatureUtils';
 import { TracesV3View } from '../../../components/experiment-page/components/traces-v3/TracesV3View';
 
 type InsightIssueDrawerProps = {
@@ -60,9 +51,11 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
   const percentage = totalTraces > 0 ? Math.round((traceCount / totalTraces) * 100) : 0;
 
   return (
-    <Drawer.Root modal open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Drawer.Root modal={false} open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <Drawer.Content
         componentId="insight-issue-drawer"
+        // @ts-expect-error: Drawer.Content actually supports style prop
+        style={{ zIndex: 100, overflowY: 'auto' }}
         title={
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
             <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
@@ -83,7 +76,7 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
         }
         width="70vw"
       >
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg, height: '100%', marginTop: theme.spacing.md}}>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg, height: '100%', marginTop: theme.spacing.md, overflowY: 'auto'}}>
           {/* Overview and Impacted Traces */}
           <div css={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.md }}>
              <div css={{ 
@@ -238,12 +231,12 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
           </div>
 
           {/* Traces Table */}
-          <div css={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 600 }}>
+          <div css={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 600, marginTop: theme.spacing.md }}>
           <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
-              <SchemaIcon css={{ color: theme.colors.textSecondary, width: 20, height: 20 }} />
-              <Typography.Title level={4} css={{ marginBottom: 0 }}>Traces</Typography.Title>
+              <SchemaIcon css={{ color: theme.colors.textSecondary, width: 24, height: 24 }} />
+              <Typography.Title level={3} css={{ marginBottom: 0 }}>Traces</Typography.Title>
             </div>
-            <div css={{ flex: 1, border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, overflow: 'hidden' }}>
+            <div css={{ flex: 1, overflow: 'hidden' }}>
                <TracesComponent experimentIds={[experimentId]} />
             </div>
           </div>

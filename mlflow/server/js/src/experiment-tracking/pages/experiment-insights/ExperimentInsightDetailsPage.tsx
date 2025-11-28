@@ -189,7 +189,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
   const maxIssueCount = Math.max(...topIssues.map((i) => i.count), 1);
 
   return (
-    <ScrollablePageWrapper css={{ padding: theme.spacing.lg, display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+    <ScrollablePageWrapper css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
       <InsightHeader
         title={report.title || 'Insight Report'}
         runName={runName}
