@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import invariant from 'invariant';
 import { useSearchParams } from '../../../common/utils/RoutingUtils';
 import {
@@ -7,10 +7,6 @@ import {
   Tag,
   Typography,
   Button,
-  WarningIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ClockIcon,
   BookIcon,
   QuestionMarkIcon,
   ChevronRightIcon,
@@ -22,52 +18,12 @@ import { MlflowService } from '../../sdk/MlflowService';
 import Utils from '../../../common/utils/Utils';
 import AiLogoUrl from './components/ai-logo.svg';
 import { LazyPlot } from '../../components/LazyPlot';
+import { SeverityIcon } from './components/SeverityIcon';
+import { InsightIssueDrawer } from './components/InsightIssueDrawer';
 
 type ExperimentInsightDetailsPageProps = {
   experimentId: string;
   insightId: string;
-};
-
-const SeverityIcon = ({ severity }: { severity?: string }) => {
-  const { theme } = useDesignSystemTheme();
-  const s = (severity || '').toLowerCase();
-
-  let icon;
-  let color;
-  let backgroundColor;
-
-  if (s === 'high') {
-    icon = <XCircleIcon />;
-    color = theme.colors.textValidationDanger;
-    backgroundColor = theme.isDarkMode ? theme.colors.red800 : theme.colors.red100;
-  } else if (s === 'medium') {
-    icon = <WarningIcon />;
-    color = theme.colors.textValidationWarning;
-    backgroundColor = theme.isDarkMode ? theme.colors.yellow800 : theme.colors.yellow100;
-  } else {
-    icon = <CheckCircleIcon />;
-    color = theme.colors.textValidationSuccess;
-    backgroundColor = theme.isDarkMode ? theme.colors.green800 : theme.colors.green100;
-  }
-
-  return (
-    <div
-      css={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 32,
-        height: 32,
-        borderRadius: theme.borders.borderRadiusMd,
-        backgroundColor,
-        color,
-        fontSize: 20,
-        flexShrink: 0,
-      }}
-    >
-      {icon}
-    </div>
-  );
 };
 
 const InsightHeader: React.FC<{
@@ -105,10 +61,12 @@ const IssueCard: React.FC<{
   description?: string;
   severity?: string;
   traceCount: number;
-}> = ({ name, description, severity, traceCount }) => {
+  onClick?: () => void;
+}> = ({ name, description, severity, traceCount, onClick }) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div
+      onClick={onClick}
       css={{
         display: 'grid',
         gridTemplateColumns: 'auto 1fr auto',
@@ -119,6 +77,13 @@ const IssueCard: React.FC<{
         borderRadius: theme.borders.borderRadiusMd,
         background: theme.colors.backgroundPrimary,
         boxShadow: theme.shadows.xs,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'box-shadow 0.2s',
+        '&:hover': onClick
+          ? {
+              boxShadow: theme.shadows.sm,
+            }
+          : {},
       }}
     >
       <div>
@@ -165,6 +130,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
   const { theme } = useDesignSystemTheme();
   const [, setSearchParams] = useSearchParams();
   const { report, isLoading, error } = useInsightReport(insightId);
+  const [selectedIssue, setSelectedIssue] = useState<any>(null);
 
   const runQuery = useQuery({
     queryKey: ['run-info', insightId],
@@ -245,8 +211,10 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
                     }
                   }}
                   onClick={() => {
-                    // TODO: Open side drawer with issue details
-                    // console.log('Open issue details', issue.name);
+                    const category = categories.find((c) => c.name === issue.name);
+                    if (category) {
+                      setSelectedIssue(category);
+                    }
                   }}
                 >
                   <div css={{ display: 'flex', justifyContent: 'space-between', marginBottom: theme.spacing.xs, gap: theme.spacing.sm }}>
@@ -360,10 +328,18 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
               description={cat.description}
               severity={cat.severity}
               traceCount={cat.impactedCount || cat.traceIds.length || cat.evidences.length}
+              onClick={() => setSelectedIssue(cat)}
             />
           ))}
         </div>
       </div>
+
+      <InsightIssueDrawer
+        isOpen={!!selectedIssue}
+        onClose={() => setSelectedIssue(null)}
+        issue={selectedIssue}
+        experimentId={experimentId}
+      />
 
       <div css={{ marginTop: theme.spacing.lg }}>
         <Typography.Title level={4}>Recommended Actions</Typography.Title>

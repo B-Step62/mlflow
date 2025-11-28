@@ -57,6 +57,12 @@ export const InsightQueryBanner = ({ placeholder, ariaLabel = 'Insight query', o
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onSubmit?.(value);
+          }
+        }}
         placeholder={placeholder}
         aria-label={ariaLabel}
         css={{
