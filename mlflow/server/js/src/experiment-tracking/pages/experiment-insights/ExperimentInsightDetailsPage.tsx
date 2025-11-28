@@ -1,42 +1,73 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import invariant from 'invariant';
 import { useSearchParams } from '../../../common/utils/RoutingUtils';
 import {
   useDesignSystemTheme,
   LegacySkeleton,
-  LegacyTooltip,
-  Header,
   Tag,
   Typography,
+  Button,
   WarningIcon,
   CheckCircleIcon,
-  InfoIcon,
-  ErrorIcon,
+  XCircleIcon,
+  ClockIcon,
+  BookIcon,
+  QuestionMarkIcon,
+  ChevronRightIcon,
 } from '@databricks/design-system';
 import { ScrollablePageWrapper } from '../../../common/components/ScrollablePageWrapper';
 import { useInsightReport } from './hooks/useInsightReport';
 import { useQuery } from '@tanstack/react-query';
 import { MlflowService } from '../../sdk/MlflowService';
 import Utils from '../../../common/utils/Utils';
-import { IconButton } from '../../../common/components/IconButton';
-import { ChevronLeftIcon } from '@databricks/design-system';
+import AiLogoUrl from './components/ai-logo.svg';
+import { LazyPlot } from '../../components/LazyPlot';
 
 type ExperimentInsightDetailsPageProps = {
   experimentId: string;
   insightId: string;
 };
 
-const severityIcon = (severity?: string) => {
-  switch ((severity || '').toLowerCase()) {
-    case 'high':
-      return <ErrorIcon />;
-    case 'medium':
-      return <WarningIcon />;
-    case 'low':
-      return <InfoIcon />;
-    default:
-      return <CheckCircleIcon />;
+const SeverityIcon = ({ severity }: { severity?: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const s = (severity || '').toLowerCase();
+
+  let icon;
+  let color;
+  let backgroundColor;
+
+  if (s === 'high') {
+    icon = <XCircleIcon />;
+    color = theme.colors.textValidationDanger;
+    backgroundColor = theme.isDarkMode ? theme.colors.red800 : theme.colors.red100;
+  } else if (s === 'medium') {
+    icon = <WarningIcon />;
+    color = theme.colors.textValidationWarning;
+    backgroundColor = theme.isDarkMode ? theme.colors.yellow800 : theme.colors.yellow100;
+  } else {
+    icon = <CheckCircleIcon />;
+    color = theme.colors.textValidationSuccess;
+    backgroundColor = theme.isDarkMode ? theme.colors.green800 : theme.colors.green100;
   }
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 32,
+        height: 32,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundColor,
+        color,
+        fontSize: 20,
+        flexShrink: 0,
+      }}
+    >
+      {icon}
+    </div>
+  );
 };
 
 const InsightHeader: React.FC<{
@@ -46,18 +77,24 @@ const InsightHeader: React.FC<{
   tracesTotal?: number;
   onBack: () => void;
 }> = ({ title, runName, createdAt, tracesTotal, onBack }) => {
+  const { theme } = useDesignSystemTheme();
   return (
-    <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-      <div css={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <IconButton icon={<ChevronLeftIcon />} onClick={onBack} aria-label="Back to Reports" />
+    <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+      <div css={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         <div>
-          <Header level={2}>{title}</Header>
-          <Typography.Text type="secondary">
-            {runName ? `${runName} • ` : ''}
+          <Typography.Title level={2} css={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <img src={AiLogoUrl} alt="" width={20} height={20} css={{ display: 'block' }} />
+              {title}
+          </Typography.Title>
+          <Typography.Text color="secondary">
             {createdAt ? Utils.formatTimestamp(createdAt) : ''}
             {tracesTotal ? ` • ${tracesTotal.toLocaleString()} traces` : ''}
           </Typography.Text>
         </div>
+      </div>
+      <div css={{ display: 'flex', gap: 8 }}>
+          <Button componentId="download-report-btn" disabled>Download</Button>
+        <Button componentId="share-report-btn" disabled>Share</Button>
       </div>
     </div>
   );
@@ -68,49 +105,54 @@ const IssueCard: React.FC<{
   description?: string;
   severity?: string;
   traceCount: number;
-  selected: boolean;
-  onClick: () => void;
-}> = ({ name, description, severity, traceCount, selected, onClick }) => {
+}> = ({ name, description, severity, traceCount }) => {
   const { theme } = useDesignSystemTheme();
   return (
-    <button
-      onClick={onClick}
+    <div
       css={{
-        width: '100%',
-        textAlign: 'left',
-        border: `1px solid ${selected ? theme.colors.primary : theme.colors.borderDecorative}`,
-        borderRadius: theme.borders.borderRadiusMd,
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr auto',
+        gap: theme.spacing.md,
+        alignItems: 'center',
         padding: theme.spacing.md,
-        background: selected ? theme.colors.primaryBackgroundHover : theme.colors.backgroundPrimary,
-        cursor: 'pointer',
+        border: `1px solid ${theme.colors.borderDecorative}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        background: theme.colors.backgroundPrimary,
+        boxShadow: theme.shadows.xs,
       }}
     >
-      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-        {severityIcon(severity)}
-        <div>
-          <Typography.Text strong>{name}</Typography.Text>
-          <div>
-            <Typography.Text type="secondary">{traceCount.toLocaleString()} traces</Typography.Text>
-          </div>
+      <div>
+        <SeverityIcon severity={severity} />
+      </div>
+      <div>
+        <Typography.Text bold css={{ display: 'block', marginBottom: 4 }}>
+          {name}
+        </Typography.Text>
+        {description ? (
+        <Typography.Text color="secondary" css={{ display: 'block' }}>
+          {description}
+        </Typography.Text>
+        ) : null}
+        <div css={{ display: 'flex', gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
+          <Tag componentId="insight-issue-tracecount">{traceCount.toLocaleString()} traces</Tag>
+          {severity ? <Tag componentId="insight-issue-severity">{severity}</Tag> : null}
         </div>
       </div>
-      {description ? (
-        <Typography.Paragraph type="secondary" css={{ marginTop: theme.spacing.sm, marginBottom: 0 }}>
-          {description}
-        </Typography.Paragraph>
-      ) : null}
-    </button>
+      <div css={{ color: theme.colors.textSecondary }}>›</div>
+    </div>
   );
 };
 
 const EvidenceChips: React.FC<{ evidences: { assessment_id?: string; trace_id?: string }[] }> = ({ evidences }) => {
   if (!evidences.length) {
-    return <Typography.Text type="secondary">No feedback samples</Typography.Text>;
+    return <Typography.Text color="secondary">No feedback samples</Typography.Text>;
   }
   return (
     <div css={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       {evidences.slice(0, 12).map((ev, idx) => (
-        <Tag key={`${ev.trace_id}-${idx}`}>{ev.assessment_id || ev.trace_id || 'feedback'}</Tag>
+        <Tag key={`${ev.trace_id}-${idx}`} componentId="insight-evidence-tag">
+          {ev.assessment_id || ev.trace_id || 'feedback'}
+        </Tag>
       ))}
     </div>
   );
@@ -135,19 +177,6 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
   });
 
   const categories = useMemo(() => report?.categories ?? [], [report]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(categories[0]?.id);
-  useEffect(() => {
-    if (!selectedCategoryId && categories[0]) {
-      setSelectedCategoryId(categories[0].id);
-    }
-  }, [categories, selectedCategoryId]);
-  const selectedCategory = useMemo(() => {
-    if (!categories.length) {
-      return undefined;
-    }
-    const found = categories.find((cat) => cat.id === selectedCategoryId);
-    return found ?? categories[0];
-  }, [categories, selectedCategoryId]);
 
   const runInfo = runQuery.data?.info;
   const runName = runInfo?.runName ?? runInfo?.run_name;
@@ -171,10 +200,18 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
   if (error || !report) {
     return (
       <ScrollablePageWrapper css={{ padding: theme.spacing.lg }}>
-        <Typography.Text type="danger">Failed to load Insight report.</Typography.Text>
+        <Typography.Text color="error">Failed to load Insight report.</Typography.Text>
       </ScrollablePageWrapper>
     );
   }
+
+  const totalIssues = categories.length;
+  const topIssues = [...categories]
+    .map((c) => ({ name: c.name, count: c.impactedCount || c.traceIds.length || c.evidences.length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  
+  const maxIssueCount = Math.max(...topIssues.map((i) => i.count), 1);
 
   return (
     <ScrollablePageWrapper css={{ padding: theme.spacing.lg, display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
@@ -186,11 +223,136 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
         onBack={handleBack}
       />
 
-      <section css={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: theme.spacing.lg, alignItems: 'start' }}>
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-          <Typography.Text strong css={{ fontSize: 16 }}>
-            Issues
+      <div css={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: theme.spacing.md }}>
+        <div css={{ border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, padding: theme.spacing.md, height: 320, display: 'flex', flexDirection: 'column' }}>
+          <Typography.Title level={3}>Top Categories</Typography.Title>
+          <div css={{ flex: 1, minHeight: 0, marginTop: theme.spacing.sm, overflowY: 'auto' }}>
+            {topIssues.length > 0 ? (
+              topIssues.map((issue) => (
+                <div 
+                  key={issue.name} 
+                  css={{ 
+                    marginBottom: theme.spacing.md,
+                    cursor: 'pointer',
+                    '&:hover .issue-name': {
+                      color: theme.colors.textPrimary,
+                    },
+                    '&:hover .issue-count': {
+                      color: theme.colors.textPrimary,
+                    },
+                    '&:hover .issue-bar': {
+                      backgroundColor: theme.colors.primary,
+                    }
+                  }}
+                  onClick={() => {
+                    // TODO: Open side drawer with issue details
+                    // console.log('Open issue details', issue.name);
+                  }}
+                >
+                  <div css={{ display: 'flex', justifyContent: 'space-between', marginBottom: theme.spacing.xs, gap: theme.spacing.sm }}>
+                    <Typography.Text 
+                      className="issue-name"
+                      color="secondary"
+                      ellipsis 
+                      title={issue.name}
+                      css={{ transition: 'color 0.2s' }}
+                    >
+                      {issue.name}
+                    </Typography.Text>
+                    <Typography.Text 
+                      className="issue-count"
+                      bold 
+                      color="secondary"
+                      css={{ transition: 'color 0.2s' }}
+                    >
+                      {issue.count}
+                    </Typography.Text>
+                  </div>
+                  <div
+                    css={{
+                      height: 8,
+                      backgroundColor: theme.colors.backgroundSecondary,
+                      borderRadius: theme.borders.borderRadiusMd,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      className="issue-bar"
+                      css={{
+                        width: `${(issue.count / maxIssueCount) * 100}%`,
+                        height: '100%',
+                        backgroundColor: theme.colors.blue400,
+                        borderRadius: theme.borders.borderRadiusMd,
+                        transition: 'background-color 0.2s',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div css={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography.Text color="secondary">No data</Typography.Text>
+              </div>
+            )}
+          </div>
+        </div>
+        <div css={{ border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, padding: theme.spacing.md, height: 320 }}>
+          <Typography.Title level={3}>Target traces</Typography.Title>
+          <Typography.Text color="secondary" css={{ marginBottom: theme.spacing.md, display: 'block' }}>
+            Daily count of traces matching filters
           </Typography.Text>
+          <div css={{ height: 'calc(100% - 60px)', width: '100%' }}>
+            <LazyPlot
+              data={[
+                {
+                  type: 'bar',
+                  x: Array.from({ length: 14 }, (_, i) => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - (13 - i));
+                    return d.toISOString().split('T')[0];
+                  }),
+                  y: [45, 52, 38, 65, 48, 55, 62, 70, 58, 65, 75, 82, 95, 88], // Dummy total counts
+                  marker: {
+                    color: Array.from({ length: 14 }, (_, i) => 
+                      i >= 10 ? theme.colors.primary : theme.colors.grey200
+                    ),
+                  },
+                  hoverinfo: 'x+y',
+                },
+              ]}
+              layout={{
+                margin: { t: 10, b: 30, l: 40, r: 10 },
+                xaxis: {
+                  showgrid: false,
+                  zeroline: false,
+                  tickfont: { size: 10, color: theme.colors.textSecondary },
+                  tickformat: '%b %d',
+                },
+                yaxis: {
+                  showgrid: true,
+                  gridcolor: theme.colors.borderDecorative,
+                  zeroline: false,
+                  tickfont: { size: 10, color: theme.colors.textSecondary },
+                },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                autosize: true,
+                bargap: 0.2,
+              }}
+              useResizeHandler
+              style={{ width: '100%', height: '100%' }}
+              config={{ displayModeBar: false }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <Typography.Title level={3} css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          Issues
+          <Typography.Text color="secondary">({totalIssues})</Typography.Text>
+        </Typography.Title>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, marginTop: theme.spacing.sm }}>
           {categories.map((cat) => (
             <IssueCard
               key={cat.id}
@@ -198,60 +360,31 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
               description={cat.description}
               severity={cat.severity}
               traceCount={cat.impactedCount || cat.traceIds.length || cat.evidences.length}
-              selected={selectedCategory?.id === cat.id}
-              onClick={() => setSelectedCategoryId(cat.id)}
             />
           ))}
         </div>
+      </div>
 
-        <div
-          css={{
-            border: `1px solid ${theme.colors.borderDecorative}`,
-            borderRadius: theme.borders.borderRadiusMd,
-            padding: theme.spacing.lg,
-            background: theme.colors.backgroundPrimary,
-          }}
-        >
-          <Typography.Text strong css={{ fontSize: 16 }}>
-            {selectedCategory?.name || 'Issue detail'}
-          </Typography.Text>
-          {selectedCategory?.description && (
-            <Typography.Paragraph css={{ marginTop: theme.spacing.sm }}>
-              {selectedCategory.description}
-            </Typography.Paragraph>
-          )}
-
-          <div css={{ display: 'flex', gap: theme.spacing.md, marginTop: theme.spacing.md, flexWrap: 'wrap' }}>
-            <Tag>{selectedCategory?.impactedCount ?? 0} impacted traces</Tag>
-            {selectedCategory?.severity ? <Tag>Severity: {selectedCategory.severity}</Tag> : null}
+      <div css={{ marginTop: theme.spacing.lg }}>
+        <Typography.Title level={4}>Recommended Actions</Typography.Title>
+        <div css={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: theme.spacing.md }}>
+          <div css={{ border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, padding: theme.spacing.md }}>
+            <Typography.Text bold>Create Automatic LLM Tester</Typography.Text>
+            <Typography.Paragraph color="secondary">Evaluate traces at scale with automated testing to catch issues early.</Typography.Paragraph>
+            <Button componentId="create-tester-btn" disabled>Create Tester</Button>
           </div>
-
-          <div css={{ marginTop: theme.spacing.lg }}>
-            <Typography.Text strong>Sample feedback</Typography.Text>
-            <div css={{ marginTop: theme.spacing.sm }}>
-              <EvidenceChips evidences={selectedCategory?.evidences ?? []} />
-            </div>
+          <div css={{ border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, padding: theme.spacing.md }}>
+            <Typography.Text bold>Provide More Feedback on Traces</Typography.Text>
+            <Typography.Paragraph color="secondary">Add quality scores and comments to improve issue detection accuracy.</Typography.Paragraph>
+            <Button componentId="add-feedback-btn" disabled>Add Feedback</Button>
           </div>
-
-          <div css={{ marginTop: theme.spacing.lg }}>
-            <Typography.Text strong>Trace IDs</Typography.Text>
-            {selectedCategory?.traceIds?.length ? (
-              <div css={{ marginTop: theme.spacing.sm, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {selectedCategory.traceIds.slice(0, 30).map((id) => (
-                  <LegacyTooltip key={id} title={id}>
-                    <Tag>{id}</Tag>
-                  </LegacyTooltip>
-                ))}
-                {selectedCategory.traceIds.length > 30 ? (
-                  <Tag>+{selectedCategory.traceIds.length - 30} more</Tag>
-                ) : null}
-              </div>
-            ) : (
-              <Typography.Text type="secondary">No linked traces</Typography.Text>
-            )}
+          <div css={{ border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, padding: theme.spacing.md }}>
+            <Typography.Text bold>Evaluate Tool Calling Accuracy</Typography.Text>
+            <Typography.Paragraph color="secondary">Analyze how well your LLM is using available tools and functions.</Typography.Paragraph>
+            <Button componentId="eval-tools-btn" disabled>Evaluate Tools</Button>
           </div>
         </div>
-      </section>
+      </div>
     </ScrollablePageWrapper>
   );
 };

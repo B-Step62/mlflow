@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Button,
-  Tag,
   Typography,
   useDesignSystemTheme,
   Table,
@@ -10,8 +9,8 @@ import {
   TableCell,
   CheckCircleIcon,
   WarningIcon,
+  XCircleIcon,
   ZoomMarqueeSelection,
-  FileIcon,
 } from '@databricks/design-system';
 import type { RunEntity } from '../../../types';
 import moment from 'moment';
@@ -74,7 +73,7 @@ const StatusPill: React.FC<{ status?: string }> = ({ status }) => {
     if (label === 'running') {
       return { bg: '#fff5e0', fg: '#5c4b26', icon: <WarningIcon css={{ color: '#5c4b26' }} />, text: 'Running' };
     }
-    return { bg: '#fdecef', fg: '#8c1f2f', icon: <ErrorIcon css={{ color: '#8c1f2f' }} />, text: 'Failed' };
+    return { bg: '#fdecef', fg: '#8c1f2f', icon: <XCircleIcon css={{ color: '#8c1f2f' }} />, text: 'Failed' };
   })();
 
   return (
@@ -116,13 +115,20 @@ const InsightRow: React.FC<{ run: RunEntity; onSelect: (runUuid: string) => void
       onClick={() => onSelect(run.info.runUuid)}
       css={{ cursor: 'pointer', '&:hover': { background: theme.colors.actionPrimaryBackgroundHover }, marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm, marginLeft: theme.spacing.sm, marginRight: theme.spacing.sm}}
     >
-      <TableCell css={{ width: 48, minWidth: 48, maxWidth: 48, textAlign: 'center', paddingLeft: theme.spacing.sm }}>
+      <TableCell css={{ width: 32, minWidth: 32, maxWidth: 32, textAlign: 'center', paddingLeft: theme.spacing.sm }}>
         <ZoomMarqueeSelection css={{ color: theme.colors.textSecondary }} />
       </TableCell>
-      <TableCell>
-        <div css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Typography.Text strong>{name}</Typography.Text>
-        </div>
+      <TableCell css={{ paddingLeft: theme.spacing.md }}>
+        <Button
+          type="link"
+          css={{ padding: 0, height: 'auto', color: theme.colors.primary, fontWeight: 600 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(run.info.runUuid);
+          }}
+        >
+          {name}
+        </Button>
       </TableCell>
       <TableCell>{createdLabel}</TableCell>
       <TableCell>
@@ -179,8 +185,8 @@ export const InsightReportsTable: React.FC<InsightReportsTableProps> = ({ runs, 
       >
         <Table>
           <TableRow isHeader>
-            <TableHeader css={{ width: 48, minWidth: 48, maxWidth: 48, paddingLeft: theme.spacing.lg }} />
-            <TableHeader css={{ paddingLeft: theme.spacing.md }}>Report Name</TableHeader>
+            <TableHeader css={{ width: 32, minWidth: 32, maxWidth: 32 }} />
+            <TableHeader css={{ paddingLeft: theme.spacing.lg }}>Report Name</TableHeader>
             <TableHeader>Created</TableHeader>
             <TableHeader>Issues Found</TableHeader>
             <TableHeader>Traces</TableHeader>
@@ -190,7 +196,7 @@ export const InsightReportsTable: React.FC<InsightReportsTableProps> = ({ runs, 
           {loading && !sorted.length ? (
             [0, 1, 2].map((idx) => (
               <TableRow key={`skeleton-${idx}`}>
-                <TableCell colSpan={6} css={{ paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.lg }}>
+                <TableCell colSpan={7} css={{ paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.lg }}>
                   <Typography.Text color="secondary">Loading…</Typography.Text>
                 </TableCell>
               </TableRow>
