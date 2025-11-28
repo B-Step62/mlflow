@@ -14,7 +14,7 @@ import { TraceInsightsLaunchModal } from './TraceInsightsLaunchModal';
 export const ExperimentViewTraces = ({ experimentIds }: { experimentIds: string[] }) => {
   const { theme } = useDesignSystemTheme();
   const [insightPrompt, setInsightPrompt] = useState('');
-  const [insightModalVisible, setInsightModalVisible] = useState(false);
+  const [insightModalVisible, setInsightModalVisible] = useState(true);
 
   const handleInsightSubmit = useCallback((value: string) => {
     const trimmed = value.trim();

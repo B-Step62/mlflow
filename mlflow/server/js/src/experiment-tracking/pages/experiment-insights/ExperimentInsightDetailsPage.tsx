@@ -339,6 +339,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
         onClose={() => setSelectedIssue(null)}
         issue={selectedIssue}
         experimentId={experimentId}
+        totalTraces={report.traces_total}
       />
 
       <div css={{ marginTop: theme.spacing.lg }}>
