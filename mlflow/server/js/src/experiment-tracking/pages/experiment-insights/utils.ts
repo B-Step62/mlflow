@@ -7,6 +7,9 @@ export const INSIGHT_CLUSTER_ID_TAG = 'mlflow.insights.cluster_id';
 export const INSIGHT_TRACE_COUNT_TAG = 'mlflow.insights.trace_count';
 export const INSIGHT_FILTERS_TAG = 'mlflow.insights.filters';
 export const INSIGHT_CLUSTER_ARTIFACT_PATH = 'mlflow_insights_cluster_details.json';
+export const INSIGHT_REPORT_ARTIFACT_PATH = 'insight_report.json';
+export const INSIGHT_RUN_TYPE_TAG = 'mlflow.runType';
+export const INSIGHT_RUN_TYPE_VALUE = 'INSIGHTS';
 export const INSIGHT_SUMMARY_ASSESSMENT_NAME = 'summary';
 
 export type InsightClusterNode = {

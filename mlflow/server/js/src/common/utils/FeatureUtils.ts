@@ -99,7 +99,8 @@ export const shouldEnableTracesV3View = () => {
 };
 
 export const shouldEnableTraceInsights = () => {
-  return false;
+  // Temporarily enable Insights tab while the feature is in active development/demo.
+  return true;
 };
 
 export const shouldEnableTracesSyncUI = () => {
