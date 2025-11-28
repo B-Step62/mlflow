@@ -20,6 +20,7 @@ interface TracesV3ContentProps {
   experimentId: string;
   endpointName?: string;
   timeRange: { startTime: string | undefined; endTime: string | undefined };
+  hideAssessments?: boolean;
 }
 
 const TracesV3Content = ({
@@ -28,6 +29,7 @@ const TracesV3Content = ({
   experimentId,
   endpointName,
   timeRange,
+  hideAssessments,
 }: TracesV3ContentProps) => {
   if (viewState === 'logs') {
     return (
@@ -36,6 +38,7 @@ const TracesV3Content = ({
         // TODO: Remove this once the endpointName is not needed
         endpointName={endpointName || ''}
         timeRange={timeRange}
+        hideAssessments={hideAssessments}
       />
     );
   }
@@ -45,9 +48,13 @@ const TracesV3Content = ({
 const TracesV3ViewImpl = ({
   experimentIds,
   isLoadingExperiment,
+  hideToolbar,
+  hideAssessments,
 }: {
   experimentIds: string[];
   isLoadingExperiment?: boolean;
+  hideToolbar?: boolean;
+  hideAssessments?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [monitoringFilters, _setMonitoringFilters] = useMonitoringFilters();
@@ -75,15 +82,18 @@ const TracesV3ViewImpl = ({
         overflowY: 'hidden',
       }}
     >
-      <TracesV3Toolbar
-        // prettier-ignore
-        viewState={viewState}
-      />
+      {!hideToolbar && (
+        <TracesV3Toolbar
+          // prettier-ignore
+          viewState={viewState}
+        />
+      )}
       <TracesV3Content
         // comment for copybara formatting
         viewState={viewState}
         experimentId={experimentId}
         timeRange={timeRange}
+        hideAssessments={hideAssessments}
       />
     </div>
   );
@@ -92,13 +102,22 @@ const TracesV3ViewImpl = ({
 export const TracesV3View = ({
   experimentIds,
   isLoadingExperiment,
+  hideToolbar,
+  hideAssessments,
 }: {
   experimentIds: string[];
   isLoadingExperiment?: boolean;
+  hideToolbar?: boolean;
+  hideAssessments?: boolean;
 }) => (
   <TracesV3PageWrapper>
     <MonitoringConfigProvider>
-      <TracesV3ViewImpl experimentIds={experimentIds} isLoadingExperiment={isLoadingExperiment} />
+      <TracesV3ViewImpl
+        experimentIds={experimentIds}
+        isLoadingExperiment={isLoadingExperiment}
+        hideToolbar={hideToolbar}
+        hideAssessments={hideAssessments}
+      />
     </MonitoringConfigProvider>
   </TracesV3PageWrapper>
 );

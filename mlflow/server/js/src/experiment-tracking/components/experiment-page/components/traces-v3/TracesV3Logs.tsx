@@ -62,12 +62,14 @@ const TracesV3LogsImpl = React.memo(
     timeRange,
     isLoadingExperiment,
     loggedModelId,
+    hideAssessments,
   }: {
     experimentId: string;
     endpointName: string;
     timeRange?: { startTime: string | undefined; endTime: string | undefined };
     isLoadingExperiment?: boolean;
     loggedModelId?: string;
+    hideAssessments?: boolean;
   }) => {
     const makeHtmlFromMarkdown = useMarkdownConverter();
     const intl = useIntl();
@@ -116,7 +118,7 @@ const TracesV3LogsImpl = React.memo(
 
         return allColumns.filter(
           (col) =>
-            col.type === TracesTableColumnType.ASSESSMENT ||
+            (!hideAssessments && col.type === TracesTableColumnType.ASSESSMENT) ||
             col.type === TracesTableColumnType.EXPECTATION ||
             (inputHasContent && col.type === TracesTableColumnType.INPUT) ||
             (responseHasContent && col.type === TracesTableColumnType.TRACE_INFO && col.id === RESPONSE_COLUMN_ID) ||
@@ -128,7 +130,7 @@ const TracesV3LogsImpl = React.memo(
             col.type === TracesTableColumnType.INTERNAL_MONITOR_REQUEST_TIME,
         );
       },
-      [evaluatedTraces],
+      [evaluatedTraces, hideAssessments],
     );
 
     const { selectedColumns, toggleColumns, setSelectedColumns } = useSelectedColumns(

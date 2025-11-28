@@ -40,7 +40,7 @@ type InsightIssueDrawerProps = {
 };
 
 const TracesComponent = ({ experimentIds }: { experimentIds: string[] }) => {
-  return <TracesV3View experimentIds={experimentIds} />;
+  return <TracesV3View experimentIds={experimentIds} hideToolbar hideAssessments />;
 };
 
 export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
@@ -68,7 +68,7 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
             <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
                 <SeverityIcon severity={issue.severity} />
-                <Typography.Title level={3} css={{ marginTop: '0.5rem' }}>
+                <Typography.Title level={2} css={{ marginTop: '0.5rem' }}>
                   {issue.name}
                 </Typography.Title>
               </div>

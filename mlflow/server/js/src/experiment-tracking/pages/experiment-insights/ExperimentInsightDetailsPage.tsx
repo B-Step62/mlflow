@@ -10,6 +10,8 @@ import {
   BookIcon,
   QuestionMarkIcon,
   ChevronRightIcon,
+  SchemaIcon,
+  SpeechBubbleIcon,
 } from '@databricks/design-system';
 import { ScrollablePageWrapper } from '../../../common/components/ScrollablePageWrapper';
 import { useInsightReport } from './hooks/useInsightReport';
@@ -61,15 +63,16 @@ const IssueCard: React.FC<{
   description?: string;
   severity?: string;
   traceCount: number;
+  evidences: { assessment_id?: string; trace_id?: string }[];
   onClick?: () => void;
-}> = ({ name, description, severity, traceCount, onClick }) => {
+}> = ({ name, description, severity, traceCount, evidences, onClick }) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div
       onClick={onClick}
       css={{
         display: 'grid',
-        gridTemplateColumns: 'auto 1fr auto',
+        gridTemplateColumns: 'auto 1fr auto auto',
         gap: theme.spacing.md,
         alignItems: 'center',
         padding: theme.spacing.md,
@@ -98,10 +101,16 @@ const IssueCard: React.FC<{
           {description}
         </Typography.Text>
         ) : null}
-        <div css={{ display: 'flex', gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
-          <Tag componentId="insight-issue-tracecount">{traceCount.toLocaleString()} traces</Tag>
-          {severity ? <Tag componentId="insight-issue-severity">{severity}</Tag> : null}
-        </div>
+      </div>
+      <div>
+        <Tag componentId="insight-issue-tracecount">
+          <SchemaIcon css={{ width: 14, height: 14, fontSize: 14, color: theme.colors.textSecondary, marginRight: theme.spacing.xs }} />{traceCount.toLocaleString()}
+        </Tag>
+        {evidences.length > 0 && (
+          <Tag componentId="insight-issue-evidencecount">
+            <SpeechBubbleIcon css={{ width: 14, height: 14, fontSize: 14, color: theme.colors.textSecondary, marginRight: theme.spacing.xs }} /> {evidences.length}
+          </Tag>
+        )}
       </div>
       <div css={{ color: theme.colors.textSecondary }}>›</div>
     </div>
@@ -249,7 +258,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
                       css={{
                         width: `${(issue.count / maxIssueCount) * 100}%`,
                         height: '100%',
-                        backgroundColor: theme.colors.blue400,
+                        backgroundColor: theme.colors.blue500,
                         borderRadius: theme.borders.borderRadiusMd,
                         transition: 'background-color 0.2s',
                       }}
@@ -328,6 +337,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
               description={cat.description}
               severity={cat.severity}
               traceCount={cat.impactedCount || cat.traceIds.length || cat.evidences.length}
+              evidences={cat.evidences}
               onClick={() => setSelectedIssue(cat)}
             />
           ))}
