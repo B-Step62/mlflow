@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Drawer,
   Typography,
@@ -10,6 +11,8 @@ import {
   LightningIcon,
   UserGroupIcon,
   SchemaIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@databricks/design-system';
 import { SeverityIcon } from './SeverityIcon';
 import { FeedbackBubble } from './FeedbackBubble';
@@ -34,6 +37,30 @@ const TracesComponent = ({ experimentIds }: { experimentIds: string[] }) => {
   return <TracesV3View experimentIds={experimentIds} hideToolbar hideAssessments />;
 };
 
+const slideInRight = keyframes`
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
+
+const slideInLeft = keyframes`
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
+
+const PAGE_SIZE = 3;
+
 export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
   isOpen,
   onClose,
@@ -42,6 +69,8 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
   totalTraces = 10,
 }) => {
   const { theme } = useDesignSystemTheme();
+  const [currentPage, setCurrentPage] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
 
   if (!issue) {
     return null;
@@ -49,6 +78,23 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
 
   const traceCount = issue.impactedCount || issue.traceIds?.length || 0;
   const percentage = totalTraces > 0 ? Math.round((traceCount / totalTraces) * 100) : 0;
+
+  const evidences = issue.evidences || [];
+  const totalPages = Math.ceil(evidences.length / PAGE_SIZE);
+  const visibleEvidences = evidences.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  
+  const start = currentPage * PAGE_SIZE + 1;
+  const end = Math.min((currentPage + 1) * PAGE_SIZE, evidences.length);
+
+  const handlePrevPage = () => {
+    setSlideDirection('left');
+    setCurrentPage((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleNextPage = () => {
+    setSlideDirection('right');
+    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
+  };
 
   return (
     <Drawer.Root modal={false} open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -105,7 +151,7 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
                   Impacted Traces
                 </Typography.Title>
               </div>
-              <div css={{ marginBottom: theme.spacing.md }}>
+              <div css={{ marginBottom: theme.spacing.md, paddingLeft: theme.spacing.md, paddingRight: theme.spacing.md }}>
                 <span css={{ fontSize: 24, fontWeight: 'bold' }}>{traceCount}</span>
                 <span css={{ color: theme.colors.textSecondary, marginLeft: theme.spacing.xs }}>
                   / {totalTraces} ({percentage}%)
@@ -130,104 +176,78 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
                   }}
                 />
               </div>
-              
-              <Typography.Title level={4} css={{ marginBottom: theme.spacing.md }}>
-                Subcategories
-              </Typography.Title>
-              
-              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-                <div
-                  css={{
-                    padding: theme.spacing.sm,
-                    border: `1px solid ${theme.colors.borderDecorative}`,
-                    borderRadius: theme.borders.borderRadiusMd,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    '&:hover': {
-                        backgroundColor: theme.colors.actionDefaultBackgroundHover,
-                    }
-                  }}
-                >
-                    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                        <SeverityIcon severity="high" />
-                        <Typography.Text>API Version Mismatches</Typography.Text>
-                    </div>
-                    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                        <Typography.Text color="secondary">45 traces</Typography.Text>
-                        <Typography.Text color="secondary">›</Typography.Text>
-                    </div>
-                </div>
-                <div
-                  css={{
-                    padding: theme.spacing.sm,
-                    border: `1px solid ${theme.colors.borderDecorative}`,
-                    borderRadius: theme.borders.borderRadiusMd,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                     '&:hover': {
-                        backgroundColor: theme.colors.actionDefaultBackgroundHover,
-                    }
-                  }}
-                >
-                    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                        <SeverityIcon severity="medium" />
-                        <Typography.Text>Deprecated Feature References</Typography.Text>
-                    </div>
-                    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                        <Typography.Text color="secondary">38 traces</Typography.Text>
-                        <Typography.Text color="secondary">›</Typography.Text>
-                    </div>
-                </div>
-                 <div
-                  css={{
-                    padding: theme.spacing.sm,
-                    border: `1px solid ${theme.colors.borderDecorative}`,
-                    borderRadius: theme.borders.borderRadiusMd,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                     '&:hover': {
-                        backgroundColor: theme.colors.actionDefaultBackgroundHover,
-                    }
-                  }}
-                >
-                    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                        <SeverityIcon severity="high" />
-                        <Typography.Text>Pricing Information Out of Date</Typography.Text>
-                    </div>
-                    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                        <Typography.Text color="secondary">41 traces</Typography.Text>
-                         <Typography.Text color="secondary">›</Typography.Text>
-                    </div>
-                </div>
-              </div>
             </div>
           </div>
 
           {/* Sample Feedback */}
           <div>
-            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
-              <UserGroupIcon css={{ color: theme.colors.textSecondary, width: 20, height: 20 }} />
-              <Typography.Title level={4} css={{ marginBottom: 0 }}>Sample Feedbacks</Typography.Title>
+            <div
+              css={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: theme.spacing.sm,
+              }}
+            >
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <UserGroupIcon css={{ color: theme.colors.textSecondary, width: 20, height: 20 }} />
+                <Typography.Title level={4} css={{ marginBottom: 0 }}>
+                  Feedbacks
+                </Typography.Title>
+              </div>
+              {evidences.length > 0 && (
+                <Typography.Text color="secondary">
+                  (Showing {start}-{end} of {evidences.length})
+                </Typography.Text>
+              )}
             </div>
-             <div css={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: theme.spacing.md, marginTop: theme.spacing.sm }}>
-               {issue.evidences && issue.evidences.length > 0 ? (
-                 issue.evidences.slice(0, 3).map((evidence, idx) => (
-                   <FeedbackBubble
-                     key={`${evidence.trace_id}-${idx}`}
-                     assessmentId={evidence.assessment_id}
-                     traceId={evidence.trace_id}
-                   />
-                 ))
-               ) : (
-                 <Typography.Text color="secondary">No sample feedback available.</Typography.Text>
-               )}
-             </div>
+            
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              {totalPages > 1 && (
+                <Button
+                  componentId="feedback-prev-btn"
+                  icon={<ChevronLeftIcon />}
+                  size="small"
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 0}
+                  type="tertiary"
+                />
+              )}
+              
+              <div
+                key={currentPage}
+                css={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                  gap: theme.spacing.md,
+                  flex: 1,
+                  animation: `${slideDirection === 'right' ? slideInRight : slideInLeft} 0.3s ease-out`,
+                }}
+              >
+                {visibleEvidences.length > 0 ? (
+                  visibleEvidences.map((evidence, idx) => (
+                    <FeedbackBubble
+                      key={`${evidence.trace_id}-${idx}`}
+                      assessmentId={evidence.assessment_id}
+                      traceId={evidence.trace_id}
+                    />
+                  ))
+                ) : (
+                  <Typography.Text color="secondary">No sample feedback available.</Typography.Text>
+                )}
+              </div>
+
+              {totalPages > 1 && (
+                <Button
+                  componentId="feedback-next-btn"
+                  icon={<ChevronRightIcon />}
+                  size="small"
+                  onClick={handleNextPage}
+                  disabled={currentPage === totalPages - 1}
+                  type="tertiary"
+                />
+              )}
+            </div>
           </div>
 
           {/* Traces Table */}
