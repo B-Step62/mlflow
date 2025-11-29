@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { keyframes } from '@emotion/react';
 import {
   Drawer,
@@ -17,6 +17,8 @@ import {
 import { SeverityIcon } from './SeverityIcon';
 import { FeedbackBubble } from './FeedbackBubble';
 import { TracesV3View } from '../../../components/experiment-page/components/traces-v3/TracesV3View';
+import type { InsightReportEvidence } from '../hooks/useInsightReport';
+import { TracesTableColumnGroup, FilterOperator, type TableFilter } from '@databricks/web-shared/genai-traces-table';
 
 type InsightIssueDrawerProps = {
   isOpen: boolean;
@@ -27,14 +29,17 @@ type InsightIssueDrawerProps = {
     severity?: string;
     impactedCount?: number;
     traceIds?: string[];
-    evidences?: { assessment_id?: string; trace_id?: string }[];
+    evidences?: InsightReportEvidence[];
+    id?: string;
+    category_id?: string;
   };
   experimentId: string;
+  insightId?: string;
   totalTraces?: number;
 };
 
-const TracesComponent = ({ experimentIds }: { experimentIds: string[] }) => {
-  return <TracesV3View experimentIds={experimentIds} hideToolbar hideAssessments />;
+const TracesComponent = ({ experimentIds, filters }: { experimentIds: string[]; filters?: TableFilter[] }) => {
+  return <TracesV3View experimentIds={experimentIds} hideToolbar hideAssessments initialFilters={filters} />;
 };
 
 const slideInRight = keyframes`
@@ -66,11 +71,26 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
   onClose,
   issue,
   experimentId,
+  insightId,
   totalTraces = 10,
 }) => {
   const { theme } = useDesignSystemTheme();
   const [currentPage, setCurrentPage] = useState(0);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
+
+  const filters: TableFilter[] = useMemo(() => {
+    if (insightId && issue?.category_id) {
+      return [
+        {
+          column: TracesTableColumnGroup.TAG,
+          key: `mlflow.insights.${insightId}.${issue.category_id}`,
+          operator: FilterOperator.EQUALS,
+          value: '1',
+        },
+      ];
+    }
+    return [];
+  }, [insightId, issue?.category_id]);
 
   if (!issue) {
     return null;
@@ -257,7 +277,7 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
               <Typography.Title level={3} css={{ marginBottom: 0 }}>Traces</Typography.Title>
             </div>
             <div css={{ flex: 1, overflow: 'hidden' }}>
-               <TracesComponent experimentIds={[experimentId]} />
+               <TracesComponent experimentIds={[experimentId]} filters={filters} />
             </div>
           </div>
         </div>
@@ -265,4 +285,3 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
     </Drawer.Root>
   );
 };
-

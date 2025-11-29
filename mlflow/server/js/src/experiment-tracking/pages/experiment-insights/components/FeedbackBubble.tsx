@@ -39,7 +39,7 @@ export const FeedbackBubble: React.FC<FeedbackBubbleProps> = ({ assessmentId, tr
           if (found) {
             setAssessment(found);
           } else {
-             setError('Assessment not found in trace');
+             setError('Assessment ' + assessmentId + ' not found for trace ' + traceId);
           }
         } else {
            setError('Trace info or assessments not found');

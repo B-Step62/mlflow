@@ -45,16 +45,6 @@ class GetSpanTool(JudgeTool):
                             "type": "string",
                             "description": "The ID of the span to retrieve",
                         },
-                        "attributes_to_fetch": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "List of specific attributes to fetch from the span. If specified, "
-                                "only these attributes will be returned. If not specified, all "
-                                "attributes are returned. It is recommended to use list_spans "
-                                "first to see available attribute names, then select relevant ones."
-                            ),
-                        },
                         "max_content_length": {
                             "type": "integer",
                             "description": "Maximum content size in bytes (default: 100000)",
@@ -74,7 +64,6 @@ class GetSpanTool(JudgeTool):
         self,
         trace: Trace,
         span_id: str,
-        attributes_to_fetch: list[str] | None = None,
         max_content_length: int = 100000,
         page_token: str | None = None,
     ) -> SpanResult:
@@ -84,7 +73,6 @@ class GetSpanTool(JudgeTool):
         Args:
             trace: The MLflow trace object to analyze
             span_id: The ID of the span to retrieve
-            attributes_to_fetch: List of specific attributes to fetch (None for all)
             max_content_length: Maximum content size in bytes to return
             page_token: Token to retrieve the next page (offset in bytes)
 
@@ -111,13 +99,6 @@ class GetSpanTool(JudgeTool):
             )
 
         span_dict = target_span.to_dict()
-        if attributes_to_fetch is not None and span_dict.get("attributes"):
-            filtered_attributes = {}
-            for attr in attributes_to_fetch:
-                if attr in span_dict["attributes"]:
-                    filtered_attributes[attr] = span_dict["attributes"][attr]
-            span_dict["attributes"] = filtered_attributes
-
         full_content = json.dumps(span_dict, default=str, indent=2)
         total_size = len(full_content.encode("utf-8"))
         start_offset = parse_page_token(page_token)

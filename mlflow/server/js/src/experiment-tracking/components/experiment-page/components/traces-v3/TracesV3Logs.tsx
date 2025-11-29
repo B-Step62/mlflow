@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { isEmpty as isEmptyFn } from 'lodash';
 import { Empty, ParagraphSkeleton, DangerIcon } from '@databricks/design-system';
-import type { TracesTableColumn, TraceActions, GetTraceFunction } from '@databricks/web-shared/genai-traces-table';
+import type { TracesTableColumn, TraceActions, GetTraceFunction, TableFilter } from '@databricks/web-shared/genai-traces-table';
 import { shouldUseTracesV4API, useUnifiedTraceTagsModal } from '@databricks/web-shared/model-trace-explorer';
 import {
   EXECUTION_DURATION_COLUMN_ID,
@@ -63,6 +63,7 @@ const TracesV3LogsImpl = React.memo(
     isLoadingExperiment,
     loggedModelId,
     hideAssessments,
+    initialFilters,
   }: {
     experimentId: string;
     endpointName: string;
@@ -70,6 +71,7 @@ const TracesV3LogsImpl = React.memo(
     isLoadingExperiment?: boolean;
     loggedModelId?: string;
     hideAssessments?: boolean;
+    initialFilters?: TableFilter[];
   }) => {
     const makeHtmlFromMarkdown = useMarkdownConverter();
     const intl = useIntl();
@@ -111,6 +113,12 @@ const TracesV3LogsImpl = React.memo(
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [filters, setFilters] = useFilters();
     const queryClient = useQueryClient();
+
+    useEffect(() => {
+      if (initialFilters) {
+        setFilters(initialFilters);
+      }
+    }, [initialFilters, setFilters]);
 
     const defaultSelectedColumns = useCallback(
       (allColumns: TracesTableColumn[]) => {

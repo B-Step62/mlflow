@@ -21,6 +21,7 @@ interface TracesV3ContentProps {
   endpointName?: string;
   timeRange: { startTime: string | undefined; endTime: string | undefined };
   hideAssessments?: boolean;
+  initialFilters?: any[]; // Using any[] to avoid importing TableFilter here if possible, or import it
 }
 
 const TracesV3Content = ({
@@ -30,6 +31,7 @@ const TracesV3Content = ({
   endpointName,
   timeRange,
   hideAssessments,
+  initialFilters,
 }: TracesV3ContentProps) => {
   if (viewState === 'logs') {
     return (
@@ -39,6 +41,7 @@ const TracesV3Content = ({
         endpointName={endpointName || ''}
         timeRange={timeRange}
         hideAssessments={hideAssessments}
+        initialFilters={initialFilters}
       />
     );
   }
@@ -50,11 +53,13 @@ const TracesV3ViewImpl = ({
   isLoadingExperiment,
   hideToolbar,
   hideAssessments,
+  initialFilters,
 }: {
   experimentIds: string[];
   isLoadingExperiment?: boolean;
   hideToolbar?: boolean;
   hideAssessments?: boolean;
+  initialFilters?: any[];
 }) => {
   const { theme } = useDesignSystemTheme();
   const [monitoringFilters, _setMonitoringFilters] = useMonitoringFilters();
@@ -94,6 +99,7 @@ const TracesV3ViewImpl = ({
         experimentId={experimentId}
         timeRange={timeRange}
         hideAssessments={hideAssessments}
+        initialFilters={initialFilters}
       />
     </div>
   );
@@ -104,11 +110,13 @@ export const TracesV3View = ({
   isLoadingExperiment,
   hideToolbar,
   hideAssessments,
+  initialFilters,
 }: {
   experimentIds: string[];
   isLoadingExperiment?: boolean;
   hideToolbar?: boolean;
   hideAssessments?: boolean;
+  initialFilters?: any[];
 }) => (
   <TracesV3PageWrapper>
     <MonitoringConfigProvider>
@@ -117,6 +125,7 @@ export const TracesV3View = ({
         isLoadingExperiment={isLoadingExperiment}
         hideToolbar={hideToolbar}
         hideAssessments={hideAssessments}
+        initialFilters={initialFilters}
       />
     </MonitoringConfigProvider>
   </TracesV3PageWrapper>

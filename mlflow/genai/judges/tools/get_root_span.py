@@ -42,16 +42,6 @@ class GetRootSpanTool(JudgeTool):
                 parameters=ToolParamsSchema(
                     type="object",
                     properties={
-                        "attributes_to_fetch": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "List of specific attributes to fetch from the span. If specified, "
-                                "only these attributes will be returned. If not specified, all "
-                                "attributes are returned. Use list_spans first to see available "
-                                "attribute names, then select only the relevant ones."
-                            ),
-                        },
                         "max_content_length": {
                             "type": "integer",
                             "description": "Maximum content size in bytes (default: 100000)",
@@ -70,7 +60,6 @@ class GetRootSpanTool(JudgeTool):
     def invoke(
         self,
         trace: Trace,
-        attributes_to_fetch: list[str] | None = None,
         max_content_length: int = 100000,
         page_token: str | None = None,
     ) -> SpanResult:
@@ -79,7 +68,6 @@ class GetRootSpanTool(JudgeTool):
 
         Args:
             trace: The MLflow trace object to analyze
-            attributes_to_fetch: List of specific attributes to fetch (None for all)
             max_content_length: Maximum content size in bytes to return
             page_token: Token to retrieve the next page (offset in bytes)
 
@@ -105,6 +93,4 @@ class GetRootSpanTool(JudgeTool):
                 error="No root span found in trace",
             )
 
-        return GetSpanTool().invoke(
-            trace, root_span_id, attributes_to_fetch, max_content_length, page_token
-        )
+        return GetSpanTool().invoke(trace, root_span_id, max_content_length, page_token)

@@ -4,12 +4,15 @@ import { getArtifactChunkedText, getArtifactLocationUrl } from '../../../../comm
 import { INSIGHT_REPORT_ARTIFACT_PATH } from '../utils';
 
 export type InsightReportEvidence = {
+  type?: string;
   assessment_id?: string;
   trace_id?: string;
+  fields?: string[];
 };
 
 export type InsightReportCategory = {
   id: string;
+  category_id?: string;
   name: string;
   description?: string;
   severity?: string;
@@ -39,12 +42,34 @@ const normalizeCategory = (raw: any, index: number): InsightReportCategory => {
   const traceIds = asStringArray(raw?.trace_ids ?? raw?.traceIds);
   const evidencesRaw: any[] = raw?.evidences ?? raw?.feedback_ids ?? [];
   const evidences: InsightReportEvidence[] = Array.isArray(evidencesRaw)
-    ? evidencesRaw.map((item) => ({ assessment_id: item?.assessment_id, trace_id: item?.trace_id }))
+    ? evidencesRaw.map((item) => {
+        const base: InsightReportEvidence =
+          item?.type === 'assessment'
+            ? {
+                type: item.type,
+                assessment_id: item.id ?? item.assessment_id,
+                trace_id: item.trace_id,
+                fields: Array.isArray(item.fields) ? item.fields : undefined,
+              }
+            : {
+                type: item?.type,
+                assessment_id: item?.assessment_id ?? item?.id,
+                trace_id: item?.trace_id,
+                fields: Array.isArray(item?.fields) ? item.fields : undefined,
+              };
+        if (!base.trace_id && traceIds.length > 0) {
+          base.trace_id = traceIds[0];
+        }
+        return base;
+      })
     : [];
   const impactedCount = traceIds.length || evidences.length;
+  console.log('raw', raw);
+  console.log('traceIds', traceIds);
 
   return {
     id: raw?.id ? String(raw.id) : `cat-${index + 1}`,
+    category_id: raw?.category_id ? String(raw.category_id) : undefined,
     name: raw?.name ?? `Issue ${index + 1}`,
     description: raw?.description,
     severity: raw?.severity,
@@ -55,6 +80,7 @@ const normalizeCategory = (raw: any, index: number): InsightReportCategory => {
 };
 
 const normalizeReport = (raw: any): InsightReport => {
+  console.log('raw', raw);
   const categoriesRaw: any[] = Array.isArray(raw?.categories) ? raw.categories : [];
   return {
     title: raw?.title,

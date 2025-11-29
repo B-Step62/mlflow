@@ -14,7 +14,7 @@ import {
   SpeechBubbleIcon,
 } from '@databricks/design-system';
 import { ScrollablePageWrapper } from '../../../common/components/ScrollablePageWrapper';
-import { useInsightReport } from './hooks/useInsightReport';
+import { useInsightReport, type InsightReportEvidence } from './hooks/useInsightReport';
 import { useQuery } from '@tanstack/react-query';
 import { MlflowService } from '../../sdk/MlflowService';
 import Utils from '../../../common/utils/Utils';
@@ -63,7 +63,7 @@ const IssueCard: React.FC<{
   description?: string;
   severity?: string;
   traceCount: number;
-  evidences: { assessment_id?: string; trace_id?: string }[];
+  evidences: InsightReportEvidence[];
   onClick?: () => void;
 }> = ({ name, description, severity, traceCount, evidences, onClick }) => {
   const { theme } = useDesignSystemTheme();
@@ -117,7 +117,7 @@ const IssueCard: React.FC<{
   );
 };
 
-const EvidenceChips: React.FC<{ evidences: { assessment_id?: string; trace_id?: string }[] }> = ({ evidences }) => {
+const EvidenceChips: React.FC<{ evidences: InsightReportEvidence[] }> = ({ evidences }) => {
   if (!evidences.length) {
     return <Typography.Text color="secondary">No feedback samples</Typography.Text>;
   }
@@ -349,6 +349,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
         onClose={() => setSelectedIssue(null)}
         issue={selectedIssue}
         experimentId={experimentId}
+        insightId={insightId}
         totalTraces={report.traces_total}
       />
 
