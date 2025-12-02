@@ -6,80 +6,139 @@ sidebar_label: Databricks
 import TilesGrid from "@site/src/components/TilesGrid";
 import TileCard from "@site/src/components/TileCard";
 import { Activity, FileText, Gauge } from "lucide-react";
+import ImageBox from "@site/src/components/ImageBox";
+import StepHeader from "@site/src/components/StepHeader";
+import ServerSetup from "@site/src/content/setup_server_slim.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+import TabsWrapper from "@site/src/components/TabsWrapper";
+import { Users, BookOpen, Scale } from "lucide-react";
 
 # Tracing Databricks
 
-![Databricks Tracing via autolog](/images/llms/deepseek/deepseek-tracing-agent.png)
+[MLflow Tracing](../../) provides automatic tracing capability for Databricks models through the OpenAI SDK integration. Since Databricks serves models via an OpenAI-compatible API format, you can use `mlflow.openai.autolog()` to trace interactions with Databricks models.
 
-[MLflow Tracing](../../) provides automatic tracing capability for Databricks models through the OpenAI SDK integration. Since Databricks uses an OpenAI-compatible API format, you can use `mlflow.openai.autolog()` to trace interactions with Databricks models.
-
-:::note What is Databricks?
-Databricks provides DBRX and other foundation models via Model Serving with an OpenAI-style REST interface.
+:::info What is Databricks?
+<u>[Databricks](https://www.databricks.com/)</u> provides DBRX and other foundation models via Model Serving with an OpenAI-style REST interface.
 :::
 
-```python
-import mlflow
+:::tip Why use MLflow with Databricks?
 
-# Enable
-mlflow.openai.autolog()
-```
+MLflow provides comprehensive observability for your applications using Databricks-hosted LLMs. Traces are also seamlessly integrated with MLflow's prompt management, evaluation, and monitoring capabilities.
+
+:::
 
 MLflow trace automatically captures the following information about Databricks calls:
 
 - Prompts and completion responses
 - Latencies
+- Token usage
 - Model name
-- Additional metadata such as `temperature`, `max_tokens`, if specified.
+- Additional metadata such as `temperature`, `max_completion_tokens`, if specified.
 - Function calling if returned in the response
+- Built-in tools such as web search, file search, computer use, etc.
 - Any exception if raised
 
-## Supported APIs
+## Getting Started
 
-MLflow supports automatic tracing for the following Databricks APIs through the OpenAI integration:
+<StepHeader number={1} title="Install dependencies" />
 
-| Chat Completion | Function Calling | Streaming | Async    |
-| --------------- | ---------------- | --------- | -------- |
-| ✅              | ✅               | ✅ (*1)  | ✅ (*2) |
+<TabsWrapper>
+<Tabs>
+  <TabItem value="python" label="Python" default>
 
-(*1) Streaming support requires MLflow 2.15.0 or later.
-(*2) Async support requires MLflow 2.21.0 or later.
-
-To request support for additional APIs, please open a [feature request](https://github.com/mlflow/mlflow/issues/new?assignees=&labels=enhancement&projects=&template=feature_request_template.yaml) on GitHub.
-
-## Basic Example
-
-```python
-import openai
-import mlflow
-
-# Enable auto-tracing for OpenAI (works with Databricks)
-mlflow.openai.autolog()
-
-# Optional: Set a tracking URI and an experiment
-mlflow.set_tracking_uri("http://localhost:5000")
-mlflow.set_experiment("Databricks")
-
-# Initialize the OpenAI client with Databricks API endpoint
-client = openai.OpenAI(
-    base_url="https://api.databricks.com", api_key="<your_$slug_api_key>"
-)
-
-messages = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "What is the capital of France?"},
-]
-
-response = client.chat.completions.create(
-    model="databricks-chat",
-    messages=messages,
-    temperature=0.1,
-    max_tokens=100,
-)
+```bash
+pip install mlflow openai
 ```
 
-The above example should generate a trace in the `Databricks` experiment in the MLflow UI:
+  </TabItem>
+  <TabItem value="typescript" label="JS / TS">
 
-![Databricks Tracing](/images/llms/deepseek/deepseek-tracing.png)
+```bash
+npm install mlflow-openai openai
+```
+
+  </TabItem>
+</Tabs>
+</TabsWrapper>
+
+<StepHeader number={2} title="Start MLflow server" />
+
+<ServerSetup />
+
+<StepHeader number={3} title="Enable tracing and call Databricks" />
+
+<TabsWrapper>
+<Tabs>
+  <TabItem value="python" label="Python" default>
+
+    ```python
+    import openai
+    import mlflow
+
+    # Enable auto-tracing for OpenAI (works with Databricks)
+    mlflow.openai.autolog()
+
+    # Optional: Set a tracking URI and an experiment
+    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_experiment("Databricks")
+
+    # Initialize the OpenAI client with Databricks API endpoint
+    client = openai.OpenAI(
+        base_url="https://api.databricks.com",
+        api_key="<your_databricks_api_key>",
+    )
+
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is the capital of France?"},
+    ]
+
+    response = client.chat.completions.create(
+        model="<your_databricks_model>",
+        messages=messages,
+        temperature=0.1,
+        max_tokens=100,
+    )
+    ```
+
+  </TabItem>
+  <TabItem value="typescript" label="JS / TS">
+
+    ```typescript
+    import { OpenAI } from "openai";
+    import { tracedOpenAI } from "mlflow-openai";
+
+    // Wrap the OpenAI client and point to Databricks endpoint
+    const client = tracedOpenAI(
+      new OpenAI({
+        baseURL: "https://api.databricks.com",
+        apiKey: "<your_databricks_api_key>",
+      })
+    );
+
+    const response = await client.chat.completions.create({
+      model: "<your_databricks_model>",
+      messages: [
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: "What is the capital of France?" },
+      ],
+      temperature: 0.1,
+      max_tokens: 100,
+    });
+    ```
+
+  </TabItem>
+</Tabs>
+</TabsWrapper>
+
+<StepHeader number={4} title="View traces in MLflow UI" />
+
+Browse to your MLflow UI (for example, http://localhost:5000) and open the `Databricks` experiment to see traces for the calls above.
+
+<ImageBox src="/images/llms/tracing/basic-openai-trace.png" alt="Databricks Tracing" />
+
+-> View <u>[Next Steps](#next-steps)</u> for learning about more MLflow features like user feedback tracking, prompt management, and evaluation.
 
 ## Streaming and Async Support
 
@@ -87,177 +146,117 @@ MLflow supports tracing for streaming and async Databricks APIs. Visit the [Open
 
 ## Combine with frameworks or manual tracing
 
-MLflow Tracing automatically captures function calling responses from Databricks models through the OpenAI SDK. You can combine Databricks with agent frameworks (e.g., LangChain, LangGraph) or wrap your own tools and business logic using manual spans.
+The automatic tracing capability in MLflow is designed to work seamlessly with the [Manual Tracing SDK](/genai/tracing/app-instrumentation/manual-tracing) or multi-framework integrations. The examples below show Python (manual span) and JS/TS (manual span) at the same level of complexity.
 
-The following example implements a simple function calling agent using Databricks and MLflow Tracing.
+<TabsWrapper>
+<Tabs>
+  <TabItem value="python" label="Python" default>
 
-```python
-import json
-from openai import OpenAI
-import mlflow
-from mlflow.entities import SpanType
+    ```python
+    import json
+    from openai import OpenAI
+    import mlflow
+    from mlflow.entities import SpanType
 
-# Initialize the OpenAI client with Databricks API endpoint
-client = OpenAI(base_url="https://api.databricks.com", api_key="<your_$slug_api_key>")
-
-
-# Define the tool function. Decorate it with `@mlflow.trace` to create a span for its execution.
-@mlflow.trace(span_type=SpanType.TOOL)
-def get_weather(city: str) -> str:
-    if city == "Tokyo":
-        return "sunny"
-    elif city == "Paris":
-        return "rainy"
-    return "unknown"
-
-
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "parameters": {
-                "type": "object",
-                "properties": {"city": {"type": "string"}},
-            },
-        },
-    }
-]
-
-_tool_functions = {"get_weather": get_weather}
-
-
-# Define a simple tool calling agent
-@mlflow.trace(span_type=SpanType.AGENT)
-def run_tool_agent(question: str):
-    messages = [{"role": "user", "content": question}]
-
-    # Invoke the model with the given question and available tools
-    response = client.chat.completions.create(
-        model="databricks-chat",
-        messages=messages,
-        tools=tools,
+    # Initialize the OpenAI client with Databricks API endpoint
+    client = OpenAI(
+        base_url="https://api.databricks.com",
+        api_key="<your_databricks_api_key>",
     )
 
-    ai_msg = response.choices[0].message
-    messages.append(ai_msg)
-
-    # If the model request tool call(s), invoke the function with the specified arguments
-    if tool_calls := ai_msg.tool_calls:
-        for tool_call in tool_calls:
-            function_name = tool_call.function.name
-            if tool_func := _tool_functions.get(function_name):
-                args = json.loads(tool_call.function.arguments)
-                tool_result = tool_func(**args)
-            else:
-                raise RuntimeError("An invalid tool is returned from the assistant!")
-
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": tool_result,
-                }
-            )
-
-        # Sent the tool results to the model and get a new response
+    # Create a parent span for the Databricks call
+    @mlflow.trace(span_type=SpanType.CHAIN)
+    def answer_question(question: str):
+        messages = [{"role": "user", "content": question}]
         response = client.chat.completions.create(
-            model="databricks-chat", messages=messages
+            model="<your_databricks_model>",
+            messages=messages,
         )
 
-    return response.choices[0].message.content
+        # Attach session/user metadata to the trace
+        mlflow.update_current_trace(
+            metadata={
+                "mlflow.trace.session": "session-12345",
+                "mlflow.trace.user": "user-a",
+            }
+        )
+        return response.choices[0].message.content
 
+    answer = answer_question("What is the capital of France?")
+    ```
 
-# Run the tool calling agent
-question = "What's the weather like in Paris today?"
-answer = run_tool_agent(question)
-```
+  </TabItem>
+  <TabItem value="typescript" label="JS / TS">
 
-## Token usage
+    ```typescript
+    import * as mlflow from "mlflow-tracing";
+    import { OpenAI } from "openai";
+    import { tracedOpenAI } from "mlflow-openai";
 
-MLflow >= 3.2.0 supports token usage tracking for Databricks models through the OpenAI SDK integration. The token usage for each LLM call will be logged in the `mlflow.chat.tokenUsage` attribute. The total token usage throughout the trace will be
-available in the `token_usage` field of the trace info object.
+    mlflow.init({
+      trackingUri: "http://localhost:5000",
+      experimentId: "<your_experiment_id>",
+    });
 
-```python
-import json
-import mlflow
+    // Wrap the OpenAI client and point to Databricks endpoint
+    const client = tracedOpenAI(
+      new OpenAI({
+        baseURL: "https://api.databricks.com",
+        apiKey: "<your_databricks_api_key>",
+      })
+    );
 
-mlflow.openai.autolog()
+    // Create a traced function that wraps the Databricks call
+    const answerQuestion = mlflow.trace(
+      async (question: string) => {
+        const resp = await client.chat.completions.create({
+          model: "<your_databricks_model>",
+          messages: [{ role: "user", content: question }],
+        });
+        return resp.choices[0].message?.content;
+      },
+      { name: "answer-question" }
+    );
 
-# Run the tool calling agent defined in the previous section
-question = "What's the weather like in Paris today?"
-answer = run_tool_agent(question)
+    await answerQuestion("What is the capital of France?");
+    ```
 
-# Get the trace object just created
-last_trace_id = mlflow.get_last_active_trace_id()
-trace = mlflow.get_trace(trace_id=last_trace_id)
+  </TabItem>
+</Tabs>
+</TabsWrapper>
 
-# Print the token usage
-total_usage = trace.info.token_usage
-print("== Total token usage: ==")
-print(f"  Input tokens: {total_usage['input_tokens']}")
-print(f"  Output tokens: {total_usage['output_tokens']}")
-print(f"  Total tokens: {total_usage['total_tokens']}")
+Running either example will produce a trace that includes the Databricks LLM span; the traced function creates the parent span automatically.
 
-# Print the token usage for each LLM call
-print("\n== Detailed usage for each LLM call: ==")
-for span in trace.data.spans:
-    if usage := span.get_attribute("mlflow.chat.tokenUsage"):
-        print(f"{span.name}:")
-        print(f"  Input tokens: {usage['input_tokens']}")
-        print(f"  Output tokens: {usage['output_tokens']}")
-        print(f"  Total tokens: {usage['total_tokens']}")
-```
-
-```bash
-== Total token usage: ==
-  Input tokens: 84
-  Output tokens: 22
-  Total tokens: 106
-
-== Detailed usage for each LLM call: ==
-Completions_1:
-  Input tokens: 45
-  Output tokens: 14
-  Total tokens: 59
-Completions_2:
-  Input tokens: 39
-  Output tokens: 8
-  Total tokens: 47
-```
+<ImageBox src="/images/llms/tracing/openai-trace-with-manual-span.png" alt="Databricks Tracing with Manual Tracing" />
 
 ## Next steps
 
 <TilesGrid>
   <TileCard
-    icon={Activity}
+    icon={Users}
     iconSize={48}
-    title="Evaluate traces"
-    description="Assess trace quality with MLflow's built-in evaluation workflows for traces."
-    href="/genai/eval-monitor/running-evaluation/traces"
-    linkText="Run trace evaluations ->"
+    title="Track User Feedback"
+    description="Record user feedback on traces for tracking user satisfaction."
+    href="/genai/tracing/collect-user-feedback"
+    linkText="Learn about feedback ->"
     containerHeight={64}
   />
   <TileCard
-    icon={FileText}
+    icon={BookOpen}
     iconSize={48}
-    title="Manage prompts"
-    description="Version prompts, test variants, and connect your Databricks calls to prompt management."
+    title="Manage Prompts"
+    description="Learn how to manage prompts with MLflow's prompt registry."
     href="/genai/prompt-registry"
-    linkText="Organize prompts ->"
+    linkText="Manage prompts ->"
     containerHeight={64}
   />
   <TileCard
-    icon={Gauge}
+    icon={Scale}
     iconSize={48}
-    title="Production monitoring"
-    description="Track latency, errors, and token usage for Databricks traffic in production."
-    href="/genai/tracing/prod-tracing"
-    linkText="Set up monitoring ->"
+    title="Evaluate Traces"
+    description="Evaluate traces with LLM judges to understand and improve your AI application's behavior."
+    href="/genai/eval-monitor/running-evaluation/traces"
+    linkText="Evaluate traces ->"
     containerHeight={64}
   />
 </TilesGrid>
-
-## Disable auto-tracing
-
-Auto tracing for Databricks (through OpenAI SDK) can be disabled globally by calling `mlflow.openai.autolog(disable=True)` or `mlflow.autolog(disable=True)`.
