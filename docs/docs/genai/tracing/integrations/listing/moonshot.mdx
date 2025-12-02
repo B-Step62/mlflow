@@ -1,6 +1,6 @@
 ---
-sidebar_position: 27
-sidebar_label: Together AI
+sidebar_position: 25
+sidebar_label: Kimi (Moonshot AI)
 ---
 
 import TilesGrid from "@site/src/components/TilesGrid";
@@ -14,21 +14,21 @@ import TabItem from "@theme/TabItem";
 import TabsWrapper from "@site/src/components/TabsWrapper";
 import { Users, BookOpen, Scale } from "lucide-react";
 
-# Tracing Together AI
+# Tracing Kimi (Moonshot AI)
 
-[MLflow Tracing](../../) provides automatic tracing capability for Together AI through the OpenAI SDK integration. Since Together AI offers an OpenAI-compatible API format, you can use `mlflow.openai.autolog()` to trace interactions with Together AI models.
+[MLflow Tracing](../../) provides automatic tracing capability for Kimi (Moonshot AI) models through the Moonshot AI Platform's inference endpoints. Since Moonshot AI Platform provides an OpenAI-compatible API for Kimi models, you can use `mlflow.openai.autolog()` to trace interactions with Kimi models.
 
-:::info What is Together AI?
-<u>[Together AI](https://www.together.ai/)</u> hosts leading open-source and proprietary models with an OpenAI-compatible interface and generous throughput.
+:::info What is Kimi?
+<u>[Kimi](https://kimi.moonshot.cn/)</u> is a large language model developed by Moonshot AI, known for its strong reasoning abilities. It’s optimized for tasks like deep document analysis, multi-step reasoning, and building advanced AI agents.
 :::
 
-:::tip Why use MLflow with Together AI?
+:::tip Why use MLflow with Kimi?
 
-MLflow provides comprehensive observability for your applications using Together AI LLMs. Traces are also seamlessly integrated with MLflow's prompt management, evaluation, and monitoring capabilities.
+MLflow provides comprehensive observability for your applications using Kimi models. Traces are also seamlessly integrated with MLflow's prompt management, evaluation, and monitoring capabilities.
 
 :::
 
-MLflow trace automatically captures the following information about Together AI calls:
+MLflow trace automatically captures the following information about Kimi calls:
 
 - Prompts and completion responses
 - Latencies
@@ -66,7 +66,7 @@ npm install mlflow-openai openai
 
 <ServerSetup />
 
-<StepHeader number={3} title="Enable tracing and call Together AI" />
+<StepHeader number={3} title="Enable tracing and call Kimi" />
 
 <TabsWrapper>
 <Tabs>
@@ -76,21 +76,21 @@ npm install mlflow-openai openai
     import openai
     import mlflow
 
-    # Enable auto-tracing for OpenAI (works with Together AI)
+    # Enable auto-tracing for OpenAI (works with Kimi)
     mlflow.openai.autolog()
 
     # Optional: Set a tracking URI and an experiment
     mlflow.set_tracking_uri("http://localhost:5000")
-    mlflow.set_experiment("Together AI")
+    mlflow.set_experiment("Kimi")
 
-    # Initialize the OpenAI client with Together AI API endpoint
+    # Initialize the OpenAI client with Kimi API endpoint
     client = openai.OpenAI(
-        base_url="https://api.together.xyz/v1",
-        api_key="<your_together_api_key>",
+        base_url="https://api.moonshot.ai/v1",
+        api_key="<MOONSHOT_API_KEY>",
     )
 
     response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model="moonshot-v1-8k",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What is the capital of France?"},
@@ -105,16 +105,16 @@ npm install mlflow-openai openai
     import { OpenAI } from "openai";
     import { tracedOpenAI } from "mlflow-openai";
 
-    // Wrap the OpenAI client and point to Together AI endpoint
+    // Wrap the OpenAI client and point to Kimi endpoint
     const client = tracedOpenAI(
       new OpenAI({
-        baseURL: "https://api.together.xyz/v1",
-        apiKey: "<your_together_api_key>",
+        baseURL: "https://api.moonshot.ai/v1",
+        apiKey: "<MOONSHOT_API_KEY>",
       })
     );
 
     const response = await client.chat.completions.create({
-      model: "openai/gpt-oss-20b",
+      model: "moonshot-v1-8k",
       messages: [
         { role: "system", content: "You are a helpful assistant." },
         { role: "user", content: "What is the capital of France?" },
@@ -130,15 +130,15 @@ npm install mlflow-openai openai
 
 <StepHeader number={4} title="View traces in MLflow UI" />
 
-Browse to your MLflow UI (for example, http://localhost:5000) and open the `Together AI` experiment to see traces for the calls above.
+Browse to your MLflow UI (for example, http://localhost:5000) and open the `Kimi` experiment to see traces for the calls above.
 
-<ImageBox src="/images/llms/tracing/basic-openai-trace.png" alt="Together AI Tracing" />
+<ImageBox src="/images/llms/tracing/basic-openai-trace.png" alt="Kimi Tracing" />
 
 -> View <u>[Next Steps](#next-steps)</u> for learning about more MLflow features like user feedback tracking, prompt management, and evaluation.
 
 ## Streaming and Async Support
 
-MLflow supports tracing for streaming and async Together AI APIs. Visit the [OpenAI Tracing documentation](../openai) for example code snippets for tracing streaming and async calls through OpenAI SDK.
+MLflow supports tracing for streaming and async Kimi APIs. Visit the [OpenAI Tracing documentation](../openai) for example code snippets for tracing streaming and async calls through OpenAI SDK.
 
 ## Combine with frameworks or manual tracing
 
@@ -154,18 +154,18 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
     import mlflow
     from mlflow.entities import SpanType
 
-    # Initialize the OpenAI client with Together AI API endpoint
+    # Initialize the OpenAI client with Kimi API endpoint
     client = OpenAI(
-        base_url="https://api.together.xyz/v1",
-        api_key="<your_together_api_key>",
+        base_url="https:    //api.moonshot.cn/v1",
+        api_key="<MOONSHOT_API_KEY>",
     )
 
-    # Create a parent span for the Together AI call
+    # Create a parent span for the Kimi call
     @mlflow.trace(span_type=SpanType.CHAIN)
     def answer_question(question: str):
         messages = [{"role": "user", "content": question}]
         response = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
+            model="moonshot-v1-8k",
             messages=messages,
         )
 
@@ -194,19 +194,19 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
       experimentId: "<your_experiment_id>",
     });
 
-    // Wrap the OpenAI client and point to Together AI endpoint
+    // Wrap the OpenAI client and point to Kimi endpoint
     const client = tracedOpenAI(
       new OpenAI({
-        baseURL: "https://api.together.xyz/v1",
-        apiKey: "<your_together_api_key>",
+        baseURL: "https://api.moonshot.ai/v1",
+        apiKey: "<MOONSHOT_API_KEY>",
       })
     );
 
-    // Create a traced function that wraps the Together AI call
+    // Create a traced function that wraps the Kimi call
     const answerQuestion = mlflow.trace(
       async (question: string) => {
         const resp = await client.chat.completions.create({
-          model: "openai/gpt-oss-20b",
+          model: "moonshot-v1-8k",
           messages: [{ role: "user", content: question }],
         });
         return resp.choices[0].message?.content;
@@ -221,9 +221,9 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
 </Tabs>
 </TabsWrapper>
 
-Running either example will produce a trace that includes the Together AI LLM span; the traced function creates the parent span automatically.
+Running either example will produce a trace that includes the Kimi LLM span; the traced function creates the parent span automatically.
 
-<ImageBox src="/images/llms/tracing/openai-trace-with-manual-span.png" alt="Together AI Tracing with Manual Tracing" />
+<ImageBox src="/images/llms/tracing/openai-trace-with-manual-span.png" alt="Kimi Tracing with Manual Tracing" />
 
 ## Next steps
 

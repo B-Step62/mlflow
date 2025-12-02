@@ -214,11 +214,6 @@ const sidebarsGenAI: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
-                  id: 'tracing/integrations/listing/cometapi',
-                  label: 'CometAPI',
-                },
-                {
-                  type: 'doc',
                   id: 'tracing/integrations/listing/databricks',
                   label: 'Databricks',
                 },
@@ -249,6 +244,11 @@ const sidebarsGenAI: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'tracing/integrations/listing/moonshot',
+                  label: 'Kimi (Moonshot AI)',
+                },
+                {
+                  type: 'doc',
                   id: 'tracing/integrations/listing/litellm',
                   label: 'LiteLLM',
                 },
@@ -271,6 +271,11 @@ const sidebarsGenAI: SidebarsConfig = {
                   type: 'doc',
                   id: 'tracing/integrations/listing/openai',
                   label: 'OpenAI',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/integrations/listing/qwen',
+                  label: 'Qwen',
                 },
                 {
                   type: 'doc',
