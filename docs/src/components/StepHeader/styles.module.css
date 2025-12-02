@@ -1,0 +1,29 @@
+.stepHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 2rem 0 1rem 0;
+}
+
+.stepNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  background: #0194e2;
+  color: white;
+  font-weight: 600;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.stepTitle {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-900);
+}
+
