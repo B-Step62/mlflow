@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     huey_store_path = os.environ[HUEY_STORAGE_PATH_ENV_VAR]
 
-    for job_fn_fullname in _ALLOWED_JOB_FUNCTION_LIST:
+    for name, job_fn_fullname in _ALLOWED_JOB_FUNCTION_LIST.items():
         try:
             _launch_huey_consumer(job_fn_fullname)
         except Exception as e:

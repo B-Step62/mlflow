@@ -60,20 +60,20 @@ def get_job(job_id: str) -> Job:
 
 
 class SubmitJobPayload(BaseModel):
-    function_fullname: str
+    # The name of the job to submit
+    name: str
+    # The parameters to pass to the job
     params: dict[str, Any]
+    # The timeout for the job
     timeout: float | None = None
 
 
 @job_api_router.post("/", response_model=Job)
 def submit_job(payload: SubmitJobPayload) -> Job:
     from mlflow.server.jobs import submit_job
-    from mlflow.server.jobs.utils import _load_function
 
-    function_fullname = payload.function_fullname
     try:
-        function = _load_function(function_fullname)
-        job = submit_job(function, payload.params, payload.timeout)
+        job = submit_job(payload.name, payload.params, payload.timeout)
         return Job.from_job_entity(job)
     except MlflowException as e:
         raise HTTPException(

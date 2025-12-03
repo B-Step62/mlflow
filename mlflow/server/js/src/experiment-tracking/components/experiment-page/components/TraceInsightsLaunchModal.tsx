@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   AssistantIcon,
+  Alert,
   Button,
   ChartLineIcon,
   CheckCircleIcon,
@@ -17,11 +18,18 @@ import AiLogoUrl from '../../../pages/experiment-insights/components/ai-logo.svg
 
 const { TextArea } = Input;
 
+export type JobStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMEOUT';
+
 type TraceInsightsLaunchModalProps = {
   visible: boolean;
   initialPrompt: string;
   onCancel: () => void;
   onAnalyze?: (payload: { prompt: string; model: string }) => void;
+  jobId?: string;
+  jobStatus?: JobStatus;
+  jobProgress?: number;
+  jobError?: string;
+  submitting?: boolean;
   stats?: {
     traceCount?: number;
     estimatedCostUsd?: number;
@@ -104,11 +112,19 @@ export const TraceInsightsLaunchModal = ({
   initialPrompt,
   onCancel,
   onAnalyze,
+  jobId,
+  jobStatus,
+  jobProgress = 0,
+  jobError,
+  submitting,
   stats,
 }: TraceInsightsLaunchModalProps) => {
   const { theme } = useDesignSystemTheme();
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [model, setModel] = useState('gpt-5');
+  const [model, setModel] = useState('openai:/gpt-5');
+
+  const isJobTerminal = jobStatus === 'SUCCEEDED' || jobStatus === 'FAILED' || jobStatus === 'TIMEOUT';
+  const isBusy = Boolean(submitting || (jobStatus && !isJobTerminal));
 
   useEffect(() => {
     setPrompt(initialPrompt);
@@ -198,9 +214,8 @@ export const TraceInsightsLaunchModal = ({
               value={model}
               onChange={(value) => setModel(value)}
             >
-              <SimpleSelectOption value="gpt-4o">GPT-4o (Recommended)</SimpleSelectOption>
-              <SimpleSelectOption value="gpt-4o-mini">GPT-4o mini</SimpleSelectOption>
-              <SimpleSelectOption value="gpt-35-turbo">GPT-3.5 Turbo</SimpleSelectOption>
+              <SimpleSelectOption value="openai:/gpt-5">GPT-5 (Recommended)</SimpleSelectOption>
+              <SimpleSelectOption value="gpt-4o">GPT-4o</SimpleSelectOption>
             </SimpleSelect>
           </div>
 
@@ -222,10 +237,78 @@ export const TraceInsightsLaunchModal = ({
 
           <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
             <Button onClick={onCancel}>Cancel</Button>
-            <Button type="primary" onClick={handleAnalyze} disabled={!prompt.trim()}>
+            <Button type="primary" onClick={handleAnalyze} disabled={!prompt.trim() || isBusy} loading={isBusy}>
               Analyze
             </Button>
           </div>
+
+          {(jobStatus || jobError) && (
+            <div
+              css={{
+                marginTop: theme.spacing.sm,
+                padding: theme.spacing.sm,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusMd,
+                backgroundColor: theme.colors.backgroundSecondary,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: theme.spacing.xs,
+              }}
+            >
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                {jobStatus === 'SUCCEEDED' ? (
+                  <CheckCircleIcon css={{ color: theme.colors.success, fontSize: 16 }} />
+                ) : jobStatus === 'FAILED' || jobStatus === 'TIMEOUT' ? (
+                  <QuestionMarkIcon css={{ color: theme.colors.error, fontSize: 16 }} />
+                ) : (
+                  <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />
+                )}
+                <Typography.Text strong>Status</Typography.Text>
+              </div>
+              {jobStatus && (
+                <div
+                  css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.max(0, Math.min(100, Math.round(jobProgress)))}
+                >
+                  <div
+                    css={{
+                      flex: 1,
+                      height: theme.spacing.sm,
+                      backgroundColor: theme.colors.backgroundSecondary,
+                      borderRadius: theme.spacing.sm,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      css={{
+                        height: '100%',
+                        width: `${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`,
+                        backgroundColor: theme.colors.primary,
+                        transition: 'width 200ms ease',
+                      }}
+                    />
+                  </div>
+                  <Typography.Text>{`${jobStatus} • ${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`}</Typography.Text>
+                </div>
+              )}
+              {jobId && (
+                <Typography.Text color="secondary" css={{ fontSize: theme.typography.fontSizeSm }}>
+                  Job ID: {jobId}
+                </Typography.Text>
+              )}
+              {jobError && (
+                <Alert
+                  message="Job update failed"
+                  description={jobError}
+                  type="error"
+                  showIcon
+                />
+              )}
+            </div>
+          )}
         </div>
 
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, borderLeft: `1px solid ${theme.colors.border}`, paddingLeft: theme.spacing.md }}>

@@ -359,4 +359,21 @@ export class MlflowService {
         request_ids: traceRequestIds,
       },
     }) as Promise<{ traces_deleted: number }>;
+
+  /**
+   * Submit a background job to the MLflow job queue (v3 API)
+   */
+  static submitJob = (data: { name: string; params: Record<string, unknown>; timeout?: number | null }) =>
+    postJson({
+      relativeUrl: 'ajax-api/3.0/jobs/',
+      data,
+    });
+
+  /**
+   * Get the latest status for a background job (v3 API)
+   */
+  static getJob = (jobId: string) =>
+    getJson({
+      relativeUrl: `ajax-api/3.0/jobs/${jobId}`,
+    });
 }

@@ -7,6 +7,7 @@ from typing import Any, Callable, ParamSpec, TypeVar
 
 from mlflow.entities._job import Job as JobEntity
 from mlflow.exceptions import MlflowException
+from mlflow.server.jobs.utils import _load_function
 from mlflow.server.handlers import _get_job_store
 from mlflow.utils.environment import _PythonEnv
 
@@ -14,14 +15,6 @@ _logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
 R = TypeVar("R")
-
-
-_ALLOWED_JOB_FUNCTION_LIST = [
-    # Putting all allowed job function in the list
-]
-
-if allowed_job_function_list_env := os.environ.get("_MLFLOW_ALLOWED_JOB_FUNCTION_LIST"):
-    _ALLOWED_JOB_FUNCTION_LIST += allowed_job_function_list_env.split(",")
 
 
 class TransientError(RuntimeError):
@@ -39,14 +32,23 @@ class TransientError(RuntimeError):
 
 
 @dataclass
-class JobFunctionMetadata:
+class JobDefinition:
+    name: str
     fn_fullname: str
+    description: str
     max_workers: int
     transient_error_classes: list[type[Exception]] | None = None
     python_env: _PythonEnv | None = None
 
 
+_ALLOWED_JOB_FUNCTION_LIST = {
+    "generate-insight-report": "mlflow.insights.jobs.run.generate_insight_report",
+}
+
+
 def job(
+    name: str,
+    description: str,
     max_workers: int,
     transient_error_classes: list[type[Exception]] | None = None,
     python_version: str | None = None,
@@ -95,7 +97,9 @@ def job(
         )
 
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
-        fn._job_fn_metadata = JobFunctionMetadata(
+        fn._job_fn_metadata = JobDefinition(
+            name=name,
+            description=description,
             fn_fullname=f"{fn.__module__}.{fn.__name__}",
             max_workers=max_workers,
             transient_error_classes=transient_error_classes,
@@ -107,7 +111,7 @@ def job(
 
 
 def submit_job(
-    function: Callable[..., Any],
+    name: str,
     params: dict[str, Any],
     timeout: float | None = None,
 ) -> JobEntity:
@@ -121,17 +125,7 @@ def submit_job(
         the backend store URI to a database URI.
 
     Args:
-        function: The job function, it must be a python module-level function,
-            and all params and return value must be JSON-serializable.
-            The function can raise `TransientError` in order to trigger
-            job retry, or you can annotate a list of transient error classes
-            by ``@job(..., transient_error_classes=[...])``.
-            You can set `MLFLOW_SERVER_JOB_TRANSIENT_ERROR_MAX_RETRIES`
-            to configure maximum allowed retries for transient errors
-            and set `MLFLOW_SERVER_JOB_TRANSIENT_ERROR_RETRY_BASE_DELAY` to
-            configure base retry delay in seconds.
-
-            The function must be decorated by `mlflow.server.jobs.job_function` decorator.
+        name: The name of the job to submit.
         params: The params to be passed to the job function.
         timeout: (optional) The job execution timeout, default None (no timeout)
 
@@ -154,21 +148,12 @@ def submit_job(
 
     _check_requirements()
 
-    if not (isinstance(function, FunctionType) and "." not in function.__qualname__):
-        raise MlflowException("The job function must be a python global function.")
+    func_fullname = _ALLOWED_JOB_FUNCTION_LIST.get(name)
 
-    func_fullname = f"{function.__module__}.{function.__name__}"
+    if not func_fullname:
+        raise MlflowException.invalid_parameter_value(f"The job {name} is not a valid MLflow job.")
 
-    if func_fullname not in _ALLOWED_JOB_FUNCTION_LIST:
-        raise MlflowException.invalid_parameter_value(
-            f"The function {func_fullname} is not in the allowed job function list"
-        )
-
-    if not hasattr(function, "_job_fn_metadata"):
-        raise MlflowException(
-            f"The job function {func_fullname} is not decorated by "
-            "'mlflow.server.jobs.job_function'."
-        )
+    function = _load_function(func_fullname)
 
     if not isinstance(params, dict):
         raise MlflowException.invalid_parameter_value(

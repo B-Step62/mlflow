@@ -212,7 +212,7 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
                 <UserGroupIcon css={{ color: theme.colors.textSecondary, width: 20, height: 20 }} />
                 <Typography.Title level={4} css={{ marginBottom: 0 }}>
-                  Feedbacks
+                  Evidences
                 </Typography.Title>
               </div>
               {evidences.length > 0 && (

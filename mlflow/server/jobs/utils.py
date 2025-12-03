@@ -163,9 +163,12 @@ def _exec_job_in_subproc(
             _exec_cmd(env_creation_cmd, capture_output=False)
 
             # install dependencies
+            _logger.info(f"Installing dependencies: {python_env.dependencies}")
             tmp_req_file = "requirements.txt"
-            (Path(tmpdir) / tmp_req_file).write_text("\n".join(python_env.dependencies))
-            cmd = _join_commands(activate_cmd, f"uv pip install -r {tmp_req_file}")
+            # TODO: Clean this up
+            deps = [d for d in python_env.dependencies if d != "mlflow==3.7.1.dev0"]
+            (Path(tmpdir) / tmp_req_file).write_text("\n".join(deps))
+            cmd = _join_commands(activate_cmd, f"uv pip install -r {tmp_req_file}", f"uv pip install -e ~/Workspace/mlflow-insights/mlflow-repo")
             _exec_cmd(
                 cmd,
                 cwd=tmpdir,
