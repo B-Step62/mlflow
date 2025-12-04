@@ -27,7 +27,7 @@ _logger = logging.getLogger(__name__)
 def generate_insight_report(
     trace_ids: list[str],
     user_question: str,
-    model: str = "openai:/gpt-5-mini",
+    model: str,
 ) -> str:
     """
     Extract the summary of the trace.
@@ -40,6 +40,9 @@ def generate_insight_report(
     Returns:
         The ID of the insight run.
     """
+    mlflow.set_experiment("Insight Sandbox")
+    # TODO: Remove this hard code
+    model = "openai:/databricks-gpt-5-mini"
     with mlflow.start_run(tags={"mlflow.runType": "INSIGHTS"}) as run:
         run_id = run.info.run_id
         # TODO: Distribute this to threads when the trace count is large

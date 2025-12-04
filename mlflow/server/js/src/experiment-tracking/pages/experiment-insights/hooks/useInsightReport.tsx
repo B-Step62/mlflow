@@ -42,34 +42,31 @@ const normalizeCategory = (raw: any, index: number): InsightReportCategory => {
   const traceIds = asStringArray(raw?.trace_ids ?? raw?.traceIds);
   const evidencesRaw: any[] = raw?.evidences ?? raw?.feedback_ids ?? [];
   const evidences: InsightReportEvidence[] = Array.isArray(evidencesRaw)
-    ? evidencesRaw.map((item) => {
-        const base: InsightReportEvidence =
-          item?.type === 'assessment'
-            ? {
-                type: item.type,
-                assessment_id: item.id ?? item.assessment_id,
-                trace_id: item.trace_id,
-                fields: Array.isArray(item.fields) ? item.fields : undefined,
-              }
-            : {
-                type: item?.type,
-                assessment_id: item?.assessment_id ?? item?.id,
-                trace_id: item?.trace_id,
-                fields: Array.isArray(item?.fields) ? item.fields : undefined,
-              };
-        if (!base.trace_id && traceIds.length > 0) {
-          base.trace_id = traceIds[0];
-        }
-        return base;
-      })
+    ? evidencesRaw
+        .filter((item) => item?.type === 'assessment')
+        .map((item) => {
+          const base: InsightReportEvidence = {
+            type: item?.type,
+            assessment_id: item?.assessment_id ?? item?.id ?? item?.entity_id,
+            trace_id: item?.trace_id ?? item?.traceId,
+            fields: Array.isArray(item?.fields) ? item.fields : undefined,
+          };
+          if (!base.trace_id && traceIds.length > 0) {
+            base.trace_id = traceIds[0];
+          }
+          return base;
+        })
     : [];
   const impactedCount = traceIds.length || evidences.length;
-  console.log('raw', raw);
-  console.log('traceIds', traceIds);
 
   return {
-    id: raw?.id ? String(raw.id) : `cat-${index + 1}`,
-    category_id: raw?.category_id ? String(raw.category_id) : undefined,
+    id: raw?.issue_id !== undefined ? String(raw.issue_id) : raw?.id ? String(raw.id) : `cat-${index + 1}`,
+    category_id:
+      raw?.category_id !== undefined
+        ? String(raw.category_id)
+        : raw?.issue_id !== undefined
+          ? String(raw.issue_id)
+          : undefined,
     name: raw?.name ?? `Issue ${index + 1}`,
     description: raw?.description,
     severity: raw?.severity,
@@ -80,13 +77,21 @@ const normalizeCategory = (raw: any, index: number): InsightReportCategory => {
 };
 
 const normalizeReport = (raw: any): InsightReport => {
-  console.log('raw', raw);
-  const categoriesRaw: any[] = Array.isArray(raw?.categories) ? raw.categories : [];
+  const categoriesRaw: any[] = Array.isArray(raw?.categories)
+    ? raw.categories
+    : Array.isArray(raw?.issues)
+      ? raw.issues
+      : [];
+  const categories = categoriesRaw.map((cat, idx) => normalizeCategory(cat, idx));
+
+  const traceIdSet = new Set<string>();
+  categories.forEach((cat) => cat.traceIds.forEach((t) => traceIdSet.add(t)));
+
   return {
     title: raw?.title,
-    traces_total: raw?.traces_total ?? raw?.total_traces,
+    traces_total: raw?.traces_total ?? raw?.total_traces ?? (traceIdSet.size > 0 ? traceIdSet.size : undefined),
     report_type: raw?.report_type,
-    categories: categoriesRaw.map((cat, idx) => normalizeCategory(cat, idx)),
+    categories,
   };
 };
 

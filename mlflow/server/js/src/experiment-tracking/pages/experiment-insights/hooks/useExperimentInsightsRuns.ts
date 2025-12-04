@@ -31,7 +31,7 @@ export const useExperimentInsightsRuns = ({ experimentId }: UseExperimentInsight
       const response = (await MlflowService.searchRuns({
         experiment_ids: [experimentId],
         filter: INSIGHT_RUN_FILTER,
-        run_view_type: ViewType.ALL,
+        run_view_type: ViewType.ACTIVE_ONLY,
         order_by: DEFAULT_ORDER_BY,
         max_results: DEFAULT_MAX_RESULTS,
       })) as { runs?: RunEntity[] };

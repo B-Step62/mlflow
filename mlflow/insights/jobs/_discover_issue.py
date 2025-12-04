@@ -69,7 +69,7 @@ def discover_issues(
 
     def _get_severity(category: Category) -> str:
         evidence_ids = list(set(e.entity_id for e in category.evidences))
-        return "high" if len(evidence_ids) / len(summaries) > 0.5 else "medium" if len(evidence_ids) / len(summaries) > 0.3 else "low"
+        return "high" if len(evidence_ids) >= 5 else "medium" if len(evidence_ids) >= 3 else "low"
 
     issues = [
         {

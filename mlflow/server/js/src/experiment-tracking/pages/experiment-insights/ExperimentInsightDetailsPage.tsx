@@ -200,7 +200,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
 
       <div css={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: theme.spacing.md }}>
         <div css={{ border: `1px solid ${theme.colors.borderDecorative}`, borderRadius: theme.borders.borderRadiusMd, padding: theme.spacing.md, height: 320, display: 'flex', flexDirection: 'column' }}>
-          <Typography.Title level={3}>Top Categories</Typography.Title>
+          <Typography.Title level={3}>Top Issues</Typography.Title>
           <div css={{ flex: 1, minHeight: 0, marginTop: theme.spacing.sm, overflowY: 'auto' }}>
             {topIssues.length > 0 ? (
               topIssues.map((issue) => (

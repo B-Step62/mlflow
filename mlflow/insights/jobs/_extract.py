@@ -62,7 +62,7 @@ def extract_trace_summaries(run_id: str, trace_ids: list[str], user_question: st
         return formatted_response.items
 
     results = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(_summarize_trace, trace_id) for trace_id in trace_ids]
         for future in as_completed(futures):
             results.extend(future.result())
