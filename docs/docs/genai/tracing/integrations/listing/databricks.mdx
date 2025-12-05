@@ -16,28 +16,18 @@ import { Users, BookOpen, Scale } from "lucide-react";
 
 # Tracing Databricks
 
-[MLflow Tracing](../../) provides automatic tracing capability for Databricks models through the OpenAI SDK integration. Since Databricks serves models via an OpenAI-compatible API format, you can use `mlflow.openai.autolog()` to trace interactions with Databricks models.
+[Databricks](https://www.databricks.com/) offers a unified platform for data, analytics and AI. Databricks Foundation Model APIs provide an OpenAI-compatible API format for accessing state-of-the-art models such as OpenAI GPT, Anthropic Claude, Google Gemini, and more, through a single platform. Since Databricks Foundation Model APIs are OpenAI-compatible, you can use MLflow tracing to trace your interactions with Databricks Foundation Model APIs.
 
-:::info What is Databricks?
-<u>[Databricks](https://www.databricks.com/)</u> provides DBRX and other foundation models via Model Serving with an OpenAI-style REST interface.
+
+## Managed MLflow on Databricks
+
+Databricks offers a fully managed MLflow service as a part of their platform. This is the easiest way to get started with MLflow tracing, without having to set up any infrastructure. If you are using Databricks Foundation Model APIs, it is no brainer to use the managed MLflow for end-to-end LLMOps including tracing.
+
+:::warning Visit Databricks documentation
+
+This guide only covers how to trace Databricks Foundation Model APIs using MLflow tracing. For more details on how to get started with MLflow tracing on Databricks (e.g., tracing agent deployed on Databricks), please refer to the [Databricks documentation](https://docs.databricks.com/aws/en/mlflow3/genai/).
+
 :::
-
-:::tip Why use MLflow with Databricks?
-
-MLflow provides comprehensive observability for your applications using Databricks-hosted LLMs. Traces are also seamlessly integrated with MLflow's prompt management, evaluation, and monitoring capabilities.
-
-:::
-
-MLflow trace automatically captures the following information about Databricks calls:
-
-- Prompts and completion responses
-- Latencies
-- Token usage
-- Model name
-- Additional metadata such as `temperature`, `max_completion_tokens`, if specified.
-- Function calling if returned in the response
-- Built-in tools such as web search, file search, computer use, etc.
-- Any exception if raised
 
 ## Getting Started
 
@@ -62,11 +52,7 @@ npm install mlflow-openai openai
 </Tabs>
 </TabsWrapper>
 
-<StepHeader number={2} title="Start MLflow server" />
-
-<ServerSetup />
-
-<StepHeader number={3} title="Enable tracing and call Databricks" />
+<StepHeader number={2} title="Enable tracing and call Databricks" />
 
 <TabsWrapper>
 <Tabs>
@@ -79,26 +65,18 @@ npm install mlflow-openai openai
     # Enable auto-tracing for OpenAI (works with Databricks)
     mlflow.openai.autolog()
 
-    # Optional: Set a tracking URI and an experiment
-    mlflow.set_tracking_uri("http://localhost:5000")
-    mlflow.set_experiment("Databricks")
-
     # Initialize the OpenAI client with Databricks API endpoint
     client = openai.OpenAI(
-        base_url="https://api.databricks.com",
-        api_key="<your_databricks_api_key>",
+        base_url="https://example.staging.cloud.databricks.com/serving-endpoints"
+        api_key="<your_databricks_token>",
     )
 
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "What is the capital of France?"},
-    ]
-
     response = client.chat.completions.create(
-        model="<your_databricks_model>",
-        messages=messages,
-        temperature=0.1,
-        max_tokens=100,
+        model="databricks-gemini-3-pro",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What is the capital of France?"},
+        ],
     )
     ```
 
@@ -112,19 +90,17 @@ npm install mlflow-openai openai
     // Wrap the OpenAI client and point to Databricks endpoint
     const client = tracedOpenAI(
       new OpenAI({
-        baseURL: "https://api.databricks.com",
-        apiKey: "<your_databricks_api_key>",
+        baseURL: "https://example.staging.cloud.databricks.com/serving-endpoints",
+        apiKey: "<your_databricks_token>",
       })
     );
 
     const response = await client.chat.completions.create({
-      model: "<your_databricks_model>",
+      model: "databricks-gemini-3-pro",
       messages: [
         { role: "system", content: "You are a helpful assistant." },
         { role: "user", content: "What is the capital of France?" },
       ],
-      temperature: 0.1,
-      max_tokens: 100,
     });
     ```
 
@@ -132,7 +108,7 @@ npm install mlflow-openai openai
 </Tabs>
 </TabsWrapper>
 
-<StepHeader number={4} title="View traces in MLflow UI" />
+<StepHeader number={3} title="View traces in MLflow UI" />
 
 Browse to your MLflow UI (for example, http://localhost:5000) and open the `Databricks` experiment to see traces for the calls above.
 
@@ -146,86 +122,7 @@ MLflow supports tracing for streaming and async Databricks APIs. Visit the [Open
 
 ## Combine with frameworks or manual tracing
 
-The automatic tracing capability in MLflow is designed to work seamlessly with the [Manual Tracing SDK](/genai/tracing/app-instrumentation/manual-tracing) or multi-framework integrations. The examples below show Python (manual span) and JS/TS (manual span) at the same level of complexity.
-
-<TabsWrapper>
-<Tabs>
-  <TabItem value="python" label="Python" default>
-
-    ```python
-    import json
-    from openai import OpenAI
-    import mlflow
-    from mlflow.entities import SpanType
-
-    # Initialize the OpenAI client with Databricks API endpoint
-    client = OpenAI(
-        base_url="https://api.databricks.com",
-        api_key="<your_databricks_api_key>",
-    )
-
-    # Create a parent span for the Databricks call
-    @mlflow.trace(span_type=SpanType.CHAIN)
-    def answer_question(question: str):
-        messages = [{"role": "user", "content": question}]
-        response = client.chat.completions.create(
-            model="<your_databricks_model>",
-            messages=messages,
-        )
-
-        # Attach session/user metadata to the trace
-        mlflow.update_current_trace(
-            metadata={
-                "mlflow.trace.session": "session-12345",
-                "mlflow.trace.user": "user-a",
-            }
-        )
-        return response.choices[0].message.content
-
-    answer = answer_question("What is the capital of France?")
-    ```
-
-  </TabItem>
-  <TabItem value="typescript" label="JS / TS">
-
-    ```typescript
-    import * as mlflow from "mlflow-tracing";
-    import { OpenAI } from "openai";
-    import { tracedOpenAI } from "mlflow-openai";
-
-    mlflow.init({
-      trackingUri: "http://localhost:5000",
-      experimentId: "<your_experiment_id>",
-    });
-
-    // Wrap the OpenAI client and point to Databricks endpoint
-    const client = tracedOpenAI(
-      new OpenAI({
-        baseURL: "https://api.databricks.com",
-        apiKey: "<your_databricks_api_key>",
-      })
-    );
-
-    // Create a traced function that wraps the Databricks call
-    const answerQuestion = mlflow.trace(
-      async (question: string) => {
-        const resp = await client.chat.completions.create({
-          model: "<your_databricks_model>",
-          messages: [{ role: "user", content: question }],
-        });
-        return resp.choices[0].message?.content;
-      },
-      { name: "answer-question" }
-    );
-
-    await answerQuestion("What is the capital of France?");
-    ```
-
-  </TabItem>
-</Tabs>
-</TabsWrapper>
-
-Running either example will produce a trace that includes the Databricks LLM span; the traced function creates the parent span automatically.
+The automatic tracing capability in MLflow is designed to work seamlessly with the [Manual Tracing SDK](/genai/tracing/app-instrumentation/manual-tracing) or multi-framework integrations. Please refer to the [Combining with frameworks or manual tracing](../openai#combine-with-frameworks-or-manual-tracing) for example code snippets.
 
 <ImageBox src="/images/llms/tracing/openai-trace-with-manual-span.png" alt="Databricks Tracing with Manual Tracing" />
 
