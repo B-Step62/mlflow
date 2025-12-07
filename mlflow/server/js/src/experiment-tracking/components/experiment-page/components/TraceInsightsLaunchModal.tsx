@@ -251,6 +251,7 @@ export const TraceInsightsLaunchModal = ({
   const [traceCount, setTraceCount] = useState<number>();
   const [traceCountLoading, setTraceCountLoading] = useState(false);
   const [traceCountError, setTraceCountError] = useState<string>();
+  const [insightRunId, setInsightRunId] = useState<string>();
   const pollingIntervalRef = useRef<number>();
 
   const stopPolling = useCallback(() => {
@@ -334,6 +335,7 @@ export const TraceInsightsLaunchModal = ({
   const jobProgress = useMemo(() => statusToProgress(jobStatus), [jobStatus, statusToProgress]);
 
   const isJobTerminal = jobStatus === 'SUCCEEDED' || jobStatus === 'FAILED' || jobStatus === 'TIMEOUT';
+  const isJobStarted = Boolean(submitting || jobId || jobStatus);
   const isBusy = Boolean(submitting || (jobStatus && !isJobTerminal));
 
   useEffect(() => {
@@ -447,12 +449,18 @@ export const TraceInsightsLaunchModal = ({
       .then((submitResponse: any) => {
         setJobId(submitResponse.job_id);
         setJobStatus(submitResponse.status as JobStatus);
+        if (submitResponse.run_id) {
+          setInsightRunId(submitResponse.run_id as string);
+        }
 
         stopPolling();
         pollingIntervalRef.current = window.setInterval(async () => {
           try {
-            const job = (await MlflowService.getJob(submitResponse.job_id)) as { status: JobStatus };
+            const job = (await MlflowService.getJob(submitResponse.job_id)) as { status: JobStatus; run_id?: string };
             setJobStatus(job.status);
+            if (job.run_id) {
+              setInsightRunId(job.run_id);
+            }
             if (job.status === 'SUCCEEDED' || job.status === 'FAILED' || job.status === 'TIMEOUT') {
               stopPolling();
             }
@@ -504,6 +512,7 @@ export const TraceInsightsLaunchModal = ({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Find common error patterns"
+              disabled={isJobStarted}
             />
           </div>
 
@@ -513,116 +522,119 @@ export const TraceInsightsLaunchModal = ({
               componentId="mlflow.experiment.trace-insights-launch-modal.model-select"
               value={model}
               onChange={(value) => setModel(value)}
+              disabled={isJobStarted}
             >
               <SimpleSelectOption value="openai:/gpt-5">GPT-5 (Recommended)</SimpleSelectOption>
               <SimpleSelectOption value="gpt-4o">GPT-4o</SimpleSelectOption>
             </SimpleSelect>
           </div>
 
-          <div
-            css={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: theme.spacing.sm,
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.borders.borderRadiusMd,
-              padding: theme.spacing.md,
-              backgroundColor: theme.colors.backgroundPrimary,
-            }}
-          >
-            <StatTile
-              label="Traces"
-              value={statValues.traces}
-              extra={
-                filterList.length > 0 ? (
-                  <Popover.Root modal={false}>
-                    <Popover.Trigger asChild>
-                      <button
-                        type="button"
-                        aria-label="Show applied filters"
-                        css={{
-                          border: 'none',
-                          background: 'transparent',
-                          padding: 0,
-                          margin: 0,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <FilterIcon css={{ color: theme.colors.textSecondary, fontSize: 14 }} />
-                      </button>
-                    </Popover.Trigger>
-                    <Popover.Content sideOffset={8}>
-                      <Popover.Arrow />
-                      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 220 }}>
-                        <Typography.Text strong>Applied filters</Typography.Text>
-                        <ul
-                          css={{
-                            paddingLeft: theme.spacing.md,
-                            margin: 0,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 2,
-                            listStyle: 'none',
-                          }}
-                        >
-                          {filterList.map((item, idx) => (
-                            <li key={`${item.label}-${idx}`} css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                              {item.icon === 'clock' ? (
-                                <ClockIcon css={{ color: theme.colors.textSecondary, fontSize: 12 }} />
-                              ) : (
-                                <FilterIcon css={{ color: theme.colors.textSecondary, fontSize: 12 }} />
-                              )}
-                              <Typography.Text>
-                                {item.label ? (
-                                  <>
-                                    <Typography.Text>{item.label}</Typography.Text>{' '}
-                                    <Typography.Text>{item.text}</Typography.Text>
-                                  </>
-                                ) : (
-                                  <Typography.Text>{item.text}</Typography.Text>
-                                )}
-                              </Typography.Text>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </Popover.Content>
-                  </Popover.Root>
-                ) : null
-              }
-            />
-            <StatTile label="Est. Cost" value={statValues.cost} />
-            <StatTile label="Est. Time" value={statValues.time} />
-          </div>
+          {!isJobStarted ? (
+            <>
+              <div
+                css={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: theme.spacing.sm,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.borders.borderRadiusMd,
+                  padding: theme.spacing.md,
+                  backgroundColor: theme.colors.backgroundPrimary,
+                }}
+              >
+                <StatTile
+                  label="Traces"
+                  value={statValues.traces}
+                  extra={
+                    filterList.length > 0 ? (
+                      <Popover.Root modal={false}>
+                        <Popover.Trigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Show applied filters"
+                            css={{
+                              border: 'none',
+                              background: 'transparent',
+                              padding: 0,
+                              margin: 0,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <FilterIcon css={{ color: theme.colors.textSecondary, fontSize: 14 }} />
+                          </button>
+                        </Popover.Trigger>
+                        <Popover.Content sideOffset={8}>
+                          <Popover.Arrow />
+                          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 220 }}>
+                            <Typography.Text strong>Applied filters</Typography.Text>
+                            <ul
+                              css={{
+                                paddingLeft: theme.spacing.md,
+                                margin: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 2,
+                                listStyle: 'none',
+                              }}
+                            >
+                              {filterList.map((item, idx) => (
+                                <li key={`${item.label}-${idx}`} css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                                  {item.icon === 'clock' ? (
+                                    <ClockIcon css={{ color: theme.colors.textSecondary, fontSize: 12 }} />
+                                  ) : (
+                                    <FilterIcon css={{ color: theme.colors.textSecondary, fontSize: 12 }} />
+                                  )}
+                                  <Typography.Text>
+                                    {item.label ? (
+                                      <>
+                                        <Typography.Text>{item.label}</Typography.Text>{' '}
+                                        <Typography.Text>{item.text}</Typography.Text>
+                                      </>
+                                    ) : (
+                                      <Typography.Text>{item.text}</Typography.Text>
+                                    )}
+                                  </Typography.Text>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </Popover.Content>
+                      </Popover.Root>
+                    ) : null
+                  }
+                />
+                <StatTile label="Est. Cost" value={statValues.cost} />
+                <StatTile label="Est. Time" value={statValues.time} />
+              </div>
 
-          {traceCountError && (
-            <Alert
-              type="error"
-              showIcon
-              message="Unable to fetch trace count"
-              description={traceCountError}
-            />
-          )}
+              {traceCountError && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="Unable to fetch trace count"
+                  description={traceCountError}
+                />
+              )}
 
-          <Typography.Text color="secondary">
-            Target traces are determined by the current time range and search filters. To change the target traces, please update filters in the previous screen, or manually select traces in the table.
-          </Typography.Text>
+              <Typography.Text color="secondary">
+                Target traces are determined by the current time range and search filters. To change the target traces, please update filters in the previous screen, or manually select traces in the table.
+              </Typography.Text>
 
-          <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
-            <Button onClick={onCancel}>Cancel</Button>
-            <Button
-              type="primary"
-              onClick={handleAnalyze}
-              disabled={!prompt.trim() || isBusy || traceCountLoading}
-              loading={isBusy}
-            >
-              Analyze
-            </Button>
-          </div>
-
-          {(jobStatus || jobError) && (
+              <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
+                <Button onClick={onCancel}>Cancel</Button>
+                <Button
+                  type="primary"
+                  onClick={handleAnalyze}
+                  disabled={!prompt.trim() || isBusy || traceCountLoading}
+                  loading={isBusy}
+                >
+                  Analyze
+                </Button>
+              </div>
+            </>
+          ) : (
             <div
               css={{
                 marginTop: theme.spacing.sm,
@@ -645,39 +657,45 @@ export const TraceInsightsLaunchModal = ({
                 )}
                 <Typography.Text strong>Status</Typography.Text>
               </div>
-              {jobStatus && (
+              <div
+                css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.max(0, Math.min(100, Math.round(jobProgress)))}
+              >
                 <div
-                  css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.max(0, Math.min(100, Math.round(jobProgress)))}
+                  css={{
+                    flex: 1,
+                    height: theme.spacing.sm,
+                    backgroundColor: theme.colors.backgroundSecondary,
+                    borderRadius: theme.spacing.sm,
+                    overflow: 'hidden',
+                  }}
                 >
                   <div
                     css={{
-                      flex: 1,
-                      height: theme.spacing.sm,
-                      backgroundColor: theme.colors.backgroundSecondary,
-                      borderRadius: theme.spacing.sm,
-                      overflow: 'hidden',
+                      height: '100%',
+                      width: `${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`,
+                      backgroundColor: theme.colors.primary,
+                      transition: 'width 200ms ease',
                     }}
-                  >
-                    <div
-                      css={{
-                        height: '100%',
-                        width: `${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`,
-                        backgroundColor: theme.colors.primary,
-                        transition: 'width 200ms ease',
-                      }}
-                    />
-                  </div>
-                  <Typography.Text>{`${jobStatus} • ${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`}</Typography.Text>
+                  />
                 </div>
-              )}
+                <Typography.Text>{`${jobStatus || 'PENDING'} • ${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`}</Typography.Text>
+              </div>
               {jobId && (
                 <Typography.Text color="secondary" css={{ fontSize: theme.typography.fontSizeSm }}>
                   Job ID: {jobId}
                 </Typography.Text>
+              )}
+              {jobStatus === 'SUCCEEDED' && insightRunId && experimentId && (
+                <Typography.Link
+                  href={`/experiments/${experimentId}/insights?selectedInsightId=${insightRunId}`}
+                  target="_blank"
+                >
+                  View insight report
+                </Typography.Link>
               )}
               {jobError && (
                 <Alert

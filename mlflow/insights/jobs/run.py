@@ -41,7 +41,7 @@ def generate_insight_report(
     Returns:
         The ID of the insight run.
     """
-    mlflow.set_experiment(experiment_id)
+    mlflow.set_experiment(experiment_id=experiment_id)
     traces = mlflow.search_traces(
         filter_string=filter_string,
         locations=[experiment_id],
