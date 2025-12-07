@@ -9,6 +9,7 @@ from typing import Literal
 import mlflow
 from mlflow.entities import Feedback, Trace
 from mlflow.entities.assessment import AssessmentSource, AssessmentSourceType
+from mlflow.insights.jobs._shared import _JOB_STAGE_TAG_KEY
 from mlflow.types.llm import ChatMessage
 
 
@@ -29,6 +30,9 @@ class Response(BaseModel):
 def extract_trace_summaries(run_id: str, trace_ids: list[str], user_question: str, model: str = "openai:/gpt-5-mini") -> list[Item]:
     from mlflow.metrics.genai.model_utils import _parse_model_uri
     from mlflow.genai.judges.adapters.litellm_adapter import _invoke_litellm_and_handle_tools
+
+    # TODO: Move this to Jobs API once job backend supports detailed status updates.
+    mlflow.set_tag(_JOB_STAGE_TAG_KEY, "extracting_summaries")
 
     # To enable tracing for the judge tools
     os.environ["MLFLOW_GENAI_EVAL_ENABLE_SCORER_TRACING"] = "true"

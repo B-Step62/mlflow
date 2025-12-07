@@ -11,6 +11,7 @@ import mlflow
 from mlflow.entities import Feedback, Trace
 from mlflow.entities.assessment import AssessmentSource, AssessmentSourceType
 from mlflow.insights.jobs._extract import Item, Evidence
+from mlflow.insights.jobs._shared import _JOB_STAGE_TAG_KEY
 from mlflow.types.llm import ChatMessage
 
 _logger = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ def discover_issues(
 ) -> list[Categories]:
     from mlflow.metrics.genai.model_utils import _parse_model_uri
     from mlflow.genai.judges.adapters.litellm_adapter import _invoke_litellm_and_handle_tools
+
+    # TODO: Move this to Jobs API once job backend supports detailed status updates.
+    mlflow.set_tag(_JOB_STAGE_TAG_KEY, "discovering_issues")
 
     # To enable tracing for the judge tools
     os.environ["MLFLOW_GENAI_EVAL_ENABLE_SCORER_TRACING"] = "true"

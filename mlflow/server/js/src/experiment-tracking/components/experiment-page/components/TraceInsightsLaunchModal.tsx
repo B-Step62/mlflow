@@ -252,6 +252,7 @@ export const TraceInsightsLaunchModal = ({
   const [traceCountLoading, setTraceCountLoading] = useState(false);
   const [traceCountError, setTraceCountError] = useState<string>();
   const [insightRunId, setInsightRunId] = useState<string>();
+  const [runStage, setRunStage] = useState<string>();
   const pollingIntervalRef = useRef<number>();
 
   const stopPolling = useCallback(() => {
@@ -317,22 +318,85 @@ export const TraceInsightsLaunchModal = ({
     [filters, timeRangeMs],
   );
 
-  const statusToProgress = useCallback((status?: JobStatus) => {
-    switch (status) {
-      case 'PENDING':
-        return 25;
-      case 'RUNNING':
-        return 65;
-      case 'SUCCEEDED':
-      case 'FAILED':
-      case 'TIMEOUT':
-        return 100;
-      default:
-        return 0;
+  const { stageLabel, jobProgress } = useMemo(() => {
+    if (jobStatus === 'SUCCEEDED') {
+      return { stageLabel: 'Completed', jobProgress: 1 };
     }
-  }, []);
+    if (jobStatus === 'FAILED' || jobStatus === 'TIMEOUT') {
+      return { stageLabel: 'Failed', jobProgress: 1 };
+    }
+    switch (runStage) {
+      case 'extracting_summaries':
+        return { stageLabel: 'Scanning traces...', jobProgress: 0.3 };
+      case 'discovering_issues':
+        return { stageLabel: 'Analyzing issues...', jobProgress: 0.6 };
+      case 'generating_report_title':
+        return { stageLabel: 'Finalizing the report...', jobProgress: 0.9 };
+      default:
+        if (jobStatus === 'RUNNING') {
+          return { stageLabel: 'Running...', jobProgress: 0.3 };
+        }
+        if (jobStatus === 'PENDING') {
+          return { stageLabel: 'Queued', jobProgress: 0 };
+        }
+        return { stageLabel: 'Queued', jobProgress: 0 };
+    }
+  }, [jobStatus, runStage]);
 
-  const jobProgress = useMemo(() => statusToProgress(jobStatus), [jobStatus, statusToProgress]);
+  const statusDisplay = useMemo(() => {
+    const base = { message: stageLabel, icon: <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} /> };
+
+    if (jobStatus === 'SUCCEEDED') {
+      return {
+        message: 'Completed',
+        icon: <CheckCircleIcon css={{ color: theme.colors.success, fontSize: 16 }} />,
+      };
+    }
+    if (jobStatus === 'FAILED') {
+      return {
+        message: 'Failed',
+        icon: <QuestionMarkIcon css={{ color: theme.colors.error, fontSize: 16 }} />,
+      };
+    }
+    if (jobStatus === 'TIMEOUT') {
+      return {
+        message: 'Timed out',
+        icon: <ClockIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />,
+      };
+    }
+    if (jobStatus === 'PENDING') {
+      return {
+        message: 'Queued',
+        icon: <ClockIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />,
+      };
+    }
+    if (jobStatus === 'RUNNING') {
+      switch (runStage) {
+        case 'extracting_summaries':
+          return {
+            message: 'Running: Scanning traces...',
+            icon: <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />,
+          };
+        case 'discovering_issues':
+          return {
+            message: 'Running: Analyzing issues...',
+            icon: <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />,
+          };
+        case 'generating_report_title':
+          return {
+            message: 'Running: Finalizing the report...',
+            icon: <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />,
+          };
+        default:
+          return {
+            message: 'Running...',
+            icon: <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />,
+          };
+      }
+    }
+
+    return base;
+  }, [jobStatus, runStage, stageLabel, theme.colors.error, theme.colors.success, theme.colors.textSecondary]);
 
   const isJobTerminal = jobStatus === 'SUCCEEDED' || jobStatus === 'FAILED' || jobStatus === 'TIMEOUT';
   const isJobStarted = Boolean(submitting || jobId || jobStatus);
@@ -340,6 +404,7 @@ export const TraceInsightsLaunchModal = ({
 
   useEffect(() => {
     setPrompt(initialPrompt);
+    setRunStage(undefined);
   }, [initialPrompt, visible]);
 
   useEffect(() => {
@@ -364,6 +429,7 @@ export const TraceInsightsLaunchModal = ({
 
         if (!isUnmounted && !abortController.signal.aborted) {
           setTraceCount(traces.length);
+          setRunStage(undefined);
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -461,6 +527,24 @@ export const TraceInsightsLaunchModal = ({
             if (job.run_id) {
               setInsightRunId(job.run_id);
             }
+
+            const runIdToPoll = job.run_id || insightRunId;
+            if (runIdToPoll) {
+              try {
+                const run = (await MlflowService.getRun({ run_id: runIdToPoll })) as any;
+                const stage = run?.data?.tags?.['mlflow.insights.stage'];
+                if (stage) {
+                  setRunStage(stage);
+                }
+                // If backend adds run_id later, capture it.
+                if (!insightRunId && run?.info?.run_uuid) {
+                  setInsightRunId(run.info.run_uuid);
+                }
+              } catch (runError) {
+                // ignore run polling errors; they'll retry
+              }
+            }
+
             if (job.status === 'SUCCEEDED' || job.status === 'FAILED' || job.status === 'TIMEOUT') {
               stopPolling();
             }
@@ -648,41 +732,32 @@ export const TraceInsightsLaunchModal = ({
               }}
             >
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                {jobStatus === 'SUCCEEDED' ? (
-                  <CheckCircleIcon css={{ color: theme.colors.success, fontSize: 16 }} />
-                ) : jobStatus === 'FAILED' || jobStatus === 'TIMEOUT' ? (
-                  <QuestionMarkIcon css={{ color: theme.colors.error, fontSize: 16 }} />
-                ) : (
-                  <AssistantIcon css={{ color: theme.colors.textSecondary, fontSize: 16 }} />
-                )}
-                <Typography.Text strong>Status</Typography.Text>
+                {statusDisplay.icon}
+                <Typography.Text strong>{statusDisplay.message}</Typography.Text>
               </div>
               <div
-                css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}
+                css={{
+                  flex: 1,
+                  height: theme.spacing.sm,
+                  backgroundColor: theme.colors.backgroundSecondary,
+                  borderRadius: theme.spacing.sm,
+                  overflow: 'hidden',
+                  marginTop: theme.spacing.xs,
+                  marginBottom: theme.spacing.xs,
+                }}
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={Math.max(0, Math.min(100, Math.round(jobProgress)))}
+                aria-valuenow={Math.max(0, Math.min(100, Math.round(jobProgress * 100)))}
               >
                 <div
                   css={{
-                    flex: 1,
-                    height: theme.spacing.sm,
-                    backgroundColor: theme.colors.backgroundSecondary,
-                    borderRadius: theme.spacing.sm,
-                    overflow: 'hidden',
+                    height: '100%',
+                    width: `${Math.max(0, Math.min(100, Math.round(jobProgress * 100)))}%`,
+                    backgroundColor: theme.colors.primary,
+                    transition: 'width 200ms ease',
                   }}
-                >
-                  <div
-                    css={{
-                      height: '100%',
-                      width: `${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`,
-                      backgroundColor: theme.colors.primary,
-                      transition: 'width 200ms ease',
-                    }}
-                  />
-                </div>
-                <Typography.Text>{`${jobStatus || 'PENDING'} • ${Math.max(0, Math.min(100, Math.round(jobProgress)))}%`}</Typography.Text>
+                />
               </div>
               {jobId && (
                 <Typography.Text color="secondary" css={{ fontSize: theme.typography.fontSizeSm }}>

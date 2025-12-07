@@ -3,6 +3,9 @@ import logging
 import litellm
 from pydantic import BaseModel
 
+import mlflow
+from mlflow.insights.jobs._shared import _JOB_STAGE_TAG_KEY
+
 _logger = logging.getLogger(__name__)
 
 # Generate report title with LLM
@@ -23,6 +26,9 @@ def generate_report_title(
 ) -> str:
     from mlflow.metrics.genai.model_utils import _parse_model_uri
     from mlflow.genai.judges.adapters.litellm_adapter import _invoke_litellm_and_handle_tools
+
+    # TODO: Move this to Jobs API once job backend supports detailed status updates.
+    mlflow.set_tag(_JOB_STAGE_TAG_KEY, "generating_report_title")
 
     provider, model_name = _parse_model_uri(model)
 

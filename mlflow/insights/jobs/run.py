@@ -18,6 +18,8 @@ from mlflow.types.llm import ChatMessage
 _logger = logging.getLogger(__name__)
 
 
+_JOB_STAGE_TAG_KEY = "mlflow.insights.stage"
+
 @job(
     name="generate-insight-report",
     description="Generate an insight report for the trace.",
@@ -52,13 +54,14 @@ def generate_insight_report(
     # TODO: Remove this hard code
     model = "openai:/databricks-gpt-5-mini"
     with mlflow.start_run(tags={"mlflow.runType": "INSIGHTS"}) as run:
+        run_id = run.info.run_id
         # TODO: Distribute this to threads when the trace count is large
         trace_ids = [trace.info.trace_id for trace in traces]
-        run_id = run.info.run_id
         summaries = extract_trace_summaries(run_id, trace_ids, user_question, model)
         # TODO: Cluster summaries when the trace count is large
         #  _cluster_trace_summaries(run_id, trace_ids, user_question, model)
         issues = discover_issues(run_id, summaries, user_question, model)
+        mlflow.set_tag(_JOB_STAGE_TAG_KEY, "generating_report_title")
         title = generate_report_title(json.dumps(issues), user_question, model)
         mlflow.log_dict({
             "title": title,
