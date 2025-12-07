@@ -24,6 +24,8 @@ export const TracesView = ({
   loggedModelId,
   disabledColumns,
   baseComponentId = runUuid ? 'mlflow.run.traces' : 'mlflow.experiment_page.traces',
+  onVisibleTracesChange,
+  onSelectionChange,
 }: {
   experimentIds: string[];
   /**
@@ -43,6 +45,8 @@ export const TracesView = ({
    * The base component ID for the traces view. If not provided, will be inferred from the other props.
    */
   baseComponentId?: string;
+  onVisibleTracesChange?: (traceIds: string[]) => void;
+  onSelectionChange?: (traceIds: string[]) => void;
 }) => {
   const timeoutRef = useRef<number | undefined>(undefined);
   const [filter, setFilter] = useState<string>('');
@@ -65,6 +69,17 @@ export const TracesView = ({
     ({ request_id }: ModelTraceInfo) => setSelectedTraceId(request_id),
     [setSelectedTraceId],
   );
+
+  useEffect(() => {
+    onVisibleTracesChange?.(traces.map((t) => t.request_id).filter(Boolean));
+  }, [traces, onVisibleTracesChange]);
+
+  useEffect(() => {
+    const selectedIds = Object.entries(rowSelection)
+      .filter(([, selected]) => selected)
+      .map(([id]) => id);
+    onSelectionChange?.(selectedIds);
+  }, [rowSelection, onSelectionChange]);
 
   // clear row selections when the page changes.
   // the backend specifies a max of 100 deletions,

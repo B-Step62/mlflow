@@ -82,6 +82,16 @@ def discover_issues(
         }
         for i, category in enumerate(llm_categories.categories)
     ]
+
+    # Log the issue id on traces for referencing later
+    # TODO: This should use entity-relationship table for better scalability
+    for issue in issues:
+        for trace_id in issue["trace_ids"]:
+            mlflow.set_trace_tag(
+                trace_id=trace_id,
+                key=f"mlflow.insights.{run_id}.issue_id",
+                value=issue["issue_id"]
+            )
     return issues
 
 

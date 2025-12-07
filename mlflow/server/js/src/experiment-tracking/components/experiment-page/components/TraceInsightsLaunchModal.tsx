@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 
 import {
   AssistantIcon,
@@ -9,12 +9,40 @@ import {
   Input,
   Modal,
   QuestionMarkIcon,
+  ClockIcon,
   SimpleSelect,
   SimpleSelectOption,
   Typography,
   useDesignSystemTheme,
+  FilterIcon,
+  Popover,
 } from '@databricks/design-system';
 import AiLogoUrl from '../../../pages/experiment-insights/components/ai-logo.svg';
+import { useParams, useSearchParams } from '../../../../common/utils/RoutingUtils';
+import {
+  getAbsoluteStartEndTime,
+  START_TIME_LABEL_QUERY_PARAM_KEY,
+  DEFAULT_START_TIME_LABEL,
+} from '@mlflow/mlflow/src/experiment-tracking/hooks/useMonitoringFilters';
+import { MlflowService } from '../../../sdk/MlflowService';
+import { useFilters as useTraceFilters, getEvalTabTotalTracesLimit } from '@databricks/web-shared/genai-traces-table';
+import { searchMlflowTracesQueryFn } from '@databricks/web-shared/genai-traces-table/hooks/useMlflowTraces';
+import {
+  CUSTOM_METADATA_COLUMN_ID,
+  EXECUTION_DURATION_COLUMN_ID,
+  LOGGED_MODEL_COLUMN_ID,
+  RUN_NAME_COLUMN_ID,
+  SOURCE_COLUMN_ID,
+  SPAN_CONTENT_COLUMN_ID,
+  SPAN_NAME_COLUMN_ID,
+  SPAN_TYPE_COLUMN_ID,
+  STATE_COLUMN_ID,
+  TRACE_NAME_COLUMN_ID,
+  USER_COLUMN_ID,
+} from '@databricks/web-shared/genai-traces-table/hooks/useTableColumns';
+import { FilterOperator, TracesTableColumnGroup, type TableFilter } from '@databricks/web-shared/genai-traces-table';
+import { getCustomMetadataKeyFromColumnId } from '@databricks/web-shared/genai-traces-table/utils/TraceUtils';
+
 
 const { TextArea } = Input;
 
@@ -24,17 +52,6 @@ type TraceInsightsLaunchModalProps = {
   visible: boolean;
   initialPrompt: string;
   onCancel: () => void;
-  onAnalyze?: (payload: { prompt: string; model: string }) => void;
-  jobId?: string;
-  jobStatus?: JobStatus;
-  jobProgress?: number;
-  jobError?: string;
-  submitting?: boolean;
-  stats?: {
-    traceCount?: number;
-    estimatedCostUsd?: number;
-    estimatedDurationSeconds?: number;
-  };
 };
 
 const formatDuration = (seconds?: number) => {
@@ -52,7 +69,7 @@ const formatDuration = (seconds?: number) => {
   return `${hours} hour${hours === 1 ? '' : 's'}`;
 };
 
-const StatTile = ({ label, value }: { label: string; value: string }) => {
+const StatTile = ({ label, value, extra }: { label: string; value: string; extra?: React.ReactNode }) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div
@@ -65,7 +82,10 @@ const StatTile = ({ label, value }: { label: string; value: string }) => {
         backgroundColor: theme.colors.backgroundTertiary,
       }}
     >
-      <Typography.Text css={{ color: theme.colors.textSecondary }}>{label}</Typography.Text>
+      <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+        <Typography.Text css={{ color: theme.colors.textSecondary }}>{label}</Typography.Text>
+        {extra}
+      </div>
       <Typography.Title level={5} css={{ margin: 0 }}>
         {value}
       </Typography.Title>
@@ -107,21 +127,211 @@ const BenefitRow = ({ title, description, icon }: { title: string; description: 
   );
 };
 
+const buildTraceSearchFilterString = (
+  filters: TableFilter[],
+  timeRange?: { startTime?: string; endTime?: string },
+): string | undefined => {
+  const networkFilters = filters.filter((filter) => filter.column !== TracesTableColumnGroup.ASSESSMENT);
+
+  const clauses: string[] = [];
+
+  if (timeRange) {
+    const timestampField = 'attributes.timestamp_ms';
+    if (timeRange.startTime) {
+      clauses.push(`${timestampField} > ${timeRange.startTime}`);
+    }
+    if (timeRange.endTime) {
+      clauses.push(`${timestampField} < ${timeRange.endTime}`);
+    }
+  }
+
+  networkFilters.forEach((filter) => {
+    switch (filter.column) {
+      case TracesTableColumnGroup.TAG: {
+        if (filter.key) {
+          const tagField = 'tags';
+          const fieldName =
+            filter.key.includes('.') || filter.key.includes(' ')
+              ? `${tagField}.\`${filter.key}\``
+              : `${tagField}.${filter.key}`;
+          clauses.push(`${fieldName} ${filter.operator} '${filter.value}'`);
+        }
+        break;
+      }
+      case EXECUTION_DURATION_COLUMN_ID: {
+        clauses.push(`attributes.execution_time_ms ${filter.operator} ${filter.value}`);
+        break;
+      }
+      case STATE_COLUMN_ID: {
+        clauses.push(`attributes.status = '${filter.value}'`);
+        break;
+      }
+      case USER_COLUMN_ID: {
+        clauses.push(`request_metadata."mlflow.trace.user" = '${filter.value}'`);
+        break;
+      }
+      case RUN_NAME_COLUMN_ID: {
+        clauses.push(`attributes.run_id = '${filter.value}'`);
+        break;
+      }
+      case LOGGED_MODEL_COLUMN_ID: {
+        clauses.push(`request_metadata."mlflow.modelId" = '${filter.value}'`);
+        break;
+      }
+      case TRACE_NAME_COLUMN_ID: {
+        clauses.push(`attributes.name ${filter.operator} '${filter.value}'`);
+        break;
+      }
+      case SOURCE_COLUMN_ID: {
+        clauses.push(`request_metadata."mlflow.source.name" ${filter.operator} '${filter.value}'`);
+        break;
+      }
+      case TracesTableColumnGroup.EXPECTATION: {
+        clauses.push(`expectation.\`${filter.key}\` ${filter.operator} '${filter.value}'`);
+        break;
+      }
+      case SPAN_NAME_COLUMN_ID: {
+        if (filter.operator === '=') {
+          clauses.push(`span.name ILIKE '${filter.value}'`);
+        } else if (filter.operator === FilterOperator.CONTAINS) {
+          clauses.push(`span.name ILIKE '%${filter.value}%'`);
+        } else {
+          clauses.push(`span.name ${filter.operator} '${filter.value}'`);
+        }
+        break;
+      }
+      case SPAN_TYPE_COLUMN_ID: {
+        if (filter.operator === '=') {
+          clauses.push(`span.type ILIKE '${filter.value}'`);
+        } else if (filter.operator === FilterOperator.CONTAINS) {
+          clauses.push(`span.type ILIKE '%${filter.value}%'`);
+        } else {
+          clauses.push(`span.type ${filter.operator} '${filter.value}'`);
+        }
+        break;
+      }
+      case SPAN_CONTENT_COLUMN_ID: {
+        if (filter.operator === FilterOperator.CONTAINS) {
+          clauses.push(`span.content ILIKE '%${filter.value}%'`);
+        }
+        break;
+      }
+      default: {
+        if (filter.column.startsWith(CUSTOM_METADATA_COLUMN_ID)) {
+          const columnKey = `request_metadata.${getCustomMetadataKeyFromColumnId(filter.column)}`;
+          if (filter.operator === FilterOperator.CONTAINS) {
+            clauses.push(`${columnKey} ILIKE '%${filter.value}%'`);
+          } else {
+            clauses.push(`${columnKey} ${filter.operator} '${filter.value}'`);
+          }
+        }
+        break;
+      }
+    }
+  });
+
+  return clauses.length ? clauses.join(' AND ') : undefined;
+};
+
 export const TraceInsightsLaunchModal = ({
   visible,
   initialPrompt,
   onCancel,
-  onAnalyze,
-  jobId,
-  jobStatus,
-  jobProgress = 0,
-  jobError,
-  submitting,
-  stats,
 }: TraceInsightsLaunchModalProps) => {
   const { theme } = useDesignSystemTheme();
+  const { experimentId } = useParams();
   const [prompt, setPrompt] = useState(initialPrompt);
   const [model, setModel] = useState('openai:/gpt-5');
+  const [searchParams] = useSearchParams();
+  const [filters] = useTraceFilters();
+  const [jobId, setJobId] = useState<string>();
+  const [jobStatus, setJobStatus] = useState<JobStatus>();
+  const [jobError, setJobError] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
+  const [traceCount, setTraceCount] = useState<number>();
+  const [traceCountLoading, setTraceCountLoading] = useState(false);
+  const [traceCountError, setTraceCountError] = useState<string>();
+  const pollingIntervalRef = useRef<number>();
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      window.clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = undefined;
+    }
+  }, []);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  const filterList = useMemo(() => {
+    const filterParams = searchParams.getAll('filter');
+    const filters = filterParams.map((raw) => {
+      const [column, operator, value, key] = raw.split('::');
+      return {
+        label: key || column || 'filter',
+        text: `${operator ?? '='} ${value ?? ''}`.trim(),
+        icon: 'filter' as const,
+      };
+    });
+
+    const startTimeLabel =
+      (searchParams.get(START_TIME_LABEL_QUERY_PARAM_KEY) as any) || DEFAULT_START_TIME_LABEL;
+    const start = searchParams.get('startTime') || undefined;
+    const end = searchParams.get('endTime') || undefined;
+    const absolute = getAbsoluteStartEndTime(new Date(), {
+      startTimeLabel,
+      startTime: start,
+      endTime: end,
+    });
+    if (absolute.startTime || absolute.endTime) {
+      const summary = `${absolute.startTime ? new Date(absolute.startTime).toLocaleString() : '—'} → ${
+        absolute.endTime ? new Date(absolute.endTime).toLocaleString() : '—'
+      }`;
+      filters.unshift({ label: '', text: summary, icon: 'clock' as const });
+    }
+    return filters;
+  }, [searchParams]);
+
+  const timeRange = useMemo(() => {
+    const startTimeLabel =
+      (searchParams.get(START_TIME_LABEL_QUERY_PARAM_KEY) as any) || DEFAULT_START_TIME_LABEL;
+    const start = searchParams.get('startTime') || undefined;
+    const end = searchParams.get('endTime') || undefined;
+    return getAbsoluteStartEndTime(new Date(), {
+      startTimeLabel,
+      startTime: start,
+      endTime: end,
+    });
+  }, [searchParams]);
+
+  const timeRangeMs = useMemo(
+    () => ({
+      startTime: timeRange.startTime ? `${new Date(timeRange.startTime).getTime()}` : undefined,
+      endTime: timeRange.endTime ? `${new Date(timeRange.endTime).getTime()}` : undefined,
+    }),
+    [timeRange],
+  );
+
+  const searchFilterString = useMemo(
+    () => buildTraceSearchFilterString(filters, timeRangeMs),
+    [filters, timeRangeMs],
+  );
+
+  const statusToProgress = useCallback((status?: JobStatus) => {
+    switch (status) {
+      case 'PENDING':
+        return 25;
+      case 'RUNNING':
+        return 65;
+      case 'SUCCEEDED':
+      case 'FAILED':
+      case 'TIMEOUT':
+        return 100;
+      default:
+        return 0;
+    }
+  }, []);
+
+  const jobProgress = useMemo(() => statusToProgress(jobStatus), [jobStatus, statusToProgress]);
 
   const isJobTerminal = jobStatus === 'SUCCEEDED' || jobStatus === 'FAILED' || jobStatus === 'TIMEOUT';
   const isBusy = Boolean(submitting || (jobStatus && !isJobTerminal));
@@ -130,17 +340,57 @@ export const TraceInsightsLaunchModal = ({
     setPrompt(initialPrompt);
   }, [initialPrompt, visible]);
 
-  const statValues = useMemo(
-    () => ({
-      traces: stats?.traceCount !== undefined ? stats.traceCount.toLocaleString() : '—',
-      cost:
-        stats?.estimatedCostUsd !== undefined
-          ? `$${stats.estimatedCostUsd.toFixed(2)}`
-          : '$—',
-      time: formatDuration(stats?.estimatedDurationSeconds),
-    }),
-    [stats],
-  );
+  useEffect(() => {
+    if (!visible) {
+      return undefined;
+    }
+
+    const abortController = new AbortController();
+    let isUnmounted = false;
+
+    const fetchTraceCount = async () => {
+      setTraceCountLoading(true);
+      setTraceCountError(undefined);
+
+      try {
+        const traces = await searchMlflowTracesQueryFn({
+          signal: abortController.signal,
+          locations: [{ type: 'MLFLOW_EXPERIMENT' as const, mlflow_experiment: { experiment_id: experimentId! } }],
+          filter: searchFilterString,
+          limit: getEvalTabTotalTracesLimit(),
+        });
+
+        if (!isUnmounted && !abortController.signal.aborted) {
+          setTraceCount(traces.length);
+        }
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          setTraceCount(undefined);
+          setTraceCountError((error as Error).message);
+        }
+      } finally {
+        if (!isUnmounted && !abortController.signal.aborted) {
+          setTraceCountLoading(false);
+        }
+      }
+    };
+
+    fetchTraceCount();
+
+    return () => {
+      isUnmounted = true;
+      abortController.abort();
+    };
+  }, [visible, searchFilterString, experimentId]);
+
+  const statValues = useMemo(() => {
+    const count = traceCount ?? 0;
+    return {
+      traces: traceCountLoading ? '…' : count.toLocaleString(),
+      cost: traceCountLoading ? '…' : `$${(count * 0.0001).toFixed(2)}`, // TODO: Update
+      time: traceCountLoading ? '…' : formatDuration(count * 0.0001), // TODO: Update
+    };
+  }, [traceCount, traceCountLoading]);
 
   const benefits = useMemo(
     () => [
@@ -168,7 +418,57 @@ export const TraceInsightsLaunchModal = ({
     if (!trimmedPrompt) {
       return;
     }
-    onAnalyze?.({ prompt: trimmedPrompt, model });
+    if (traceCountLoading) {
+      setJobError('Trace count is still loading. Please wait a moment and try again.');
+      return;
+    }
+    if (traceCountError) {
+      setJobError('Unable to fetch trace count. Please try again.');
+      return;
+    }
+    if (!traceCount || traceCount <= 0) {
+      setJobError('No traces found for the current filters.');
+      return;
+    }
+
+    setJobError(undefined);
+    setSubmitting(true);
+    setJobStatus('PENDING');
+
+    MlflowService.submitJob({
+      name: 'generate-insight-report',
+      params: {
+        filter_string: searchFilterString,
+        experiment_id: experimentId!,
+        user_question: trimmedPrompt,
+        model,
+      },
+    })
+      .then((submitResponse: any) => {
+        setJobId(submitResponse.job_id);
+        setJobStatus(submitResponse.status as JobStatus);
+
+        stopPolling();
+        pollingIntervalRef.current = window.setInterval(async () => {
+          try {
+            const job = (await MlflowService.getJob(submitResponse.job_id)) as { status: JobStatus };
+            setJobStatus(job.status);
+            if (job.status === 'SUCCEEDED' || job.status === 'FAILED' || job.status === 'TIMEOUT') {
+              stopPolling();
+            }
+          } catch (error) {
+            setJobError((error as Error).message);
+            stopPolling();
+          }
+        }, 2000);
+      })
+      .catch((error: any) => {
+        setJobError((error as Error).message);
+        setJobStatus(undefined);
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -230,14 +530,94 @@ export const TraceInsightsLaunchModal = ({
               backgroundColor: theme.colors.backgroundPrimary,
             }}
           >
-            <StatTile label="Traces" value={statValues.traces} />
+            <StatTile
+              label="Traces"
+              value={statValues.traces}
+              extra={
+                filterList.length > 0 ? (
+                  <Popover.Root modal={false}>
+                    <Popover.Trigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Show applied filters"
+                        css={{
+                          border: 'none',
+                          background: 'transparent',
+                          padding: 0,
+                          margin: 0,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <FilterIcon css={{ color: theme.colors.textSecondary, fontSize: 14 }} />
+                      </button>
+                    </Popover.Trigger>
+                    <Popover.Content sideOffset={8}>
+                      <Popover.Arrow />
+                      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 220 }}>
+                        <Typography.Text strong>Applied filters</Typography.Text>
+                        <ul
+                          css={{
+                            paddingLeft: theme.spacing.md,
+                            margin: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            listStyle: 'none',
+                          }}
+                        >
+                          {filterList.map((item, idx) => (
+                            <li key={`${item.label}-${idx}`} css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                              {item.icon === 'clock' ? (
+                                <ClockIcon css={{ color: theme.colors.textSecondary, fontSize: 12 }} />
+                              ) : (
+                                <FilterIcon css={{ color: theme.colors.textSecondary, fontSize: 12 }} />
+                              )}
+                              <Typography.Text>
+                                {item.label ? (
+                                  <>
+                                    <Typography.Text>{item.label}</Typography.Text>{' '}
+                                    <Typography.Text>{item.text}</Typography.Text>
+                                  </>
+                                ) : (
+                                  <Typography.Text>{item.text}</Typography.Text>
+                                )}
+                              </Typography.Text>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </Popover.Content>
+                  </Popover.Root>
+                ) : null
+              }
+            />
             <StatTile label="Est. Cost" value={statValues.cost} />
             <StatTile label="Est. Time" value={statValues.time} />
           </div>
 
+          {traceCountError && (
+            <Alert
+              type="error"
+              showIcon
+              message="Unable to fetch trace count"
+              description={traceCountError}
+            />
+          )}
+
+          <Typography.Text color="secondary">
+            Target traces are determined by the current time range and search filters. To change the target traces, please update filters in the previous screen, or manually select traces in the table.
+          </Typography.Text>
+
           <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
             <Button onClick={onCancel}>Cancel</Button>
-            <Button type="primary" onClick={handleAnalyze} disabled={!prompt.trim() || isBusy} loading={isBusy}>
+            <Button
+              type="primary"
+              onClick={handleAnalyze}
+              disabled={!prompt.trim() || isBusy || traceCountLoading}
+              loading={isBusy}
+            >
               Analyze
             </Button>
           </div>

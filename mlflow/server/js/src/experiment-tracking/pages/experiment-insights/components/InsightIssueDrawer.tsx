@@ -83,9 +83,9 @@ export const InsightIssueDrawer: React.FC<InsightIssueDrawerProps> = ({
       return [
         {
           column: TracesTableColumnGroup.TAG,
-          key: `mlflow.insights.${insightId}.${issue.category_id}`,
+          key: `mlflow.insights.${insightId}.issue_id`,
           operator: FilterOperator.EQUALS,
-          value: '1',
+          value: issue.category_id,
         },
       ];
     }

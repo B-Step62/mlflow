@@ -153,6 +153,14 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
 
   const categories = useMemo(() => report?.categories ?? [], [report]);
 
+  const sortedCategories = useMemo(() => {
+    return [...categories].sort((a, b) => {
+      const countA = a.impactedCount || a.traceIds.length || a.evidences.length;
+      const countB = b.impactedCount || b.traceIds.length || b.evidences.length;
+      return countB - countA;
+    });
+  }, [categories]);
+
   const runInfo = runQuery.data?.info;
   const runName = runInfo?.runName ?? runInfo?.run_name;
   const createdAt = runInfo?.startTime ?? runInfo?.start_time;
@@ -330,7 +338,7 @@ const ExperimentInsightDetailsPage: React.FC<ExperimentInsightDetailsPageProps> 
           <Typography.Text color="secondary">({totalIssues})</Typography.Text>
         </Typography.Title>
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, marginTop: theme.spacing.sm }}>
-          {categories.map((cat) => (
+          {sortedCategories.map((cat) => (
             <IssueCard
               key={cat.id}
               name={cat.name}

@@ -25,7 +25,8 @@ _logger = logging.getLogger(__name__)
     pip_requirements=["litellm"]
 )
 def generate_insight_report(
-    trace_ids: list[str],
+    filter_string: str,
+    experiment_id: str,
     user_question: str,
     model: str,
 ) -> str:
@@ -40,12 +41,20 @@ def generate_insight_report(
     Returns:
         The ID of the insight run.
     """
-    mlflow.set_experiment("Insight Sandbox")
+    mlflow.set_experiment(experiment_id)
+    traces = mlflow.search_traces(
+        filter_string=filter_string,
+        locations=[experiment_id],
+        return_type="list",
+        include_spans=False,
+    )
+
     # TODO: Remove this hard code
     model = "openai:/databricks-gpt-5-mini"
     with mlflow.start_run(tags={"mlflow.runType": "INSIGHTS"}) as run:
-        run_id = run.info.run_id
         # TODO: Distribute this to threads when the trace count is large
+        trace_ids = [trace.info.trace_id for trace in traces]
+        run_id = run.info.run_id
         summaries = extract_trace_summaries(run_id, trace_ids, user_question, model)
         # TODO: Cluster summaries when the trace count is large
         #  _cluster_trace_summaries(run_id, trace_ids, user_question, model)
