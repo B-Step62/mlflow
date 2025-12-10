@@ -5,6 +5,7 @@ Internal job APIs for UI invocation
 import json
 from typing import Any
 
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -22,7 +23,7 @@ class Job(BaseModel):
 
     job_id: str
     creation_time: int
-    function_fullname: str
+    name: str
     params: dict[str, Any]
     timeout: float | None
     status: JobStatus
@@ -35,7 +36,7 @@ class Job(BaseModel):
         return cls(
             job_id=job.job_id,
             creation_time=job.creation_time,
-            function_fullname=job.function_fullname,
+            name=job.name,
             params=json.loads(job.params),
             timeout=job.timeout,
             status=job.status,
@@ -60,7 +61,7 @@ def get_job(job_id: str) -> Job:
 
 
 class SubmitJobPayload(BaseModel):
-    function_fullname: str
+    name: str
     params: dict[str, Any]
     timeout: float | None = None
 
@@ -68,12 +69,8 @@ class SubmitJobPayload(BaseModel):
 @job_api_router.post("/", response_model=Job)
 def submit_job(payload: SubmitJobPayload) -> Job:
     from mlflow.server.jobs import submit_job
-    from mlflow.server.jobs.utils import _load_function
-
-    function_fullname = payload.function_fullname
     try:
-        function = _load_function(function_fullname)
-        job = submit_job(function, payload.params, payload.timeout)
+        job = submit_job(payload.name, payload.params, payload.timeout)
         return Job.from_job_entity(job)
     except MlflowException as e:
         raise HTTPException(
@@ -83,7 +80,7 @@ def submit_job(payload: SubmitJobPayload) -> Job:
 
 
 class SearchJobPayload(BaseModel):
-    function_fullname: str | None = None
+    name: str | None = None
     params: dict[str, Any] | None = None
     statuses: list[JobStatus] | None = None
 
@@ -105,7 +102,7 @@ def search_jobs(payload: SearchJobPayload) -> SearchJobsResponse:
         job_results = [
             Job.from_job_entity(job)
             for job in store.list_jobs(
-                function_fullname=payload.function_fullname,
+                name=payload.name,
                 statuses=payload.statuses,
                 params=payload.params,
             )

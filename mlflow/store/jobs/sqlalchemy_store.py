@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Iterator
 
 import sqlalchemy
+from sqlalchemy.exc import IntegrityError
 
 import mlflow.store.db.utils
 from mlflow.entities._job import Job
@@ -44,11 +45,14 @@ class SqlAlchemyJobStore(AbstractJobStore):
             SessionMaker, self.db_type
         )
 
-    def create_job(self, function_fullname: str, params: str, timeout: float | None = None) -> Job:
+    def create_job(
+        self, name: str, function_fullname: str, params: str, timeout: float | None = None
+    ) -> Job:
         """
         Create a new job with the specified function and parameters.
 
         Args:
+            name: The stable name of the job
             function_fullname: The full name of the function to execute
             params: The job parameters that are serialized as a JSON string
             timeout: The job execution timeout in seconds
@@ -63,6 +67,7 @@ class SqlAlchemyJobStore(AbstractJobStore):
             job = SqlJob(
                 id=job_id,
                 creation_time=creation_time,
+                name=name,
                 function_fullname=function_fullname,
                 params=params,
                 timeout=timeout,
@@ -71,8 +76,14 @@ class SqlAlchemyJobStore(AbstractJobStore):
                 last_update_time=creation_time,
             )
 
-            session.add(job)
-            session.flush()
+            try:
+                session.add(job)
+                session.flush()
+            except IntegrityError as e:
+                session.rollback()
+                raise MlflowException.invalid_parameter_value(
+                    f"Job with name '{name}' already exists"
+                ) from e
             return job.to_mlflow_entity()
 
     def _update_job(self, job_id: str, new_status: JobStatus, result: str | None = None) -> None:
@@ -189,7 +200,7 @@ class SqlAlchemyJobStore(AbstractJobStore):
 
     def list_jobs(
         self,
-        function_fullname: str | None = None,
+        name: str | None = None,
         statuses: list[JobStatus] | None = None,
         begin_timestamp: int | None = None,
         end_timestamp: int | None = None,
@@ -199,7 +210,7 @@ class SqlAlchemyJobStore(AbstractJobStore):
         List jobs based on the provided filters.
 
         Args:
-            function_fullname: Filter by function full name (exact match)
+            name: Filter by job name (exact match)
             statuses: Filter by a list of job status (PENDING, RUNNING, DONE, FAILED, TIMEOUT)
             begin_timestamp: Filter jobs created after this timestamp (inclusive)
             end_timestamp: Filter jobs created before this timestamp (inclusive)
@@ -228,8 +239,8 @@ class SqlAlchemyJobStore(AbstractJobStore):
                 query = session.query(SqlJob)
 
                 # Apply filters
-                if function_fullname is not None:
-                    query = query.filter(SqlJob.function_fullname == function_fullname)
+                if name is not None:
+                    query = query.filter(SqlJob.name == name)
 
                 if statuses:
                     query = query.filter(

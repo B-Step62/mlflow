@@ -14,6 +14,7 @@ class Job(_MlflowObject):
         self,
         job_id: str,
         creation_time: int,
+        name: str,
         function_fullname: str,
         params: str,
         timeout: float | None,
@@ -25,6 +26,7 @@ class Job(_MlflowObject):
         super().__init__()
         self._job_id = job_id
         self._creation_time = creation_time
+        self._name = name
         self._function_fullname = function_fullname
         self._params = params
         self._timeout = timeout
@@ -42,6 +44,11 @@ class Job(_MlflowObject):
     def creation_time(self) -> int:
         """Creation timestamp of the job, in number of milliseconds since the UNIX epoch."""
         return self._creation_time
+
+    @property
+    def name(self) -> str:
+        """Stable job name."""
+        return self._name
 
     @property
     def function_fullname(self) -> str:
@@ -104,4 +111,4 @@ class Job(_MlflowObject):
         return self._last_update_time
 
     def __repr__(self) -> str:
-        return f"<Job(job_id={self.job_id}, function_fullname={self.function_fullname})>"
+        return f"<Job(job_id={self.job_id}, name={self.name}, function_fullname={self.function_fullname})>"

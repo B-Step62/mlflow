@@ -74,6 +74,7 @@ CREATE TABLE inputs (
 CREATE TABLE jobs (
 	id VARCHAR(36) COLLATE "SQL_Latin1_General_CP1_CI_AS" NOT NULL,
 	creation_time BIGINT NOT NULL,
+	name VARCHAR(255) COLLATE "SQL_Latin1_General_CP1_CI_AS" NOT NULL,
 	function_fullname VARCHAR(500) COLLATE "SQL_Latin1_General_CP1_CI_AS" NOT NULL,
 	params VARCHAR COLLATE "SQL_Latin1_General_CP1_CI_AS" NOT NULL,
 	timeout FLOAT,
@@ -81,7 +82,8 @@ CREATE TABLE jobs (
 	result VARCHAR COLLATE "SQL_Latin1_General_CP1_CI_AS",
 	retry_count INTEGER NOT NULL,
 	last_update_time BIGINT NOT NULL,
-	CONSTRAINT jobs_pk PRIMARY KEY (id)
+	CONSTRAINT jobs_pk PRIMARY KEY (id),
+	CONSTRAINT uq_jobs_name UNIQUE (name)
 )
 
 

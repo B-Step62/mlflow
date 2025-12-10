@@ -15,7 +15,7 @@ from mlflow.server import (
     HUEY_STORAGE_PATH_ENV_VAR,
 )
 from mlflow.server.handlers import _get_job_store
-from mlflow.server.jobs import _ALLOWED_JOB_FUNCTION_LIST, TransientError, get_job, job, submit_job
+from mlflow.server.jobs import _ALLOWED_JOBS, TransientError, get_job, job, submit_job
 from mlflow.server.jobs.utils import _launch_job_runner
 from mlflow.store.jobs.sqlalchemy_store import SqlAlchemyJobStore
 
@@ -47,7 +47,7 @@ def _launch_job_runner_for_test():
 def _setup_job_runner(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    allowed_job_functions: list[str],
+    allowed_jobs: dict[str, str],
     backend_store_uri: str | None = None,
 ):
     backend_store_uri = backend_store_uri or f"sqlite:///{tmp_path / 'mlflow.db'}"
@@ -59,9 +59,13 @@ def _setup_job_runner(
         monkeypatch.setenv(BACKEND_STORE_URI_ENV_VAR, backend_store_uri)
         monkeypatch.setenv(ARTIFACT_ROOT_ENV_VAR, default_artifact_root)
         monkeypatch.setenv(HUEY_STORAGE_PATH_ENV_VAR, str(huey_store_path))
-        monkeypatch.setenv("_MLFLOW_ALLOWED_JOB_FUNCTION_LIST", ",".join(allowed_job_functions))
-        _ALLOWED_JOB_FUNCTION_LIST.clear()
-        _ALLOWED_JOB_FUNCTION_LIST.extend(allowed_job_functions)
+        monkeypatch.setenv("_MLFLOW_ALLOWED_JOBS", ",".join(allowed_jobs.keys()))
+        monkeypatch.setenv(
+            "_MLFLOW_REGISTERED_JOBS",
+            ",".join(f"{name}:{fullname}" for name, fullname in allowed_jobs.items()),
+        )
+        _ALLOWED_JOBS.clear()
+        _ALLOWED_JOBS.update(allowed_jobs)
 
         with _launch_job_runner_for_test() as job_runner_proc:
             time.sleep(10)
@@ -86,12 +90,15 @@ def basic_job_fun(x, y, sleep_secs=0):
 
 def test_basic_job(monkeypatch, tmp_path):
     with _setup_job_runner(
-        monkeypatch, tmp_path, allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"]
+        monkeypatch,
+        tmp_path,
+        allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
     ):
-        submitted_job = submit_job(basic_job_fun, {"x": 3, "y": 4})
+        submitted_job = submit_job("basic_job_fun", {"x": 3, "y": 4})
         wait_job_finalize(submitted_job.job_id)
         job = get_job(submitted_job.job_id)
         assert job.job_id == submitted_job.job_id
+        assert job.name == "basic_job_fun"
         assert job.function_fullname == "tests.server.jobs.test_jobs.basic_job_fun"
         assert job.params == '{"x": 3, "y": 4}'
         assert job.timeout is None
@@ -112,12 +119,13 @@ def test_job_json_input_output(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.json_in_out_fun"],
+        allowed_jobs={"json_in_out_fun": "tests.server.jobs.test_jobs.json_in_out_fun"},
     ):
-        submitted_job = submit_job(json_in_out_fun, {"data": {"x": 3, "y": 4}})
+        submitted_job = submit_job("json_in_out_fun", {"data": {"x": 3, "y": 4}})
         wait_job_finalize(submitted_job.job_id)
         job = get_job(submitted_job.job_id)
         assert job.job_id == submitted_job.job_id
+        assert job.name == "json_in_out_fun"
         assert job.function_fullname == "tests.server.jobs.test_jobs.json_in_out_fun"
         assert job.params == '{"data": {"x": 3, "y": 4}}'
         assert job.result == '{"res": 7}'
@@ -135,14 +143,15 @@ def test_error_job(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.err_fun"],
+        allowed_jobs={"err_fun": "tests.server.jobs.test_jobs.err_fun"},
     ):
-        submitted_job = submit_job(err_fun, {"data": None})
+        submitted_job = submit_job("err_fun", {"data": None})
         wait_job_finalize(submitted_job.job_id)
         job = get_job(submitted_job.job_id)
 
         # check database record correctness.
         assert job.job_id == submitted_job.job_id
+        assert job.name == "err_fun"
         assert job.function_fullname == "tests.server.jobs.test_jobs.err_fun"
         assert job.params == '{"data": null}'
         assert job.result.startswith("RuntimeError()")
@@ -160,11 +169,11 @@ def test_job_resume_on_job_runner_restart(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"],
+        allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
     ) as job_runner_proc:
-        job1_id = submit_job(basic_job_fun, {"x": 3, "y": 4, "sleep_secs": 0}).job_id
-        job2_id = submit_job(basic_job_fun, {"x": 5, "y": 6, "sleep_secs": 2}).job_id
-        job3_id = submit_job(basic_job_fun, {"x": 7, "y": 8, "sleep_secs": 0}).job_id
+        job1_id = submit_job("basic_job_fun", {"x": 3, "y": 4, "sleep_secs": 0}).job_id
+        job2_id = submit_job("basic_job_fun", {"x": 5, "y": 6, "sleep_secs": 2}).job_id
+        job3_id = submit_job("basic_job_fun", {"x": 7, "y": 8, "sleep_secs": 0}).job_id
         wait_job_finalize(job1_id)
         job_runner_proc.kill()
         job_runner_proc.wait()  # ensure the job runner process is killed.
@@ -197,12 +206,12 @@ def test_job_resume_on_new_job_runner(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         runner1_tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"],
+        allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
         backend_store_uri=backend_store_uri,
     ) as job_runner_proc:
-        job1_id = submit_job(basic_job_fun, {"x": 3, "y": 4, "sleep_secs": 0}).job_id
-        job2_id = submit_job(basic_job_fun, {"x": 5, "y": 6, "sleep_secs": 2}).job_id
-        job3_id = submit_job(basic_job_fun, {"x": 7, "y": 8, "sleep_secs": 0}).job_id
+        job1_id = submit_job("basic_job_fun", {"x": 3, "y": 4, "sleep_secs": 0}).job_id
+        job2_id = submit_job("basic_job_fun", {"x": 5, "y": 6, "sleep_secs": 2}).job_id
+        job3_id = submit_job("basic_job_fun", {"x": 7, "y": 8, "sleep_secs": 0}).job_id
         wait_job_finalize(job1_id)
 
         # assert that job1 has done, job2 is running, and job3 is pending.
@@ -216,7 +225,7 @@ def test_job_resume_on_new_job_runner(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         runner2_tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"],
+        allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
         backend_store_uri=backend_store_uri,
     ):
         wait_job_finalize(job2_id)
@@ -245,16 +254,16 @@ def test_job_queue_parallelism(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=[
-            "tests.server.jobs.test_jobs.job_fun_parallelism2",
-            "tests.server.jobs.test_jobs.job_fun_parallelism3",
-        ],
+        allowed_jobs={
+            "job_fun_parallelism2": "tests.server.jobs.test_jobs.job_fun_parallelism2",
+            "job_fun_parallelism3": "tests.server.jobs.test_jobs.job_fun_parallelism3",
+        },
     ):
         for x in range(4):
-            submit_job(job_fun_parallelism2, {"x": x, "y": 1, "sleep_secs": 2})
+            submit_job("job_fun_parallelism2", {"x": x, "y": 1, "sleep_secs": 2})
 
         for x in range(6):
-            submit_job(job_fun_parallelism3, {"x": x, "y": 1, "sleep_secs": 2})
+            submit_job("job_fun_parallelism3", {"x": x, "y": 1, "sleep_secs": 2})
 
         job_store = _get_job_store()
         p2_peak_parallelism = 0
@@ -352,16 +361,16 @@ def test_job_retry_on_transient_error(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=[
-            "tests.server.jobs.test_jobs.transient_err_fun_always_fail",
-            "tests.server.jobs.test_jobs.transient_err_fun_fail_then_succeed",
-            "tests.server.jobs.test_jobs.transient_err_fun2_fail_then_succeed",
-        ],
+        allowed_jobs={
+            "transient_err_fun_always_fail": "tests.server.jobs.test_jobs.transient_err_fun_always_fail",
+            "transient_err_fun_fail_then_succeed": "tests.server.jobs.test_jobs.transient_err_fun_fail_then_succeed",
+            "transient_err_fun2_fail_then_succeed": "tests.server.jobs.test_jobs.transient_err_fun2_fail_then_succeed",
+        },
     ):
         store = _get_job_store()
 
         # Test 1: Job that always fails should exhaust retries and fail
-        job1_id = submit_job(transient_err_fun_always_fail, {}).job_id
+        job1_id = submit_job("transient_err_fun_always_fail", {}).job_id
         wait_job_finalize(job1_id)
         assert_job_result(job1_id, JobStatus.FAILED, "RuntimeError('test transient error.')")
         job1 = store.get_job(job1_id)
@@ -372,7 +381,7 @@ def test_job_retry_on_transient_error(monkeypatch, tmp_path):
         # Test 2: Job that fails once then succeeds should succeed with retry_count=1
         job2_counter = tmp_path / "job2_counter.txt"
         job2_id = submit_job(
-            transient_err_fun_fail_then_succeed, {"counter_file": str(job2_counter)}
+            "transient_err_fun_fail_then_succeed", {"counter_file": str(job2_counter)}
         ).job_id
         wait_job_finalize(job2_id)
         assert_job_result(job2_id, JobStatus.SUCCEEDED, 100)
@@ -384,7 +393,7 @@ def test_job_retry_on_transient_error(monkeypatch, tmp_path):
         # Test 3: Same as test 2 but with custom transient_error_classes
         job3_counter = tmp_path / "job3_counter.txt"
         job3_id = submit_job(
-            transient_err_fun2_fail_then_succeed, {"counter_file": str(job3_counter)}
+            "transient_err_fun2_fail_then_succeed", {"counter_file": str(job3_counter)}
         ).job_id
         wait_job_finalize(job3_id)
         assert_job_result(job3_id, JobStatus.SUCCEEDED, 100)
@@ -404,17 +413,17 @@ def test_submit_jobs_from_multi_processes(monkeypatch, tmp_path):
         _setup_job_runner(
             monkeypatch,
             tmp_path,
-            allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"],
+            allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
         ),
         context.Pool(2) as pool,
     ):
-        job_id = submit_job(basic_job_fun, {"x": 1, "y": 1, "sleep_secs": 0}).job_id
+        job_id = submit_job("basic_job_fun", {"x": 1, "y": 1, "sleep_secs": 0}).job_id
         wait_job_finalize(job_id)
 
         async_res_list = [
             pool.apply_async(
                 submit_job,
-                args=(basic_job_fun,),
+                args=("basic_job_fun",),
                 kwds={"params": {"x": x, "y": 1, "sleep_secs": 2}},
             )
             for x in range(2)
@@ -438,17 +447,17 @@ def test_job_timeout(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.sleep_fun"],
+        allowed_jobs={"sleep_fun": "tests.server.jobs.test_jobs.sleep_fun"},
     ):
         job_tmp_path = tmp_path / "job"
         job_tmp_path.mkdir()
 
         # warm up
-        job_id = submit_job(sleep_fun, {"sleep_secs": 0, "tmp_dir": str(job_tmp_path)}).job_id
+        job_id = submit_job("sleep_fun", {"sleep_secs": 0, "tmp_dir": str(job_tmp_path)}).job_id
         wait_job_finalize(job_id)
 
         job_id = submit_job(
-            sleep_fun, {"sleep_secs": 10, "tmp_dir": str(job_tmp_path)}, timeout=3
+            "sleep_fun", {"sleep_secs": 10, "tmp_dir": str(job_tmp_path)}, timeout=3
         ).job_id
         wait_job_finalize(job_id)
         pid = int((job_tmp_path / "pid").read_text())
@@ -476,9 +485,9 @@ def test_list_job_pagination(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"],
+        allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
     ):
-        job_ids = [submit_job(basic_job_fun, {"x": x, "y": 4}).job_id for x in range(10)]
+        job_ids = [submit_job("basic_job_fun", {"x": x, "y": 4}).job_id for x in range(10)]
 
         listed_jobs = _get_job_store().list_jobs()
         assert [job.job_id for job in listed_jobs] == job_ids
@@ -492,13 +501,13 @@ def test_job_function_without_decorator(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.bad_job_function"],
+        allowed_jobs={"bad_job_function": "tests.server.jobs.test_jobs.bad_job_function"},
     ):
         with pytest.raises(
             MlflowException,
             match="The job function tests.server.jobs.test_jobs.bad_job_function is not decorated",
         ):
-            submit_job(bad_job_function, params={})
+            submit_job("bad_job_function", params={})
 
 
 @job(max_workers=1)
@@ -510,13 +519,13 @@ def test_job_use_process(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.job_use_process"],
+        allowed_jobs={"job_use_process": "tests.server.jobs.test_jobs.job_use_process"},
     ):
         job_tmp_path = tmp_path / "job"
         job_tmp_path.mkdir()
 
-        job_id1 = submit_job(job_use_process, {"tmp_dir": str(job_tmp_path)}).job_id
-        job_id2 = submit_job(job_use_process, {"tmp_dir": str(job_tmp_path)}).job_id
+        job_id1 = submit_job("job_use_process", {"tmp_dir": str(job_tmp_path)}).job_id
+        job_id2 = submit_job("job_use_process", {"tmp_dir": str(job_tmp_path)}).job_id
         wait_job_finalize(job_id1)
         wait_job_finalize(job_id2)
         assert len(os.listdir(str(job_tmp_path))) == 2
@@ -526,13 +535,13 @@ def test_submit_job_bad_call(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.basic_job_fun"],
+        allowed_jobs={"basic_job_fun": "tests.server.jobs.test_jobs.basic_job_fun"},
     ):
         with pytest.raises(
             MlflowException,
             match="When calling 'submit_job', the 'params' argument must be a dict.",
         ):
-            submit_job(basic_job_fun, params=None)
+            submit_job("basic_job_fun", params=None)
 
 
 @job(
@@ -555,9 +564,9 @@ def test_job_with_python_env(monkeypatch, tmp_path):
     with _setup_job_runner(
         monkeypatch,
         tmp_path,
-        allowed_job_functions=["tests.server.jobs.test_jobs.check_python_env_fn"],
+        allowed_jobs={"check_python_env_fn": "tests.server.jobs.test_jobs.check_python_env_fn"},
     ):
-        job_id = submit_job(check_python_env_fn, params={}).job_id
+        job_id = submit_job("check_python_env_fn", params={}).job_id
         wait_job_finalize(job_id, timeout=600)
         job = get_job(job_id)
         assert job.status == JobStatus.SUCCEEDED
@@ -567,7 +576,7 @@ def test_start_job_is_atomic(tmp_path: Path):
     backend_store_uri = f"sqlite:///{tmp_path / 'test.db'}"
     store = SqlAlchemyJobStore(backend_store_uri)
 
-    job = store.create_job("test.function", '{"param": "value"}')
+    job = store.create_job("test_job", "test.function", '{"param": "value"}')
     assert job.status == JobStatus.PENDING
 
     results = []

@@ -16,12 +16,36 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-_ALLOWED_JOB_FUNCTION_LIST = [
-    # Putting all allowed job function in the list
-]
+_ALLOWED_JOBS: dict[str, str] = {
+    # name -> function_fullname mapping
+}
 
-if allowed_job_function_list_env := os.environ.get("_MLFLOW_ALLOWED_JOB_FUNCTION_LIST"):
-    _ALLOWED_JOB_FUNCTION_LIST += allowed_job_function_list_env.split(",")
+if registered_jobs_env := os.environ.get("_MLFLOW_REGISTERED_JOBS"):
+    for item in registered_jobs_env.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            name, fullname = item.split(":", maxsplit=1)
+        except ValueError:
+            raise MlflowException.invalid_parameter_value(
+                "Invalid format for _MLFLOW_REGISTERED_JOBS. Expected 'name:module.function' entries"
+            )
+        _ALLOWED_JOBS[name] = fullname
+
+
+def _get_allowed_job_names() -> list[str]:
+    allowed_from_env = os.environ.get("_MLFLOW_ALLOWED_JOBS")
+    if allowed_from_env is None:
+        return list(_ALLOWED_JOBS.keys())
+
+    names = [name.strip() for name in allowed_from_env.split(",") if name.strip()]
+    unknown = [name for name in names if name not in _ALLOWED_JOBS]
+    if unknown:
+        raise MlflowException.invalid_parameter_value(
+            f"Unknown job name(s) in _MLFLOW_ALLOWED_JOBS: {unknown}"
+        )
+    return names
 
 
 class TransientError(RuntimeError):
@@ -107,7 +131,7 @@ def job(
 
 
 def submit_job(
-    function: Callable[..., Any],
+    name: str,
     params: dict[str, Any],
     timeout: float | None = None,
 ) -> JobEntity:
@@ -121,17 +145,7 @@ def submit_job(
         the backend store URI to a database URI.
 
     Args:
-        function: The job function, it must be a python module-level function,
-            and all params and return value must be JSON-serializable.
-            The function can raise `TransientError` in order to trigger
-            job retry, or you can annotate a list of transient error classes
-            by ``@job(..., transient_error_classes=[...])``.
-            You can set `MLFLOW_SERVER_JOB_TRANSIENT_ERROR_MAX_RETRIES`
-            to configure maximum allowed retries for transient errors
-            and set `MLFLOW_SERVER_JOB_TRANSIENT_ERROR_RETRY_BASE_DELAY` to
-            configure base retry delay in seconds.
-
-            The function must be decorated by `mlflow.server.jobs.job_function` decorator.
+        name: The registered job name.
         params: The params to be passed to the job function.
         timeout: (optional) The job execution timeout, default None (no timeout)
 
@@ -154,15 +168,24 @@ def submit_job(
 
     _check_requirements()
 
+    if name not in _get_allowed_job_names():
+        raise MlflowException.invalid_parameter_value(
+            f"The job name '{name}' is not in the allowed job list"
+        )
+
+    if name not in _ALLOWED_JOBS:
+        raise MlflowException.invalid_parameter_value(
+            f"The job name '{name}' is not registered in _ALLOWED_JOBS"
+        )
+
+    func_fullname = _ALLOWED_JOBS[name]
+
+    from mlflow.server.jobs.utils import _load_function
+
+    function = _load_function(func_fullname)
+
     if not (isinstance(function, FunctionType) and "." not in function.__qualname__):
         raise MlflowException("The job function must be a python global function.")
-
-    func_fullname = f"{function.__module__}.{function.__name__}"
-
-    if func_fullname not in _ALLOWED_JOB_FUNCTION_LIST:
-        raise MlflowException.invalid_parameter_value(
-            f"The function {func_fullname} is not in the allowed job function list"
-        )
 
     if not hasattr(function, "_job_fn_metadata"):
         raise MlflowException(
@@ -179,10 +202,10 @@ def submit_job(
 
     job_store = _get_job_store()
     serialized_params = json.dumps(params)
-    job = job_store.create_job(func_fullname, serialized_params, timeout)
+    job = job_store.create_job(name, func_fullname, serialized_params, timeout)
 
     # enqueue job
-    _get_or_init_huey_instance(func_fullname).submit_task(
+    _get_or_init_huey_instance(name).submit_task(
         job.job_id,
         function,
         params,

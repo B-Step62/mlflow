@@ -76,6 +76,7 @@ CREATE TABLE inputs (
 CREATE TABLE jobs (
 	id VARCHAR(36) NOT NULL,
 	creation_time BIGINT NOT NULL,
+	name VARCHAR(255) NOT NULL,
 	function_fullname VARCHAR(500) NOT NULL,
 	params TEXT NOT NULL,
 	timeout DOUBLE PRECISION,
@@ -83,7 +84,8 @@ CREATE TABLE jobs (
 	result TEXT,
 	retry_count INTEGER NOT NULL,
 	last_update_time BIGINT NOT NULL,
-	CONSTRAINT jobs_pk PRIMARY KEY (id)
+	CONSTRAINT jobs_pk PRIMARY KEY (id),
+	CONSTRAINT uq_jobs_name UNIQUE (name)
 )
 
 

@@ -258,9 +258,9 @@ class HueyInstance:
     submit_task: Callable[..., Any]
 
 
-# Each job function has an individual execution pool, each execution pool
+# Each job has an individual execution pool, each execution pool
 # is managed by a Huey instance.
-# The `_huey_instance_map` stores the map, the key is the job function fullname,
+# The `_huey_instance_map` stores the map, the key is the job name,
 # and the value is the `HueyInstance` object.
 _huey_instance_map: dict[str, HueyInstance] = {}
 _huey_instance_map_lock = threading.RLock()
@@ -296,8 +296,8 @@ def _get_or_init_huey_instance(instance_key: str):
         return _huey_instance_map[instance_key]
 
 
-def _launch_huey_consumer(job_fn_fullname: str) -> None:
-    _logger.info(f"Starting huey consumer for job function {job_fn_fullname}")
+def _launch_huey_consumer(job_name: str, job_fn_fullname: str) -> None:
+    _logger.info(f"Starting huey consumer for job {job_name} ({job_fn_fullname})")
     job_fn = _load_function(job_fn_fullname)
 
     if not hasattr(job_fn, "_job_fn_metadata"):
@@ -313,7 +313,7 @@ def _launch_huey_consumer(job_fn_fullname: str) -> None:
             # start MLflow job runner process
             # Put it inside the loop to ensure the job runner process alive
             job_runner_proc = _start_huey_consumer_proc(
-                job_fn_fullname,
+                job_name,
                 max_job_parallelism,
             )
             job_runner_proc.wait()
@@ -322,7 +322,7 @@ def _launch_huey_consumer(job_fn_fullname: str) -> None:
     # start job runner.
     threading.Thread(
         target=_huey_consumer_thread,
-        name=f"MLflow-huey-consumer-{job_fn_fullname}-watcher",
+        name=f"MLflow-huey-consumer-{job_name}-watcher",
         daemon=False,
     ).start()
 
@@ -393,9 +393,7 @@ def _enqueue_unfinished_jobs(server_launching_timestamp: int) -> None:
         function = _load_function(job.function_fullname)
         timeout = job.timeout
         # enqueue job
-        _get_or_init_huey_instance(job.function_fullname).submit_task(
-            job.job_id, function, params, timeout
-        )
+        _get_or_init_huey_instance(job.name).submit_task(job.job_id, function, params, timeout)
 
 
 def _validate_function_parameters(function: Callable[..., Any], params: dict[str, Any]) -> None:

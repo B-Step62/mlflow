@@ -75,6 +75,7 @@ CREATE TABLE inputs (
 CREATE TABLE jobs (
 	id VARCHAR(36) NOT NULL,
 	creation_time BIGINT NOT NULL,
+	name VARCHAR(255) NOT NULL,
 	function_fullname VARCHAR(500) NOT NULL,
 	params TEXT NOT NULL,
 	timeout DOUBLE,
@@ -82,7 +83,8 @@ CREATE TABLE jobs (
 	result TEXT,
 	retry_count INTEGER NOT NULL,
 	last_update_time BIGINT NOT NULL,
-	PRIMARY KEY (id)
+	PRIMARY KEY (id),
+	UNIQUE (name)
 )
 
 
