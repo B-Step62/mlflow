@@ -104,8 +104,8 @@ npm install mlflow-openai openai
     response = client.chat.completions.create(
         model="o4-mini",
         messages=[
-          {"role": "system", "content": "You are a helpful weather assistant."},
-          {"role": "user", "content": "What is the capital of France?"}
+            {"role": "system", "content": "You are a helpful weather assistant."},
+            {"role": "user", "content": "What is the capital of France?"},
         ],
         max_completion_tokens=100,
     )
@@ -492,7 +492,6 @@ MLflow automatically tracks the token usage for each LLM call. You can view the 
 
 <ImageBox src="/images/llms/tracing/openai-token-usage.png" alt="OpenAI Token Usage" />
 
-
 To retrieve the token usage information programmatically, the `mlflow.chat.tokenUsage` attribute in the span object records the token usage for each LLM call. The total token usage throughout the trace will be available in the `token_usage` field of the trace info object.
 
 <Tabs>
@@ -594,9 +593,7 @@ Token usage tracking is supported for the following OpenAI APIs:
 
 Auto tracing for OpenAI can be disabled globally by calling `mlflow.openai.autolog(disable=True)` or `mlflow.autolog(disable=True)`.
 
-
 ## Next steps
-
 
 <TilesGrid>
   <TileCard

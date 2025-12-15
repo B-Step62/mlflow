@@ -65,7 +65,10 @@ bedrock = boto3.client(
 response = bedrock.converse(
     modelId="anthropic.claude-3-7-sonnet-20250219-v1:0",
     messages=[
-        {"role": "user", "content": "Describe the purpose of a 'hello world' program in one line."},
+        {
+            "role": "user",
+            "content": "Describe the purpose of a 'hello world' program in one line.",
+        },
     ],
     inferenceConfig={
         "maxTokens": 512,

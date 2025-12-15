@@ -21,9 +21,10 @@ import { Users, BookOpen, Scale } from "lucide-react";
 <ImageBox src="/images/llms/tracing/openai-function-calling.png" alt="Tracing via autolog" />
 
 :::info What is Qwen?
+
 <u>[Qwen](https://qwen.ai/)</u> is a family of large language models developed by Alibaba, designed for general-purpose reasoning, coding, and multilingual understanding. The models come in sizes ranging from lightweight to frontier-scale and power chatbots, agents, and enterprise AI applications.
 
-*Looking for tracing locally hosted Qwen models? Check out the integration with local inference tools like <u>[Ollama](/genai/tracing/integrations/listing/ollama)</u>*.
+_Looking for tracing locally hosted Qwen models? Check out the integration with local inference tools like <u>[Ollama](/genai/tracing/integrations/listing/ollama)</u>_.
 :::
 
 :::tip Why use MLflow with Qwen?
@@ -164,6 +165,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
         api_key="<DASHSCOPE_API_KEY>",
     )
 
+
     # Create a parent span for the Qwen call
     @mlflow.trace(span_type=SpanType.CHAIN)
     def answer_question(question: str):
@@ -181,6 +183,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
             }
         )
         return response.choices[0].message.content
+
 
     answer = answer_question("What is the capital of France?")
     ```

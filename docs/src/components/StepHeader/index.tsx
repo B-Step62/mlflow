@@ -16,4 +16,3 @@ const StepHeader: React.FC<StepHeaderProps> = ({ number, title }) => {
 };
 
 export default StepHeader;
-

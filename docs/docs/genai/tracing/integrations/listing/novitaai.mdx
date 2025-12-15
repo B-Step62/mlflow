@@ -21,6 +21,7 @@ import { Users, BookOpen, Scale } from "lucide-react";
 <ImageBox src="/images/llms/tracing/openai-function-calling.png" alt="Tracing via autolog" />
 
 :::info What is Novita AI?
+
 <u>[Novita AI](https://novita.ai/)</u> is a unified cloud for AI models, agents, and GPU workloads. It offers simple APIs, global performance, and cost-efficient infrastructure for developers building modern AI applications.
 :::
 
@@ -166,6 +167,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
         api_key="<your_novita_api_key>",
     )
 
+
     # Create a parent span for the Novita AI call
     @mlflow.trace(span_type=SpanType.CHAIN)
     def answer_question(question: str):
@@ -183,6 +185,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
             }
         )
         return response.choices[0].message.content
+
 
     answer = answer_question("What is the capital of France?")
     ```

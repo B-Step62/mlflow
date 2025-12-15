@@ -21,6 +21,7 @@ import { Users, BookOpen, Scale } from "lucide-react";
 <ImageBox src="/images/llms/tracing/openai-function-calling.png" alt="Tracing via autolog" />
 
 :::info What is Together AI?
+
 <u>[Together AI](https://www.together.ai/)</u> hosts leading open-source and proprietary models with an OpenAI-compatible interface and generous throughput.
 :::
 
@@ -162,6 +163,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
         api_key="<your_together_api_key>",
     )
 
+
     # Create a parent span for the Together AI call
     @mlflow.trace(span_type=SpanType.CHAIN)
     def answer_question(question: str):
@@ -179,6 +181,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
             }
         )
         return response.choices[0].message.content
+
 
     answer = answer_question("What is the capital of France?")
     ```

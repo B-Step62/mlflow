@@ -21,7 +21,8 @@ import { Users, BookOpen, Scale } from "lucide-react";
 <ImageBox src="/images/llms/tracing/openai-function-calling.png" alt="Tracing via autolog" />
 
 :::info What is Kimi?
-<u>[Kimi](https://kimi.moonshot.cn/)</u> is a large language model developed by Moonshot AI, known for its strong reasoning abilities. It’s optimized for tasks like deep document analysis, multi-step reasoning, and building advanced AI agents.
+
+<u>[Kimi](https://kimi.moonshot.cn/)</u> is a large language model developed by Moonshot AI, known for its strong reasoning abilities. It's optimized for tasks like deep document analysis, multi-step reasoning, and building advanced AI agents.
 :::
 
 :::tip Why use MLflow with Kimi?
@@ -162,6 +163,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
         api_key="<MOONSHOT_API_KEY>",
     )
 
+
     # Create a parent span for the Kimi call
     @mlflow.trace(span_type=SpanType.CHAIN)
     def answer_question(question: str):
@@ -179,6 +181,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
             }
         )
         return response.choices[0].message.content
+
 
     answer = answer_question("What is the capital of France?")
     ```

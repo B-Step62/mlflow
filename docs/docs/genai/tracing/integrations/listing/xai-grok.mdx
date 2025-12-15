@@ -20,9 +20,9 @@ import { Users, BookOpen, Scale } from "lucide-react";
 
 <ImageBox src="/images/llms/tracing/openai-function-calling.png" alt="Tracing via autolog" />
 
-
 :::info What is Grok?
-<u>[Grok](https://x.ai/)</u> is xAI’s large language model designed to provide real-time, up-to-date reasoning by leveraging data from the X platform. Built for speed, humor, and strong general intelligence, it powers conversational agents and advanced AI applications across the xAI ecosystem.
+
+<u>[Grok](https://x.ai/)</u> is xAI's large language model designed to provide real-time, up-to-date reasoning by leveraging data from the X platform. Built for speed, humor, and strong general intelligence, it powers conversational agents and advanced AI applications across the xAI ecosystem.
 :::
 
 :::tip Why use MLflow with Grok?
@@ -163,6 +163,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
         api_key="<your_grok_api_key>",
     )
 
+
     # Create a parent span for the Grok call
     @mlflow.trace(span_type=SpanType.CHAIN)
     def answer_question(question: str):
@@ -180,6 +181,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
             }
         )
         return response.choices[0].message.content
+
 
     answer = answer_question("What is the capital of France?")
     ```
