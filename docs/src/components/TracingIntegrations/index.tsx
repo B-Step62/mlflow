@@ -294,7 +294,7 @@ const TRACING_INTEGRATIONS: TracingIntegration[] = [
   {
     id: 'cohere',
     name: 'Cohere',
-    logoPath: '/images/logos/cohere-logo.svg',
+    logoPath: '/images/logos/cohere-logo.png',
     link: '/genai/tracing/integrations/listing/cohere',
     category: 'Model Providers',
     languages: ['python', 'typescript'],
@@ -326,7 +326,7 @@ const TRACING_INTEGRATIONS: TracingIntegration[] = [
   {
     id: 'togetherai',
     name: 'Together AI',
-    logoPath: '/images/logos/togetherai-logo.png',
+    logoPath: '/images/logos/together-ai-logo.png',
     link: '/genai/tracing/integrations/listing/togetherai',
     category: 'Model Providers',
     languages: ['python', 'typescript'],
