@@ -18,6 +18,8 @@ import { Users, BookOpen, Scale } from "lucide-react";
 
 [MLflow Tracing](../../) provides automatic tracing capability for Kimi (Moonshot AI) models through the Moonshot AI Platform's inference endpoints. Since Moonshot AI Platform provides an OpenAI-compatible API for Kimi models, you can use `mlflow.openai.autolog()` to trace interactions with Kimi models.
 
+<ImageBox src="/images/llms/tracing/openai-function-calling.png" alt="Tracing via autolog" />
+
 :::info What is Kimi?
 <u>[Kimi](https://kimi.moonshot.cn/)</u> is a large language model developed by Moonshot AI, known for its strong reasoning abilities. It’s optimized for tasks like deep document analysis, multi-step reasoning, and building advanced AI agents.
 :::
@@ -156,7 +158,7 @@ The automatic tracing capability in MLflow is designed to work seamlessly with t
 
     # Initialize the OpenAI client with Kimi API endpoint
     client = OpenAI(
-        base_url="https:    //api.moonshot.cn/v1",
+        base_url="https://api.moonshot.cn/v1",
         api_key="<MOONSHOT_API_KEY>",
     )
 

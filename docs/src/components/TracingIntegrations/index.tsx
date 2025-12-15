@@ -331,14 +331,6 @@ const TRACING_INTEGRATIONS: TracingIntegration[] = [
     category: 'Model Providers',
     languages: ['python', 'typescript'],
   },
-  {
-    id: 'vertexai',
-    name: 'Vertex AI',
-    logoPath: '/images/logos/mlflow-logo.svg',
-    link: '/genai/tracing/integrations/listing/vertexai',
-    category: 'Model Providers',
-    languages: ['python', 'typescript'],
-  },
   // Tools
   {
     id: 'instructor',
