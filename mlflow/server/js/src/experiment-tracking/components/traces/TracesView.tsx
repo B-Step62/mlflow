@@ -71,7 +71,7 @@ export const TracesView = ({
   );
 
   useEffect(() => {
-    onVisibleTracesChange?.(traces.map((t) => t.request_id).filter(Boolean));
+    onVisibleTracesChange?.(traces.map((t) => t.request_id).filter((id): id is string => id !== undefined));
   }, [traces, onVisibleTracesChange]);
 
   useEffect(() => {

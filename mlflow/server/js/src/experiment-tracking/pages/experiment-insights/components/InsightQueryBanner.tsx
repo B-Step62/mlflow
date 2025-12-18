@@ -78,7 +78,7 @@ export const InsightQueryBanner = ({ placeholder, ariaLabel = 'Insight query', o
         }}
       />
       {/* Optional hidden submit to allow Enter key without extra UI */}
-      <Button css={{ display: 'none' }} htmlType="submit" />
+      <Button componentId="mlflow.experiment.trace-insights-launch-modal.hidden-submit-button" css={{ display: 'none' }} htmlType="submit" />
     </form>
   );
 };

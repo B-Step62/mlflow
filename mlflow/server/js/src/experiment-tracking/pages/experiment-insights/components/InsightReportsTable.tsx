@@ -37,8 +37,8 @@ const SeveritySpark: React.FC<{ severities: SparkSeverity; total: number }> = ({
   const { theme } = useDesignSystemTheme();
   const width = 80;
   const segments: { key: keyof SparkSeverity; color: string }[] = [
-    { key: 'high', color: theme.colors.error },
-    { key: 'medium', color: theme.colors.warning },
+    { key: 'high', color: theme.colors.backgroundDanger },
+    { key: 'medium', color: theme.colors.backgroundWarning },
     { key: 'low', color: theme.colors.textSecondary },
   ];
   return (
@@ -58,7 +58,7 @@ const SeveritySpark: React.FC<{ severities: SparkSeverity; total: number }> = ({
           return <div key={key} css={{ width: `${pct}%`, background: color }} />;
         })}
       </div>
-      <Typography.Text type="secondary">{total}</Typography.Text>
+      <Typography.Text color="secondary">{total}</Typography.Text>
     </div>
   );
 };
@@ -120,6 +120,7 @@ const InsightRow: React.FC<{ run: RunEntity; onSelect: (runUuid: string) => void
       </TableCell>
       <TableCell css={{ paddingLeft: theme.spacing.md }}>
         <Button
+          componentId="mlflow.experiment.insights-reports-table.report-name-button"
           type="link"
           css={{ padding: 0, height: 'auto', color: theme.colors.primary, fontWeight: 600 }}
           onClick={(e) => {
@@ -140,6 +141,7 @@ const InsightRow: React.FC<{ run: RunEntity; onSelect: (runUuid: string) => void
       </TableCell>
       <TableCell css={{ paddingRight: theme.spacing.lg }}>
         <Button
+          componentId="mlflow.experiment.insights-reports-table.more-actions-button"
           type="link"
           onClick={(e) => {
             e.stopPropagation();
@@ -169,7 +171,7 @@ export const InsightReportsTable: React.FC<InsightReportsTableProps> = ({ runs, 
           <Typography.Text color="secondary">View and manage historical trace analysis reports</Typography.Text>
         </div>
         {onCreateInsight && (
-          <Button iconPosition="left" icon={<span style={{ fontWeight: 700 }}>+</span>} onClick={onCreateInsight} size="large">
+          <Button componentId="mlflow.experiment.insights-reports-table.new-report-button" icon={<span style={{ fontWeight: 700 }}>+</span>} onClick={onCreateInsight}>
             New Report
           </Button>
         )}
@@ -185,18 +187,18 @@ export const InsightReportsTable: React.FC<InsightReportsTableProps> = ({ runs, 
       >
         <Table>
           <TableRow isHeader>
-            <TableHeader css={{ width: 32, minWidth: 32, maxWidth: 32 }} />
-            <TableHeader css={{ paddingLeft: theme.spacing.lg }}>Report Name</TableHeader>
-            <TableHeader>Created</TableHeader>
-            <TableHeader>Issues Found</TableHeader>
-            <TableHeader>Traces</TableHeader>
-            <TableHeader>Status</TableHeader>
-            <TableHeader css={{ paddingRight: theme.spacing.lg }}>Actions</TableHeader>
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.report-name-header" css={{ width: 32, minWidth: 32, maxWidth: 32 }} />
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.created-header" css={{ paddingLeft: theme.spacing.lg }}>Report Name</TableHeader>
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.issues-found-header">Created</TableHeader>
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.issues-found-header">Issues Found</TableHeader>
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.traces-header">Traces</TableHeader>
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.status-header">Status</TableHeader>
+            <TableHeader componentId="mlflow.experiment.insights-reports-table.actions-header" css={{ paddingRight: theme.spacing.lg }}>Actions</TableHeader>
           </TableRow>
           {loading && !sorted.length ? (
             [0, 1, 2].map((idx) => (
               <TableRow key={`skeleton-${idx}`}>
-                <TableCell colSpan={7} css={{ paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.lg }}>
+                <TableCell css={{ colSpan: 7, paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.lg }}>
                   <Typography.Text color="secondary">Loading…</Typography.Text>
                 </TableCell>
               </TableRow>

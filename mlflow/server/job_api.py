@@ -3,6 +3,7 @@ Internal job APIs for UI invocation
 """
 
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -14,6 +15,7 @@ from mlflow.exceptions import MlflowException
 
 job_api_router = APIRouter(prefix="/ajax-api/3.0/jobs", tags=["Job"])
 
+_logger = logging.getLogger(__name__)
 
 class Job(BaseModel):
     """
@@ -76,6 +78,7 @@ def submit_job(payload: SubmitJobPayload) -> Job:
         job = submit_job(payload.name, payload.params, payload.timeout)
         return Job.from_job_entity(job)
     except MlflowException as e:
+        _logger.error(f"Error submitting job: {e}", exc_info=True)
         raise HTTPException(
             status_code=e.get_http_status_code(),
             detail=e.message,

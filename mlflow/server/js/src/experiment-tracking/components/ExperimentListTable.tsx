@@ -28,6 +28,13 @@ export type ExperimentTableColumnDef = ColumnDef<ExperimentEntity>;
 
 export type ExperimentTableMetadata = { onEditTags: (editedEntity: ExperimentEntity) => void };
 
+const DEFAULT_MIN_COLUMN_SIZE = 120;
+const NAME_COLUMN_SIZE = 240;
+const DATE_COLUMN_SIZE = 170;
+const DESCRIPTION_COLUMN_SIZE = 260;
+const TAGS_COLUMN_SIZE = 200;
+const SELECT_COLUMN_SIZE = 48;
+
 const useExperimentsTableColumns = () => {
   const intl = useIntl();
   return useMemo(() => {
@@ -43,6 +50,10 @@ const useExperimentsTableColumns = () => {
         id: 'select',
         cell: ExperimentListCheckbox,
         enableSorting: false,
+        enableResizing: false,
+        size: SELECT_COLUMN_SIZE,
+        minSize: SELECT_COLUMN_SIZE,
+        maxSize: SELECT_COLUMN_SIZE,
       },
       {
         header: intl.formatMessage({
@@ -53,6 +64,9 @@ const useExperimentsTableColumns = () => {
         id: 'name',
         cell: ExperimentListTableCell,
         enableSorting: true,
+        enableResizing: true,
+        size: NAME_COLUMN_SIZE,
+        minSize: DEFAULT_MIN_COLUMN_SIZE,
       },
       {
         header: intl.formatMessage({
@@ -62,6 +76,9 @@ const useExperimentsTableColumns = () => {
         id: 'creation_time',
         accessorFn: ({ creationTime }) => Utils.formatTimestamp(creationTime, intl),
         enableSorting: true,
+        enableResizing: true,
+        size: DATE_COLUMN_SIZE,
+        minSize: DEFAULT_MIN_COLUMN_SIZE,
       },
       {
         header: intl.formatMessage({
@@ -71,6 +88,9 @@ const useExperimentsTableColumns = () => {
         id: 'last_update_time',
         accessorFn: ({ lastUpdateTime }) => Utils.formatTimestamp(lastUpdateTime, intl),
         enableSorting: true,
+        enableResizing: true,
+        size: DATE_COLUMN_SIZE,
+        minSize: DEFAULT_MIN_COLUMN_SIZE,
       },
       {
         header: intl.formatMessage({
@@ -80,6 +100,9 @@ const useExperimentsTableColumns = () => {
         id: 'description',
         accessorFn: ({ tags }) => tags?.find(({ key }) => key === 'mlflow.note.content')?.value ?? '-',
         enableSorting: false,
+        enableResizing: true,
+        size: DESCRIPTION_COLUMN_SIZE,
+        minSize: DEFAULT_MIN_COLUMN_SIZE,
       },
       {
         header: intl.formatMessage({
@@ -90,6 +113,9 @@ const useExperimentsTableColumns = () => {
         accessorKey: 'tags',
         enableSorting: false,
         cell: ExperimentListTableTagsCell,
+        enableResizing: true,
+        size: TAGS_COLUMN_SIZE,
+        minSize: DEFAULT_MIN_COLUMN_SIZE,
       },
     ];
 
@@ -126,6 +152,8 @@ export const ExperimentListTable = ({
     getRowId: (row) => row.experimentId,
     enableRowSelection: true,
     enableMultiRowSelection: true,
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: { rowSelection, sorting },
@@ -170,10 +198,27 @@ export const ExperimentListTable = ({
     return null;
   };
 
-  const selectColumnStyles = { flex: 'none', height: theme.general.heightBase };
+  const selectColumnStyles = {
+    flex: '0 0 auto',
+    width: SELECT_COLUMN_SIZE,
+    minWidth: SELECT_COLUMN_SIZE,
+    maxWidth: SELECT_COLUMN_SIZE,
+    height: theme.general.heightBase,
+  };
+
+  const columnSizeInfo = table.getState().columnSizingInfo;
+  const columnSizeVars = useMemo(() => {
+    const colSizes: Record<string, number> = {};
+    table.getFlatHeaders().forEach((header) => {
+      colSizes[`--col-${header.id}-size`] = header.getSize();
+    });
+    return colSizes;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnSizeInfo, table]);
 
   return (
     <Table
+      style={columnSizeVars}
       scrollable
       pagination={
         cursorPaginationProps ? (
@@ -187,7 +232,16 @@ export const ExperimentListTable = ({
           <TableHeader
             componentId="mlflow.experiment_list_view.table.header"
             key={header.id}
+            header={header}
+            column={header.column}
+            setColumnSizing={table.setColumnSizing}
+            isResizing={header.column.getIsResizing()}
             css={header.column.id === 'select' ? selectColumnStyles : undefined}
+            style={
+              header.column.id === 'select'
+                ? selectColumnStyles
+                : { flex: `calc(var(--col-${header.id}-size) / 100)` }
+            }
             sortable={header.column.getCanSort()}
             sortDirection={header.column.getIsSorted() || 'none'}
             onToggleSort={header.column.getToggleSortingHandler()}
@@ -204,7 +258,12 @@ export const ExperimentListTable = ({
             {row.getAllCells().map((cell) => (
               <TableCell
                 key={cell.id}
-                css={{ alignItems: 'center', ...(cell.column.id === 'select' ? selectColumnStyles : undefined) }}
+                css={{
+                  alignItems: 'center',
+                  ...(cell.column.id === 'select'
+                    ? selectColumnStyles
+                    : { flex: `calc(var(--col-${cell.column.id}-size) / 100)` }),
+                }}
               >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>

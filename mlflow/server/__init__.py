@@ -44,6 +44,8 @@ from mlflow.version import VERSION
 # the cli and the forked gunicorn processes.
 BACKEND_STORE_URI_ENV_VAR = "_MLFLOW_SERVER_FILE_STORE"
 REGISTRY_STORE_URI_ENV_VAR = "_MLFLOW_SERVER_REGISTRY_STORE"
+# TODO: Only used for enabling job with databricks backend for testing. Remove this after testing.
+JOB_STORE_URI_ENV_VAR = "MLFLOW_SERVER_JOB_STORE"
 ARTIFACT_ROOT_ENV_VAR = "_MLFLOW_SERVER_ARTIFACT_ROOT"
 ARTIFACTS_DESTINATION_ENV_VAR = "_MLFLOW_SERVER_ARTIFACT_DESTINATION"
 PROMETHEUS_EXPORTER_ENV_VAR = "prometheus_multiproc_dir"
@@ -414,7 +416,7 @@ def _run_server(
         from mlflow.server.jobs.utils import _check_requirements
 
         try:
-            _check_requirements(file_store_path)
+            _check_requirements(os.environ.get(JOB_STORE_URI_ENV_VAR, file_store_path))
         except Exception as e:
             raise MlflowException(
                 f"MLflow job runner requirements checking failed (root error: {e!s}). "

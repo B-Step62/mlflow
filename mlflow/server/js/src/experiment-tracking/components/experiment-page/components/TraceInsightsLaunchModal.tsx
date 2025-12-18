@@ -79,7 +79,7 @@ const StatTile = ({ label, value, extra }: { label: string; value: string; extra
         gap: theme.spacing.xs,
         padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
         borderRadius: theme.borders.borderRadiusSm,
-        backgroundColor: theme.colors.backgroundTertiary,
+        backgroundColor: theme.colors.backgroundSecondary,
       }}
     >
       <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
@@ -118,7 +118,7 @@ const BenefitRow = ({ title, description, icon }: { title: string; description: 
         {icon}
       </span>
       <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Typography.Text strong>{title}</Typography.Text>
+        <Typography.Text bold>{title}</Typography.Text>
         <Typography.Text color="secondary">
           {description}
         </Typography.Text>
@@ -271,7 +271,7 @@ export const TraceInsightsLaunchModal = ({
       return {
         label: key || column || 'filter',
         text: `${operator ?? '='} ${value ?? ''}`.trim(),
-        icon: 'filter' as const,
+        icon: 'filter',
       };
     });
 
@@ -288,7 +288,7 @@ export const TraceInsightsLaunchModal = ({
       const summary = `${absolute.startTime ? new Date(absolute.startTime).toLocaleString() : '—'} → ${
         absolute.endTime ? new Date(absolute.endTime).toLocaleString() : '—'
       }`;
-      filters.unshift({ label: '', text: summary, icon: 'clock' as const });
+      filters.unshift({ label: '', text: summary, icon: 'clock' });
     }
     return filters;
   }, [searchParams]);
@@ -349,13 +349,13 @@ export const TraceInsightsLaunchModal = ({
     if (jobStatus === 'SUCCEEDED') {
       return {
         message: 'Completed',
-        icon: <CheckCircleIcon css={{ color: theme.colors.success, fontSize: 16 }} />,
+        icon: <CheckCircleIcon css={{ color: theme.colors.backgroundDanger, fontSize: 16 }} />,
       };
     }
     if (jobStatus === 'FAILED') {
       return {
         message: 'Failed',
-        icon: <QuestionMarkIcon css={{ color: theme.colors.error, fontSize: 16 }} />,
+        icon: <QuestionMarkIcon css={{ color: theme.colors.backgroundDanger, fontSize: 16 }} />,
       };
     }
     if (jobStatus === 'TIMEOUT') {
@@ -396,11 +396,15 @@ export const TraceInsightsLaunchModal = ({
     }
 
     return base;
-  }, [jobStatus, runStage, stageLabel, theme.colors.error, theme.colors.success, theme.colors.textSecondary]);
+  }, [jobStatus, runStage, stageLabel, theme.colors.backgroundDanger, theme.colors.backgroundSuccess, theme.colors.textSecondary]);
 
   const isJobTerminal = jobStatus === 'SUCCEEDED' || jobStatus === 'FAILED' || jobStatus === 'TIMEOUT';
   const isJobStarted = Boolean(submitting || jobId || jobStatus);
   const isBusy = Boolean(submitting || (jobStatus && !isJobTerminal));
+  const jobResultUrl =
+    jobStatus === 'SUCCEEDED' && insightRunId && experimentId
+      ? `/experiments/${experimentId}/insights?selectedInsightId=${insightRunId}`
+      : undefined;
 
   useEffect(() => {
     setPrompt(initialPrompt);
@@ -575,7 +579,7 @@ export const TraceInsightsLaunchModal = ({
       visible={visible}
       onCancel={onCancel}
       footer={null}
-      width={1040}
+      size="wide"
     >
       <div
         css={{
@@ -590,8 +594,10 @@ export const TraceInsightsLaunchModal = ({
             Analyze selected traces with AI to identify issues and patterns
           </Typography.Paragraph>
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-            <Typography.Text strong>What would you like to analyze?</Typography.Text>
+            <Typography.Text bold>What would you like to analyze?</Typography.Text>
             <TextArea
+              componentId="mlflow.experiment.trace-insights-launch-modal.prompt-textarea"
+              id="mlflow.experiment.trace-insights-launch-modal.prompt-textarea"
               autoSize={{ minRows: 6, maxRows: 10 }}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -601,11 +607,12 @@ export const TraceInsightsLaunchModal = ({
           </div>
 
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-            <Typography.Text strong>LLM Model</Typography.Text>
+            <Typography.Text bold>LLM Model</Typography.Text>
             <SimpleSelect
               componentId="mlflow.experiment.trace-insights-launch-modal.model-select"
+              id="mlflow.experiment.trace-insights-launch-modal.model-select"
               value={model}
-              onChange={(value) => setModel(value)}
+              onChange={(value) => setModel(value.target.value)}
               disabled={isJobStarted}
             >
               <SimpleSelectOption value="openai:/gpt-5">GPT-5 (Recommended)</SimpleSelectOption>
@@ -631,7 +638,10 @@ export const TraceInsightsLaunchModal = ({
                   value={statValues.traces}
                   extra={
                     filterList.length > 0 ? (
-                      <Popover.Root modal={false}>
+                      <Popover.Root
+                        modal={false}
+                        componentId="mlflow.experiment.trace-insights-launch-modal.traces-popover"
+                      >
                         <Popover.Trigger asChild>
                           <button
                             type="button"
@@ -652,7 +662,7 @@ export const TraceInsightsLaunchModal = ({
                         <Popover.Content sideOffset={8}>
                           <Popover.Arrow />
                           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 220 }}>
-                            <Typography.Text strong>Applied filters</Typography.Text>
+                            <Typography.Text bold>Applied filters</Typography.Text>
                             <ul
                               css={{
                                 paddingLeft: theme.spacing.md,
@@ -695,8 +705,8 @@ export const TraceInsightsLaunchModal = ({
 
               {traceCountError && (
                 <Alert
+                  componentId="mlflow.experiment.trace-insights-launch-modal.trace-count-error-alert"
                   type="error"
-                  showIcon
                   message="Unable to fetch trace count"
                   description={traceCountError}
                 />
@@ -707,8 +717,10 @@ export const TraceInsightsLaunchModal = ({
               </Typography.Text>
 
               <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
-                <Button onClick={onCancel}>Cancel</Button>
+                <Button componentId="mlflow.experiment.trace-insights-launch-modal.cancel-button" id="mlflow.experiment.trace-insights-launch-modal.cancel-button" onClick={onCancel}>Cancel</Button>
                 <Button
+                  componentId="mlflow.experiment.trace-insights-launch-modal.analyze-button"
+                  id="mlflow.experiment.trace-insights-launch-modal.analyze-button"
                   type="primary"
                   onClick={handleAnalyze}
                   disabled={!prompt.trim() || isBusy || traceCountLoading}
@@ -733,7 +745,7 @@ export const TraceInsightsLaunchModal = ({
             >
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
                 {statusDisplay.icon}
-                <Typography.Text strong>{statusDisplay.message}</Typography.Text>
+                <Typography.Text bold>{statusDisplay.message}</Typography.Text>
               </div>
               <div
                 css={{
@@ -765,19 +777,29 @@ export const TraceInsightsLaunchModal = ({
                 </Typography.Text>
               )}
               {jobStatus === 'SUCCEEDED' && insightRunId && experimentId && (
-                <Typography.Link
-                  href={`/experiments/${experimentId}/insights?selectedInsightId=${insightRunId}`}
-                  target="_blank"
-                >
-                  View insight report
-                </Typography.Link>
+                <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Typography.Link
+                    componentId="mlflow.experiment.trace-insights-launch-modal.view-insight-report-link"
+                    href={jobResultUrl}
+                    target="_blank"
+                  >
+                    View insight report
+                  </Typography.Link>
+                  <Button
+                    componentId="mlflow.experiment.trace-insights-launch-modal.view-job-result-button"
+                    type="primary"
+                    onClick={() => jobResultUrl && window.open(jobResultUrl, '_blank', 'noreferrer')}
+                  >
+                    View Job Result
+                  </Button>
+                </div>
               )}
               {jobError && (
                 <Alert
+                  componentId="mlflow.experiment.trace-insights-launch-modal.job-error-alert"
                   message="Job update failed"
                   description={jobError}
                   type="error"
-                  showIcon
                 />
               )}
             </div>
@@ -793,7 +815,7 @@ export const TraceInsightsLaunchModal = ({
               borderRadius: theme.borders.borderRadiusMd,
               overflow: 'hidden',
               border: `1px solid ${theme.colors.border}`,
-              background: `linear-gradient(135deg, ${theme.colors.backgroundSecondary}, ${theme.colors.backgroundTertiary})`,
+              background: `linear-gradient(135deg, ${theme.colors.backgroundSecondary}, ${theme.colors.backgroundSecondary})`,
             }}
             aria-hidden
           >
@@ -822,7 +844,7 @@ export const TraceInsightsLaunchModal = ({
           </div>
 
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-            <Typography.Text strong>What you&apos;ll get:</Typography.Text>
+            <Typography.Text bold>What you&apos;ll get:</Typography.Text>
             <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
               {benefits.map((benefit) => (
                 <BenefitRow key={benefit.title} title={benefit.title} description={benefit.description} icon={benefit.icon} />

@@ -494,13 +494,17 @@ def _get_job_store(backend_store_uri: str | None = None) -> AbstractJobStore:
     Returns:
         An instance of AbstractJobStore
     """
-    from mlflow.server import BACKEND_STORE_URI_ENV_VAR
+    from mlflow.server import BACKEND_STORE_URI_ENV_VAR, JOB_STORE_URI_ENV_VAR
     from mlflow.store.jobs.sqlalchemy_store import SqlAlchemyJobStore
     from mlflow.utils.uri import extract_db_type_from_uri
 
     global _job_store
     if _job_store is None:
-        store_uri = backend_store_uri or os.environ.get(BACKEND_STORE_URI_ENV_VAR, None)
+        store_uri = (
+            os.environ.get(JOB_STORE_URI_ENV_VAR)
+            or backend_store_uri
+            or os.environ.get(BACKEND_STORE_URI_ENV_VAR, None)
+        )
         try:
             extract_db_type_from_uri(store_uri)
         except MlflowException:
@@ -3183,6 +3187,12 @@ def _fetch_trace_data_from_store(
     except MlflowNotImplementedException:
         # fallback to batch_get_traces if get_trace is not implemented
         pass
+
+    from mlflow.tracing.constant import TRACE_REQUEST_ID_PREFIX
+
+    # Trace ID is v3, we should not use BatchGetTrace API
+    if request_id.startswith(TRACE_REQUEST_ID_PREFIX):
+        return
 
     try:
         traces = store.batch_get_traces([request_id], None)
