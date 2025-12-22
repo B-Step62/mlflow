@@ -1,0 +1,67 @@
+import json
+import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pydantic import BaseModel
+import threading
+from typing import Literal
+
+import mlflow
+from mlflow.entities import Feedback, Trace
+from mlflow.entities.assessment import AssessmentSource, AssessmentSourceType
+from mlflow.insights.jobs._extract import extract_trace_summaries
+from mlflow.insights.jobs._discover_issue import discover_issues
+from mlflow.insights.jobs._generate_report_title import generate_report_title
+from mlflow.server.jobs import job
+from mlflow.types.llm import ChatMessage
+
+_logger = logging.getLogger(__name__)
+
+
+_JOB_STAGE_TAG_KEY = "mlflow.insights.stage"
+
+@job(
+    name="analyze-issues",
+    description="Analyze issues for the trace.",
+    max_workers=1,
+    pip_requirements=["litellm"]
+)
+def analyze_issues(
+    filter_string: str,
+    experiment_id: str,
+    user_question: str,
+    model: str,
+) -> str:
+    """
+    Analyze issues for the trace.
+    """
+    mlflow.set_experiment(experiment_id=experiment_id)
+    traces = mlflow.search_traces(
+        filter_string=filter_string,
+        locations=[experiment_id],
+        return_type="list",
+        include_spans=False,
+    )
+
+    # TODO: Remove this hard code
+    model = "openai:/databricks-gpt-5"
+    # TODO: Distribute this to threads when the trace count is large
+    trace_ids = [trace.info.trace_id for trace in traces]
+    summaries = extract_trace_summaries(run_id, trace_ids, user_question, model)
+    # TODO: Cluster summaries when the trace count is large
+    #  _cluster_trace_summaries(run_id, trace_ids, user_question, model)
+    issues = discover_issues(run_id, summaries, user_question, model)
+    mlflow.set_tag(_JOB_STAGE_TAG_KEY, "generating_report_title")
+    title = generate_report_title(json.dumps(issues), user_question, model)
+    mlflow.log_dict({
+        "title": title,
+        "report_type": "issue_identification",
+        "issues": issues,
+    }, "insight_report.json")
+    # Metadata to be shown at the table view.
+    mlflow.log_params({
+        "num_issues": len(issues),
+        "num_traces": len(trace_ids),
+    })
+    _logger.info(f"Generated report title: {title}")
+    return run_id
