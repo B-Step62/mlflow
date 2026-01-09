@@ -19,6 +19,7 @@ import {
   useDesignSystemTheme,
   SendIcon,
   WrenchSparkleIcon,
+  Tag,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
