@@ -16,6 +16,8 @@ export interface KnownAssistantContext {
   selectedTraceIds?: string[];
   runId?: string;
   selectedRunIds?: string[];
+  sessionId?: string;
+  selectedSessionIds?: string[];
 }
 
 export interface AssistantAgentState {

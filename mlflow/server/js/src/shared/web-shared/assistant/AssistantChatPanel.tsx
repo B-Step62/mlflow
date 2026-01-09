@@ -15,6 +15,7 @@ import {
   RefreshIcon,
   SparkleDoubleIcon,
   SparkleIcon,
+  SpeechBubbleIcon,
   Spinner,
   Tag,
   Tooltip,
@@ -289,13 +290,23 @@ const AssistantContextTags = () => {
   const selectedTraceIds = context['selectedTraceIds'] as string[] | undefined;
   const runId = context['runId'] as string | undefined;
   const selectedRunIds = context['selectedRunIds'] as string[] | undefined;
+  const sessionId = context['sessionId'] as string | undefined;
+  const selectedSessionIds = context['selectedSessionIds'] as string[] | undefined;
 
   // Dedupe: exclude the currently open item from selected lists
   const filteredSelectedTraceIds = selectedTraceIds?.filter((id) => id !== traceId);
   const filteredSelectedRunIds = selectedRunIds?.filter((id) => id !== runId);
+  const filteredSelectedSessionIds = selectedSessionIds?.filter((id) => id !== sessionId);
 
   // Don't render if no context
-  if (!traceId && !filteredSelectedTraceIds?.length && !runId && !filteredSelectedRunIds?.length) {
+  if (
+    !traceId &&
+    !filteredSelectedTraceIds?.length &&
+    !runId &&
+    !filteredSelectedRunIds?.length &&
+    !sessionId &&
+    !filteredSelectedSessionIds?.length
+  ) {
     return null;
   }
 
@@ -368,6 +379,45 @@ const AssistantContextTags = () => {
             >
               <Tag componentId={`${COMPONENT_ID}.context.more-runs`} color="turquoise">
                 +{filteredSelectedRunIds.length - 3}
+              </Tag>
+            </Tooltip>
+          )}
+        </>
+      )}
+      {/* Session context */}
+      {sessionId && (
+        <Tooltip componentId={`${COMPONENT_ID}.context.session.tooltip`} content={`Session: ${sessionId}`}>
+          <Tag componentId={`${COMPONENT_ID}.context.session`} color="purple">
+            <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+              <SpeechBubbleIcon css={{ fontSize: 12 }} />
+              <span>{truncate(sessionId)}</span>
+            </span>
+          </Tag>
+        </Tooltip>
+      )}
+      {filteredSelectedSessionIds && filteredSelectedSessionIds.length > 0 && (
+        <>
+          {filteredSelectedSessionIds.slice(0, 3).map((id) => (
+            <Tooltip
+              key={id}
+              componentId={`${COMPONENT_ID}.context.selected-session.tooltip`}
+              content={`Session: ${id}`}
+            >
+              <Tag componentId={`${COMPONENT_ID}.context.selected-session`} color="purple">
+                <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <SpeechBubbleIcon css={{ fontSize: 12 }} />
+                  <span>{truncate(id)}</span>
+                </span>
+              </Tag>
+            </Tooltip>
+          ))}
+          {filteredSelectedSessionIds.length > 3 && (
+            <Tooltip
+              componentId={`${COMPONENT_ID}.context.more-sessions.tooltip`}
+              content={`${filteredSelectedSessionIds.length - 3} more sessions selected`}
+            >
+              <Tag componentId={`${COMPONENT_ID}.context.more-sessions`} color="purple">
+                +{filteredSelectedSessionIds.length - 3}
               </Tag>
             </Tooltip>
           )}

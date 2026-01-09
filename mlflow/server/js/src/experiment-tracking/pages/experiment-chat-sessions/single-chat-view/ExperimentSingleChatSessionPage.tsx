@@ -35,10 +35,13 @@ import {
   ExperimentSingleChatConversation,
   ExperimentSingleChatConversationSkeleton,
 } from './ExperimentSingleChatConversation';
-import { Drawer, useDesignSystemTheme } from '@databricks/design-system';
+import { useDesignSystemTheme } from '@databricks/design-system';
+import { CustomDrawer } from '@mlflow/mlflow/src/common/components/CustomDrawer';
+import { useAssistant } from '@mlflow/mlflow/src/shared/web-shared/assistant/AssistantContext';
 import { SELECTED_TRACE_ID_QUERY_PARAM } from '../../../constants';
 import { useExperimentSingleChatMetrics } from './useExperimentSingleChatMetrics';
 import { ExperimentSingleChatSessionMetrics } from './ExperimentSingleChatSessionMetrics';
+import { useSessionAssistantContext } from './useSessionAssistantContext';
 
 const ContextProviders = ({
   children,
@@ -61,9 +64,19 @@ const ExperimentSingleChatSessionPageImpl = () => {
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<ModelTrace | null>(null);
   const chatRefs = useRef<{ [traceId: string]: HTMLDivElement }>({});
+  const { isPanelOpen } = useAssistant();
+
+  // Calculate drawer width and position based on assistant panel state
+  const drawerWidth = isPanelOpen ? '70vw' : '90vw';
+  const drawerPosition = isPanelOpen ? 'left' : 'right';
 
   invariant(experimentId, 'Experiment ID must be defined');
   invariant(sessionId, 'Session ID must be defined');
+
+  // Register session context with the assistant
+  // Include the trace ID when a trace is opened in the drawer
+  const activeTraceId = selectedTrace ? getModelTraceId(selectedTrace) : undefined;
+  useSessionAssistantContext(experimentId, sessionId, activeTraceId);
 
   const selectedTraceIdFromUrl = useMemo(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -167,32 +180,18 @@ const ExperimentSingleChatSessionPageImpl = () => {
             )}
           </div>
         )}
-        <Drawer.Root
+        <CustomDrawer
           open={selectedTrace !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSelectedTrace(null);
-            }
-          }}
+          onClose={() => setSelectedTrace(null)}
+          width={drawerWidth}
+          position={drawerPosition}
+          componentId="mlflow.experiment.chat-session.trace-drawer"
+          title={selectedTrace ? getModelTraceId(selectedTrace) : ''}
         >
-          <Drawer.Content
-            componentId="mlflow.experiment.chat-session.trace-drawer"
-            title={selectedTrace ? getModelTraceId(selectedTrace) : ''}
-            width="90vw"
-            expandContentToFullHeight
-          >
-            <div
-              css={{
-                height: '100%',
-                marginLeft: -theme.spacing.lg,
-                marginRight: -theme.spacing.lg,
-                marginBottom: -theme.spacing.lg,
-              }}
-            >
-              {selectedTrace && <ModelTraceExplorer modelTrace={selectedTrace} collapseAssessmentPane="force-open" />}
-            </div>
-          </Drawer.Content>
-        </Drawer.Root>
+          <div css={{ height: '100%' }}>
+            {selectedTrace && <ModelTraceExplorer modelTrace={selectedTrace} collapseAssessmentPane="force-open" />}
+          </div>
+        </CustomDrawer>
       </div>
     </ContextProviders>
   );
