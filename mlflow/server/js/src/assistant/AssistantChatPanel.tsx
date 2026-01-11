@@ -14,13 +14,13 @@ import {
   RefreshIcon,
   SparkleDoubleIcon,
   SparkleIcon,
-  Spinner,
+  StopIcon,
+  Tag,
   Tooltip,
   Typography,
   useDesignSystemTheme,
   SendIcon,
   WrenchSparkleIcon,
-  Tag,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
@@ -96,6 +96,20 @@ const ChatMessageBubble = ({
           <Typography.Text css={{ whiteSpace: 'pre-wrap' }}>{message.content}</Typography.Text>
         ) : (
           <GenAIMarkdownRenderer>{message.content}</GenAIMarkdownRenderer>
+        )}
+        {/* Interrupted indicator */}
+        {message.isInterrupted && (
+          <span
+            css={{
+              display: 'block',
+              marginTop: theme.spacing.sm,
+              fontSize: theme.typography.fontSizeSm,
+              fontStyle: 'italic',
+              color: theme.colors.textSecondary,
+            }}
+          >
+            Interrupted by user
+          </span>
         )}
         {/* Loading indicator */}
         {message.isStreaming && (
@@ -263,13 +277,16 @@ interface ChatPanelContentProps {
  */
 const ChatPanelContent = ({ disabled = false }: ChatPanelContentProps) => {
   const { theme } = useDesignSystemTheme();
-  const { messages, isStreaming, error, activeTools, sendMessage, regenerateLastMessage } = useAssistant();
+  const { messages, isStreaming, error, activeTools, sendMessage, cancelSession, regenerateLastMessage } =
+    useAssistant();
 
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const isInputDisabled = isStreaming || disabled;
-  const isSendDisabled = !inputValue.trim() || isStreaming || disabled;
+  // When streaming, button switches to cancel mode and should always be enabled
+  // When not streaming, button is send mode and requires input
+  const isSendDisabled = isStreaming ? false : !inputValue.trim() || disabled;
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -389,7 +406,7 @@ const ChatPanelContent = ({ disabled = false }: ChatPanelContentProps) => {
               }}
             />
             <button
-              onClick={handleSend}
+              onClick={isStreaming ? cancelSession : handleSend}
               disabled={isSendDisabled}
               css={{
                 display: 'flex',
@@ -400,7 +417,7 @@ const ChatPanelContent = ({ disabled = false }: ChatPanelContentProps) => {
                 background: 'transparent',
                 cursor: isSendDisabled ? 'not-allowed' : 'pointer',
                 borderRadius: theme.borders.borderRadiusSm,
-                color: theme.colors.actionPrimaryBackgroundDefault,
+                color: isStreaming ? theme.colors.textValidationDanger : theme.colors.actionPrimaryBackgroundDefault,
                 opacity: isSendDisabled ? 0.3 : 1,
                 '&:hover:not(:disabled)': {
                   backgroundColor: theme.colors.actionDefaultBackgroundHover,
@@ -409,9 +426,9 @@ const ChatPanelContent = ({ disabled = false }: ChatPanelContentProps) => {
                   backgroundColor: theme.colors.actionDefaultBackgroundPress,
                 },
               }}
-              aria-label="Send message"
+              aria-label={isStreaming ? 'Stop generation' : 'Send message'}
             >
-              {isStreaming ? <Spinner size="small" /> : <SendIcon />}
+              {isStreaming ? <StopIcon /> : <SendIcon />}
             </button>
           </div>
           <AssistantContextTags />

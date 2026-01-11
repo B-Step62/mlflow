@@ -91,8 +91,32 @@ export const createEventSource = (sessionId: string): EventSource => {
 };
 
 /**
+ * Cancel an active session by terminating the backend process.
+ */
+export const cancelSession = async (sessionId: string): Promise<{ success: boolean; message: string }> => {
+  const response = await fetch(`${API_BASE}/session/${sessionId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status: 'cancelled' }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to cancel session');
+  }
+
+  return response.json();
+};
+
+export interface SendMessageStreamResult {
+  eventSource: EventSource | null;
+}
+
+/**
  * Send a message and get the response stream via SSE.
  * First POSTs to /message to initiate, then connects to SSE endpoint.
+ * Returns the EventSource so caller can close it if needed (e.g., on cancel).
  */
 export const sendMessageStream = async (
   request: MessageRequest,
@@ -102,7 +126,8 @@ export const sendMessageStream = async (
   onStatus?: (status: string) => void,
   onSessionId?: (sessionId: string) => void,
   onToolUse?: (tools: ToolUseInfo[]) => void,
-): Promise<void> => {
+  onInterrupted?: () => void,
+): Promise<SendMessageStreamResult> => {
   try {
     // Step 1: POST the message to initiate processing
     const response = await fetch(`${API_BASE}/message`, {
@@ -116,7 +141,7 @@ export const sendMessageStream = async (
     if (!response.ok) {
       const error = await response.text();
       onError(`Failed to send message: ${error}`);
-      return;
+      return { eventSource: null };
     }
 
     // Step 2: Get the session_id from the response
@@ -125,7 +150,7 @@ export const sendMessageStream = async (
 
     if (!sessionId) {
       onError('No session_id returned from server');
-      return;
+      return { eventSource: null };
     }
 
     // Notify caller of the session ID
@@ -190,6 +215,12 @@ export const sendMessageStream = async (
       }
     });
 
+    // Listen for 'interrupted' event (cancelled by user)
+    eventSource.addEventListener('interrupted', () => {
+      onInterrupted?.();
+      eventSource.close();
+    });
+
     // Listen for 'error' event
     eventSource.addEventListener('error', (event) => {
       // Check if it's a network error or an error event with data
@@ -201,13 +232,17 @@ export const sendMessageStream = async (
           onError('Connection error');
         }
       } else if (eventSource.readyState === EventSource.CLOSED) {
-        onError('Connection closed');
+        // Connection closed - this can happen after cancel, don't report as error
+        return;
       } else {
         onError('Connection error');
       }
       eventSource.close();
     });
+
+    return { eventSource };
   } catch (error) {
     onError(error instanceof Error ? error.message : 'Unknown error');
+    return { eventSource: null };
   }
 };

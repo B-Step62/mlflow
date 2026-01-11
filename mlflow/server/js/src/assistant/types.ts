@@ -4,6 +4,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  isInterrupted?: boolean;
 }
 
 /**
@@ -67,6 +68,8 @@ export interface AssistantAgentActions {
   refreshConfig: () => Promise<void>;
   /** Mark setup as complete (after wizard finishes) */
   completeSetup: () => void;
+  /** Cancel the current streaming session */
+  cancelSession: () => void;
 }
 
 export type AssistantAgentContextType = AssistantAgentState & AssistantAgentActions;

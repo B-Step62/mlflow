@@ -47,6 +47,7 @@ class MockProvider(AssistantProvider):
         self,
         prompt: str,
         session_id: str | None = None,
+        mlflow_session_id: str | None = None,
         cwd: Path | None = None,
         context: dict | None = None,
     ):
