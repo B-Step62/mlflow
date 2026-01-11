@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 
 import type { AssistantAgentContextType, ChatMessage } from './types';
-import { sendMessageStream } from './AssistantService';
+import { cancelSession as cancelSessionApi, sendMessageStream } from './AssistantService';
 
 const AssistantReactContext = createContext<AssistantAgentContextType | null>(null);
 
@@ -29,6 +29,9 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   // Use ref to track current streaming message
   const streamingMessageRef = useRef<string>('');
 
+  // Use ref to track active EventSource for cancellation
+  const eventSourceRef = useRef<EventSource | null>(null);
+
   const appendToStreamingMessage = useCallback((text: string) => {
     streamingMessageRef.current += text;
     setMessages((prev) => {
@@ -49,6 +52,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       return prev;
     });
     streamingMessageRef.current = '';
+    eventSourceRef.current = null;
     setIsStreaming(false);
     setCurrentStatus(null);
   }, []);
@@ -65,10 +69,25 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     setError(errorMsg);
     setIsStreaming(false);
     setCurrentStatus(null);
+    eventSourceRef.current = null;
     setMessages((prev) => {
       const lastMessage = prev[prev.length - 1];
       if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
         return [...prev.slice(0, -1), { ...lastMessage, content: `Error: ${errorMsg}`, isStreaming: false }];
+      }
+      return prev;
+    });
+  }, []);
+
+  const handleInterrupted = useCallback(() => {
+    setIsStreaming(false);
+    setCurrentStatus(null);
+    eventSourceRef.current = null;
+    streamingMessageRef.current = '';
+    setMessages((prev) => {
+      const lastMessage = prev[prev.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+        return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, isInterrupted: true }];
       }
       return prev;
     });
@@ -124,26 +143,38 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       ]);
 
       try {
-        await sendMessageStream(
+        const result = await sendMessageStream(
           {
             message: prompt || '',
             session_id: sessionId ?? undefined,
           },
-          appendToStreamingMessage,
-          handleStreamError,
-          finalizeStreamingMessage,
-          handleStatus,
-          handleSessionId,
+          {
+            onMessage: appendToStreamingMessage,
+            onError: handleStreamError,
+            onDone: finalizeStreamingMessage,
+            onStatus: handleStatus,
+            onSessionId: handleSessionId,
+            onInterrupted: handleInterrupted,
+          },
         );
+        eventSourceRef.current = result.eventSource;
       } catch (err) {
         handleStreamError(err instanceof Error ? err.message : 'Failed to start chat');
       }
     },
-    [sessionId, appendToStreamingMessage, handleStreamError, finalizeStreamingMessage, handleStatus, handleSessionId],
+    [
+      sessionId,
+      appendToStreamingMessage,
+      handleStreamError,
+      finalizeStreamingMessage,
+      handleStatus,
+      handleSessionId,
+      handleInterrupted,
+    ],
   );
 
   const handleSendMessage = useCallback(
-    (message: string) => {
+    async (message: string) => {
       if (!sessionId) {
         startChat(message);
         return;
@@ -177,17 +208,58 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       ]);
 
       // Send message and stream response
-      sendMessageStream(
+      const result = await sendMessageStream(
         { session_id: sessionId, message },
-        appendToStreamingMessage,
-        handleStreamError,
-        finalizeStreamingMessage,
-        handleStatus,
-        handleSessionId,
+        {
+          onMessage: appendToStreamingMessage,
+          onError: handleStreamError,
+          onDone: finalizeStreamingMessage,
+          onStatus: handleStatus,
+          onSessionId: handleSessionId,
+          onInterrupted: handleInterrupted,
+        },
       );
+      eventSourceRef.current = result.eventSource;
     },
-    [sessionId, appendToStreamingMessage, handleStreamError, finalizeStreamingMessage, handleStatus, handleSessionId],
+    [
+      sessionId,
+      startChat,
+      appendToStreamingMessage,
+      handleStreamError,
+      finalizeStreamingMessage,
+      handleStatus,
+      handleSessionId,
+      handleInterrupted,
+    ],
   );
+
+  const handleCancelSession = useCallback(() => {
+    if (!sessionId || !isStreaming) return;
+
+    // Close EventSource immediately to stop receiving data
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    // Send cancel request to backend
+    cancelSessionApi(sessionId).catch((err) => {
+      console.error('Failed to cancel session:', err);
+    });
+
+    // Mark the current streaming message as interrupted
+    setMessages((prev) => {
+      const lastMessage = prev[prev.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+        return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, isInterrupted: true }];
+      }
+      return prev;
+    });
+
+    setIsStreaming(false);
+    setCurrentStatus(null);
+    streamingMessageRef.current = '';
+  }, [sessionId, isStreaming]);
 
   const value: AssistantAgentContextType = {
     // State
@@ -202,6 +274,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     closePanel,
     sendMessage: handleSendMessage,
     reset,
+    cancelSession: handleCancelSession,
   };
 
   return <AssistantReactContext.Provider value={value}>{children}</AssistantReactContext.Provider>;

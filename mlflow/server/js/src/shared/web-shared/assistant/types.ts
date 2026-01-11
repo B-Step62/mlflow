@@ -4,6 +4,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  isInterrupted?: boolean;
 }
 
 export interface AssistantAgentState {
@@ -30,6 +31,8 @@ export interface AssistantAgentActions {
   sendMessage: (message: string) => void;
   /** Reset the conversation */
   reset: () => void;
+  /** Cancel the current streaming session */
+  cancelSession: () => void;
 }
 
 export type AssistantAgentContextType = AssistantAgentState & AssistantAgentActions;
