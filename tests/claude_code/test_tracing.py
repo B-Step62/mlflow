@@ -15,7 +15,7 @@ from mlflow.claude_code.tracing import (
     setup_logging,
 )
 from mlflow.entities.span import SpanType
-from mlflow.tracing.constant import TraceMetadataKey
+from mlflow.tracing.constant import SpanAttributeKey, TraceMetadataKey
 
 # ============================================================================
 # TIMESTAMP PARSING TESTS
@@ -141,6 +141,7 @@ DUMMY_TRANSCRIPT = [
         "message": {
             "role": "assistant",
             "content": [{"type": "text", "text": "Let me calculate that for you."}],
+            "usage": {"input_tokens": 100, "output_tokens": 20},
         },
         "timestamp": "2025-01-15T10:00:01.000Z",
     },
@@ -156,6 +157,7 @@ DUMMY_TRANSCRIPT = [
                     "input": {"command": "echo $((2 + 2))"},
                 }
             ],
+            "usage": {"input_tokens": 150, "output_tokens": 30},
         },
         "timestamp": "2025-01-15T10:00:02.000Z",
     },
@@ -172,6 +174,7 @@ DUMMY_TRANSCRIPT = [
         "message": {
             "role": "assistant",
             "content": [{"type": "text", "text": "The answer is 4."}],
+            "usage": {"input_tokens": 200, "output_tokens": 15},
         },
         "timestamp": "2025-01-15T10:00:04.000Z",
     },
@@ -236,3 +239,37 @@ def test_process_transcript_links_trace_to_run(mock_transcript_file):
 
         assert trace is not None
         assert trace.info.trace_metadata.get(TraceMetadataKey.SOURCE_RUN) == run.info.run_id
+
+
+def test_process_transcript_captures_token_usage(mock_transcript_file):
+    trace = process_transcript(mock_transcript_file, "test-session-123")
+
+    assert trace is not None
+
+    # Find LLM spans which should have token usage
+    llm_spans = [s for s in trace.search_spans() if s.span_type == SpanType.LLM]
+    assert len(llm_spans) == 2
+
+    # Verify token usage is set using standard MLflow attribute key
+    for span in llm_spans:
+        usage = span.get_attribute(SpanAttributeKey.CHAT_USAGE)
+        assert usage is not None
+        assert "input_tokens" in usage
+        assert "output_tokens" in usage
+        assert "total_tokens" in usage
+        assert usage["total_tokens"] == usage["input_tokens"] + usage["output_tokens"]
+
+    # Verify specific token counts from the first LLM span (first assistant text response)
+    first_llm_span = llm_spans[0]
+    usage = first_llm_span.get_attribute(SpanAttributeKey.CHAT_USAGE)
+    assert usage["input_tokens"] == 100
+    assert usage["output_tokens"] == 20
+    assert usage["total_tokens"] == 120
+
+    # Verify token counts are aggregated at trace level
+    trace_token_usage = trace.info.token_usage
+    assert trace_token_usage is not None
+    # Two LLM spans: (100+20) + (200+15) = 335 total
+    assert trace_token_usage["input_tokens"] == 300
+    assert trace_token_usage["output_tokens"] == 35
+    assert trace_token_usage["total_tokens"] == 335

@@ -21,7 +21,7 @@ from mlflow.environment_variables import (
     MLFLOW_EXPERIMENT_NAME,
     MLFLOW_TRACKING_URI,
 )
-from mlflow.tracing.constant import TraceMetadataKey
+from mlflow.tracing.constant import SpanAttributeKey, TokenUsageKey, TraceMetadataKey
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracking.fluent import _get_trace_exporter
 
@@ -470,10 +470,21 @@ def _create_llm_and_tool_spans(
                 },
                 attributes={
                     "model": msg.get("model", "unknown"),
-                    "input_tokens": usage.get("input_tokens", 0),
-                    "output_tokens": usage.get("output_tokens", 0),
                 },
             )
+
+            # Set token usage using standard MLflow attribute key for aggregation
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            if input_tokens or output_tokens:
+                llm_span.set_attribute(
+                    SpanAttributeKey.CHAT_USAGE,
+                    {
+                        TokenUsageKey.INPUT_TOKENS: input_tokens,
+                        TokenUsageKey.OUTPUT_TOKENS: output_tokens,
+                        TokenUsageKey.TOTAL_TOKENS: input_tokens + output_tokens,
+                    },
+                )
 
             llm_span.set_outputs({"response": text_content})
             llm_span.end(end_time_ns=timestamp_ns + duration_ns)
