@@ -150,7 +150,8 @@ export const sendMessageStream = async (
           }
         }
       } catch (err) {
-        // Silent fail - errors are handled by error event listener
+        // Log for debugging but don't propagate - main errors handled by error event listener
+        console.error('Failed to parse message event:', err);
       }
     });
 
@@ -168,7 +169,8 @@ export const sendMessageStream = async (
           }
         }
       } catch (err) {
-        // Silent fail - errors are handled by error event listener
+        // Log for debugging but don't propagate - main errors handled by error event listener
+        console.error('Failed to parse stream_event:', err);
       }
     });
 
