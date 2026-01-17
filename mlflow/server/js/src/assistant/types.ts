@@ -90,11 +90,21 @@ export interface MessageRequest {
 export type HealthCheckResult = { ok: true } | { ok: false; error: string; status: number };
 
 /**
+ * Permission settings for the assistant provider.
+ */
+export interface PermissionsConfig {
+  allow_edit_files: boolean;
+  allow_read_docs: boolean;
+  full_access: boolean;
+}
+
+/**
  * Provider configuration.
  */
 export interface ProviderConfig {
   model: string;
   selected: boolean;
+  permissions?: PermissionsConfig;
 }
 
 /**
@@ -107,10 +117,11 @@ export interface ProjectConfig {
 
 /**
  * Full assistant configuration from /config endpoint.
+ * Note: projects can be null when updating to remove a project mapping.
  */
 export interface AssistantConfig {
   providers: Record<string, ProviderConfig>;
-  projects: Record<string, ProjectConfig>;
+  projects: Record<string, ProjectConfig | null>;
 }
 
 /**
