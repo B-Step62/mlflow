@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from mlflow.assistant import get_project_path
+from mlflow.assistant import clear_project_path_cache, get_project_path
 from mlflow.assistant.config import AssistantConfig, PermissionsConfig, ProjectConfig
 from mlflow.assistant.providers.base import (
     CLINotInstalledError,
@@ -300,8 +300,9 @@ async def update_config(request: ConfigUpdateRequest) -> ConfigResponse:
 
     config.save()
 
-    # Clear config cache so provider picks up new settings
+    # Clear caches so provider and project path lookups pick up new settings
     clear_config_cache()
+    clear_project_path_cache()
 
     return ConfigResponse(
         providers={name: p.model_dump() for name, p in config.providers.items()},
