@@ -124,13 +124,13 @@ export const SetupStepProject = ({ experimentId, onBack, onComplete }: SetupStep
             <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
               <div>
                 <Checkbox componentId={`${COMPONENT_ID}.perm_mlflow_cli`} isChecked disabled onChange={() => {}}>
-                  <Typography.Text>Execute MLflow CLI (required)</Typography.Text>
+                  <Typography.Text>Fetch MLflow Data (required)</Typography.Text>
                 </Checkbox>
                 <Typography.Text
                   color="secondary"
                   css={{ fontSize: theme.typography.fontSizeSm, marginLeft: 24, display: 'block' }}
                 >
-                  Allow running MLflow commands to fetch traces, runs, and experiment data.
+                  Allow running MLflow CLI commands and REST API calls to fetch traces, runs, and experiment data.
                 </Typography.Text>
               </div>
 

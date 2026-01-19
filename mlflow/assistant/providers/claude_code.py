@@ -33,9 +33,10 @@ from mlflow.server.assistant.session import clear_process_pid, save_process_pid
 _logger = logging.getLogger(__name__)
 
 
-# Base allowed tools for Claude Code CLI (MLflow CLI is always allowed)
+# Base allowed tools for Claude Code CLI (MLflow CLI and local REST API are always allowed)
 BASE_ALLOWED_TOOLS = [
-    "Bash(mlflow:*)",
+    "Bash(mlflow:*)",  # MLflow CLI commands
+    "Skill",  # Skill tool needs to be explicitly allowed
 ]
 
 # Additional tools for file editing permission
