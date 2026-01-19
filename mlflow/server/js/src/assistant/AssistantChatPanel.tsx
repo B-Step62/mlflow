@@ -22,11 +22,11 @@ import {
   useDesignSystemTheme,
   SendIcon,
   WrenchSparkleIcon,
+  Spinner,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import { useAssistant } from './AssistantContext';
-import { useAssistantPageContext } from './AssistantPageContext';
 import { AssistantContextTags } from './AssistantContextTags';
 import type { ChatMessage, ToolUseInfo } from './types';
 import { GenAIMarkdownRenderer } from '../shared/web-shared/genai-markdown-renderer';
