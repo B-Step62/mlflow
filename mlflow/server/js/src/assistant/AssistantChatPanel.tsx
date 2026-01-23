@@ -9,6 +9,7 @@ import {
   Card,
   CloseIcon,
   GearIcon,
+  InfoFillIcon,
   RefreshIcon,
   SparkleDoubleIcon,
   SparkleIcon,
@@ -17,6 +18,7 @@ import {
   Typography,
   useDesignSystemTheme,
   SendIcon,
+  WarningIcon,
   WrenchSparkleIcon,
   Tag,
 } from '@databricks/design-system';
@@ -30,6 +32,8 @@ import { AssistantSetupWizard } from './setup';
 import { GenAIMarkdownRenderer } from '../shared/web-shared/genai-markdown-renderer';
 import { useCopyController } from '../shared/web-shared/snippet/hooks/useCopyController';
 import { useAssistantPrompts } from '../common/utils/RoutingUtils';
+import { useLocalStorage } from '../shared/web-shared/hooks/useLocalStorage';
+import { useAssistantConfigQuery } from './hooks/useAssistantConfigQuery';
 
 type CurrentView = 'chat' | 'setup-wizard' | 'settings';
 
@@ -240,16 +244,192 @@ const PromptSuggestions = ({ onSelect }: { onSelect: (prompt: string) => void })
 };
 
 /**
+ * Warning banner shown when skills or project path is missing.
+ */
+const SetupWarningBanner = ({
+  message,
+  linkText,
+  suffix,
+  onLinkClick,
+  onDismissLater,
+  onDismissPermanent,
+}: {
+  message: string;
+  linkText: string;
+  suffix: string;
+  onLinkClick: () => void;
+  onDismissLater: () => void;
+  onDismissPermanent: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const textColor = theme.colors.textPrimary;
+
+  const dismissButtonStyles = {
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    borderRadius: theme.borders.borderRadiusSm,
+    color: textColor,
+    fontSize: theme.typography.fontSizeSm,
+    opacity: 0.7,
+    '&:hover': {
+      opacity: 1,
+      backgroundColor: 'rgba(255, 210, 160, 0.25)',
+    },
+  };
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing.md,
+        padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+        backgroundColor: theme.colors.backgroundValidationWarning,
+        borderRadius: theme.borders.borderRadiusMd,
+        fontSize: theme.typography.fontSizeSm,
+        color: textColor,
+      }}
+    >
+      <WarningIcon css={{ fontSize: 16, color: theme.colors.textValidationWarning, flexShrink: 0 }} />
+      <span css={{ flex: 1 }}>
+        {message}{' '}
+        <Typography.Link
+          componentId="mlflow.assistant.chat_panel.warning.link"
+          onClick={onLinkClick}
+          css={{ fontSize: 'inherit', cursor: 'pointer', color: textColor, textDecoration: 'underline' }}
+        >
+          {linkText}
+        </Typography.Link>{' '}
+        {suffix}
+      </span>
+      <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+        <button onClick={onDismissLater} aria-label="Dismiss for now" css={dismissButtonStyles}>
+          Later
+        </button>
+        <button onClick={onDismissPermanent} aria-label="Dismiss permanently" css={dismissButtonStyles}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Info banner shown for project path setup hint.
+ */
+const SetupInfoBanner = ({
+  message,
+  linkText,
+  suffix,
+  onLinkClick,
+  onDismissLater,
+  onDismissPermanent,
+}: {
+  message: string;
+  linkText: string;
+  suffix: string;
+  onLinkClick: () => void;
+  onDismissLater: () => void;
+  onDismissPermanent: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const textColor = theme.colors.textPrimary;
+
+  const dismissButtonStyles = {
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    borderRadius: theme.borders.borderRadiusSm,
+    color: textColor,
+    fontSize: theme.typography.fontSizeSm,
+    opacity: 0.7,
+    '&:hover': {
+      opacity: 1,
+      backgroundColor: 'rgba(100, 180, 255, 0.25)',
+    },
+  };
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing.md,
+        padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+        backgroundColor: theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue100,
+        borderRadius: theme.borders.borderRadiusMd,
+        fontSize: theme.typography.fontSizeSm,
+        color: textColor,
+      }}
+    >
+      <InfoFillIcon css={{ fontSize: 16, color: theme.colors.blue500, flexShrink: 0 }} />
+      <span css={{ flex: 1 }}>
+        {message}{' '}
+        <Typography.Link
+          componentId="mlflow.assistant.chat_panel.info.link"
+          onClick={onLinkClick}
+          css={{ fontSize: 'inherit', cursor: 'pointer', color: textColor, textDecoration: 'underline' }}
+        >
+          {linkText}
+        </Typography.Link>{' '}
+        {suffix}
+      </span>
+      <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+        <button onClick={onDismissLater} aria-label="Dismiss for now" css={dismissButtonStyles}>
+          Later
+        </button>
+        <button onClick={onDismissPermanent} aria-label="Dismiss permanently" css={dismissButtonStyles}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Chat panel content component.
  */
-const ChatPanelContent = () => {
+const ChatPanelContent = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
   const { theme } = useDesignSystemTheme();
   const { messages, isStreaming, error, activeTools, sendMessage, regenerateLastMessage } = useAssistant();
   const pageContext = useAssistantPageContext();
-  const hasExperimentContext = Boolean(pageContext['experimentId']);
+  const experimentId = pageContext['experimentId'] as string | undefined;
+  const { config } = useAssistantConfigQuery();
 
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Temporary dismissals (session only)
+  const [tempDismissedWarnings, setTempDismissedWarnings] = useState<string[]>([]);
+
+  // Permanent dismissals (localStorage)
+  const [permDismissedWarnings, setPermDismissedWarnings] = useLocalStorage<string[]>({
+    key: 'mlflow.assistant.dismissedWarnings',
+    version: 1,
+    initialValue: [],
+  });
+
+  // Determine which warnings to show
+  const skillsMissing = !config?.skills_location;
+  const projectPathMissing = experimentId && !config?.projects?.[experimentId]?.location;
+
+  const handleDismissLater = (key: string) => {
+    setTempDismissedWarnings((prev) => [...prev, key]);
+  };
+
+  const handleDismissPermanent = (key: string) => {
+    if (!permDismissedWarnings.includes(key)) {
+      setPermDismissedWarnings([...permDismissedWarnings, key]);
+    }
+  };
+
+  const showSkillsWarning =
+    skillsMissing && !tempDismissedWarnings.includes('skills') && !permDismissedWarnings.includes('skills');
+  const showProjectWarning =
+    projectPathMissing && !tempDismissedWarnings.includes('project') && !permDismissedWarnings.includes('project');
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -321,13 +501,38 @@ const ChatPanelContent = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
+      {/* Warning banners and Input area */}
       <div
         css={{
           padding: `${theme.spacing.sm}px ${theme.spacing.md}px ${theme.spacing.md}px ${theme.spacing.md}px`,
           flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
         }}
       >
+        {/* Warning banners */}
+        {showSkillsWarning && (
+          <SetupWarningBanner
+            message="Skills not installed."
+            linkText="Set up skills"
+            suffix="to unlock full capabilities."
+            onLinkClick={onOpenSettings}
+            onDismissLater={() => handleDismissLater('skills')}
+            onDismissPermanent={() => handleDismissPermanent('skills')}
+          />
+        )}
+        {showProjectWarning && (
+          <SetupInfoBanner
+            message=""
+            linkText="Set project path"
+            suffix="to give the assistant more context about your project."
+            onLinkClick={onOpenSettings}
+            onDismissLater={() => handleDismissLater('project')}
+            onDismissPermanent={() => handleDismissPermanent('project')}
+          />
+        )}
+
         <div
           css={{
             display: 'flex',
@@ -571,7 +776,11 @@ export const AssistantChatPanel = () => {
         );
       case 'chat':
       default:
-        return setupComplete ? <ChatPanelContent /> : <SetupPrompt onSetup={handleStartSetup} />;
+        return setupComplete ? (
+          <ChatPanelContent onOpenSettings={handleOpenSettings} />
+        ) : (
+          <SetupPrompt onSetup={handleStartSetup} />
+        );
     }
   };
 
