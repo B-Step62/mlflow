@@ -102,16 +102,24 @@ async def send_message(request: MessageRequest) -> MessageResponse:
     # Generate or use existing session ID
     session_id = request.session_id or str(uuid.uuid4())
 
-    project_path = get_project_path(request.experiment_id) if request.experiment_id else None
+    # Compute working_dir from experiment_id if provided
+    working_dir = None
+    if request.experiment_id:
+        project_path = get_project_path(request.experiment_id)
+        working_dir = Path(project_path) if project_path else None
 
     # Create or update session
     session = SessionManager.load(session_id)
     if session is None:
-        session = SessionManager.create(
-            context=request.context, working_dir=Path(project_path) if project_path else None
-        )
-    elif request.context:
-        session.update_context(request.context)
+        session = SessionManager.create(context=request.context, working_dir=working_dir)
+    else:
+        # Update working_dir and context for existing sessions to handle:
+        # 1. Config updates during session
+        # 2. Experiment view changes during session
+        if request.experiment_id:
+            session.working_dir = working_dir
+        if request.context:
+            session.update_context(request.context)
 
     # Store the pending message with role
     session.set_pending_message(role="user", content=request.message)

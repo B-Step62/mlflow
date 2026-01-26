@@ -312,3 +312,66 @@ def test_validate_session_id_rejects_invalid_format():
 def test_validate_session_id_rejects_path_traversal():
     with pytest.raises(ValueError, match="Invalid session ID format"):
         SessionManager.validate_session_id("../../../etc/passwd")
+
+
+def test_working_dir_updates_when_experiment_id_changes(client):
+    """Test that working_dir is updated when experiment_id changes during a session."""
+    with patch("mlflow.server.assistant.api.get_project_path") as mock_get_path:
+        # First message with experiment_id=exp-1 -> path /project/a
+        mock_get_path.return_value = "/project/a"
+        response = client.post(
+            "/ajax-api/3.0/mlflow/assistant/message",
+            json={"message": "Hello", "experiment_id": "exp-1"},
+        )
+        assert response.status_code == 200
+        session_id = response.json()["session_id"]
+
+        # Verify session has initial working_dir
+        session = SessionManager.load(session_id)
+        assert session.working_dir == Path("/project/a")
+        mock_get_path.assert_called_with("exp-1")
+
+        # Clear pending message by consuming the stream
+        client.get(f"/ajax-api/3.0/mlflow/assistant/sessions/{session_id}/stream")
+
+        # Second message with different experiment_id=exp-2 -> path /project/b
+        mock_get_path.return_value = "/project/b"
+        response = client.post(
+            "/ajax-api/3.0/mlflow/assistant/message",
+            json={"message": "Continue", "session_id": session_id, "experiment_id": "exp-2"},
+        )
+        assert response.status_code == 200
+
+        # Verify session working_dir was updated
+        session = SessionManager.load(session_id)
+        assert session.working_dir == Path("/project/b")
+        mock_get_path.assert_called_with("exp-2")
+
+
+def test_working_dir_updates_when_config_changes(client):
+    """Test that working_dir picks up config changes when experiment_id is passed again."""
+    with patch("mlflow.server.assistant.api.get_project_path") as mock_get_path:
+        # First message with experiment_id=exp-1 -> path /old/path
+        mock_get_path.return_value = "/old/path"
+        response = client.post(
+            "/ajax-api/3.0/mlflow/assistant/message",
+            json={"message": "Hello", "experiment_id": "exp-1"},
+        )
+        session_id = response.json()["session_id"]
+
+        session = SessionManager.load(session_id)
+        assert session.working_dir == Path("/old/path")
+
+        # Clear pending message
+        client.get(f"/ajax-api/3.0/mlflow/assistant/sessions/{session_id}/stream")
+
+        # Simulate config update: same experiment_id now maps to different path
+        mock_get_path.return_value = "/new/path"
+        response = client.post(
+            "/ajax-api/3.0/mlflow/assistant/message",
+            json={"message": "Continue", "session_id": session_id, "experiment_id": "exp-1"},
+        )
+
+        # Verify session picked up the new path
+        session = SessionManager.load(session_id)
+        assert session.working_dir == Path("/new/path")

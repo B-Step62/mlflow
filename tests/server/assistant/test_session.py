@@ -146,11 +146,32 @@ def test_session_manager_create():
     assert session.pending_message is None
     assert session.context == {}
     assert session.provider_session_id is None
+    assert session.working_dir is None
 
 
 def test_session_manager_create_with_context():
     session = SessionManager.create(context={"key": "value"})
     assert session.context["key"] == "value"
+
+
+def test_session_manager_create_with_working_dir():
+    from pathlib import Path
+
+    session = SessionManager.create(working_dir=Path("/project/path"))
+    assert session.working_dir == Path("/project/path")
+
+
+def test_session_serialization_with_working_dir():
+    from pathlib import Path
+
+    session = Session(working_dir=Path("/project/path"))
+    session.add_message("user", "Hello")
+
+    data = session.to_dict()
+    assert data["working_dir"] == "/project/path"
+
+    restored = Session.from_dict(data)
+    assert restored.working_dir == Path("/project/path")
 
 
 def test_session_manager_atomic_save(tmp_path):
