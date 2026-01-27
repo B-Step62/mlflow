@@ -138,6 +138,7 @@ export const sendMessageStream = async (
     eventSource.addEventListener('message', (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[Assistant] message event:', data);
         // Backend sends: {"message": {"role": "assistant", "content": "..."}}
         if (data.message && data.message.content) {
           const content = data.message.content;
@@ -158,6 +159,7 @@ export const sendMessageStream = async (
     eventSource.addEventListener('stream_event', (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[Assistant] stream_event:', data);
         // Backend sends: {"event": {...}}
         if (data.event) {
           // Handle different stream event types
@@ -176,6 +178,7 @@ export const sendMessageStream = async (
     eventSource.addEventListener('done', (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[Assistant] done event:', data);
         // Backend sends: {"result": null, "session_id": "..."}
         onToolUse?.([]);
         onDone();
@@ -190,6 +193,7 @@ export const sendMessageStream = async (
 
     // Listen for 'error' event
     eventSource.addEventListener('error', (event) => {
+      console.log('[Assistant] error event:', event);
       // Check if it's a network error or an error event with data
       if (event.type === 'error' && (event as MessageEvent).data) {
         try {
