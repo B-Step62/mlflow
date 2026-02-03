@@ -72,6 +72,7 @@ from typing import Literal
 
 import click
 
+import mlflow
 from mlflow.entities import AssessmentSource, AssessmentSourceType
 from mlflow.environment_variables import MLFLOW_EXPERIMENT_ID
 from mlflow.tracing.assessment import (
@@ -871,3 +872,140 @@ def evaluate_traces(
     from mlflow.cli.eval import evaluate_traces as run_evaluation
 
     run_evaluation(experiment_id, trace_ids, scorers, output_format)
+
+
+@commands.command("copy")
+@click.option(
+    "--src-tracking-uri",
+    type=click.STRING,
+    required=True,
+    help="Tracking URI of the source MLflow server (e.g., 'http://localhost:5000').",
+)
+@click.option(
+    "--src-experiment-id",
+    type=click.STRING,
+    required=True,
+    help="Experiment ID to copy traces from.",
+)
+@click.option(
+    "--dst-tracking-uri",
+    type=click.STRING,
+    required=True,
+    help="Tracking URI of the destination MLflow server (e.g., 'http://localhost:5001').",
+)
+@click.option(
+    "--dst-experiment-id",
+    type=click.STRING,
+    required=True,
+    help="Experiment ID to copy traces to.",
+)
+@click.option(
+    "--max-results",
+    type=click.INT,
+    default=None,
+    help="Maximum number of traces to copy. If not specified, copies all traces.",
+)
+@click.option(
+    "--filter-string",
+    type=click.STRING,
+    help="Filter string to select specific traces to copy.",
+)
+def copy_traces(
+    src_tracking_uri: str,
+    src_experiment_id: str,
+    dst_tracking_uri: str,
+    dst_experiment_id: str,
+    max_results: int | None = None,
+    filter_string: str | None = None,
+) -> None:
+    """
+    Copy traces from one experiment to another, potentially across different tracking servers.
+
+    This command fetches traces from a source experiment and copies them to a destination
+    experiment. The traces will have new trace IDs in the destination.
+
+    \b
+    Examples:
+    # Copy all traces between experiments on the same server
+    mlflow traces copy \\
+        --src-tracking-uri http://localhost:5000 \\
+        --src-experiment-id 1 \\
+        --dst-tracking-uri http://localhost:5000 \\
+        --dst-experiment-id 2
+
+    \b
+    # Copy traces between different servers
+    mlflow traces copy \\
+        --src-tracking-uri http://server1:5000 \\
+        --src-experiment-id 1 \\
+        --dst-tracking-uri http://server2:5000 \\
+        --dst-experiment-id 2
+
+    \b
+    # Copy with a filter to select specific traces
+    mlflow traces copy \\
+        --src-tracking-uri http://localhost:5000 \\
+        --src-experiment-id 1 \\
+        --dst-tracking-uri http://localhost:5000 \\
+        --dst-experiment-id 2 \\
+        --filter-string "status = 'OK'"
+
+    \b
+    # Copy up to 500 traces
+    mlflow traces copy \\
+        --src-tracking-uri http://localhost:5000 \\
+        --src-experiment-id 1 \\
+        --dst-tracking-uri http://localhost:5000 \\
+        --dst-experiment-id 2 \\
+        --max-results 500
+    """
+    from mlflow.store.tracking import SEARCH_TRACES_DEFAULT_MAX_RESULTS
+    from mlflow.tracing.utils.copy import copy_trace_to_experiment
+
+    src_client = TracingClient(tracking_uri=src_tracking_uri)
+
+    click.echo(f"Searching for traces in experiment {src_experiment_id}...")
+
+    all_traces = []
+    page_token = None
+    page_size = SEARCH_TRACES_DEFAULT_MAX_RESULTS
+
+    while True:
+        traces = src_client.search_traces(
+            locations=[src_experiment_id],
+            filter_string=filter_string,
+            max_results=page_size,
+            page_token=page_token,
+            include_spans=True,
+        )
+        all_traces.extend(traces)
+
+        if max_results is not None and len(all_traces) >= max_results:
+            all_traces = all_traces[:max_results]
+            break
+
+        page_token = traces.token
+        if not page_token:
+            break
+
+    if not all_traces:
+        click.echo("No traces found to copy.")
+        return
+
+    click.echo(f"Found {len(all_traces)} trace(s). Copying to destination...")
+
+    mlflow.set_tracking_uri(dst_tracking_uri)
+
+    copied_count = 0
+    failed_count = 0
+    for trace in all_traces:
+        try:
+            trace_dict = trace.to_dict()
+            new_trace_id = copy_trace_to_experiment(trace_dict, dst_experiment_id)
+            click.echo(f"  Copied trace {trace.info.trace_id} -> {new_trace_id}")
+            copied_count += 1
+        except Exception as e:
+            click.echo(f"  Failed to copy trace {trace.info.trace_id}: {e}", err=True)
+            failed_count += 1
+
+    click.echo(f"\nCopy complete: {copied_count} succeeded, {failed_count} failed.")

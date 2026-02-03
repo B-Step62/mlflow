@@ -1,5 +1,6 @@
 from typing import Any
 
+from mlflow.entities.assessment import Assessment
 from mlflow.entities.span import LiveSpan, Span
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE
@@ -56,6 +57,14 @@ def copy_trace_to_experiment(trace_dict: dict[str, Any], experiment_id: str | No
             # Copy trace metadata
             if trace_metadata := info.get("trace_metadata"):
                 trace.info.trace_metadata.update(trace_metadata)
+
+            # Copy assessments
+            if assessments := info.get("assessments"):
+                for assessment_dict in assessments:
+                    assessment = Assessment.from_dictionary(assessment_dict)
+                    assessment.trace_id = new_trace_id
+                    assessment.assessment_id = None
+                    trace.info.assessments.append(assessment)
 
     # Close the root span triggers the trace export.
     new_root_span.end(end_time_ns=spans[0].end_time_ns)
