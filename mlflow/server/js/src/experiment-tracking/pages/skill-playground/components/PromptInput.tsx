@@ -8,9 +8,20 @@ interface PromptInputProps {
   onRun: () => void;
   onCopy: () => void;
   copyLabel: string;
+  isExecuting?: boolean;
+  onCancel?: () => void;
 }
 
-export const PromptInput = ({ panelId, value, onChange, onRun, onCopy, copyLabel }: PromptInputProps) => {
+export const PromptInput = ({
+  panelId,
+  value,
+  onChange,
+  onRun,
+  onCopy,
+  copyLabel,
+  isExecuting,
+  onCancel,
+}: PromptInputProps) => {
   const { theme } = useDesignSystemTheme();
   const isLeft = panelId === 'a';
 
@@ -92,14 +103,24 @@ export const PromptInput = ({ panelId, value, onChange, onRun, onCopy, copyLabel
             )}
           </button>
         </div>
-        <Button
-          componentId={`mlflow.skill-playground.panel-${panelId}.run`}
-          type="primary"
-          onClick={onRun}
-          disabled={!value.trim()}
-        >
-          Run
-        </Button>
+        {isExecuting ? (
+          <Button
+            componentId={`mlflow.skill-playground.panel-${panelId}.cancel`}
+            type="tertiary"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            componentId={`mlflow.skill-playground.panel-${panelId}.run`}
+            type="primary"
+            onClick={onRun}
+            disabled={!value.trim()}
+          >
+            Run
+          </Button>
+        )}
       </div>
     </div>
   );

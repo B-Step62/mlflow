@@ -1,20 +1,62 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDesignSystemTheme } from '@databricks/design-system';
 import { PlaygroundPanel } from './components/PlaygroundPanel';
 import { FeedbackBar } from './components/FeedbackBar';
 import { PromptInput } from './components/PromptInput';
-import { DUMMY_CONFIG_A, DUMMY_CONFIG_B, DUMMY_MESSAGES_A, DUMMY_MESSAGES_B } from './dummy-data';
-import type { PanelConfig, ChatMessage, Preference } from './types';
+import { usePlaygroundSession } from './hooks/usePlaygroundSession';
+import { usePanelExecution } from './hooks/usePanelExecution';
+import type { PanelConfig, PanelId, Preference } from './types';
+
+const DEFAULT_CONFIG_A: PanelConfig = {
+  panelId: 'a',
+  name: 'Panel A',
+  skills: [],
+  allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Skill'],
+  model: 'sonnet',
+};
+
+const DEFAULT_CONFIG_B: PanelConfig = {
+  panelId: 'b',
+  name: 'Panel B',
+  skills: [],
+  allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Skill'],
+  model: 'sonnet',
+};
 
 export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) => {
   const { theme } = useDesignSystemTheme();
+  const { sessionId, session, savePanelConfig } = usePlaygroundSession(experimentId);
 
-  const [configA, setConfigA] = useState<PanelConfig>(DUMMY_CONFIG_A);
-  const [configB, setConfigB] = useState<PanelConfig>(DUMMY_CONFIG_B);
-  const [messagesA] = useState<ChatMessage[]>(DUMMY_MESSAGES_A);
-  const [messagesB] = useState<ChatMessage[]>(DUMMY_MESSAGES_B);
+  const [configA, setConfigA] = useState<PanelConfig>(DEFAULT_CONFIG_A);
+  const [configB, setConfigB] = useState<PanelConfig>(DEFAULT_CONFIG_B);
   const [promptA, setPromptA] = useState('');
   const [promptB, setPromptB] = useState('');
+  const { execute, cancel, messagesA, messagesB, isExecutingA, isExecutingB, activeToolsA, activeToolsB } =
+    usePanelExecution(sessionId);
+
+  // Sync local config from session when it first loads
+  useEffect(() => {
+    if (session) {
+      setConfigA((prev) => ({ ...session.configA, name: prev.name }));
+      setConfigB((prev) => ({ ...session.configB, name: prev.name }));
+    }
+  }, [session]);
+
+  const handleConfigChangeA = useCallback(
+    (config: PanelConfig) => {
+      setConfigA(config);
+      savePanelConfig('a', config);
+    },
+    [savePanelConfig],
+  );
+
+  const handleConfigChangeB = useCallback(
+    (config: PanelConfig) => {
+      setConfigB(config);
+      savePanelConfig('b', config);
+    },
+    [savePanelConfig],
+  );
 
   const handleCopyPrompt = useCallback(
     (from: 'a' | 'b') => {
@@ -27,12 +69,20 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
     [promptA, promptB],
   );
 
-  const handleRun = useCallback((_panelId: 'a' | 'b') => {
-    // TODO: wire up to backend
-  }, []);
+  const handleRun = useCallback(
+    (panelId: PanelId) => {
+      const prompt = panelId === 'a' ? promptA : promptB;
+      if (!prompt.trim()) return;
+
+      const setPrompt = panelId === 'a' ? setPromptA : setPromptB;
+      setPrompt('');
+      execute(panelId, prompt);
+    },
+    [promptA, promptB, execute],
+  );
 
   const handleFeedback = useCallback((_preference: Preference, _comment: string) => {
-    // TODO: wire up to backend
+    // TODO: wire up to backend (Milestone 6)
   }, []);
 
   // Check if both panels have completed responses (for enabling feedback)
@@ -76,8 +126,9 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
             panelId="a"
             panelLabel="A"
             config={configA}
-            onConfigChange={setConfigA}
+            onConfigChange={handleConfigChangeA}
             messages={messagesA}
+            activeTools={activeToolsA}
             experimentId={experimentId}
           />
         </div>
@@ -86,8 +137,9 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
             panelId="b"
             panelLabel="B"
             config={configB}
-            onConfigChange={setConfigB}
+            onConfigChange={handleConfigChangeB}
             messages={messagesB}
+            activeTools={activeToolsB}
             experimentId={experimentId}
           />
         </div>
@@ -113,6 +165,8 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
             onRun={() => handleRun('a')}
             onCopy={() => handleCopyPrompt('a')}
             copyLabel="Copy to B >>"
+            isExecuting={isExecutingA}
+            onCancel={() => cancel('a')}
           />
         </div>
         <div>
@@ -123,6 +177,8 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
             onRun={() => handleRun('b')}
             onCopy={() => handleCopyPrompt('b')}
             copyLabel="<< Copy to A"
+            isExecuting={isExecutingB}
+            onCancel={() => cancel('b')}
           />
         </div>
       </div>

@@ -18,7 +18,7 @@ const API_BASE = getAjaxUrl('ajax-api/3.0/mlflow/assistant');
  * Process content block array from assistant response.
  * Extracts text or tool uses and calls appropriate callbacks.
  */
-const processContentBlocks = (
+export const processContentBlocks = (
   content: any[],
   onMessage: (text: string) => void,
   onToolUse?: (tools: ToolUseInfo[]) => void,

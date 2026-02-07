@@ -25,26 +25,39 @@ export const ViewTraceButton = ({ traceId, experimentId }: ViewTraceButtonProps)
       </div>
 
       <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <Drawer.Content
-          title={`Trace: ${traceId}`}
-          componentId="mlflow.skill-playground.trace-drawer"
-          width={560}
-        >
+        <Drawer.Content title={`Trace: ${traceId}`} componentId="mlflow.skill-playground.trace-drawer" width={560}>
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-            <div css={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: theme.spacing.sm, rowGap: theme.spacing.md }}>
-              <Typography.Text bold color="secondary">Trace ID</Typography.Text>
+            <div
+              css={{
+                display: 'grid',
+                gridTemplateColumns: '120px 1fr',
+                gap: theme.spacing.sm,
+                rowGap: theme.spacing.md,
+              }}
+            >
+              <Typography.Text bold color="secondary">
+                Trace ID
+              </Typography.Text>
               <Typography.Text css={{ fontFamily: 'monospace' }}>{traceId}</Typography.Text>
 
-              <Typography.Text bold color="secondary">Experiment</Typography.Text>
+              <Typography.Text bold color="secondary">
+                Experiment
+              </Typography.Text>
               <Typography.Text>{experimentId}</Typography.Text>
 
-              <Typography.Text bold color="secondary">Status</Typography.Text>
+              <Typography.Text bold color="secondary">
+                Status
+              </Typography.Text>
               <Typography.Text css={{ color: theme.colors.green600 }}>OK</Typography.Text>
 
-              <Typography.Text bold color="secondary">Duration</Typography.Text>
+              <Typography.Text bold color="secondary">
+                Duration
+              </Typography.Text>
               <Typography.Text>3.4s</Typography.Text>
 
-              <Typography.Text bold color="secondary">Timestamp</Typography.Text>
+              <Typography.Text bold color="secondary">
+                Timestamp
+              </Typography.Text>
               <Typography.Text>2026-02-07 14:32:11 UTC</Typography.Text>
             </div>
 

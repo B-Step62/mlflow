@@ -212,9 +212,7 @@ const getExperimentPageRouteDefs = () => {
         {
           path: RoutePaths.experimentPageTabSkillPlayground,
           pageId: PageId.experimentPageTabSkillPlayground,
-          element: createLazyRouteElement(
-            () => import('./pages/skill-playground/ExperimentSkillPlaygroundPage'),
-          ),
+          element: createLazyRouteElement(() => import('./pages/skill-playground/ExperimentSkillPlaygroundPage')),
           handle: {
             getPageTitle: (params) => `Skill Playground - Experiment ${params['experimentId']}`,
             getAssistantPrompts: () => [

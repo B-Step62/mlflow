@@ -27,10 +27,7 @@ export const DUMMY_CONFIG_B: PanelConfig = {
   model: 'opus',
 };
 
-export const AVAILABLE_SKILL_REPOS = [
-  'https://github.com/mlflow/mlflow-skills',
-  '/Users/yuki/projects/mlflow-skills',
-];
+export const AVAILABLE_SKILL_REPOS = ['https://github.com/mlflow/mlflow-skills', '/Users/yuki/projects/mlflow-skills'];
 
 export const SKILL_NAME_LOOKUP: Record<string, string> = {
   'https://github.com/mlflow/mlflow-skills': 'mlflow-skills',
@@ -109,7 +106,12 @@ I recommend adding a \`wait_for_server()\` utility that retries the connection w
       { name: 'Bash(gh pr view ...)', description: 'Fetching PR details', status: 'success', durationMs: 1200 },
       { name: 'Read(workflow.yml)', description: 'Reading workflow configuration', status: 'success', durationMs: 120 },
       { name: 'Skill(analyze-ci)', description: 'Analyzing CI logs', status: 'success', durationMs: 4500 },
-      { name: 'Grep(wait_for_server)', description: 'Searching for existing patterns', status: 'success', durationMs: 200 },
+      {
+        name: 'Grep(wait_for_server)',
+        description: 'Searching for existing patterns',
+        status: 'success',
+        durationMs: 200,
+      },
     ],
     traceId: 'tr-def-456',
     judgeScores: { Relevance: 0.88, Completeness: 0.91 },

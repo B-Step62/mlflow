@@ -13,6 +13,7 @@ from flask import Flask
 from mlflow.server import app as flask_app
 from mlflow.server.assistant.api import assistant_router
 from mlflow.server.fastapi_security import init_fastapi_security
+from mlflow.server.playground.api import playground_router
 from mlflow.server.gateway_api import gateway_router
 from mlflow.server.job_api import job_api_router
 from mlflow.server.otel_api import otel_router
@@ -54,6 +55,10 @@ def create_fastapi_app(flask_app: Flask = flask_app):
     # Include Assistant API router for AI-powered trace analysis
     # This provides /ajax-api/3.0/mlflow/assistant/* endpoints (localhost only)
     fastapi_app.include_router(assistant_router)
+
+    # Include Playground API router for skill playground sessions
+    # This provides /ajax-api/3.0/mlflow/playground/* endpoints (localhost only)
+    fastapi_app.include_router(playground_router)
 
     # Mount the entire Flask application at the root path
     # This ensures compatibility with existing APIs

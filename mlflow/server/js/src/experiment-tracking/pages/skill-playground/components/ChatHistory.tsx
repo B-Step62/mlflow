@@ -5,13 +5,15 @@ import { ToolExecutionSummary } from './ToolExecutionSummary';
 import { JudgeScoreBadges } from './JudgeScoreBadges';
 import { ViewTraceButton } from './ViewTraceButton';
 import type { ChatMessage } from '../types';
+import type { ToolUseInfo } from '@mlflow/mlflow/src/assistant/types';
 
 interface ChatHistoryProps {
   messages: ChatMessage[];
+  activeTools?: ToolUseInfo[];
   experimentId: string;
 }
 
-export const ChatHistory = ({ messages, experimentId }: ChatHistoryProps) => {
+export const ChatHistory = ({ messages, activeTools, experimentId }: ChatHistoryProps) => {
   const { theme } = useDesignSystemTheme();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +52,7 @@ export const ChatHistory = ({ messages, experimentId }: ChatHistoryProps) => {
     >
       {messages.map((message) => (
         <div key={message.id} css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-          <MessageBubble message={message} />
+          <MessageBubble message={message} activeTools={message.isStreaming ? activeTools : undefined} />
 
           {/* Show tool calls, judge scores, and trace link after assistant messages */}
           {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
