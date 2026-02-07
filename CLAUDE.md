@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Critical Rules
+
+- **NEVER kill or stop the dev server processes** (ports 3000, 5000). Do not run `kill`, `lsof | kill`, `pkill`, or any command that terminates these processes. The dev server has `--reload` enabled and will pick up code changes automatically. If ports are in use, ask the user to handle it.
+
 ## Knowledge Cutoff Note
 
 Claude's training data may lag behind current releases. When reviewing docs or code, don't flag unfamiliar names as speculative or non-existent. Assume the authors are referencing newer, valid resources (e.g., model names like GPT-5, GitHub runner types like ubuntu-slim, library versions, etc.).

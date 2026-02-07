@@ -4,6 +4,32 @@ import tarfile
 from io import BytesIO
 from pathlib import Path
 
+# Repo layouts:
+#   "nested"  – skills live under .claude/skills/<name>/SKILL.md  (project-embedded)
+#   "root"    – skills live under <name>/SKILL.md                 (standalone skills repo)
+
+_NESTED_PREFIX = ".claude/skills"
+
+
+def _detect_layout_at_ref(repo_path: Path, ref: str) -> str:
+    check = subprocess.run(
+        ["git", "ls-tree", "--name-only", ref, f"{_NESTED_PREFIX}/"],
+        cwd=repo_path,
+        capture_output=True,
+    )
+    if check.returncode == 0 and check.stdout.strip():
+        return "nested"
+    return "root"
+
+
+def _detect_layout_working_tree(repo_path: Path) -> str:
+    skills_dir = repo_path / ".claude" / "skills"
+    if skills_dir.is_dir() and any(
+        (d / "SKILL.md").exists() for d in skills_dir.iterdir() if d.is_dir()
+    ):
+        return "nested"
+    return "root"
+
 
 def checkout_skills_from_commit(
     repo_path: Path,
@@ -11,8 +37,11 @@ def checkout_skills_from_commit(
     destination: Path,
     skill_names: list[str] | None = None,
 ) -> list[str]:
+    layout = _detect_layout_at_ref(repo_path, commit_ref)
+    archive_path = _NESTED_PREFIX if layout == "nested" else "."
+
     result = subprocess.run(
-        ["git", "archive", commit_ref, "--", ".claude/skills"],
+        ["git", "archive", commit_ref, "--", archive_path],
         cwd=repo_path,
         capture_output=True,
     )
@@ -21,26 +50,32 @@ def checkout_skills_from_commit(
             f"git archive failed for ref '{commit_ref}': {result.stderr.decode().strip()}"
         )
 
+    # For nested layout, skill dirs start at depth 2 (.claude/skills/<name>/...)
+    # For root layout, skill dirs start at depth 0 (<name>/...)
+    prefix_depth = 2 if layout == "nested" else 0
+
     extracted = []
     with tarfile.open(fileobj=BytesIO(result.stdout)) as tar:
-        # Pre-scan to find skill directories that contain SKILL.md
         valid_skills: set[str] = set()
         for member in tar.getmembers():
             parts = Path(member.name).parts
-            if len(parts) >= 4 and parts[2] and parts[3] == "SKILL.md":
-                valid_skills.add(parts[2])
+            if (
+                len(parts) >= prefix_depth + 2
+                and parts[prefix_depth + 1] == "SKILL.md"
+            ):
+                valid_skills.add(parts[prefix_depth])
 
         for member in tar.getmembers():
             parts = Path(member.name).parts
-            if len(parts) < 3:
+            if len(parts) <= prefix_depth:
                 continue
-            skill_name = parts[2]
+            skill_name = parts[prefix_depth]
             if skill_name not in valid_skills:
                 continue
             if skill_names and skill_name not in skill_names:
                 continue
 
-            member.name = str(Path(*parts[2:]))
+            member.name = str(Path(*parts[prefix_depth:]))
             tar.extract(member, destination, filter="data")
             if skill_name not in extracted:
                 extracted.append(skill_name)
@@ -53,7 +88,9 @@ def checkout_skills_from_working_tree(
     destination: Path,
     skill_names: list[str] | None = None,
 ) -> list[str]:
-    skills_dir = repo_path / ".claude" / "skills"
+    layout = _detect_layout_working_tree(repo_path)
+    skills_dir = repo_path / ".claude" / "skills" if layout == "nested" else repo_path
+
     if not skills_dir.is_dir():
         return []
 
@@ -75,19 +112,30 @@ def checkout_skills_from_working_tree(
 
 def list_skills_at_ref(repo_path: Path, ref: str) -> list[str]:
     if ref == "working-tree":
-        skills_dir = repo_path / ".claude" / "skills"
+        layout = _detect_layout_working_tree(repo_path)
+        skills_dir = repo_path / ".claude" / "skills" if layout == "nested" else repo_path
         if not skills_dir.is_dir():
             return []
         return sorted(
             d.name for d in skills_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()
         )
 
-    # Use git ls-tree to list skill directories at the given ref
-    result = subprocess.run(
-        ["git", "ls-tree", "--name-only", ref, ".claude/skills/"],
-        cwd=repo_path,
-        capture_output=True,
-    )
+    layout = _detect_layout_at_ref(repo_path, ref)
+    prefix = f"{_NESTED_PREFIX}/" if layout == "nested" else ""
+
+    # List top-level entries (or .claude/skills/ entries for nested)
+    if layout == "nested":
+        result = subprocess.run(
+            ["git", "ls-tree", "--name-only", ref, f"{_NESTED_PREFIX}/"],
+            cwd=repo_path,
+            capture_output=True,
+        )
+    else:
+        result = subprocess.run(
+            ["git", "ls-tree", "--name-only", ref],
+            cwd=repo_path,
+            capture_output=True,
+        )
     if result.returncode != 0:
         raise ValueError(
             f"git ls-tree failed for ref '{ref}': {result.stderr.decode().strip()}"
@@ -96,9 +144,8 @@ def list_skills_at_ref(repo_path: Path, ref: str) -> list[str]:
     skills = []
     for line in result.stdout.decode().strip().splitlines():
         skill_name = Path(line).name
-        # Verify the skill has a SKILL.md manifest
         check = subprocess.run(
-            ["git", "cat-file", "-e", f"{ref}:.claude/skills/{skill_name}/SKILL.md"],
+            ["git", "cat-file", "-e", f"{ref}:{prefix}{skill_name}/SKILL.md"],
             cwd=repo_path,
             capture_output=True,
         )

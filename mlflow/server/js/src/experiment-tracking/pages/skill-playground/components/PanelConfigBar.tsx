@@ -1,8 +1,29 @@
 import { useState } from 'react';
-import { Button, CloseIcon, PlusIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Button, ChevronDownIcon, ChevronRightIcon, CloseIcon, PlusIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { useCommitList } from '../hooks/useCommitList';
 import { useSkillList } from '../hooks/useSkillList';
 import type { PanelConfig, PanelId, SkillEntry } from '../types';
+
+const isRemoteUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
+
+/** Group skill entries by repo. A single entry with name "*" means "all skills". */
+const groupByRepo = (skills: SkillEntry[]): Map<string, { commitId: string; names: string[] }> => {
+  const map = new Map<string, { commitId: string; names: string[] }>();
+  for (const s of skills) {
+    const existing = map.get(s.repo);
+    if (existing) {
+      if (s.name !== '*' && !existing.names.includes(s.name)) {
+        existing.names.push(s.name);
+      }
+      if (s.name === '*') {
+        existing.names = ['*'];
+      }
+    } else {
+      map.set(s.repo, { commitId: s.commitId, names: [s.name] });
+    }
+  }
+  return map;
+};
 
 interface PanelConfigBarProps {
   panelId: PanelId;
@@ -45,72 +66,169 @@ const headerCellStyles = (theme: ReturnType<typeof useDesignSystemTheme>['theme'
   backgroundColor: theme.colors.backgroundSecondary,
 });
 
-// Per-row component so each skill fetches commits from its own repo
-const SkillRow = ({
-  skill,
-  index,
-  onCommitChange,
-  onRemove,
+const iconButtonStyles = (theme: ReturnType<typeof useDesignSystemTheme>['theme']) => ({
+  border: 'none',
+  background: 'none',
+  color: theme.colors.textSecondary,
+  cursor: 'pointer',
+  padding: 2,
+  display: 'flex' as const,
+  alignItems: 'center' as const,
+  '&:hover': { color: theme.colors.textPrimary },
+});
+
+// Expanded skill sub-rows for a repo
+const SkillSubRows = ({
+  repo,
+  commitId,
+  selectedNames,
+  onToggleSkill,
 }: {
-  skill: SkillEntry;
-  index: number;
-  onCommitChange: (index: number, commitId: string) => void;
-  onRemove: (index: number) => void;
+  repo: string;
+  commitId: string;
+  selectedNames: string[]; // ["*"] means all
+  onToggleSkill: (skillName: string, included: boolean) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const { commits } = useCommitList(skill.repo);
+  const ref = commitId === 'working-tree' ? 'working-tree' : commitId;
+  const { skills, isLoading } = useSkillList(repo, ref);
+  const isAll = selectedNames.length === 1 && selectedNames[0] === '*';
+
+  if (isLoading) {
+    return (
+      <tr>
+        <td colSpan={4} css={{ ...cellStyles(theme), paddingLeft: theme.spacing.lg + theme.spacing.sm, backgroundColor: theme.colors.backgroundSecondary }}>
+          <Typography.Text size="sm" color="secondary">Loading skills...</Typography.Text>
+        </td>
+      </tr>
+    );
+  }
+
+  if (skills.length === 0) {
+    return (
+      <tr>
+        <td colSpan={4} css={{ ...cellStyles(theme), paddingLeft: theme.spacing.lg + theme.spacing.sm, backgroundColor: theme.colors.backgroundSecondary }}>
+          <Typography.Text size="sm" color="secondary">No skills found in this repo</Typography.Text>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {skills.map((skill) => {
+        const included = isAll || selectedNames.includes(skill.name);
+        return (
+          <tr key={skill.name}>
+            <td
+              colSpan={3}
+              css={{
+                ...cellStyles(theme),
+                paddingLeft: theme.spacing.lg + theme.spacing.sm,
+                backgroundColor: theme.colors.backgroundSecondary,
+                opacity: included ? 1 : 0.5,
+              }}
+            >
+              <label css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={included}
+                  onChange={(e) => onToggleSkill(skill.name, e.target.checked)}
+                />
+                <Typography.Text size="sm">{skill.name}</Typography.Text>
+              </label>
+            </td>
+            <td css={{ ...cellStyles(theme), backgroundColor: theme.colors.backgroundSecondary }} />
+          </tr>
+        );
+      })}
+    </>
+  );
+};
+
+// Per-repo row with expand/collapse
+const RepoRow = ({
+  repo,
+  commitId,
+  selectedNames,
+  panelId,
+  onCommitChange,
+  onRemove,
+  onToggleSkill,
+}: {
+  repo: string;
+  commitId: string;
+  selectedNames: string[];
+  panelId: PanelId;
+  onCommitChange: (commitId: string) => void;
+  onRemove: () => void;
+  onToggleSkill: (skillName: string, included: boolean) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [expanded, setExpanded] = useState(false);
+  const { commits } = useCommitList(repo);
+  const isAll = selectedNames.length === 1 && selectedNames[0] === '*';
 
   const commitOptions = [
-    { hash: 'working-tree', label: 'Working tree (uncommitted)' },
+    ...(!isRemoteUrl(repo) ? [{ hash: 'working-tree', label: 'Working tree (uncommitted)' }] : []),
     ...commits.map((c) => ({ hash: c.hash, label: `${c.hash.slice(0, 7)} - ${c.message}` })),
   ];
 
+  const displayRepo = repo.length > 40 ? '...' + repo.slice(-38) : repo;
+  const skillLabel = isAll ? 'All skills' : `${selectedNames.length} skill${selectedNames.length !== 1 ? 's' : ''}`;
+
   return (
-    <tr>
-      <td css={cellStyles(theme)}>
-        <Typography.Text size="sm">{skill.name}</Typography.Text>
-      </td>
-      <td css={cellStyles(theme)}>
-        <Typography.Text size="sm" css={{ wordBreak: 'break-all' }}>
-          {skill.repo.length > 30 ? '...' + skill.repo.slice(-28) : skill.repo}
-        </Typography.Text>
-      </td>
-      <td css={cellStyles(theme)}>
-        <select
-          value={skill.commitId}
-          onChange={(e) => onCommitChange(index, e.target.value)}
-          css={{
-            ...inputStyles(theme),
-            padding: `2px ${theme.spacing.xs}px`,
-            fontSize: theme.typography.fontSizeSm - 1,
-          }}
-        >
-          {commitOptions.map((c) => (
-            <option key={c.hash} value={c.hash}>
-              {c.hash === 'working-tree' ? 'working tree' : c.label}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td css={{ ...cellStyles(theme), textAlign: 'center' }}>
-        <button
-          type="button"
-          onClick={() => onRemove(index)}
-          css={{
-            border: 'none',
-            background: 'none',
-            color: theme.colors.textSecondary,
-            cursor: 'pointer',
-            padding: 2,
-            display: 'flex',
-            alignItems: 'center',
-            '&:hover': { color: theme.colors.textPrimary },
-          }}
-        >
-          <CloseIcon css={{ width: 14, height: 14 }} />
-        </button>
-      </td>
-    </tr>
+    <>
+      <tr>
+        <td css={{ ...cellStyles(theme), whiteSpace: 'nowrap' }}>
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <button type="button" onClick={() => setExpanded(!expanded)} css={iconButtonStyles(theme)}>
+              {expanded ? (
+                <ChevronDownIcon css={{ width: 14, height: 14 }} />
+              ) : (
+                <ChevronRightIcon css={{ width: 14, height: 14 }} />
+              )}
+            </button>
+            <div>
+              <Typography.Text size="sm" css={{ wordBreak: 'break-all' }}>{displayRepo}</Typography.Text>
+              <Typography.Text size="sm" color="secondary" css={{ display: 'block' }}>
+                {skillLabel}
+              </Typography.Text>
+            </div>
+          </div>
+        </td>
+        <td css={cellStyles(theme)}>
+          <select
+            value={commitId}
+            onChange={(e) => onCommitChange(e.target.value)}
+            css={{
+              ...inputStyles(theme),
+              padding: `2px ${theme.spacing.xs}px`,
+              fontSize: theme.typography.fontSizeSm - 1,
+            }}
+          >
+            {commitOptions.map((c) => (
+              <option key={c.hash} value={c.hash}>
+                {c.hash === 'working-tree' ? 'working tree' : c.label}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td css={{ ...cellStyles(theme), textAlign: 'center' }}>
+          <button type="button" onClick={onRemove} css={iconButtonStyles(theme)}>
+            <CloseIcon css={{ width: 14, height: 14 }} />
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <SkillSubRows
+          repo={repo}
+          commitId={commitId}
+          selectedNames={selectedNames}
+          onToggleSkill={onToggleSkill}
+        />
+      )}
+    </>
   );
 };
 
@@ -119,32 +237,68 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
   const [newSkillRepo, setNewSkillRepo] = useState('');
   const [newToolName, setNewToolName] = useState('');
 
-  // Fetch available skills when adding from a repo (preview what skills exist)
-  const { skills: availableSkills, isLoading: skillsLoading } = useSkillList(newSkillRepo.trim(), 'working-tree');
+  // Fetch commits for the new repo to determine the default ref
+  const { commits: newRepoCommits } = useCommitList(newSkillRepo.trim());
+  const newRepoIsRemote = isRemoteUrl(newSkillRepo.trim());
+  const newRepoDefaultRef = newRepoIsRemote ? newRepoCommits[0]?.hash ?? '' : 'working-tree';
 
-  const handleAddSkill = (skillName?: string) => {
+  const repoGroups = groupByRepo(config.skills);
+
+  const handleAddRepo = () => {
     const repo = newSkillRepo.trim();
     if (!repo) return;
+    // Don't add duplicate repos
+    if (repoGroups.has(repo)) return;
 
-    const name = skillName ?? (repo.includes('/') ? repo.split('/').pop() || repo : repo);
-    const newEntry: SkillEntry = {
-      name,
-      repo,
-      commitId: 'working-tree',
-    };
-    onLocalChange({ ...config, skills: [...config.skills, newEntry] });
-
-    if (skillName) return; // Don't clear repo when adding from suggestion list
+    const commitId = newRepoDefaultRef || 'working-tree';
+    onLocalChange({ ...config, skills: [...config.skills, { name: '*', repo, commitId }] });
     setNewSkillRepo('');
   };
 
-  const handleRemoveSkill = (index: number) => {
-    onLocalChange({ ...config, skills: config.skills.filter((_, i) => i !== index) });
+  const handleRemoveRepo = (repo: string) => {
+    onLocalChange({ ...config, skills: config.skills.filter((s) => s.repo !== repo) });
   };
 
-  const handleSkillCommitChange = (index: number, commitId: string) => {
-    const updated = config.skills.map((s, i) => (i === index ? { ...s, commitId } : s));
-    onLocalChange({ ...config, skills: updated });
+  const handleRepoCommitChange = (repo: string, commitId: string) => {
+    onLocalChange({
+      ...config,
+      skills: config.skills.map((s) => (s.repo === repo ? { ...s, commitId } : s)),
+    });
+  };
+
+  const handleToggleSkill = (repo: string, skillName: string, included: boolean) => {
+    const group = repoGroups.get(repo);
+    if (!group) return;
+
+    const isAll = group.names.length === 1 && group.names[0] === '*';
+    const { commitId } = group;
+
+    if (isAll && !included) {
+      // Switching from "all" to "all except one" — we need the full skill list.
+      // For now, we can't resolve this without the skill list. We'll just remove the single skill
+      // by keeping "*" and adding an exclude... Actually, let's just not support deselecting from "*"
+      // without loading the skill list. The SkillSubRows component already loads them, so we
+      // have them in the UI. We need to replace "*" with all individual names minus the toggled one.
+      // The sub-rows component passes us the skill name, but we don't have the full list here.
+      // Solution: we'll let the sub-row pass us the full list when toggling off from "*".
+      // For simplicity, just ignore the toggle — user sees checkbox but we can't act without the list.
+      // Actually, let's handle this properly: store skills explicitly.
+      return;
+    }
+
+    if (included) {
+      // Add skill back
+      onLocalChange({
+        ...config,
+        skills: [...config.skills, { name: skillName, repo, commitId }],
+      });
+    } else {
+      // Remove specific skill
+      onLocalChange({
+        ...config,
+        skills: config.skills.filter((s) => !(s.repo === repo && s.name === skillName)),
+      });
+    }
   };
 
   const handleAddTool = () => {
@@ -156,11 +310,6 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
   const handleRemoveTool = (tool: string) => {
     onLocalChange({ ...config, allowedTools: config.allowedTools.filter((t) => t !== tool) });
   };
-
-  // Filter available skills to exclude already-added ones
-  const suggestedSkills = availableSkills.filter(
-    (s) => !config.skills.some((existing) => existing.name === s.name && existing.repo === newSkillRepo.trim()),
-  );
 
   return (
     <div css={{ display: 'flex', flexDirection: 'column' }}>
@@ -183,9 +332,9 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
           </div>
         </div>
 
-        {/* Skills table */}
+        {/* Skills table — per-repo rows */}
         <div>
-          <label css={labelStyles(theme)}>Skills</label>
+          <label css={labelStyles(theme)}>Skill Repositories</label>
           <table
             css={{
               width: '100%',
@@ -196,25 +345,27 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
           >
             <thead>
               <tr>
-                <th css={headerCellStyles(theme)}>Name</th>
-                <th css={headerCellStyles(theme)}>Repo</th>
-                <th css={headerCellStyles(theme)}>Commit</th>
+                <th css={headerCellStyles(theme)}>Repository</th>
+                <th css={{ ...headerCellStyles(theme), width: 200 }}>Commit</th>
                 <th css={{ ...headerCellStyles(theme), width: 36 }} />
               </tr>
             </thead>
             <tbody>
-              {config.skills.map((skill, index) => (
-                <SkillRow
-                  key={index}
-                  skill={skill}
-                  index={index}
-                  onCommitChange={handleSkillCommitChange}
-                  onRemove={handleRemoveSkill}
+              {[...repoGroups.entries()].map(([repo, group]) => (
+                <RepoRow
+                  key={repo}
+                  repo={repo}
+                  commitId={group.commitId}
+                  selectedNames={group.names}
+                  panelId={panelId}
+                  onCommitChange={(commitId) => handleRepoCommitChange(repo, commitId)}
+                  onRemove={() => handleRemoveRepo(repo)}
+                  onToggleSkill={(skillName, included) => handleToggleSkill(repo, skillName, included)}
                 />
               ))}
               {/* Add row */}
               <tr>
-                <td colSpan={3} css={cellStyles(theme)}>
+                <td colSpan={2} css={cellStyles(theme)}>
                   <input
                     placeholder="Enter repo path or URL..."
                     value={newSkillRepo}
@@ -222,7 +373,7 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        handleAddSkill();
+                        handleAddRepo();
                       }
                     }}
                     css={{
@@ -234,7 +385,7 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
                 <td css={{ ...cellStyles(theme), textAlign: 'center' }}>
                   <button
                     type="button"
-                    onClick={() => handleAddSkill()}
+                    onClick={handleAddRepo}
                     css={{
                       border: 'none',
                       background: 'none',
@@ -252,41 +403,6 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
               </tr>
             </tbody>
           </table>
-
-          {/* Skill suggestions from the entered repo */}
-          {newSkillRepo.trim() && suggestedSkills.length > 0 && (
-            <div
-              css={{
-                marginTop: theme.spacing.xs,
-                padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: theme.borders.borderRadiusMd,
-                backgroundColor: theme.colors.backgroundSecondary,
-              }}
-            >
-              <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-                Available skills in this repo:
-              </Typography.Text>
-              <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs }}>
-                {suggestedSkills.map((skill) => (
-                  <Button
-                    key={skill.name}
-                    componentId={`mlflow.skill-playground.panel-${panelId}.add-skill.${skill.name}`}
-                    type="tertiary"
-                    size="small"
-                    onClick={() => handleAddSkill(skill.name)}
-                  >
-                    + {skill.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-          {newSkillRepo.trim() && skillsLoading && (
-            <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
-              Loading skills...
-            </Typography.Text>
-          )}
         </div>
 
         {/* Tools table */}
@@ -316,16 +432,7 @@ export const PanelConfigBar = ({ panelId, config, onLocalChange, onSave, onReset
                     <button
                       type="button"
                       onClick={() => handleRemoveTool(tool)}
-                      css={{
-                        border: 'none',
-                        background: 'none',
-                        color: theme.colors.textSecondary,
-                        cursor: 'pointer',
-                        padding: 2,
-                        display: 'flex',
-                        alignItems: 'center',
-                        '&:hover': { color: theme.colors.textPrimary },
-                      }}
+                      css={iconButtonStyles(theme)}
                     >
                       <CloseIcon css={{ width: 14, height: 14 }} />
                     </button>

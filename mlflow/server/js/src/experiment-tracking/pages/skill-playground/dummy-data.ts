@@ -1,14 +1,12 @@
 import type { PanelConfig, ChatMessage, SkillEntry } from './types';
 
 export const DUMMY_SKILLS_A: SkillEntry[] = [
-  { name: 'analyze-ci', repo: 'https://github.com/mlflow/mlflow-skills', commitId: 'abc1234' },
-  { name: 'fetch-diff', repo: 'https://github.com/mlflow/mlflow-skills', commitId: 'abc1234' },
+  { name: '*', repo: 'https://github.com/mlflow/mlflow-skills', commitId: 'abc1234' },
 ];
 
 export const DUMMY_SKILLS_B: SkillEntry[] = [
-  { name: 'analyze-ci', repo: 'https://github.com/mlflow/mlflow-skills', commitId: 'working-tree' },
-  { name: 'fetch-diff', repo: '/Users/yuki/projects/mlflow-skills', commitId: 'working-tree' },
-  { name: 'fetch-unresolved-comments', repo: 'https://github.com/mlflow/mlflow-skills', commitId: 'def5678' },
+  { name: '*', repo: 'https://github.com/mlflow/mlflow-skills', commitId: 'abc1234' },
+  { name: '*', repo: '/Users/yuki/projects/mlflow-skills', commitId: 'working-tree' },
 ];
 
 export const DUMMY_CONFIG_A: PanelConfig = {

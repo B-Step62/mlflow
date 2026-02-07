@@ -1,8 +1,11 @@
+import logging
 import shutil
 from collections.abc import AsyncGenerator
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from starlette.responses import StreamingResponse
 
 from mlflow.assistant.types import EventType
@@ -106,27 +109,32 @@ async def update_panel_config(
         shutil.rmtree(skills_dest)
     skills_dest.mkdir(parents=True, exist_ok=True)
 
-    # Checkout each skill entry
+    # Checkout each skill entry ("*" means all skills from the repo)
     for skill_entry in panel.skills:
         if is_remote_url(skill_entry.repo) and skill_entry.commit_id == "working-tree":
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot use 'working-tree' with a remote repository URL",
-            )
+            detail = f"Cannot use 'working-tree' with remote repo '{skill_entry.repo}'"
+            logger.error("update_panel_config: %s", detail)
+            raise HTTPException(status_code=400, detail=detail)
         try:
             repo = resolve_repo(skill_entry.repo)
         except ValueError as e:
+            logger.error("update_panel_config: resolve_repo failed for '%s': %s", skill_entry.repo, e)
             raise HTTPException(status_code=400, detail=str(e))
+        skill_names = None if skill_entry.name == "*" else [skill_entry.name]
         try:
             if skill_entry.commit_id == "working-tree":
                 checkout_skills_from_working_tree(
-                    repo, skills_dest, skill_names=[skill_entry.name]
+                    repo, skills_dest, skill_names=skill_names
                 )
             else:
                 checkout_skills_from_commit(
-                    repo, skill_entry.commit_id, skills_dest, skill_names=[skill_entry.name]
+                    repo, skill_entry.commit_id, skills_dest, skill_names=skill_names
                 )
         except ValueError as e:
+            logger.error(
+                "update_panel_config: skill checkout failed for '%s' at '%s': %s",
+                skill_entry.name, skill_entry.commit_id, e,
+            )
             raise HTTPException(status_code=400, detail=str(e))
 
     PlaygroundSessionManager.save(session_id, session)
@@ -146,17 +154,18 @@ async def list_skills(
     ref: str = Query(..., description="Commit hash or 'working-tree'"),
 ) -> ListSkillsResponse:
     if is_remote_url(repo) and ref == "working-tree":
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot use 'working-tree' with a remote repository URL",
-        )
+        detail = f"Cannot use 'working-tree' with remote repo '{repo}'"
+        logger.error("list_skills: %s", detail)
+        raise HTTPException(status_code=400, detail=detail)
     try:
         resolved = resolve_repo(repo)
     except ValueError as e:
+        logger.error("list_skills: resolve_repo failed for '%s': %s", repo, e)
         raise HTTPException(status_code=400, detail=str(e))
     try:
         skills = list_skills_at_ref(resolved, ref)
     except ValueError as e:
+        logger.error("list_skills: list_skills_at_ref failed for '%s' at '%s': %s", repo, ref, e)
         raise HTTPException(status_code=400, detail=str(e))
     return ListSkillsResponse(skills=[SkillInfo(name=s) for s in skills])
 

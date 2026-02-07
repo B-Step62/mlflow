@@ -152,6 +152,7 @@ async def stream_panel_execution(
     cmd = [claude_path, "-p", message, "--output-format", "stream-json", "--verbose"]
     cmd.extend(["--model", model])
     cmd.extend(["--permission-mode", "bypassPermissions"])
+    cmd.extend(["--setting-sources", "project"])
 
     for tool in allowed_tools:
         cmd.extend(["--allowed-tools", tool])
