@@ -2,6 +2,7 @@ import React from 'react';
 import { ExperimentKind } from '../../../constants';
 import { ExperimentPageTabName } from '../../../constants';
 import {
+  BeakerIcon,
   ChartLineIcon,
   DatabaseIcon,
   ForkHorizontalIcon,
@@ -103,6 +104,17 @@ export const ExperimentPageSideNavGenAIConfig = {
       icon: <ModelsIcon />,
       tabName: ExperimentPageTabName.Models,
       componentId: 'mlflow.experiment-side-nav.genai.agent-versions',
+    },
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Skill playground"
+          description="Label for the skill playground tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <BeakerIcon />,
+      tabName: ExperimentPageTabName.SkillPlayground,
+      componentId: 'mlflow.experiment-side-nav.genai.skill-playground',
     },
   ],
 };

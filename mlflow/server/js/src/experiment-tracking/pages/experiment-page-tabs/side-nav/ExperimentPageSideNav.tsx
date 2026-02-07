@@ -22,7 +22,9 @@ export const ExperimentPageSideNav = ({
   const { experimentId } = useParams();
   // the single chat session tab also has a sidebar. to conserve
   // horizontal space, we force the side nav to be collapsed in this tab
-  const forceCollapsed = activeTab === ExperimentPageTabName.SingleChatSession;
+  const forceCollapsed =
+    activeTab === ExperimentPageTabName.SingleChatSession ||
+    activeTab === ExperimentPageTabName.SkillPlayground;
 
   const isGenAIExperiment =
     experimentKind === ExperimentKind.GENAI_DEVELOPMENT || experimentKind === ExperimentKind.GENAI_DEVELOPMENT_INFERRED;

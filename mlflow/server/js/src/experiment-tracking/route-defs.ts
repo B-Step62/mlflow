@@ -209,6 +209,21 @@ const getExperimentPageRouteDefs = () => {
             ],
           } satisfies RouteHandle,
         },
+        {
+          path: RoutePaths.experimentPageTabSkillPlayground,
+          pageId: PageId.experimentPageTabSkillPlayground,
+          element: createLazyRouteElement(
+            () => import('./pages/skill-playground/ExperimentSkillPlaygroundPage'),
+          ),
+          handle: {
+            getPageTitle: (params) => `Skill Playground - Experiment ${params['experimentId']}`,
+            getAssistantPrompts: () => [
+              'How do I create a new skill?',
+              'What skills are available in my project?',
+              'How do I compare two versions of a skill?',
+            ],
+          } satisfies RouteHandle,
+        },
       ],
     },
   ];

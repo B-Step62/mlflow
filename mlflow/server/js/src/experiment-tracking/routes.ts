@@ -26,6 +26,7 @@ export enum PageId {
   experimentPageTabScorers = 'mlflow.experiment.tab.scorers',
   experimentPageTabPrompts = 'mlflow.experiment.prompts.list',
   experimentPageTabPromptDetails = 'mlflow.experiment.prompt.details',
+  experimentPageTabSkillPlayground = 'mlflow.experiment.tab.skill-playground',
   // Child routes for experiment page - end
   experimentPageSearch = 'mlflow.experiment.details.search',
   compareExperimentsSearch = 'mlflow.experiment.compare',
@@ -105,6 +106,9 @@ export class RoutePaths {
   }
   static get experimentPageTabPromptDetails() {
     return createMLflowRoutePath('/experiments/:experimentId/prompts/:promptName');
+  }
+  static get experimentPageTabSkillPlayground() {
+    return createMLflowRoutePath('/experiments/:experimentId/skill-playground');
   }
   static get runPageDirect() {
     return createMLflowRoutePath('/runs/:runUuid');

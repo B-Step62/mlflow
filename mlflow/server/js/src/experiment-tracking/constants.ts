@@ -152,6 +152,7 @@ export enum ExperimentPageTabName {
   Prompts = 'prompts',
   ChatSessions = 'chat-sessions',
   SingleChatSession = 'single-chat-session',
+  SkillPlayground = 'skill-playground',
 }
 
 export const getMlflow3DocsLink = () => {
