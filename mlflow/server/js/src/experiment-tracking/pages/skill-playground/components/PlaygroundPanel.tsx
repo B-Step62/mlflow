@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { GearIcon, Popover, useDesignSystemTheme, Typography } from '@databricks/design-system';
+import { Button, GearIcon, Popover, RefreshIcon, Tooltip, useDesignSystemTheme, Typography } from '@databricks/design-system';
 import { PanelConfigBar } from './PanelConfigBar';
 import { ChatHistory } from './ChatHistory';
 import type { PanelConfig, ChatMessage, PanelId } from '../types';
@@ -12,6 +12,7 @@ interface PlaygroundPanelProps {
   onConfigChange: (config: PanelConfig) => void;
   messages: ChatMessage[];
   activeTools?: ToolUseInfo[];
+  onReset?: () => void;
   experimentId: string;
 }
 
@@ -22,6 +23,7 @@ export const PlaygroundPanel = ({
   onConfigChange,
   messages,
   activeTools,
+  onReset,
   experimentId,
 }: PlaygroundPanelProps) => {
   const { theme } = useDesignSystemTheme();
@@ -153,6 +155,22 @@ export const PlaygroundPanel = ({
         <Typography.Text color="secondary" css={{ marginLeft: 'auto', fontSize: theme.typography.fontSizeSm }}>
           {config.model}
         </Typography.Text>
+
+        {/* Reset button */}
+        {messages.length > 0 && (
+          <Tooltip
+            componentId={`mlflow.skill-playground.panel-${panelId}.reset.tooltip`}
+            content="New Chat"
+          >
+            <Button
+              componentId={`mlflow.skill-playground.panel-${panelId}.reset`}
+              size="small"
+              icon={<RefreshIcon />}
+              onClick={onReset}
+              aria-label="New Chat"
+            />
+          </Tooltip>
+        )}
 
         {/* Gear icon with config popover */}
         <Popover.Root

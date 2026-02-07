@@ -31,7 +31,7 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
   const [configB, setConfigB] = useState<PanelConfig>(DEFAULT_CONFIG_B);
   const [promptA, setPromptA] = useState('');
   const [promptB, setPromptB] = useState('');
-  const { execute, cancel, messagesA, messagesB, isExecutingA, isExecutingB, activeToolsA, activeToolsB } =
+  const { execute, cancel, reset, messagesA, messagesB, isExecutingA, isExecutingB, activeToolsA, activeToolsB } =
     usePanelExecution(sessionId);
 
   // Sync local config from session when it first loads
@@ -129,6 +129,7 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
             onConfigChange={handleConfigChangeA}
             messages={messagesA}
             activeTools={activeToolsA}
+            onReset={() => reset('a')}
             experimentId={experimentId}
           />
         </div>
@@ -140,6 +141,7 @@ export const SkillPlaygroundPage = ({ experimentId }: { experimentId: string }) 
             onConfigChange={handleConfigChangeB}
             messages={messagesB}
             activeTools={activeToolsB}
+            onReset={() => reset('b')}
             experimentId={experimentId}
           />
         </div>

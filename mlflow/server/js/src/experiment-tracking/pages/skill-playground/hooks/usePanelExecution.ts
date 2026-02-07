@@ -203,5 +203,26 @@ export const usePanelExecution = (sessionId: string | null) => {
     [sessionId],
   );
 
-  return { execute, cancel, messagesA, messagesB, isExecutingA, isExecutingB, activeToolsA, activeToolsB };
+  const reset = useCallback(
+    (panelId: PanelId) => {
+      const eventSourceRef = panelId === 'a' ? eventSourceRefA : eventSourceRefB;
+      const streamingRef = panelId === 'a' ? streamingRefA : streamingRefB;
+      const setMessages = panelId === 'a' ? setMessagesA : setMessagesB;
+      const setExecuting = panelId === 'a' ? setIsExecutingA : setIsExecutingB;
+      const setActiveTools = panelId === 'a' ? setActiveToolsA : setActiveToolsB;
+
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+
+      setMessages([]);
+      setExecuting(false);
+      setActiveTools([]);
+      streamingRef.current = '';
+    },
+    [],
+  );
+
+  return { execute, cancel, reset, messagesA, messagesB, isExecutingA, isExecutingB, activeToolsA, activeToolsB };
 };
