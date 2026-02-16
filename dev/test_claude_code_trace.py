@@ -42,7 +42,6 @@ if debug:
         print(f"  [{i}] type={entry_type} role={role} content={content_summary}")
     print()
 
-mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("claude-code-tracing-test")
 setup_mlflow()
 
