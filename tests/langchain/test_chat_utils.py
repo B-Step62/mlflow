@@ -233,6 +233,52 @@ def test_transform_request_json_for_chat_if_necessary_conversion():
             ),
             {"input_tokens": 5, "output_tokens": 10, "total_tokens": 15},
         ),
+        # With cache tokens in usage_metadata (Anthropic via LangChain)
+        (
+            ChatGeneration(
+                message=AIMessage(
+                    content="foo",
+                    id="123",
+                    usage_metadata={
+                        "input_tokens": 10,
+                        "output_tokens": 18,
+                        "total_tokens": 28,
+                        "cache_read_input_tokens": 500,
+                        "cache_creation_input_tokens": 100,
+                    },
+                )
+            ),
+            {
+                "input_tokens": 10,
+                "output_tokens": 18,
+                "total_tokens": 28,
+                "cache_read_input_tokens": 500,
+                "cache_creation_input_tokens": 100,
+            },
+        ),
+        # With nested prompt_tokens_details (OpenAI raw format via response_metadata)
+        (
+            ChatGeneration(
+                message=AIMessage(
+                    content="foo",
+                    id="123",
+                    response_metadata={
+                        "token_usage": {
+                            "prompt_tokens": 20,
+                            "completion_tokens": 10,
+                            "total_tokens": 30,
+                            "prompt_tokens_details": {"cached_tokens": 15},
+                        }
+                    },
+                )
+            ),
+            {
+                "input_tokens": 20,
+                "output_tokens": 10,
+                "total_tokens": 30,
+                "cache_read_input_tokens": 15,
+            },
+        ),
         # Legacy completion generation object
         (Generation(text="foo"), None),
     ],

@@ -407,6 +407,15 @@ def _parse_token_counts(usage_metadata: dict[str, Any]) -> dict[str, int]:
         if usage_key := _TOKEN_USAGE_KEY_MAPPING.get(key):
             usage[usage_key] = value
 
+    # Extract cache tokens from nested prompt_tokens_details/input_tokens_details
+    # (OpenAI raw response format passed through response_metadata)
+    if TokenUsageKey.CACHE_READ_INPUT_TOKENS not in usage:
+        for details_key in ("prompt_tokens_details", "input_tokens_details"):
+            if isinstance(details := usage_metadata.get(details_key), dict):
+                if isinstance(cached := details.get("cached_tokens"), int):
+                    usage[TokenUsageKey.CACHE_READ_INPUT_TOKENS] = cached
+                    break
+
     # If the total tokens are not present, calculate it from the input and output tokens
     if usage and usage.get(TokenUsageKey.TOTAL_TOKENS) is None:
         usage[TokenUsageKey.TOTAL_TOKENS] = usage.get(TokenUsageKey.INPUT_TOKENS, 0) + usage.get(
