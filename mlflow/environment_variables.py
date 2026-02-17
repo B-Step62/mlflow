@@ -796,6 +796,21 @@ MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT = _BooleanEnvironmentVariable(
 #: (default: ``True``)
 MLFLOW_ENABLE_OTLP_EXPORTER = _BooleanEnvironmentVariable("MLFLOW_ENABLE_OTLP_EXPORTER", True)
 
+#: Specifies the export format for OTLP trace export. Set to ``"genai_semconv"`` to translate
+#: MLflow span attributes to OpenTelemetry GenAI Semantic Convention format before exporting.
+#: Only effective when ``OTEL_EXPORTER_OTLP_ENDPOINT`` or ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT``
+#: is also configured. When not set, spans are exported with the default MLflow attribute format.
+#: (default: ``None``)
+MLFLOW_OTLP_EXPORT_FORMAT = _EnvironmentVariable("MLFLOW_OTLP_EXPORT_FORMAT", str, None)
+
+#: Controls whether to include opt-in content attributes (input/output messages, tool arguments)
+#: when exporting in GenAI Semantic Convention format. Only effective when
+#: ``MLFLOW_OTLP_EXPORT_FORMAT`` is set to ``"genai_semconv"``.
+#: (default: ``True``)
+MLFLOW_GENAI_SEMCONV_CAPTURE_CONTENT = _BooleanEnvironmentVariable(
+    "MLFLOW_GENAI_SEMCONV_CAPTURE_CONTENT", True
+)
+
 #: By default, MLflow uses an isolated TracerProvider instance to generate traces, instead of the
 #: OpenTelemetry's singleton TracerProvider. Set this to False to let MLflow share the same OTel
 # TracerProvider and allow mixing MLflow SDK and Otel SDK to generate a single trace.
