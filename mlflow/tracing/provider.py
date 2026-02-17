@@ -585,13 +585,6 @@ def _get_span_processors(disabled: bool = False) -> list[SpanProcessor]:
         from mlflow.tracing.processor.otel import OtelSpanProcessor
 
         exporter = get_otlp_exporter()
-
-        # Wrap with GenAI semconv translator if configured
-        if MLFLOW_OTLP_EXPORT_FORMAT.get() == "genai_semconv":
-            from mlflow.tracing.export.genai_semconv.exporter import GenAiSemconvSpanExporter
-
-            exporter = GenAiSemconvSpanExporter(exporter)
-
         otel_processor = OtelSpanProcessor(
             span_exporter=exporter,
             # Only export metrics from the Otel processor if dual export is not enabled.
@@ -599,6 +592,7 @@ def _get_span_processors(disabled: bool = False) -> list[SpanProcessor]:
             # duplication.
             export_metrics=should_export_otlp_metrics()
             and not MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT.get(),
+            translate_to_genai_semconv=MLFLOW_OTLP_EXPORT_FORMAT.get() == "genai_semconv",
         )
         processors.append(otel_processor)
 

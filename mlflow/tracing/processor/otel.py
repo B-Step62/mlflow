@@ -1,3 +1,5 @@
+import logging
+
 from opentelemetry.sdk.trace import ReadableSpan as OTelReadableSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 
@@ -9,6 +11,8 @@ from mlflow.tracing.processor.otel_metrics_mixin import OtelMetricsMixin
 from mlflow.tracing.trace_manager import InMemoryTraceManager
 from mlflow.tracing.utils import generate_trace_id_v3
 
+_logger = logging.getLogger(__name__)
+
 
 class OtelSpanProcessor(OtelMetricsMixin, BatchSpanProcessor):
     """
@@ -18,9 +22,15 @@ class OtelSpanProcessor(OtelMetricsMixin, BatchSpanProcessor):
     is started or ended (before exporting).
     """
 
-    def __init__(self, span_exporter: SpanExporter, export_metrics: bool) -> None:
+    def __init__(
+        self,
+        span_exporter: SpanExporter,
+        export_metrics: bool,
+        translate_to_genai_semconv: bool = False,
+    ) -> None:
         super().__init__(span_exporter)
         self._export_metrics = export_metrics
+        self._translate_to_genai_semconv = translate_to_genai_semconv
         # In opentelemetry-sdk 1.34.0, the `span_exporter` field was removed from the
         # `BatchSpanProcessor` class.
         # https://github.com/open-telemetry/opentelemetry-python/issues/4616
@@ -61,7 +71,19 @@ class OtelSpanProcessor(OtelMetricsMixin, BatchSpanProcessor):
         if self._should_register_traces and not span.parent:
             self._trace_manager.pop_trace(span.context.trace_id)
 
+        if self._translate_to_genai_semconv:
+            span = self._translate_span(span)
+
         super().on_end(span)
+
+    def _translate_span(self, span: OTelReadableSpan) -> OTelReadableSpan:
+        try:
+            from mlflow.tracing.export.genai_semconv.translator import translate_span_to_genai
+
+            return translate_span_to_genai(span)
+        except Exception:
+            _logger.debug("Failed to translate span to GenAI semconv", exc_info=True)
+            return span
 
     def _create_trace_info(self, span: OTelReadableSpan) -> TraceInfo:
         """Create a TraceInfo object from an OpenTelemetry span."""
