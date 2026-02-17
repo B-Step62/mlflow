@@ -30,6 +30,16 @@ TOTAL_TOKEN_KEYS: Sequence[str] = [
     "totalTokens",
 ]
 
+CACHE_READ_TOKEN_KEYS: Sequence[str] = [
+    "cache_read_input_tokens",
+    "cacheReadInputTokens",
+]
+
+CACHE_CREATION_TOKEN_KEYS: Sequence[str] = [
+    "cache_creation_input_tokens",
+    "cacheCreationInputTokens",
+]
+
 # Common documentation for token key mappings used by parsing functions
 _USAGE_DOCS = """The provider-specific usage dictionary. This function will attempt to
             extract token usage values using a variety of possible key names, including:
@@ -132,6 +142,14 @@ def parse_complete_token_usage_from_response(
         # Calculate total as input + output
         token_usage_data[TokenUsageKey.TOTAL_TOKENS] = input_tokens + output_tokens
 
+    # Extract optional cache tokens
+    if (cache_read := _extract_token_value_by_keys(usage_data, CACHE_READ_TOKEN_KEYS)) is not None:
+        token_usage_data[TokenUsageKey.CACHE_READ_INPUT_TOKENS] = cache_read
+    if (
+        cache_creation := _extract_token_value_by_keys(usage_data, CACHE_CREATION_TOKEN_KEYS)
+    ) is not None:
+        token_usage_data[TokenUsageKey.CACHE_CREATION_INPUT_TOKENS] = cache_creation
+
     return token_usage_data
 
 
@@ -162,6 +180,14 @@ def parse_partial_token_usage_from_response(usage_data: dict[str, Any]) -> dict[
     # Try to extract total token count.
     if (total_tokens := _extract_token_value_by_keys(usage_data, TOTAL_TOKEN_KEYS)) is not None:
         token_usage_data[TokenUsageKey.TOTAL_TOKENS] = total_tokens
+
+    # Try to extract cache token counts.
+    if (cache_read := _extract_token_value_by_keys(usage_data, CACHE_READ_TOKEN_KEYS)) is not None:
+        token_usage_data[TokenUsageKey.CACHE_READ_INPUT_TOKENS] = cache_read
+    if (
+        cache_creation := _extract_token_value_by_keys(usage_data, CACHE_CREATION_TOKEN_KEYS)
+    ) is not None:
+        token_usage_data[TokenUsageKey.CACHE_CREATION_INPUT_TOKENS] = cache_creation
 
     # If no token usage data was found, return None. Otherwise, return the partial dictionary.
     return token_usage_data or None

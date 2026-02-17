@@ -185,6 +185,8 @@ def _aggregate_from_spans(
     input_key: str,
     output_key: str,
     total_key: str,
+    cache_read_key: str | None,
+    cache_creation_key: str | None,
     default: int | float,
 ) -> dict[str, int | float] | None:
     """Generic aggregation of data from spans using DFS traversal.
@@ -197,6 +199,8 @@ def _aggregate_from_spans(
         input_key: Key for extracting input value from span data.
         output_key: Key for extracting output value from span data.
         total_key: Key for extracting total value from span data.
+        cache_read_key: Key for extracting cache read token value, or None to skip.
+        cache_creation_key: Key for extracting cache creation token value, or None to skip.
         default: Default value (0 for int, 0.0 for float) that also determines return type.
 
     Returns:
@@ -205,6 +209,8 @@ def _aggregate_from_spans(
     input_val = default
     output_val = default
     total_val = default
+    cache_read_val = default
+    cache_creation_val = default
     has_data = False
 
     span_id_to_spans = {span.span_id: span for span in spans}
@@ -219,7 +225,7 @@ def _aggregate_from_spans(
             roots.append(span)
 
     def dfs(span: LiveSpan, ancestor_has_data: bool) -> None:
-        nonlocal input_val, output_val, total_val, has_data
+        nonlocal input_val, output_val, total_val, cache_read_val, cache_creation_val, has_data
 
         data = span.get_attribute(attribute_key)
         span_has_data = data is not None
@@ -228,6 +234,10 @@ def _aggregate_from_spans(
             input_val += data.get(input_key, default)
             output_val += data.get(output_key, default)
             total_val += data.get(total_key, default)
+            if cache_read_key:
+                cache_read_val += data.get(cache_read_key, default)
+            if cache_creation_key:
+                cache_creation_val += data.get(cache_creation_key, default)
             has_data = True
 
         next_ancestor_has_data = ancestor_has_data or span_has_data
@@ -240,11 +250,16 @@ def _aggregate_from_spans(
     if not has_data:
         return None
 
-    return {
+    result = {
         input_key: input_val,
         output_key: output_val,
         total_key: total_val,
     }
+    if cache_read_key and cache_read_val != default:
+        result[cache_read_key] = cache_read_val
+    if cache_creation_key and cache_creation_val != default:
+        result[cache_creation_key] = cache_creation_val
+    return result
 
 
 def aggregate_usage_from_spans(spans: list[LiveSpan]) -> dict[str, int] | None:
@@ -255,6 +270,8 @@ def aggregate_usage_from_spans(spans: list[LiveSpan]) -> dict[str, int] | None:
         TokenUsageKey.INPUT_TOKENS,
         TokenUsageKey.OUTPUT_TOKENS,
         TokenUsageKey.TOTAL_TOKENS,
+        TokenUsageKey.CACHE_READ_INPUT_TOKENS,
+        TokenUsageKey.CACHE_CREATION_INPUT_TOKENS,
         0,
     )
 
@@ -267,6 +284,8 @@ def aggregate_cost_from_spans(spans: list[LiveSpan]) -> dict[str, float] | None:
         CostKey.INPUT_COST,
         CostKey.OUTPUT_COST,
         CostKey.TOTAL_COST,
+        None,
+        None,
         0.0,
     )
 
@@ -305,9 +324,16 @@ def calculate_cost_by_model_and_token_usage(
     if prompt_tokens == 0 and completion_tokens == 0:
         return None
 
+    cache_read = usage.get(TokenUsageKey.CACHE_READ_INPUT_TOKENS, 0) or 0
+    cache_creation = usage.get(TokenUsageKey.CACHE_CREATION_INPUT_TOKENS, 0) or 0
+
     try:
         input_cost_usd, output_cost_usd = cost_per_token(
-            model=model_name, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+            model=model_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_creation,
         )
     except Exception as e:
         if model_provider:
@@ -319,6 +345,8 @@ def calculate_cost_by_model_and_token_usage(
                     model=model_name,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
+                    cache_read_input_tokens=cache_read,
+                    cache_creation_input_tokens=cache_creation,
                     custom_llm_provider=model_provider,
                 )
             except Exception as e:

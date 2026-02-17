@@ -224,6 +224,9 @@ class TraceInfo(_MlflowObject):
             - "input_tokens": The total number of input tokens.
             - "output_tokens": The total number of output tokens.
             - "total_tokens": Sum of input and output tokens.
+            - "cache_read_input_tokens" (optional): The number of input tokens read from cache.
+            - "cache_creation_input_tokens" (optional): The number of input tokens used to
+              create cache entries.
 
         .. note::
 
