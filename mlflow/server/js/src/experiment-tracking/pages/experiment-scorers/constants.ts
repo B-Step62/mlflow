@@ -42,3 +42,10 @@ export const BUTTON_VARIANT = {
 export type ButtonVariant = (typeof BUTTON_VARIANT)[keyof typeof BUTTON_VARIANT];
 
 export const RETRIEVAL_ASSESSMENTS = ['groundedness', 'context_sufficiency'] as const;
+
+export const SCORER_SUB_TAB = {
+  MY_JUDGES: 'my-judges',
+  CATALOG: 'catalog',
+} as const;
+
+export type ScorerSubTab = (typeof SCORER_SUB_TAB)[keyof typeof SCORER_SUB_TAB];

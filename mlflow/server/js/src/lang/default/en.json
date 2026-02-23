@@ -699,6 +699,10 @@
     "defaultMessage": "Input",
     "description": "Evaluation review > evaluations list > input sort option label prefix"
   },
+  "2sbzUd": {
+    "defaultMessage": "Search judges by name or description",
+    "description": "Placeholder for judge catalog search input"
+  },
   "2tQXw0": {
     "defaultMessage": "Key name cannot be changed.",
     "description": "Tooltip explaining why key name field is disabled"
@@ -1034,6 +1038,10 @@
     "defaultMessage": "Source run",
     "description": "Header title for the source run column in the logged model list table"
   },
+  "5yQJN/": {
+    "defaultMessage": "Use",
+    "description": "Button text to view usage details for a judge in the catalog"
+  },
   "5yWkFd": {
     "defaultMessage": "Increase or decrease the confidence level of the language model.",
     "description": "Experiment page > prompt lab > temperature parameter help text"
@@ -1101,6 +1109,10 @@
   "6R2ply": {
     "defaultMessage": "Edit description",
     "description": "Text for edit description button on experiment view page header"
+  },
+  "6R7fFr": {
+    "defaultMessage": "Catalog",
+    "description": "Tab label for browsable judge catalog"
   },
   "6SXoSp": {
     "defaultMessage": "Model definition",
@@ -1366,6 +1378,10 @@
     "defaultMessage": "Total Count",
     "description": "Column header for total count"
   },
+  "7zKUlV": {
+    "defaultMessage": "Copy",
+    "description": "Button text to copy code snippet in catalog detail modal"
+  },
   "7zNDHj": {
     "defaultMessage": "Parameters:",
     "description": "Label text for parameters in parallel coordinates plot in MLflow"
@@ -1541,6 +1557,10 @@
   "98v9a0": {
     "defaultMessage": "The guidelines LLM judge determines whether the response adheres to the guidelines provided. All responses must adhere to guidelines.",
     "description": "Evaluation results > known type of evaluation result assessment > guidelines judge."
+  },
+  "9997Ww": {
+    "defaultMessage": "Usage ({providerName})",
+    "description": "Label for usage code snippet in judge catalog code snippet modal"
   },
   "9AfxK7": {
     "defaultMessage": "Goal",
@@ -2518,6 +2538,10 @@
     "defaultMessage": "You do not have permission to access this resource.",
     "description": "Generic message for a permission error (HTTP STATUS 403)"
   },
+  "G7MYxd": {
+    "defaultMessage": "My Judges",
+    "description": "Tab label for experiment's registered judges"
+  },
   "G7V4y3": {
     "defaultMessage": "Hide details",
     "description": "Evaluation review > assessments > hide details button"
@@ -3005,6 +3029,10 @@
   "K8LdMX": {
     "defaultMessage": "Automatically log traces for CrewAI executions by calling the {code} function. For example:",
     "description": "Description of how to log traces for the CrewAI package using MLflow autologging. This message is followed by a code example."
+  },
+  "K8OFhg": {
+    "defaultMessage": "Tags",
+    "description": "Label for tag filter in judge catalog"
   },
   "KADUUT": {
     "defaultMessage": "Model parameters",
@@ -4208,6 +4236,10 @@
   "SwvkMI": {
     "defaultMessage": "Is the summary faithful, complete, and concise?",
     "description": "Hint for Summarization template"
+  },
+  "SxiTpI": {
+    "defaultMessage": "Description",
+    "description": "Section title for judge description in catalog detail modal"
   },
   "SzapEm": {
     "defaultMessage": "Your models will appear here once you log them using newest version of MLflow. <link>Learn more</link>.",
@@ -5539,6 +5571,10 @@
     "defaultMessage": "Create an evaluation dataset",
     "description": "Evaluation datasets empty state title"
   },
+  "c2TOjD": {
+    "defaultMessage": "Session-level",
+    "description": "Tag for session-level scorer in catalog"
+  },
   "c4METn": {
     "defaultMessage": "Create",
     "description": "Create button"
@@ -5987,6 +6023,10 @@
     "defaultMessage": "Select ({count})",
     "description": "Confirm button in the select sessions modal showing number of selected sessions"
   },
+  "f3pmbs": {
+    "defaultMessage": "Name",
+    "description": "Column header for judge name in catalog table"
+  },
   "f4CfIz": {
     "defaultMessage": "(edited)",
     "description": "Link text in an edited assessment that allows the user to click to see the previous value"
@@ -5994,6 +6034,10 @@
   "fBB0xR": {
     "defaultMessage": "Assistant Not Available",
     "description": "Title shown when Assistant is not available for remote servers"
+  },
+  "fE/OGQ": {
+    "defaultMessage": "Prompt",
+    "description": "Section title for judge prompt in catalog detail modal"
   },
   "fKx4kG": {
     "defaultMessage": "Aggregation: {value}",
@@ -6247,6 +6291,10 @@
     "defaultMessage": "Parallel coordinates chart does not support aggregated string values.",
     "description": "Experiment page > compare runs > parallel coordinates chart > unsupported string values warning > title"
   },
+  "gmWAKv": {
+    "defaultMessage": "Copy",
+    "description": "Button text to copy code snippet in judge catalog modal"
+  },
   "gn1eO9": {
     "defaultMessage": "Assessment added by LLM-as-a-judge",
     "description": "Evaluation review > assessments > tooltip > assessment added by LLM-as-a-judge"
@@ -6462,6 +6510,10 @@
   "iF1UfU": {
     "defaultMessage": "New run using notebook",
     "description": "Experiment page > new notebook run modal > modal title"
+  },
+  "iH3ON9": {
+    "defaultMessage": "No judges found",
+    "description": "Empty state title when no judges match the catalog filters"
   },
   "iLFoPb": {
     "defaultMessage": "State",
@@ -7210,6 +7262,10 @@
   "nIk08y": {
     "defaultMessage": "Trace view",
     "description": "Tooltip for traces preview mode toggle in evaluation runs table controls"
+  },
+  "nJ7QFa": {
+    "defaultMessage": "Provider",
+    "description": "Column header for judge provider in catalog table"
   },
   "nJxDSh": {
     "defaultMessage": "Inputs",
@@ -8163,6 +8219,10 @@
     "defaultMessage": "Custom judge",
     "description": "LLM judge option for creating a custom judge"
   },
+  "u7Kbra": {
+    "defaultMessage": "Install",
+    "description": "Label for install command in judge catalog code snippet modal"
+  },
   "uABFy0": {
     "defaultMessage": "AI Gateway",
     "description": "Breadcrumb link to gateway page"
@@ -8222,6 +8282,10 @@
   "ufamzi": {
     "defaultMessage": "Comparing {runs} MLflow Runs",
     "description": "Page title for the compare runs page"
+  },
+  "ufydIl": {
+    "defaultMessage": "Tags",
+    "description": "Column header for judge tags in catalog table"
   },
   "ugm2f6": {
     "defaultMessage": "Unpin run",
@@ -8403,6 +8467,10 @@
     "defaultMessage": "Register",
     "description": "Register button text to register the model"
   },
+  "wCv291": {
+    "defaultMessage": "Schedule",
+    "description": "Button text to schedule a judge from the catalog to the experiment"
+  },
   "wDFPtr": {
     "defaultMessage": "AVG",
     "description": "Header label for numeric assessment type for the average value"
@@ -8442,6 +8510,10 @@
   "wNHR0W": {
     "defaultMessage": "Aliases",
     "description": "Column title text for model version aliases in model version table"
+  },
+  "wNgSDi": {
+    "defaultMessage": "Actions",
+    "description": "Column header for actions in catalog table"
   },
   "wRV8PN": {
     "defaultMessage": "Settings",
@@ -8643,6 +8715,10 @@
     "defaultMessage": "Dataset name",
     "description": "Dataset name label"
   },
+  "xf3mcn": {
+    "defaultMessage": "Usage",
+    "description": "Section title for code snippet in catalog detail modal"
+  },
   "xgbeVS": {
     "defaultMessage": "Large",
     "description": "Large row size"
@@ -8718,6 +8794,10 @@
   "yDLCp6": {
     "defaultMessage": "View all",
     "description": "Home page experiments view all link"
+  },
+  "yDf3Yy": {
+    "defaultMessage": "Provider",
+    "description": "Label for provider filter in judge catalog"
   },
   "yFl8nB": {
     "defaultMessage": "This model will be deprecated on {date}",
@@ -8870,6 +8950,10 @@
   "zMv2ev": {
     "defaultMessage": "Learn more.",
     "description": "Link text for learning more about expectations"
+  },
+  "zQGFzj": {
+    "defaultMessage": "Description",
+    "description": "Column header for judge description in catalog table"
   },
   "zRKlAL": {
     "defaultMessage": "Metadata",
