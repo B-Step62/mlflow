@@ -475,6 +475,10 @@ export const normalizeNewSpanData = (
   const chatTokenUsage = tryDeserializeAttribute(
     getSpanAttribute(span.attributes, 'mlflow.chat.tokenUsage') as string,
   );
+  const maxInputTokensRaw = tryDeserializeAttribute(
+    getSpanAttribute(span.attributes, 'mlflow.llm.maxInputTokens') as string,
+  );
+  const maxInputTokens = typeof maxInputTokensRaw === 'number' ? maxInputTokensRaw : undefined;
 
   // remove other private mlflow attributes
   const attributes = mapValues(
@@ -512,6 +516,7 @@ export const normalizeNewSpanData = (
     traceId,
     modelName,
     cost,
+    maxInputTokens,
   };
 };
 

@@ -306,6 +306,7 @@ export interface ModelTraceSpanNode extends TimelineTreeNode, Pick<ModelTraceSpa
   traceId: string;
   modelName?: string;
   cost?: SpanCostInfo;
+  maxInputTokens?: number;
 }
 
 export type ModelTraceExplorerTab = 'chat' | 'content' | 'attributes' | 'events';

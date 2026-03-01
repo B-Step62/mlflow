@@ -11,12 +11,12 @@ export function ModelTraceExplorerChatTab({
   chatMessages,
   chatTools,
   inputTokens,
-  modelName,
+  maxInputTokens,
 }: {
   chatMessages: ModelTraceChatMessage[];
   chatTools?: ModelTraceChatTool[];
   inputTokens?: number;
-  modelName?: string;
+  maxInputTokens?: number;
 }) {
   const { theme } = useDesignSystemTheme();
 
@@ -50,7 +50,7 @@ export function ModelTraceExplorerChatTab({
             chatMessages={chatMessages}
             chatTools={chatTools}
             inputTokens={inputTokens}
-            modelName={modelName}
+            maxInputTokens={maxInputTokens}
             barOnly
           />
         }
@@ -59,7 +59,7 @@ export function ModelTraceExplorerChatTab({
           chatMessages={chatMessages}
           chatTools={chatTools}
           inputTokens={inputTokens}
-          modelName={modelName}
+          maxInputTokens={maxInputTokens}
         />
       </ModelTraceExplorerCollapsibleSection>
 

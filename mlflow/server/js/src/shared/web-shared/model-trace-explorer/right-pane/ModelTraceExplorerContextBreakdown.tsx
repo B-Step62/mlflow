@@ -22,8 +22,10 @@ type ScrollTarget =
 interface SubCategory {
   label: string;
   tokenCount: number;
-  /** Percentage of total input tokens. */
+  /** Percentage of total input tokens — used for bar widths. */
   percentage: number;
+  /** Percentage for display text — relative to context window when available, otherwise same as percentage. */
+  displayPercentage: number;
   /** Target element to scroll to when clicked. */
   scrollTarget?: ScrollTarget;
 }
@@ -33,8 +35,10 @@ interface TopCategory {
   key: string;
   label: string;
   tokenCount: number;
-  /** Percentage of total input tokens. */
+  /** Percentage of total input tokens — used for bar widths. */
   percentage: number;
+  /** Percentage for display text — relative to context window when available, otherwise same as percentage. */
+  displayPercentage: number;
   color: string;
   /** Sub-items — always present for rendering sub-segments in the bar. */
   children: SubCategory[];
@@ -111,6 +115,7 @@ function computeContextBreakdown(
   messages: ModelTraceChatMessage[],
   tools: ModelTraceChatTool[] | undefined,
   inputTokens: number | undefined,
+  maxInputTokens: number | undefined,
 ): TopCategory[] {
   const toolCallIdToName = buildToolCallIdToNameMap(messages);
 
@@ -175,24 +180,34 @@ function computeContextBreakdown(
 
   const totalTokens = inputTokens ?? Math.round(totalChars / CHARS_PER_TOKEN_ESTIMATE);
 
+  // When context window is known, display percentages relative to it;
+  // otherwise fall back to percentage of total input tokens.
+  const displayDivisor = maxInputTokens ?? totalTokens;
+
   // Build top-level categories — children are kept in insertion order (time order)
   const result: TopCategory[] = [];
   for (const [parentKey, entries] of Object.entries(groups)) {
     const parentChars = entries.reduce((s, e) => s + e.chars, 0);
     const proportion = parentChars / totalChars;
 
-    const children: SubCategory[] = entries.map((entry) => ({
-      label: entry.label,
-      tokenCount: Math.round((entry.chars / totalChars) * totalTokens),
-      percentage: (entry.chars / totalChars) * 100,
-      scrollTarget: entry.scrollTarget,
-    }));
+    const children: SubCategory[] = entries.map((entry) => {
+      const tokenCount = Math.round((entry.chars / totalChars) * totalTokens);
+      return {
+        label: entry.label,
+        tokenCount,
+        percentage: (entry.chars / totalChars) * 100,
+        displayPercentage: (tokenCount / displayDivisor) * 100,
+        scrollTarget: entry.scrollTarget,
+      };
+    });
 
+    const categoryTokenCount = Math.round(proportion * totalTokens);
     result.push({
       key: parentKey,
       label: parentKey,
-      tokenCount: Math.round(proportion * totalTokens),
+      tokenCount: categoryTokenCount,
       percentage: proportion * 100,
+      displayPercentage: (categoryTokenCount / displayDivisor) * 100,
       color: colorForCategory(parentKey),
       children,
     });
@@ -207,61 +222,6 @@ function formatTokenCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
   return String(count);
-}
-
-// ─── Model context windows ──────────────────────────────────────────────────
-
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  'gpt-4o': 128_000,
-  'gpt-4o-mini': 128_000,
-  'gpt-4-turbo': 128_000,
-  'gpt-4': 8_192,
-  'gpt-4-32k': 32_768,
-  'gpt-3.5-turbo': 16_385,
-  'o1': 200_000,
-  'o1-mini': 128_000,
-  'o1-pro': 200_000,
-  'o3': 200_000,
-  'o3-mini': 200_000,
-  'o4-mini': 200_000,
-  'claude-opus-4-6': 200_000,
-  'claude-opus-4-0': 200_000,
-  'claude-sonnet-4-6': 200_000,
-  'claude-sonnet-4-0': 200_000,
-  'claude-3-7-sonnet-latest': 200_000,
-  'claude-3-5-sonnet-latest': 200_000,
-  'claude-3-5-haiku-latest': 200_000,
-  'claude-3-opus-latest': 200_000,
-  'claude-3-sonnet-20240229': 200_000,
-  'claude-3-haiku-20240307': 200_000,
-  'gemini-2.5-pro': 1_048_576,
-  'gemini-2.5-flash': 1_048_576,
-  'gemini-2.0-flash': 1_048_576,
-  'gemini-1.5-pro': 2_097_152,
-  'gemini-1.5-flash': 1_048_576,
-  'llama-3.3-70b': 128_000,
-  'llama-3.1-405b': 128_000,
-  'llama-3.1-70b': 128_000,
-  'llama-3.1-8b': 128_000,
-  'mistral-large-latest': 128_000,
-  'mistral-small-latest': 128_000,
-  'command-r-plus': 128_000,
-  'command-r': 128_000,
-  'amazon.nova-pro-v1:0': 300_000,
-  'amazon.nova-lite-v1:0': 300_000,
-  'deepseek-chat': 64_000,
-  'deepseek-reasoner': 64_000,
-};
-
-function getContextWindowForModel(modelName: string | undefined): number | undefined {
-  if (!modelName) return undefined;
-  const normalized = modelName.toLowerCase();
-  if (MODEL_CONTEXT_WINDOWS[normalized]) return MODEL_CONTEXT_WINDOWS[normalized];
-  const sortedKeys = Object.keys(MODEL_CONTEXT_WINDOWS).sort((a, b) => b.length - a.length);
-  for (const key of sortedKeys) {
-    if (normalized.includes(key)) return MODEL_CONTEXT_WINDOWS[key];
-  }
-  return undefined;
 }
 
 const MIN_USAGE_BAR_PERCENT = 3;
@@ -423,7 +383,7 @@ function ContextBreakdownBar({
             <Tooltip
               key={category.key}
               componentId="shared.model-trace-explorer.context-breakdown-bar-tooltip"
-              content={`${category.label}: ~${formatTokenCount(category.tokenCount)} tokens (${Math.round(category.percentage)}%)`}
+              content={`${category.label}: ~${formatTokenCount(category.tokenCount)} tokens (${Math.round(category.displayPercentage)}%)`}
             >
               <div
                 css={{
@@ -465,7 +425,7 @@ function SubCategoryRow({ sub, parentColor }: { sub: SubCategory; parentColor: s
   return (
     <Tooltip
       componentId="shared.model-trace-explorer.context-breakdown-sub-tooltip"
-      content={`~${formatTokenCount(sub.tokenCount)} tokens (${Math.round(sub.percentage)}%)`}
+      content={`~${formatTokenCount(sub.tokenCount)} tokens (${Math.round(sub.displayPercentage)}%)`}
     >
       <div
         css={{
@@ -524,7 +484,7 @@ function SubCategoryRow({ sub, parentColor }: { sub: SubCategory; parentColor: s
           color="secondary"
           css={{ minWidth: 36, textAlign: 'right', fontSize: theme.typography.fontSizeSm, flexShrink: 0 }}
         >
-          {Math.round(sub.percentage)}%
+          {sub.displayPercentage < 1 ? '<1' : Math.round(sub.displayPercentage)}%
         </Typography.Text>
       </div>
     </Tooltip>
@@ -639,7 +599,7 @@ function CategoryRow({ category }: { category: TopCategory }) {
                   <Tooltip
                     key={sub.label}
                     componentId="shared.model-trace-explorer.context-breakdown-row-sub-tooltip"
-                    content={`${sub.label}: ~${formatTokenCount(sub.tokenCount)} tokens (${Math.round(sub.percentage)}%)`}
+                    content={`${sub.label}: ~${formatTokenCount(sub.tokenCount)} tokens (${Math.round(sub.displayPercentage)}%)`}
                   >
                     <div
                       css={{
@@ -661,8 +621,8 @@ function CategoryRow({ category }: { category: TopCategory }) {
               componentId="shared.model-trace-explorer.context-breakdown-row-tooltip"
               content={
                 category.children.length === 1
-                  ? `${category.children[0].label}: ~${formatTokenCount(category.tokenCount)} tokens (${Math.round(category.percentage)}%)`
-                  : `${category.label}: ~${formatTokenCount(category.tokenCount)} tokens (${Math.round(category.percentage)}%)`
+                  ? `${category.children[0].label}: ~${formatTokenCount(category.tokenCount)} tokens (${Math.round(category.displayPercentage)}%)`
+                  : `${category.label}: ~${formatTokenCount(category.tokenCount)} tokens (${Math.round(category.displayPercentage)}%)`
               }
             >
               <div
@@ -682,7 +642,7 @@ function CategoryRow({ category }: { category: TopCategory }) {
           color="secondary"
           css={{ minWidth: 36, textAlign: 'right', fontSize: theme.typography.fontSizeSm, flexShrink: 0 }}
         >
-          {Math.round(category.percentage)}%
+          {category.displayPercentage < 1 ? '<1' : Math.round(category.displayPercentage)}%
         </Typography.Text>
       </div>
       {/* Expanded children */}
@@ -703,23 +663,24 @@ export function ModelTraceExplorerContextBreakdown({
   chatMessages,
   chatTools,
   inputTokens,
-  modelName,
+  maxInputTokens,
   barOnly = false,
 }: {
   chatMessages: ModelTraceChatMessage[];
   chatTools?: ModelTraceChatTool[];
   inputTokens?: number;
-  modelName?: string;
+  /** Maximum input tokens for the model's context window (from litellm via span attribute). */
+  maxInputTokens?: number;
   /** When true, render only the level 0 stacked bar (used as collapsed preview). */
   barOnly?: boolean;
 }) {
   const { theme } = useDesignSystemTheme();
 
   const categories = useMemo(
-    () => computeContextBreakdown(chatMessages, chatTools, inputTokens),
-    [chatMessages, chatTools, inputTokens],
+    () => computeContextBreakdown(chatMessages, chatTools, inputTokens, maxInputTokens),
+    [chatMessages, chatTools, inputTokens, maxInputTokens],
   );
-  const contextWindow = useMemo(() => getContextWindowForModel(modelName), [modelName]);
+  const contextWindow = maxInputTokens;
 
   if (categories.length === 0) return null;
 

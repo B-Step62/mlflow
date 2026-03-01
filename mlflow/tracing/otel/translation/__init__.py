@@ -22,7 +22,11 @@ from mlflow.tracing.otel.translation.spring_ai import SpringAiTranslator
 from mlflow.tracing.otel.translation.traceloop import TraceloopTranslator
 from mlflow.tracing.otel.translation.vercel_ai import VercelAITranslator
 from mlflow.tracing.otel.translation.voltagent import VoltAgentTranslator
-from mlflow.tracing.utils import calculate_cost_by_model_and_token_usage, dump_span_attribute_value
+from mlflow.tracing.utils import (
+    calculate_cost_by_model_and_token_usage,
+    dump_span_attribute_value,
+    get_max_input_tokens_for_model,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -118,6 +122,24 @@ def translate_span_when_storing(span: Span) -> dict[str, Any]:
                 attributes[SpanAttributeKey.LLM_COST] = dump_span_attribute_value(cost)
         except Exception:
             _logger.debug("Failed to calculate cost during OTEL translation", exc_info=True)
+
+    # Look up model's max input tokens (context window) if not already set
+    if SpanAttributeKey.MAX_INPUT_TOKENS not in attributes and SpanAttributeKey.MODEL in attributes:
+        try:
+            model_name = json.loads(attributes[SpanAttributeKey.MODEL])
+            model_provider = (
+                json.loads(attributes[SpanAttributeKey.MODEL_PROVIDER])
+                if SpanAttributeKey.MODEL_PROVIDER in attributes
+                else None
+            )
+            if max_input_tokens := get_max_input_tokens_for_model(model_name, model_provider):
+                attributes[SpanAttributeKey.MAX_INPUT_TOKENS] = dump_span_attribute_value(
+                    max_input_tokens
+                )
+        except Exception:
+            _logger.debug(
+                "Failed to get max input tokens during OTEL translation", exc_info=True
+            )
 
     span_dict["attributes"] = attributes
     return span_dict

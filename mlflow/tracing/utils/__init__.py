@@ -351,6 +351,44 @@ def calculate_cost_by_model_and_token_usage(
     }
 
 
+def get_max_input_tokens_for_model(
+    model_name: str | None, model_provider: str | None = None
+) -> int | None:
+    """Look up the maximum input token count (context window) for a model using LiteLLM.
+
+    Args:
+        model_name: The model name (e.g., "gpt-4o", "claude-sonnet-4-20250514").
+        model_provider: Optional provider hint (e.g., "openai", "anthropic").
+
+    Returns:
+        The maximum number of input tokens the model supports, or None if unknown.
+    """
+    if not model_name:
+        return None
+
+    try:
+        from litellm import get_model_info
+    except ImportError:
+        _logger.debug("LiteLLM not available for model info lookup")
+        return None
+
+    try:
+        info = get_model_info(model=model_name)
+        if max_input := info.get("max_input_tokens"):
+            return int(max_input)
+    except Exception:
+        if model_provider:
+            try:
+                info = get_model_info(model=model_name, custom_llm_provider=model_provider)
+                if max_input := info.get("max_input_tokens"):
+                    return int(max_input)
+            except Exception:
+                pass
+        _logger.debug(f"Failed to get max input tokens for model {model_name}", exc_info=True)
+
+    return None
+
+
 def get_otel_attribute(span: trace_api.Span, key: str) -> str | None:
     """
     Get the attribute value from the OpenTelemetry span in a decoded format.
@@ -825,3 +863,14 @@ def set_span_cost_attribute(span: LiveSpan) -> None:
             span.set_attribute(SpanAttributeKey.LLM_COST, cost)
     except Exception as e:
         _logger.debug(f"Failed to set cost for {span}. Error: {e}")
+
+
+def set_span_model_info_attributes(span: LiveSpan) -> None:
+    """Set model info attributes (max input tokens) on a span using LiteLLM."""
+    try:
+        model_name = span.get_attribute(SpanAttributeKey.MODEL)
+        model_provider = span.get_attribute(SpanAttributeKey.MODEL_PROVIDER)
+        if max_input_tokens := get_max_input_tokens_for_model(model_name, model_provider):
+            span.set_attribute(SpanAttributeKey.MAX_INPUT_TOKENS, max_input_tokens)
+    except Exception as e:
+        _logger.debug(f"Failed to set model info for {span}. Error: {e}")

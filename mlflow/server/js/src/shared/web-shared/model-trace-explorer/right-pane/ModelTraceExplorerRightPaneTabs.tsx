@@ -150,7 +150,7 @@ function ModelTraceExplorerRightPaneTabsImpl({
             chatMessages={activeSpan.chatMessages}
             chatTools={activeSpan.chatTools}
             inputTokens={activeSpan.chatTokenUsage?.input_tokens}
-            modelName={activeSpan.modelName}
+            maxInputTokens={activeSpan.maxInputTokens}
           />
         </Tabs.Content>
       )}

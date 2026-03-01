@@ -30,6 +30,7 @@ from mlflow.tracing.utils import (
     generate_trace_id_v4_from_otel_trace_id,
     parse_trace_id_v4,
     set_span_cost_attribute,
+    set_span_model_info_attributes,
     should_compute_cost_client_side,
 )
 from mlflow.tracing.utils.otlp import (
@@ -678,6 +679,7 @@ class LiveSpan(Span):
 
             if should_compute_cost_client_side():
                 set_span_cost_attribute(self)
+                set_span_model_info_attributes(self)
 
             # Apply span processors
             apply_span_processors(self)

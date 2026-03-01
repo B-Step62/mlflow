@@ -105,6 +105,9 @@ class SpanAttributeKey:
     # This attribute stores the model name extracted from span inputs/attributes.
     MODEL = "mlflow.llm.model"
     MODEL_PROVIDER = "mlflow.llm.provider"
+    # This attribute stores the maximum number of input tokens the model's context window supports.
+    # Derived from LiteLLM's model database.
+    MAX_INPUT_TOKENS = "mlflow.llm.maxInputTokens"
     # This attribute indicates which flavor/format generated the LLM span. This is
     # used by downstream (e.g., UI) to determine the message format for parsing.
     MESSAGE_FORMAT = "mlflow.message.format"

@@ -24,6 +24,7 @@ from mlflow.tracing.utils import (
     get_mlflow_span_for_otel_span,
     get_otel_attribute,
     set_span_cost_attribute,
+    set_span_model_info_attributes,
     should_compute_cost_client_side,
 )
 
@@ -144,6 +145,7 @@ class SemanticKernelSpanProcessor(SimpleSpanProcessor):
                 set_token_usage(mlflow_span)
                 if should_compute_cost_client_side():
                     set_span_cost_attribute(mlflow_span)
+                    set_span_model_info_attributes(mlflow_span)
 
             # Export the span using MLflow's span processor
             tracer = _get_tracer(__name__)
