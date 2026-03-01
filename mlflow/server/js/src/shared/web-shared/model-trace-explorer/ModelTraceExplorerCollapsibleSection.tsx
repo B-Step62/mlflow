@@ -9,6 +9,8 @@ export const ModelTraceExplorerCollapsibleSection = ({
   withBorder = false,
   isExceptionSection = false,
   className,
+  defaultExpanded = true,
+  previewContent,
 }: {
   sectionKey: string;
   title: React.ReactNode;
@@ -16,8 +18,11 @@ export const ModelTraceExplorerCollapsibleSection = ({
   withBorder?: boolean;
   isExceptionSection?: boolean;
   className?: string;
+  defaultExpanded?: boolean;
+  /** Content shown below the header when the section is collapsed. Hidden when expanded. */
+  previewContent?: React.ReactNode;
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { theme } = useDesignSystemTheme();
 
   const borderColor = isExceptionSection ? theme.colors.actionDangerPrimaryBackgroundDefault : theme.colors.border;
@@ -62,6 +67,7 @@ export const ModelTraceExplorerCollapsibleSection = ({
           {title}
         </Typography.Title>
       </div>
+      {!expanded && previewContent}
       {expanded && (
         <div
           css={{

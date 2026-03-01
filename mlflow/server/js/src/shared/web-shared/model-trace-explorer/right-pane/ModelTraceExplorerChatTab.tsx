@@ -1,7 +1,8 @@
-import { useDesignSystemTheme } from '@databricks/design-system';
+import { Tooltip, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import { ModelTraceExplorerChatTool } from './ModelTraceExplorerChatTool';
+import { ModelTraceExplorerContextBreakdown } from './ModelTraceExplorerContextBreakdown';
 import { ModelTraceExplorerConversation } from './ModelTraceExplorerConversation';
 import type { ModelTraceChatMessage, ModelTraceChatTool } from '../ModelTrace.types';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
@@ -9,9 +10,13 @@ import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerColla
 export function ModelTraceExplorerChatTab({
   chatMessages,
   chatTools,
+  inputTokens,
+  modelName,
 }: {
   chatMessages: ModelTraceChatMessage[];
   chatTools?: ModelTraceChatTool[];
+  inputTokens?: number;
+  modelName?: string;
 }) {
   const { theme } = useDesignSystemTheme();
 
@@ -23,6 +28,41 @@ export function ModelTraceExplorerChatTab({
       }}
       data-testid="model-trace-explorer-chat-tab"
     >
+      <ModelTraceExplorerCollapsibleSection
+        css={{ marginBottom: theme.spacing.sm }}
+        title={
+          <Tooltip
+            componentId="shared.model-trace-explorer.context-breakdown-title-tooltip"
+            content="Approximate breakdown of the input context by source (system prompt, user messages, tool results, etc.). Token counts are estimated based on character length when usage data is unavailable."
+          >
+            <span>
+              <FormattedMessage
+                defaultMessage="Context breakdown"
+                description="Section header in the chat tab that displays a breakdown of the input context by source (system prompt, user message, tool results, etc.)"
+              />
+            </span>
+          </Tooltip>
+        }
+        sectionKey="context-breakdown"
+        defaultExpanded={false}
+        previewContent={
+          <ModelTraceExplorerContextBreakdown
+            chatMessages={chatMessages}
+            chatTools={chatTools}
+            inputTokens={inputTokens}
+            modelName={modelName}
+            barOnly
+          />
+        }
+      >
+        <ModelTraceExplorerContextBreakdown
+          chatMessages={chatMessages}
+          chatTools={chatTools}
+          inputTokens={inputTokens}
+          modelName={modelName}
+        />
+      </ModelTraceExplorerCollapsibleSection>
+
       {chatTools && (
         <ModelTraceExplorerCollapsibleSection
           css={{ marginBottom: theme.spacing.sm }}

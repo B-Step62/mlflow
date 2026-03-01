@@ -467,10 +467,13 @@ export const normalizeNewSpanData = (
     inputs,
   );
 
-  // Extract model name and cost info
+  // Extract model name, cost, and token usage info
   const modelName = tryDeserializeAttribute(getSpanAttribute(span.attributes, SPAN_ATTRIBUTE_MODEL_KEY) as string);
   const cost = getCostFromSpan(
     tryDeserializeAttribute(getSpanAttribute(span.attributes, SPAN_ATTRIBUTE_COST_KEY) as string),
+  );
+  const chatTokenUsage = tryDeserializeAttribute(
+    getSpanAttribute(span.attributes, 'mlflow.chat.tokenUsage') as string,
   );
 
   // remove other private mlflow attributes
@@ -503,6 +506,7 @@ export const normalizeNewSpanData = (
     chatMessageFormat: messageFormat,
     chatMessages,
     chatTools,
+    chatTokenUsage,
     parentId,
     assessments,
     traceId,

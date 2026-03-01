@@ -146,7 +146,12 @@ function ModelTraceExplorerRightPaneTabsImpl({
       </Tabs.List>
       {activeSpan.chatMessages && (
         <Tabs.Content css={contentStyle} value="chat">
-          <ModelTraceExplorerChatTab chatMessages={activeSpan.chatMessages} chatTools={activeSpan.chatTools} />
+          <ModelTraceExplorerChatTab
+            chatMessages={activeSpan.chatMessages}
+            chatTools={activeSpan.chatTools}
+            inputTokens={activeSpan.chatTokenUsage?.input_tokens}
+            modelName={activeSpan.modelName}
+          />
         </Tabs.Content>
       )}
       <Tabs.Content css={contentStyle} value="content">

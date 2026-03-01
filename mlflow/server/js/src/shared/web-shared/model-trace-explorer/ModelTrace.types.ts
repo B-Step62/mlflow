@@ -287,6 +287,12 @@ export interface SpanCostInfo {
 /**
  * Represents a single node in the model trace tree.
  */
+export interface ChatTokenUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+}
+
 export interface ModelTraceSpanNode extends TimelineTreeNode, Pick<ModelTraceSpan, 'attributes' | 'type' | 'events'> {
   assessments: Assessment[];
   inputs?: any;
@@ -295,6 +301,7 @@ export interface ModelTraceSpanNode extends TimelineTreeNode, Pick<ModelTraceSpa
   chatMessageFormat?: string;
   chatMessages?: ModelTraceChatMessage[];
   chatTools?: ModelTraceChatTool[];
+  chatTokenUsage?: ChatTokenUsage;
   parentId?: string | null;
   traceId: string;
   modelName?: string;

@@ -21,7 +21,9 @@ export function ModelTraceExplorerConversation({ messages }: { messages: ModelTr
       }}
     >
       {messages.map((message, index) => (
-        <ModelTraceExplorerChatMessage key={index} message={message} />
+        <div key={index} data-message-index={index}>
+          <ModelTraceExplorerChatMessage message={message} />
+        </div>
       ))}
     </div>
   );

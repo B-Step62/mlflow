@@ -32,6 +32,7 @@ export function ModelTraceExplorerChatTool({ tool }: { tool: ModelTraceChatTool 
         backgroundColor: theme.colors.backgroundPrimary,
       }}
       data-testid="model-trace-explorer-chat-tool"
+      data-tool-name={tool.function.name}
     >
       <div
         role="button"
