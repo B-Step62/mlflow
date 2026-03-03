@@ -299,6 +299,10 @@
     "defaultMessage": "{formattedAverage} (AVG)",
     "description": "Label showing the average value of numeric assessments"
   },
+  "/zH6tO": {
+    "defaultMessage": "Use",
+    "description": "Label for use judges dropdown button"
+  },
   "0+djpP": {
     "defaultMessage": "or",
     "description": "Divider between model list and custom input"
@@ -683,6 +687,10 @@
     "defaultMessage": "LLM-as-a-judge (Optimized)",
     "description": "Label for memory-augmented LLM scorer type"
   },
+  "2n1oCv": {
+    "defaultMessage": "Search judges by name...",
+    "description": "Placeholder for judge catalog search input"
+  },
   "2oFAO4": {
     "defaultMessage": "Share",
     "description": "Text for share button on experiment view page header"
@@ -698,10 +706,6 @@
   "2plDKs": {
     "defaultMessage": "Input",
     "description": "Evaluation review > evaluations list > input sort option label prefix"
-  },
-  "2sbzUd": {
-    "defaultMessage": "Search judges by name or description",
-    "description": "Placeholder for judge catalog search input"
   },
   "2tQXw0": {
     "defaultMessage": "Key name cannot be changed.",
@@ -1110,10 +1114,6 @@
     "defaultMessage": "Edit description",
     "description": "Text for edit description button on experiment view page header"
   },
-  "6R7fFr": {
-    "defaultMessage": "Catalog",
-    "description": "Tab label for browsable judge catalog"
-  },
   "6SXoSp": {
     "defaultMessage": "Model definition",
     "description": "Label for model definition selector"
@@ -1197,6 +1197,10 @@
   "6vII7y": {
     "defaultMessage": "Cancel",
     "description": "A cancel label for the modal used for deleting logged models"
+  },
+  "6wyzpT": {
+    "defaultMessage": "Automatic evaluation: OFF — Toggle to enable automatic scoring.",
+    "description": "Tooltip for inactive auto-evaluation toggle on registered judge card"
   },
   "6xPc4W": {
     "defaultMessage": "Predict on a Spark DataFrame:",
@@ -2126,6 +2130,10 @@
     "defaultMessage": "Artifacts",
     "description": "Row group title for artifacts of runs on the experiment compare runs page"
   },
+  "CePuOW": {
+    "defaultMessage": "My Judges",
+    "description": "Section header for user-registered judges"
+  },
   "CevPsF": {
     "defaultMessage": "Add section above",
     "description": "Experiment page > compare runs > chart section > add section above label"
@@ -2233,6 +2241,10 @@
   "DMOaoR": {
     "defaultMessage": "Safe",
     "description": "Evaluation results > safety assessment > positive value label. Displayed if evaluation result is considered as safe."
+  },
+  "DONUo9": {
+    "defaultMessage": "No judges found",
+    "description": "Empty state title when no judges match the filters"
   },
   "DQ3XQT": {
     "defaultMessage": "Diff highlighting is not supported in Markdown view. Switch to Text view to see differences.",
@@ -2538,10 +2550,6 @@
     "defaultMessage": "You do not have permission to access this resource.",
     "description": "Generic message for a permission error (HTTP STATUS 403)"
   },
-  "G7MYxd": {
-    "defaultMessage": "My Judges",
-    "description": "Tab label for experiment's registered judges"
-  },
   "G7V4y3": {
     "defaultMessage": "Hide details",
     "description": "Evaluation review > assessments > hide details button"
@@ -2818,6 +2826,10 @@
     "defaultMessage": "Experiments",
     "description": "Link label for the experiments page"
   },
+  "IS40RT": {
+    "defaultMessage": "Automatic evaluation: ON — This judge automatically scores new traces.",
+    "description": "Tooltip for active auto-evaluation toggle on catalog judge card"
+  },
   "IUAmWX": {
     "defaultMessage": "No common artifacts to display.",
     "description": "Text shown when there are no common artifacts between the runs"
@@ -3030,10 +3042,6 @@
     "defaultMessage": "Automatically log traces for CrewAI executions by calling the {code} function. For example:",
     "description": "Description of how to log traces for the CrewAI package using MLflow autologging. This message is followed by a code example."
   },
-  "K8OFhg": {
-    "defaultMessage": "Tags",
-    "description": "Label for tag filter in judge catalog"
-  },
   "KADUUT": {
     "defaultMessage": "Model parameters",
     "description": "Experiment page > new run modal > served LLM model parameters label"
@@ -3077,6 +3085,10 @@
   "KObL+y": {
     "defaultMessage": "Endpoints ({count})",
     "description": "Gateway > Endpoints using key drawer > Title"
+  },
+  "KQmt/5": {
+    "defaultMessage": "Use in UI",
+    "description": "Use judges in the UI option"
   },
   "KRzwkL": {
     "defaultMessage": "Type {itemName} to confirm deletion:",
@@ -3257,6 +3269,10 @@
   "Lpz85i": {
     "defaultMessage": "Edit API Key",
     "description": "Title for edit API key modal"
+  },
+  "LquFem": {
+    "defaultMessage": "REST API",
+    "description": "API snippet modal title"
   },
   "Ls2ris": {
     "defaultMessage": "Mark as reviewed",
@@ -3754,6 +3770,10 @@
     "defaultMessage": "Created at",
     "description": "Run page > Overview > Run start time section label"
   },
+  "PP9m0D": {
+    "defaultMessage": "Provider",
+    "description": "Label for provider filter dropdown in judge catalog"
+  },
   "PPPbd+": {
     "defaultMessage": "A GraphQL error occurred.",
     "description": "Generic message for a GraphQL error, typically due to query parsing or validation issues"
@@ -3773,6 +3793,10 @@
   "PRwcGm": {
     "defaultMessage": "Search",
     "description": "Placeholder for the search input in the logged model list page sort column selector"
+  },
+  "PSD/qN": {
+    "defaultMessage": "Show all ({count}) >",
+    "description": "Button to show all judges in a category"
   },
   "PSFpHG": {
     "defaultMessage": "You don't have permissions to open requested experiment.",
@@ -3972,6 +3996,10 @@
   "R/4/8G": {
     "defaultMessage": "Metric",
     "description": "Label for the metric column in the logged model details metrics table"
+  },
+  "R/KTzM": {
+    "defaultMessage": "Toggle to add this judge and enable automatic scoring.",
+    "description": "Tooltip for auto-evaluation toggle on catalog judge card"
   },
   "R1FeSE": {
     "defaultMessage": "Advanced settings (optional)",
@@ -4387,6 +4415,10 @@
   "U+Jzcv": {
     "defaultMessage": "<link>Version {versionNumber}</link>",
     "description": "Row entry for version columns in the registered model page"
+  },
+  "U+NYji": {
+    "defaultMessage": "This judge cannot be added to automatic evaluation.",
+    "description": "Tooltip for disabled auto-evaluation toggle on catalog judge card"
   },
   "U0joaT": {
     "defaultMessage": "Select traces",
@@ -4851,6 +4883,10 @@
   "X3F7x3": {
     "defaultMessage": "No Artifacts Recorded",
     "description": "Empty state string when there are no artifacts record for the experiment"
+  },
+  "X4Gwh3": {
+    "defaultMessage": "{count} selected",
+    "description": "Number of selected judges in action bar"
   },
   "X6P8tX": {
     "defaultMessage": "No models found",
@@ -6191,6 +6227,10 @@
     "defaultMessage": "Give instructions to the model. Use '{{ }}' or the \"Add new variable\" button to add variables to your prompt.",
     "description": "Experiment page > new run modal > prompt template input hint"
   },
+  "gC3aI0": {
+    "defaultMessage": "Python SDK",
+    "description": "SDK snippet modal title"
+  },
   "gFYM0j": {
     "defaultMessage": "Cancel",
     "description": "Delete assessment modal cancel button text"
@@ -7131,6 +7171,10 @@
     "defaultMessage": "The Overview tab requires a SQL-based tracking store for full functionality, file-based backend is not supported.",
     "description": "Warning banner shown on the Overview tab when using FileStore backend"
   },
+  "ma21/R": {
+    "defaultMessage": "Delete",
+    "description": "Bulk delete selected judges button"
+  },
   "md81Lo": {
     "defaultMessage": "Error",
     "description": "MLflow trace notebook output > error state title"
@@ -7491,6 +7535,10 @@
     "defaultMessage": "MLflow Demo Experiment",
     "description": "Badge label for the demo experiment in the experiments list"
   },
+  "ouqd/z": {
+    "defaultMessage": "Show less",
+    "description": "Button to show fewer judges in a category"
+  },
   "ov1whU": {
     "defaultMessage": "AI Judge",
     "description": "Label for AI judge in the tooltip for the assessment in the evaluation metrics."
@@ -7546,6 +7594,10 @@
   "pOqgMC": {
     "defaultMessage": "Weight",
     "description": "Label for traffic split weight input"
+  },
+  "pP4gvx": {
+    "defaultMessage": "Automatic evaluation: ON — This judge automatically scores new traces.",
+    "description": "Tooltip for active auto-evaluation toggle on registered judge card"
   },
   "pTDM+x": {
     "defaultMessage": "Select LLM model endpoint",
@@ -7947,6 +7999,10 @@
     "defaultMessage": "Download as PNG",
     "description": "Experiment page > compare runs tab > chart header > download as PNG option"
   },
+  "s8Ic1t": {
+    "defaultMessage": "Python SDK",
+    "description": "Show Python SDK code snippet"
+  },
   "s8a93+": {
     "defaultMessage": "Traces",
     "description": "Run details page > tab selector > Traces tab"
@@ -8226,6 +8282,10 @@
   "uABFy0": {
     "defaultMessage": "AI Gateway",
     "description": "Breadcrumb link to gateway page"
+  },
+  "uAi0DN": {
+    "defaultMessage": "REST API",
+    "description": "Show REST API code snippet"
   },
   "uAv9Zs": {
     "defaultMessage": "Home",
@@ -8794,10 +8854,6 @@
   "yDLCp6": {
     "defaultMessage": "View all",
     "description": "Home page experiments view all link"
-  },
-  "yDf3Yy": {
-    "defaultMessage": "Provider",
-    "description": "Label for provider filter in judge catalog"
   },
   "yFl8nB": {
     "defaultMessage": "This model will be deprecated on {date}",

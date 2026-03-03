@@ -13,7 +13,7 @@ export const useAddCatalogScorerToExperiment = ({
   const createMutation = useCreateScheduledScorerMutation();
 
   const addScorerToExperiment = useCallback(
-    (entry: CatalogEntry) => {
+    (entry: CatalogEntry, { activate }: { activate?: boolean } = {}) => {
       if (!entry.canAddToExperiment || !entry.llmTemplate) {
         return;
       }
@@ -29,7 +29,7 @@ export const useAddCatalogScorerToExperiment = ({
         name: entry.name,
         type: 'llm',
         llmTemplate: entry.llmTemplate as LLMTemplate,
-        sampleRate: 0,
+        sampleRate: activate ? 100 : 0,
         isSessionLevelScorer: entry.isSessionLevel,
       };
 

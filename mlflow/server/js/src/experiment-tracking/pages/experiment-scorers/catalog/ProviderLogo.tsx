@@ -1,30 +1,20 @@
-import { useDesignSystemTheme } from '@databricks/design-system';
+import { UserIcon } from '@databricks/design-system';
 import type { CatalogProvider } from './types';
 import { getProviderDisplayName } from './judgeCatalogUtils';
+import mlflowLogo from '../../../../common/static/logos/mlflow-icon.svg';
+import ragasLogo from '../../../../common/static/logos/ragas.svg';
+import deepevalLogo from '../../../../common/static/logos/deepeval.svg';
+import trulensLogo from '../../../../common/static/logos/trulens.svg';
+import phoenixLogo from '../../../../common/static/logos/phoenix.png';
+import guardrailsLogo from '../../../../common/static/logos/guardrails.svg';
 
-// TODO: Replace with actual SVG logo imports once assets are provided.
-// Example:
-//   import mlflowLogo from '../../../../common/static/logos/mlflow.svg';
-//   const PROVIDER_LOGOS: Record<CatalogProvider, string> = { mlflow: mlflowLogo, ... };
-//
-// Then use: <img src={PROVIDER_LOGOS[provider]} alt={...} width={16} height={16} />
-
-const PROVIDER_COLORS: Record<CatalogProvider, string> = {
-  mlflow: '#7B61FF',
-  ragas: '#2E7CF6',
-  deepeval: '#14B8A6',
-  trulens: '#EAB308',
-  phoenix: '#84CC16',
-  guardrails: '#EC4899',
-};
-
-const PROVIDER_LETTERS: Record<CatalogProvider, string> = {
-  mlflow: 'M',
-  ragas: 'R',
-  deepeval: 'D',
-  trulens: 'T',
-  phoenix: 'P',
-  guardrails: 'G',
+const PROVIDER_LOGOS: Partial<Record<CatalogProvider, string>> = {
+  mlflow: mlflowLogo,
+  ragas: ragasLogo,
+  deepeval: deepevalLogo,
+  trulens: trulensLogo,
+  phoenix: phoenixLogo,
+  guardrails: guardrailsLogo,
 };
 
 interface ProviderLogoProps {
@@ -33,30 +23,40 @@ interface ProviderLogoProps {
 }
 
 const ProviderLogo: React.FC<ProviderLogoProps> = ({ provider, size = 16 }) => {
-  const { theme } = useDesignSystemTheme();
-  const color = PROVIDER_COLORS[provider];
+  if (provider === 'custom') {
+    return (
+      <div
+        css={{
+          width: size,
+          height: size,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#6B7280',
+          flexShrink: 0,
+        }}
+        title={getProviderDisplayName(provider)}
+      >
+        <UserIcon css={{ '& > svg': { width: size * 0.8, height: size * 0.8 } }} />
+      </div>
+    );
+  }
 
-  return (
-    <div
-      css={{
-        width: size,
-        height: size,
-        borderRadius: theme.borders.borderRadiusMd,
-        backgroundColor: color + '20',
-        color: color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: size * 0.65,
-        fontWeight: theme.typography.typographyBoldFontWeight,
-        flexShrink: 0,
-        lineHeight: 1,
-      }}
-      title={getProviderDisplayName(provider)}
-    >
-      {PROVIDER_LETTERS[provider]}
-    </div>
-  );
+  const logo = PROVIDER_LOGOS[provider];
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt={getProviderDisplayName(provider)}
+        title={getProviderDisplayName(provider)}
+        width={size}
+        height={size}
+        css={{ flexShrink: 0, objectFit: 'contain' }}
+      />
+    );
+  }
+
+  return null;
 };
 
 export default ProviderLogo;

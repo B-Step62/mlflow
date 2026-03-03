@@ -1,4 +1,14 @@
-export type CatalogProvider = 'mlflow' | 'ragas' | 'deepeval' | 'trulens' | 'phoenix' | 'guardrails';
+export type CatalogProvider = 'mlflow' | 'ragas' | 'deepeval' | 'trulens' | 'phoenix' | 'guardrails' | 'custom';
+
+export type QuickFilter = 'owned-by-me' | 'scheduled' | 'llm-as-a-judge' | 'conversation';
+
+export type JudgeCategory = 'rag' | 'text-quality' | 'safety' | 'tool-call' | 'agent';
+
+export interface CategoryGroup {
+  category: JudgeCategory;
+  displayName: string;
+  entries: CatalogEntry[];
+}
 
 export type CatalogTag =
   | 'rag'
@@ -28,3 +38,19 @@ export interface CatalogEntry {
   requiresConfig?: boolean;
   instructions?: string;
 }
+
+export interface RegisteredJudgeRow {
+  kind: 'registered';
+  rowKey: string;
+  scorer: import('../types').ScheduledScorer;
+  status: 'active' | 'inactive';
+}
+
+export interface CatalogJudgeRow {
+  kind: 'catalog';
+  rowKey: string;
+  entry: CatalogEntry;
+  status: 'available';
+}
+
+export type UnifiedJudgeRow = RegisteredJudgeRow | CatalogJudgeRow;
