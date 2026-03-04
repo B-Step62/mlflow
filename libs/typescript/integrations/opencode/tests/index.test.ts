@@ -1037,6 +1037,7 @@ describe('MLflowTracingPlugin', () => {
   describe('Reasoning Block Support', () => {
     let mockSetOutputs: jest.Mock;
     let mockSetAttribute: jest.Mock;
+    let spansCreated: Array<{ name: string; end: jest.Mock; setAttribute: jest.Mock; setOutputs: jest.Mock }>;
 
     beforeEach(() => {
       process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
@@ -1044,12 +1045,18 @@ describe('MLflowTracingPlugin', () => {
 
       mockSetOutputs = jest.fn();
       mockSetAttribute = jest.fn();
+      spansCreated = [];
 
-      (mlflowTracing.startSpan as jest.Mock).mockReturnValue({
-        traceId: 'mock-trace-id',
-        setAttribute: mockSetAttribute,
-        setOutputs: mockSetOutputs,
-        end: jest.fn(),
+      (mlflowTracing.startSpan as jest.Mock).mockImplementation((opts: { name: string }) => {
+        const span = {
+          name: opts.name,
+          traceId: 'mock-trace-id',
+          setAttribute: mockSetAttribute,
+          setOutputs: mockSetOutputs,
+          end: jest.fn(),
+        };
+        spansCreated.push(span);
+        return span;
       });
     });
 
@@ -1314,6 +1321,49 @@ describe('MLflowTracingPlugin', () => {
           cache_write_tokens: 20,
         }),
       );
+    });
+
+    it('should end LLM span at earliest tool start time, not message completion', async () => {
+      const msgCreated = 1000;
+      const toolStart = 2000;
+      const toolEnd = 3000;
+      const msgCompleted = 4000;
+
+      const messages = [
+        createUserMessage('Do something'),
+        createAssistantMessageWithReasoning(
+          'Let me do that.',
+          'Thinking...',
+          {
+            time: { created: msgCreated, completed: msgCompleted },
+            toolParts: [
+              {
+                tool: 'Read',
+                callID: 'read-1',
+                state: {
+                  status: 'completed',
+                  input: { file_path: '/test.ts' },
+                  output: 'content',
+                  time: { start: toolStart, end: toolEnd },
+                },
+              },
+            ],
+          },
+        ),
+      ];
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('llm-timing-session'));
+
+      // Find the LLM span
+      const llmSpan = spansCreated.find((s) => s.name === 'llm_call');
+      expect(llmSpan).toBeDefined();
+
+      // LLM span should end at tool start time, not message completion
+      const expectedEndNs = toolStart * 1e6;
+      expect(llmSpan!.end).toHaveBeenCalledWith({ endTimeNs: expectedEndNs });
     });
   });
 });

@@ -355,6 +355,21 @@ function createLlmAndToolSpans(
         .filter((t) => t.length > 0)
         .join('\n');
 
+      // LLM generation ends before tool execution starts. Use the earliest
+      // tool start time as the LLM end time when tools are present,
+      // otherwise fall back to message completion time.
+      let llmEndNs = completedNs;
+      if (toolParts.length > 0) {
+        const toolStartTimes = toolParts
+          .map((p) => p.state?.time?.start)
+          .filter((t): t is number => t != null)
+          .map((t) => timestampToNs(t))
+          .filter((t): t is number => t != null);
+        if (toolStartTimes.length > 0) {
+          llmEndNs = Math.min(...toolStartTimes);
+        }
+      }
+
       const llmSpan = startSpan({
         name: 'llm_call',
         parent: parentSpan,
@@ -390,7 +405,7 @@ function createLlmAndToolSpans(
       llmSpan.setOutputs({
         choices: [{ message: outputMessage }],
       });
-      llmSpan.end({ endTimeNs: completedNs });
+      llmSpan.end({ endTimeNs: llmEndNs });
     }
 
     // Create tool spans
