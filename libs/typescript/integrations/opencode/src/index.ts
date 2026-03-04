@@ -218,8 +218,8 @@ function findLastUserMessageIndex(messages: Message[]): number | null {
 function reconstructConversationMessages(
   messages: Message[],
   endIdx: number,
-): Array<{ role: string; content: string; tool_call_id?: string }> {
-  const result: Array<{ role: string; content: string; tool_call_id?: string }> = [];
+): Array<{ role: string; content: string; reasoning?: string; tool_call_id?: string }> {
+  const result: Array<{ role: string; content: string; reasoning?: string; tool_call_id?: string }> = [];
 
   for (let i = 0; i < endIdx; i++) {
     const msg = messages[i];
@@ -237,8 +237,20 @@ function reconstructConversationMessages(
       const textParts = parts
         .filter((p) => p.type === PART_TYPE_TEXT && p.text)
         .map((p) => p.text || '');
-      if (textParts.length > 0) {
-        result.push({ role: 'assistant', content: textParts.join('\n') });
+      const reasoningParts = parts
+        .filter((p) => p.type === PART_TYPE_REASONING && p.text)
+        .map((p) => p.text || '');
+
+      if (textParts.length > 0 || reasoningParts.length > 0) {
+        const entry: { role: string; content: string; reasoning?: string } = {
+          role: 'assistant',
+          content: textParts.join('\n'),
+        };
+        const reasoningContent = reasoningParts.filter((t) => t.length > 0).join('\n');
+        if (reasoningContent) {
+          entry.reasoning = reasoningContent;
+        }
+        result.push(entry);
       }
 
       // Add tool results as tool messages

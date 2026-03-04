@@ -1213,6 +1213,69 @@ describe('MLflowTracingPlugin', () => {
       );
     });
 
+    it('should include prior reasoning in conversation history for later LLM spans', async () => {
+      const messages = [
+        createUserMessage('Fix the bug'),
+        createAssistantMessageWithReasoning('', 'I need to read the file first.', {
+          toolParts: [
+            {
+              tool: 'Read',
+              callID: 'read-1',
+              state: {
+                status: 'completed',
+                input: { file_path: '/src/index.ts' },
+                output: 'const x = 1;',
+                time: { start: Date.now(), end: Date.now() + 500 },
+              },
+            },
+          ],
+        }),
+        createAssistantMessageWithReasoning('', 'Now I see the issue, let me edit.', {
+          toolParts: [
+            {
+              tool: 'Edit',
+              callID: 'edit-1',
+              state: {
+                status: 'completed',
+                input: { file_path: '/src/index.ts', old_string: 'x = 1', new_string: 'x = 2' },
+                output: 'Edited',
+                time: { start: Date.now(), end: Date.now() + 500 },
+              },
+            },
+          ],
+        }),
+        createAssistantMessageWithReasoning("I've fixed the bug.", 'The fix is complete.'),
+      ];
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('reasoning-history-session'));
+
+      // The final LLM span (for the last assistant message) should have conversation
+      // history that includes reasoning from earlier assistant messages
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'llm_call',
+          spanType: 'LLM',
+          inputs: expect.objectContaining({
+            messages: expect.arrayContaining([
+              expect.objectContaining({
+                role: 'assistant',
+                content: '',
+                reasoning: 'I need to read the file first.',
+              }),
+              expect.objectContaining({
+                role: 'assistant',
+                content: '',
+                reasoning: 'Now I see the issue, let me edit.',
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
+
     it('should use step-finish tokens as fallback when msg.info.tokens is absent', async () => {
       const messages = [
         createUserMessage('Think about this'),
