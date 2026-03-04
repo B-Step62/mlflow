@@ -26,5 +26,9 @@
   },
   "devDependencies": {
     "typedoc": "^0.28.0"
+  },
+  "dependencies": {
+    "@mlflow/core": "^0.2.0",
+    "@mlflow/opencode": "^0.1.2"
   }
 }

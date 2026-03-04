@@ -159,6 +159,60 @@ describe('MLflowTracingPlugin', () => {
     ],
   });
 
+  // Helper to create an assistant message with reasoning (and optionally text)
+  const createAssistantMessageWithReasoning = (
+    text: string,
+    reasoning: string,
+    options?: {
+      modelID?: string;
+      providerID?: string;
+      tokens?: {
+        input?: number;
+        output?: number;
+        reasoning?: number;
+        cache?: { read?: number; write?: number };
+      };
+      time?: { created?: number; completed?: number };
+      toolParts?: Array<{
+        tool: string;
+        callID: string;
+        state: Record<string, unknown>;
+      }>;
+      stepFinishTokens?: {
+        input?: number;
+        output?: number;
+        reasoning?: number;
+        cache?: { read?: number; write?: number };
+      };
+    },
+  ) => {
+    const parts: Array<Record<string, unknown>> = [];
+    if (reasoning) {
+      parts.push({ type: 'reasoning', text: reasoning });
+    }
+    if (text) {
+      parts.push({ type: 'text', text });
+    }
+    if (options?.toolParts) {
+      for (const tp of options.toolParts) {
+        parts.push({ type: 'tool', ...tp });
+      }
+    }
+    if (options?.stepFinishTokens) {
+      parts.push({ type: 'step-finish', tokens: options.stepFinishTokens });
+    }
+    return {
+      info: {
+        role: 'assistant',
+        modelID: options?.modelID || 'claude-3-opus',
+        providerID: options?.providerID || 'anthropic',
+        tokens: options?.tokens || { input: 100, output: 50 },
+        time: options?.time || { created: Date.now(), completed: Date.now() + 1000 },
+      },
+      parts,
+    };
+  };
+
   // Helper to create an assistant message with both text and tool call
   const createAssistantMessageWithTextAndTool = (
     text: string,
@@ -977,6 +1031,226 @@ describe('MLflowTracingPlugin', () => {
       await hooks.event!(createSessionIdleEvent('tool-history-session'));
 
       expect(mlflowTracing.startSpan).toHaveBeenCalled();
+    });
+  });
+
+  describe('Reasoning Block Support', () => {
+    let mockSetOutputs: jest.Mock;
+    let mockSetAttribute: jest.Mock;
+
+    beforeEach(() => {
+      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
+      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
+
+      mockSetOutputs = jest.fn();
+      mockSetAttribute = jest.fn();
+
+      (mlflowTracing.startSpan as jest.Mock).mockReturnValue({
+        traceId: 'mock-trace-id',
+        setAttribute: mockSetAttribute,
+        setOutputs: mockSetOutputs,
+        end: jest.fn(),
+      });
+    });
+
+    it('should include reasoning content in LLM span output', async () => {
+      const messages = [
+        createUserMessage('What is 2+2?'),
+        createAssistantMessageWithReasoning(
+          'The answer is 4.',
+          'Let me think about this arithmetic problem. 2+2=4.',
+        ),
+      ];
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('reasoning-session'));
+
+      // LLM span should be created
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'llm_call',
+          spanType: 'LLM',
+        }),
+      );
+
+      // Output should include reasoning field
+      expect(mockSetOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'The answer is 4.',
+                reasoning: 'Let me think about this arithmetic problem. 2+2=4.',
+              },
+            },
+          ],
+        }),
+      );
+    });
+
+    it('should create LLM span for reasoning-only message (no text, with tool)', async () => {
+      const messages = [
+        createUserMessage('Read the file'),
+        createAssistantMessageWithReasoning('', 'I should read the file to understand it.', {
+          toolParts: [
+            {
+              tool: 'Read',
+              callID: 'read-1',
+              state: {
+                status: 'completed',
+                input: { file_path: '/test.ts' },
+                output: 'content',
+                time: { start: Date.now(), end: Date.now() + 500 },
+              },
+            },
+          ],
+        }),
+      ];
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('reasoning-only-session'));
+
+      // Should create LLM span even without text (reasoning present)
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'llm_call',
+          spanType: 'LLM',
+        }),
+      );
+
+      // Should also create tool span
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'tool_Read',
+          spanType: 'TOOL',
+        }),
+      );
+
+      // LLM output should have empty content but reasoning
+      expect(mockSetOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: '',
+                reasoning: 'I should read the file to understand it.',
+              },
+            },
+          ],
+        }),
+      );
+    });
+
+    it('should not add reasoning field when no reasoning parts exist', async () => {
+      const messages = [
+        createUserMessage('Hello'),
+        createAssistantTextMessage('Hi there!'),
+      ];
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('no-reasoning-session'));
+
+      // Output should NOT have reasoning field
+      expect(mockSetOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Hi there!',
+              },
+            },
+          ],
+        }),
+      );
+    });
+
+    it('should handle message with reasoning + text + tool', async () => {
+      const messages = [
+        createUserMessage('Fix the bug'),
+        createAssistantMessageWithReasoning(
+          "I'll fix the bug in the file.",
+          'I need to read the file first to understand the bug.',
+          {
+            toolParts: [
+              {
+                tool: 'Edit',
+                callID: 'edit-1',
+                state: {
+                  status: 'completed',
+                  input: { file_path: '/src/index.ts', old_string: 'bug', new_string: 'fix' },
+                  output: 'Edited',
+                  time: { start: Date.now(), end: Date.now() + 500 },
+                },
+              },
+            ],
+          },
+        ),
+      ];
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('reasoning-text-tool-session'));
+
+      // Should create parent AGENT span, LLM span, and tool span
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'opencode_conversation', spanType: 'AGENT' }),
+      );
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'llm_call', spanType: 'LLM' }),
+      );
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'tool_Edit', spanType: 'TOOL' }),
+      );
+    });
+
+    it('should use step-finish tokens as fallback when msg.info.tokens is absent', async () => {
+      const messages = [
+        createUserMessage('Think about this'),
+        createAssistantMessageWithReasoning(
+          'Here is my answer.',
+          'Let me reason about this.',
+          {
+            tokens: undefined,
+            stepFinishTokens: {
+              input: 200,
+              output: 100,
+              reasoning: 75,
+              cache: { read: 50, write: 20 },
+            },
+          },
+        ),
+      ];
+
+      // Remove msg.info.tokens to simulate missing tokens
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (messages[1] as any).info.tokens;
+
+      const mockClient = createMockClient({}, messages);
+      const hooks = await MLflowTracingPlugin(createPluginInput(mockClient));
+
+      await hooks.event!(createSessionIdleEvent('step-finish-tokens-session'));
+
+      // Token usage should come from step-finish part
+      expect(mockSetAttribute).toHaveBeenCalledWith(
+        'token_usage',
+        expect.objectContaining({
+          input_tokens: 200,
+          output_tokens: 100,
+          total_tokens: 375,
+          cache_read_tokens: 50,
+          cache_write_tokens: 20,
+        }),
+      );
     });
   });
 });

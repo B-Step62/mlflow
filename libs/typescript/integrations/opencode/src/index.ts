@@ -39,6 +39,8 @@ const MESSAGE_ROLE_USER = 'user';
 const MESSAGE_ROLE_ASSISTANT = 'assistant';
 const PART_TYPE_TEXT = 'text';
 const PART_TYPE_TOOL = 'tool';
+const PART_TYPE_REASONING = 'reasoning';
+const PART_TYPE_STEP_FINISH = 'step-finish';
 
 // SDK initialization state
 let initialized = false;
@@ -64,6 +66,15 @@ interface MessagePart {
   text?: string;
   tool?: string;
   callID?: string;
+  time?: { start?: number; end?: number };
+  metadata?: Record<string, unknown>;
+  tokens?: {
+    input?: number;
+    output?: number;
+    reasoning?: number;
+    cache?: { read?: number; write?: number };
+  };
+  reason?: string;
   state?: {
     status?: string;
     input?: Record<string, unknown>;
@@ -279,6 +290,19 @@ function buildTokenUsage(tokens: MessageInfo['tokens']): Record<string, number> 
 }
 
 /**
+ * Extract token information from the last step-finish part as a fallback
+ * when msg.info.tokens is missing or absent.
+ */
+function extractStepFinishTokens(parts: MessagePart[]): MessageInfo['tokens'] | undefined {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type === PART_TYPE_STEP_FINISH && parts[i].tokens) {
+      return parts[i].tokens;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Create LLM and tool spans as children of the parent span
  */
 function createLlmAndToolSpans(
@@ -302,14 +326,22 @@ function createLlmAndToolSpans(
     const createdNs = timestampToNs(timeInfo.created);
     const completedNs = timestampToNs(timeInfo.completed);
 
-    // Check for text and tool content
+    // Check for text, reasoning, and tool content
     const textParts = parts.filter((p) => p.type === PART_TYPE_TEXT);
+    const reasoningParts = parts.filter((p) => p.type === PART_TYPE_REASONING);
     const toolParts = parts.filter((p) => p.type === PART_TYPE_TOOL);
 
-    // Create LLM span for text responses
-    if (textParts.length > 0) {
+    // Resolve tokens: prefer msg.info.tokens, fallback to step-finish
+    const resolvedTokens = tokens || extractStepFinishTokens(parts);
+
+    // Create LLM span for text or reasoning responses
+    if (textParts.length > 0 || reasoningParts.length > 0) {
       const conversationMessages = reconstructConversationMessages(messages, i);
       const textContent = textParts.map((p) => p.text || '').join('\n');
+      const reasoningContent = reasoningParts
+        .map((p) => p.text || '')
+        .filter((t) => t.length > 0)
+        .join('\n');
 
       const llmSpan = startSpan({
         name: 'llm_call',
@@ -330,13 +362,21 @@ function createLlmAndToolSpans(
       llmSpan.setAttribute(SpanAttributeKey.MESSAGE_FORMAT, 'openai');
 
       // Set token usage
-      const tokenUsage = buildTokenUsage(tokens);
+      const tokenUsage = buildTokenUsage(resolvedTokens);
       if (tokenUsage) {
         llmSpan.setAttribute(SpanAttributeKey.TOKEN_USAGE, tokenUsage);
       }
 
+      const outputMessage: Record<string, unknown> = {
+        role: 'assistant',
+        content: textContent,
+      };
+      if (reasoningContent) {
+        outputMessage.reasoning = reasoningContent;
+      }
+
       llmSpan.setOutputs({
-        choices: [{ message: { role: 'assistant', content: textContent } }],
+        choices: [{ message: outputMessage }],
       });
       llmSpan.end({ endTimeNs: completedNs });
     }
