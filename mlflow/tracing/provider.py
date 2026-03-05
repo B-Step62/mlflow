@@ -581,7 +581,6 @@ def _get_span_processors(disabled: bool = False) -> list[SpanProcessor]:
     # If no explicit trace destination OR we passed the dual exporter check, honor OTLP
     # configuration.
     if should_use_otlp_exporter():
-        from mlflow.environment_variables import MLFLOW_OTLP_EXPORT_FORMAT
         from mlflow.tracing.processor.otel import OtelSpanProcessor
 
         exporter = get_otlp_exporter()
@@ -592,7 +591,6 @@ def _get_span_processors(disabled: bool = False) -> list[SpanProcessor]:
             # duplication.
             export_metrics=should_export_otlp_metrics()
             and not MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT.get(),
-            translate_to_genai_semconv=MLFLOW_OTLP_EXPORT_FORMAT.get() == "genai_semconv",
         )
         processors.append(otel_processor)
 

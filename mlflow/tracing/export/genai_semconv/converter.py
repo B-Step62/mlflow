@@ -55,16 +55,16 @@ class GenAiSemconvConverter(ABC):
             return {}
 
         params: dict[str, Any] = {}
-        if "temperature" in inputs:
-            params[GenAiSemconvKey.REQUEST_TEMPERATURE] = inputs["temperature"]
-        if "max_tokens" in inputs:
-            params[GenAiSemconvKey.REQUEST_MAX_TOKENS] = inputs["max_tokens"]
-        if "top_p" in inputs:
-            params[GenAiSemconvKey.REQUEST_TOP_P] = inputs["top_p"]
-        if "stop" in inputs:
-            params[GenAiSemconvKey.REQUEST_STOP_SEQUENCES] = inputs["stop"]
-        if "tools" in inputs:
-            params[GenAiSemconvKey.TOOL_DEFINITIONS] = json.dumps(inputs["tools"])
+        if (temperature := inputs.get("temperature")) is not None:
+            params[GenAiSemconvKey.REQUEST_TEMPERATURE] = temperature
+        if (max_tokens := inputs.get("max_tokens")) is not None:
+            params[GenAiSemconvKey.REQUEST_MAX_TOKENS] = max_tokens
+        if (top_p := inputs.get("top_p")) is not None:
+            params[GenAiSemconvKey.REQUEST_TOP_P] = top_p
+        if (stop := inputs.get("stop")) is not None:
+            params[GenAiSemconvKey.REQUEST_STOP_SEQUENCES] = stop
+        if (tools := inputs.get("tools")) is not None:
+            params[GenAiSemconvKey.TOOL_DEFINITIONS] = json.dumps(tools)
         return params
 
     def extract_response_attrs(self, outputs: Any) -> dict[str, Any]:
@@ -77,10 +77,10 @@ class GenAiSemconvConverter(ABC):
             return {}
 
         attrs: dict[str, Any] = {}
-        if "id" in outputs:
-            attrs[GenAiSemconvKey.RESPONSE_ID] = outputs["id"]
-        if "model" in outputs:
-            attrs[GenAiSemconvKey.RESPONSE_MODEL] = outputs["model"]
+        if (response_id := outputs.get("id")) is not None:
+            attrs[GenAiSemconvKey.RESPONSE_ID] = response_id
+        if (model := outputs.get("model")) is not None:
+            attrs[GenAiSemconvKey.RESPONSE_MODEL] = model
         return attrs
 
     def translate(self, inputs: Any, outputs: Any) -> dict[str, Any]:

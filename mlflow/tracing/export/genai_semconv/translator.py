@@ -54,28 +54,15 @@ _OPERATION_TO_SPAN_KIND: dict[str, SpanKind] = {
 }
 
 
-def _get_converter(message_format: str | None) -> GenAiSemconvConverter:
+def _get_converter(message_format: str | None) -> GenAiSemconvConverter | None:
     """Get the converter for a given MESSAGE_FORMAT value."""
-    if message_format in ("openai", "groq", "bedrock"):
-        from mlflow.openai.genai_semconv_converter import OpenAiSemconvConverter
+    match message_format:
+        case "openai" | "groq" | "bedrock":
+            from mlflow.openai.genai_semconv_converter import OpenAiSemconvConverter
 
-        return OpenAiSemconvConverter()
-    if message_format == "anthropic":
-        from mlflow.anthropic.genai_semconv_converter import AnthropicSemconvConverter
-
-        return AnthropicSemconvConverter()
-    if message_format == "gemini":
-        from mlflow.gemini.genai_semconv_converter import GeminiSemconvConverter
-
-        return GeminiSemconvConverter()
-    if message_format == "langchain":
-        from mlflow.langchain.genai_semconv_converter import LangChainSemconvConverter
-
-        return LangChainSemconvConverter()
-
-    from mlflow.tracing.export.genai_semconv.default_converter import DefaultSemconvConverter
-
-    return DefaultSemconvConverter()
+            return OpenAiSemconvConverter()
+        case _:
+            return None
 
 
 def translate_span_to_genai(span: ReadableSpan) -> ReadableSpan:
@@ -103,14 +90,14 @@ def translate_span_to_genai(span: ReadableSpan) -> ReadableSpan:
     outputs = _parse_json_attr(original_attrs.get(SpanAttributeKey.OUTPUTS))
 
     if inputs is not None or outputs is not None:
-        converter = _get_converter(message_format)
-        try:
-            genai_attrs.update(converter.translate(inputs, outputs))
-        except Exception:
-            _logger.debug(
-                f"Converter for '{message_format}' failed, skipping message translation",
-                exc_info=True,
-            )
+        if converter := _get_converter(message_format):
+            try:
+                genai_attrs.update(converter.translate(inputs, outputs))
+            except Exception:
+                _logger.debug(
+                    f"Converter for '{message_format}' failed, skipping message translation",
+                    exc_info=True,
+                )
 
     # Merge: Keep non-mlflow.* attrs, add GenAI attrs
     merged_attrs = {k: v for k, v in original_attrs.items() if not k.startswith("mlflow.")}

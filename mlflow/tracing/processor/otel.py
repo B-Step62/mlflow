@@ -5,7 +5,10 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 
 from mlflow.entities.span import create_mlflow_span
 from mlflow.entities.trace_info import TraceInfo, TraceLocation, TraceState
-from mlflow.environment_variables import MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT
+from mlflow.environment_variables import (
+    MLFLOW_OTLP_EXPORT_FORMAT,
+    MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT,
+)
 from mlflow.tracing.constant import TRACE_SCHEMA_VERSION, TRACE_SCHEMA_VERSION_KEY
 from mlflow.tracing.processor.otel_metrics_mixin import OtelMetricsMixin
 from mlflow.tracing.trace_manager import InMemoryTraceManager
@@ -26,11 +29,9 @@ class OtelSpanProcessor(OtelMetricsMixin, BatchSpanProcessor):
         self,
         span_exporter: SpanExporter,
         export_metrics: bool,
-        translate_to_genai_semconv: bool = False,
     ) -> None:
         super().__init__(span_exporter)
         self._export_metrics = export_metrics
-        self._translate_to_genai_semconv = translate_to_genai_semconv
         # In opentelemetry-sdk 1.34.0, the `span_exporter` field was removed from the
         # `BatchSpanProcessor` class.
         # https://github.com/open-telemetry/opentelemetry-python/issues/4616
@@ -71,7 +72,7 @@ class OtelSpanProcessor(OtelMetricsMixin, BatchSpanProcessor):
         if self._should_register_traces and not span.parent:
             self._trace_manager.pop_trace(span.context.trace_id)
 
-        if self._translate_to_genai_semconv:
+        if MLFLOW_OTLP_EXPORT_FORMAT.get() == "genai_semconv":
             span = self._translate_span(span)
 
         super().on_end(span)
