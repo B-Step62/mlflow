@@ -105,48 +105,52 @@ def _convert_part(part: Any) -> dict[str, Any]:
     if not isinstance(part, dict):
         return {"type": "text", "content": str(part)}
 
-    match part:
-        case {"text": str(text)}:
-            return {"type": "text", "content": text}
-        case {"inline_data": {"data": str(data), "mime_type": str(mime_type)}}:
-            result = {
-                "type": "blob",
-                "mime_type": mime_type,
-                "content": data,
-            }
-            if modality := _modality_from_mime_type(mime_type):
-                result["modality"] = modality
-            return result
-        case {"file_data": {"file_uri": str(uri), "mime_type": str(mime_type)}}:
-            result = {
-                "type": "uri",
-                "mime_type": mime_type,
-                "uri": uri,
-            }
-            if modality := _modality_from_mime_type(mime_type):
-                result["modality"] = modality
-            return result
-        case {"function_call": {"name": str(name), "args": dict(args)}}:
-            return {
-                "type": "tool_call",
-                "name": name,
-                "arguments": args,
-            }
-        case {"function_response": {"name": str(name), "response": dict(response)}}:
-            return {
-                "type": "tool_call_response",
-                "name": name,
-                "result": response,
-            }
-        case _:
-            return {"type": "text", "content": json.dumps(part)}
+    if "text" in part:
+        return {"type": "text", "content": part["text"]}
+    elif "inline_data" in part:
+        inline = part["inline_data"]
+        mime_type = inline.get("mime_type", "")
+        result = {
+            "type": "blob",
+            "mime_type": mime_type,
+            "content": inline.get("data", ""),
+        }
+        if modality := _modality_from_mime_type(mime_type):
+            result["modality"] = modality
+        return result
+    elif "file_data" in part:
+        file_data = part["file_data"]
+        mime_type = file_data.get("mime_type", "")
+        result = {
+            "type": "uri",
+            "mime_type": mime_type,
+            "uri": file_data.get("file_uri", ""),
+        }
+        if modality := _modality_from_mime_type(mime_type):
+            result["modality"] = modality
+        return result
+    elif "function_call" in part:
+        fc = part["function_call"]
+        return {
+            "type": "tool_call",
+            "name": fc.get("name", ""),
+            "arguments": fc.get("args", {}),
+        }
+    elif "function_response" in part:
+        fr = part["function_response"]
+        return {
+            "type": "tool_call_response",
+            "name": fr.get("name", ""),
+            "result": fr.get("response", {}),
+        }
+    return {"type": "text", "content": json.dumps(part)}
 
 
 def _modality_from_mime_type(mime_type: str) -> str | None:
     if mime_type.startswith("image/"):
         return "image"
-    if mime_type.startswith("audio/"):
+    elif mime_type.startswith("audio/"):
         return "audio"
-    if mime_type.startswith("video/"):
+    elif mime_type.startswith("video/"):
         return "video"
     return None

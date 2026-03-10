@@ -71,54 +71,54 @@ def _convert_message(msg: dict[str, Any]) -> dict[str, Any]:
 
 
 def _convert_block(block: dict[str, Any]) -> dict[str, Any]:
-    match block:
-        case {"type": "text", "text": str(text)}:
-            return {"type": "text", "content": text}
-        case {"type": "image", "source": {"type": "base64", "media_type": str(mt), "data": str(d)}}:
-            return {
-                "type": "blob",
-                "modality": "image",
-                "mime_type": mt,
-                "content": d,
-            }
-        case {"type": "image", "source": {"type": "url", "url": str(url)}}:
-            return {"type": "uri", "modality": "image", "uri": url}
-        case {"type": "tool_use", "id": str(tid), "name": str(name), "input": input_data}:
+    block_type = block.get("type")
+    match block_type:
+        case "text":
+            return {"type": "text", "content": block.get("text", "")}
+        case "image" | "document":
+            source = block.get("source", {})
+            source_type = source.get("type")
+            if source_type == "base64":
+                return {
+                    "type": "blob",
+                    "modality": block_type,
+                    "mime_type": source.get("media_type", ""),
+                    "content": source.get("data", ""),
+                }
+            if source_type == "url":
+                return {
+                    "type": "uri",
+                    "modality": block_type,
+                    "uri": source.get("url", ""),
+                }
+            return {"type": "text", "content": json.dumps(block)}
+        case "tool_use":
             return {
                 "type": "tool_call",
-                "id": tid,
-                "name": name,
-                "arguments": input_data,
+                "id": block.get("id", ""),
+                "name": block.get("name", ""),
+                "arguments": block.get("input"),
             }
-        case {"type": "tool_result", "tool_use_id": str(tid)}:
-            result = block.get("content", "")
-            return {"type": "tool_call_response", "id": tid, "result": result}
-        case {
-            "type": "document",
-            "source": {"type": "base64", "media_type": str(mt), "data": str(d)},
-        }:
+        case "tool_result":
             return {
-                "type": "blob",
-                "modality": "document",
-                "mime_type": mt,
-                "content": d,
+                "type": "tool_call_response",
+                "id": block.get("tool_use_id", ""),
+                "result": block.get("content", ""),
             }
-        case {"type": "document", "source": {"type": "url", "url": str(url)}}:
-            return {"type": "uri", "modality": "document", "uri": url}
         case _:
             return {"type": "text", "content": json.dumps(block)}
 
 
 def _convert_output_block(block: dict[str, Any]) -> dict[str, Any]:
-    match block:
-        case {"type": "text", "text": str(text)}:
-            return {"type": "text", "content": text}
-        case {"type": "tool_use", "id": str(tid), "name": str(name), "input": input_data}:
+    match block.get("type"):
+        case "text":
+            return {"type": "text", "content": block.get("text", "")}
+        case "tool_use":
             return {
                 "type": "tool_call",
-                "id": tid,
-                "name": name,
-                "arguments": input_data,
+                "id": block.get("id", ""),
+                "name": block.get("name", ""),
+                "arguments": block.get("input"),
             }
         case _:
             return {"type": "text", "content": json.dumps(block)}
