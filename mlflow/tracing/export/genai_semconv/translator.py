@@ -130,6 +130,10 @@ def _get_converter(
             from mlflow.openai.genai_semconv_converter import OpenAIChatCompletionConverter
 
             return OpenAIChatCompletionConverter()
+        case "langchain":
+            from mlflow.langchain.genai_semconv_converter import LangChainConverter
+
+            return LangChainConverter()
         case _:
             from mlflow.openai.genai_semconv_converter import OpenAIChatCompletionConverter
 
