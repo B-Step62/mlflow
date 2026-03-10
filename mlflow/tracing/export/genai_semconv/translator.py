@@ -130,6 +130,14 @@ def _get_converter(
             from mlflow.openai.genai_semconv_converter import OpenAIChatCompletionConverter
 
             return OpenAIChatCompletionConverter()
+        case "anthropic":
+            from mlflow.anthropic.genai_semconv_converter import AnthropicConverter
+
+            return AnthropicConverter()
+        case "gemini":
+            from mlflow.gemini.genai_semconv_converter import GeminiConverter
+
+            return GeminiConverter()
         case _:
             from mlflow.openai.genai_semconv_converter import OpenAIChatCompletionConverter
 
