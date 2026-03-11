@@ -106,8 +106,8 @@ def _convert_part(part: Any) -> dict[str, Any]:
             "mime_type": mime_type,
             "content": inline.get("data", ""),
         }
-        if modality := _modality_from_mime_type(mime_type):
-            result["modality"] = modality
+        if mime_type:
+            result["modality"] = mime_type.split("/")[0]
         return result
     elif file_data := part.get("file_data"):
         mime_type = file_data.get("mime_type", "")
@@ -116,8 +116,8 @@ def _convert_part(part: Any) -> dict[str, Any]:
             "mime_type": mime_type,
             "uri": file_data.get("file_uri", ""),
         }
-        if modality := _modality_from_mime_type(mime_type):
-            result["modality"] = modality
+        if mime_type:
+            result["modality"] = mime_type.split("/")[0]
         return result
     elif fc := part.get("function_call"):
         return {
@@ -134,11 +134,3 @@ def _convert_part(part: Any) -> dict[str, Any]:
     return {"type": "text", "content": json.dumps(part)}
 
 
-def _modality_from_mime_type(mime_type: str) -> str | None:
-    if mime_type.startswith("image/"):
-        return "image"
-    elif mime_type.startswith("audio/"):
-        return "audio"
-    elif mime_type.startswith("video/"):
-        return "video"
-    return None
