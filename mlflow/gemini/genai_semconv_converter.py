@@ -6,7 +6,7 @@ from mlflow.tracing.export.genai_semconv.converter import GenAiSemconvConverter
 
 
 class GeminiConverter(GenAiSemconvConverter):
-    def convert_inputs(self, inputs: dict[str, Any]) -> list[dict] | None:
+    def convert_inputs(self, inputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         contents = inputs.get("contents")
         if contents is None:
             return None
@@ -25,7 +25,7 @@ class GeminiConverter(GenAiSemconvConverter):
 
         return None
 
-    def convert_system_instructions(self, inputs: dict[str, Any]) -> list[dict] | None:
+    def convert_system_instructions(self, inputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         config = inputs.get("config")
         if not isinstance(config, dict):
             return None
@@ -40,7 +40,7 @@ class GeminiConverter(GenAiSemconvConverter):
             return [_convert_part(p) for p in parts]
         return None
 
-    def convert_outputs(self, outputs: dict[str, Any]) -> list[dict] | None:
+    def convert_outputs(self, outputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         candidates = outputs.get("candidates")
         if not isinstance(candidates, list):
             return None
@@ -69,15 +69,9 @@ class GeminiConverter(GenAiSemconvConverter):
         return super().extract_request_params(normalized)
 
     def extract_response_attrs(self, outputs: dict[str, Any]) -> dict[str, Any]:
-        attrs: dict[str, Any] = {}
-        if response_id := outputs.get("id"):
-            attrs[GenAiSemconvKey.RESPONSE_ID] = response_id
-        if model := outputs.get("model"):
-            attrs[GenAiSemconvKey.RESPONSE_MODEL] = model
-        candidates = outputs.get("candidates")
-        if isinstance(candidates, list):
-            reasons = [c.get("finish_reason") for c in candidates if c.get("finish_reason")]
-            if reasons:
+        attrs = super().extract_response_attrs(outputs)
+        if candidates := outputs.get("candidates"):
+            if reasons := [c.get("finish_reason") for c in candidates if c.get("finish_reason")]:
                 attrs[GenAiSemconvKey.RESPONSE_FINISH_REASONS] = reasons
         return attrs
 
@@ -105,9 +99,10 @@ def _convert_part(part: Any) -> dict[str, Any]:
     if not isinstance(part, dict):
         return {"type": "text", "content": str(part)}
 
-    if "text" in part:
+    # Gemini's model_dump() includes all keys with None values, so check value truthiness.
+    if part.get("text") is not None:
         return {"type": "text", "content": part["text"]}
-    elif "inline_data" in part:
+    elif part.get("inline_data"):
         inline = part["inline_data"]
         mime_type = inline.get("mime_type", "")
         result = {
@@ -118,7 +113,7 @@ def _convert_part(part: Any) -> dict[str, Any]:
         if modality := _modality_from_mime_type(mime_type):
             result["modality"] = modality
         return result
-    elif "file_data" in part:
+    elif part.get("file_data"):
         file_data = part["file_data"]
         mime_type = file_data.get("mime_type", "")
         result = {
@@ -129,14 +124,14 @@ def _convert_part(part: Any) -> dict[str, Any]:
         if modality := _modality_from_mime_type(mime_type):
             result["modality"] = modality
         return result
-    elif "function_call" in part:
+    elif part.get("function_call"):
         fc = part["function_call"]
         return {
             "type": "tool_call",
             "name": fc.get("name", ""),
             "arguments": fc.get("args", {}),
         }
-    elif "function_response" in part:
+    elif part.get("function_response"):
         fr = part["function_response"]
         return {
             "type": "tool_call_response",

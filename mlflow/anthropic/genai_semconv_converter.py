@@ -6,13 +6,13 @@ from mlflow.tracing.export.genai_semconv.converter import GenAiSemconvConverter
 
 
 class AnthropicConverter(GenAiSemconvConverter):
-    def convert_inputs(self, inputs: dict[str, Any]) -> list[dict] | None:
+    def convert_inputs(self, inputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         messages = inputs.get("messages")
         if not isinstance(messages, list):
             return None
         return [_convert_message(m) for m in messages]
 
-    def convert_system_instructions(self, inputs: dict[str, Any]) -> list[dict] | None:
+    def convert_system_instructions(self, inputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         system = inputs.get("system")
         if isinstance(system, str):
             return [{"type": "text", "content": system}]
@@ -20,7 +20,7 @@ class AnthropicConverter(GenAiSemconvConverter):
             return [_convert_block(b) for b in system]
         return None
 
-    def convert_outputs(self, outputs: dict[str, Any]) -> list[dict] | None:
+    def convert_outputs(self, outputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         content = outputs.get("content")
         if not isinstance(content, list):
             return None

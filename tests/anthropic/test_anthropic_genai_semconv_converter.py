@@ -1,9 +1,23 @@
 import json
+from unittest.mock import patch
 
+import anthropic
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+import mlflow
 from mlflow.anthropic.genai_semconv_converter import AnthropicConverter
 from mlflow.tracing.constant import GenAiSemconvKey
+from mlflow.tracing.processor.otel import OtelSpanProcessor
+from mlflow.tracing.provider import provider as tracer_provider_wrapper
+
+from tests.anthropic.test_anthropic_autolog import (
+    DUMMY_CREATE_MESSAGE_REQUEST,
+    DUMMY_CREATE_MESSAGE_RESPONSE,
+    DUMMY_CREATE_MESSAGE_WITH_TOOLS_REQUEST,
+    DUMMY_CREATE_MESSAGE_WITH_TOOLS_RESPONSE,
+)
+from tests.tracing.helper import reset_autolog_state  # noqa: F401
 
 
 @pytest.fixture
@@ -249,3 +263,104 @@ def test_extract_response_attrs(converter):
     assert attrs[GenAiSemconvKey.RESPONSE_ID] == "msg_abc"
     assert attrs[GenAiSemconvKey.RESPONSE_MODEL] == "claude-sonnet-4-20250514"
     assert attrs[GenAiSemconvKey.RESPONSE_FINISH_REASONS] == ["end_turn"]
+
+
+# --- Integration tests ---
+
+
+@pytest.fixture
+def genai_semconv_capture(monkeypatch):
+    monkeypatch.setenv("MLFLOW_ENABLE_OTEL_GENAI_SEMCONV", "true")
+    exporter = InMemorySpanExporter()
+    tracer_provider_wrapper.get_or_init_tracer("test")
+    tp = tracer_provider_wrapper.get()
+    processor = OtelSpanProcessor(span_exporter=exporter, export_metrics=False)
+    processor._should_register_traces = False
+    tp.add_span_processor(processor)
+    yield exporter, processor
+    processor.force_flush(timeout_millis=5000)
+    processor.shutdown()
+
+
+def _get_chat_span(exporter, processor):
+    processor.force_flush(timeout_millis=5000)
+    spans = exporter.get_finished_spans()
+    return next(s for s in spans if s.attributes.get("gen_ai.operation.name") == "chat")
+
+
+@pytest.mark.usefixtures("reset_autolog_state")
+def test_autolog_basic(genai_semconv_capture):
+    exporter, processor = genai_semconv_capture
+
+    mlflow.anthropic.autolog()
+    with patch(
+        "anthropic._base_client.SyncAPIClient.post",
+        return_value=DUMMY_CREATE_MESSAGE_RESPONSE,
+    ) as mock_post:
+        client = anthropic.Anthropic(api_key="test_key")
+        client.messages.create(**DUMMY_CREATE_MESSAGE_REQUEST)
+        mock_post.assert_called_once()
+
+    chat_span = _get_chat_span(exporter, processor)
+    assert chat_span.attributes["gen_ai.operation.name"] == "chat"
+    assert chat_span.attributes["gen_ai.request.model"] == "test_model"
+
+    input_msgs = json.loads(chat_span.attributes["gen_ai.input.messages"])
+    assert input_msgs[0]["role"] == "user"
+    assert input_msgs[0]["parts"][0]["type"] == "text"
+    assert input_msgs[0]["parts"][0]["content"] == "test message"
+
+    output_msgs = json.loads(chat_span.attributes["gen_ai.output.messages"])
+    assert len(output_msgs) == 1
+    assert output_msgs[0]["role"] == "assistant"
+    assert output_msgs[0]["parts"][0]["content"] == "test answer"
+    assert output_msgs[0]["finish_reason"] == "end_turn"
+
+    assert chat_span.attributes["gen_ai.response.model"] == "test_model"
+    assert chat_span.attributes["gen_ai.response.id"] == "test_id"
+    assert list(chat_span.attributes["gen_ai.response.finish_reasons"]) == ["end_turn"]
+    assert not any(k.startswith("mlflow.") for k in chat_span.attributes)
+
+
+@pytest.mark.usefixtures("reset_autolog_state")
+def test_autolog_with_tool_calls(genai_semconv_capture):
+    exporter, processor = genai_semconv_capture
+
+    mlflow.anthropic.autolog()
+    with patch(
+        "anthropic._base_client.SyncAPIClient.post",
+        return_value=DUMMY_CREATE_MESSAGE_WITH_TOOLS_RESPONSE,
+    ) as mock_post:
+        client = anthropic.Anthropic(api_key="test_key")
+        client.messages.create(**DUMMY_CREATE_MESSAGE_WITH_TOOLS_REQUEST)
+        mock_post.assert_called_once()
+
+    chat_span = _get_chat_span(exporter, processor)
+    assert chat_span.attributes["gen_ai.operation.name"] == "chat"
+    assert chat_span.attributes["gen_ai.request.model"] == "test_model"
+
+    input_msgs = json.loads(chat_span.attributes["gen_ai.input.messages"])
+    assert input_msgs[0]["role"] == "user"
+    assert input_msgs[0]["parts"][0]["content"] == "What's the weather like in San Francisco?"
+    # Assistant message with tool call
+    assert input_msgs[1]["role"] == "assistant"
+    assert input_msgs[1]["parts"][1]["type"] == "tool_call"
+    assert input_msgs[1]["parts"][1]["name"] == "get_unit"
+    # Tool result
+    assert input_msgs[2]["role"] == "tool"
+    assert input_msgs[2]["parts"][0]["type"] == "tool_call_response"
+
+    output_msgs = json.loads(chat_span.attributes["gen_ai.output.messages"])
+    assert len(output_msgs) == 1
+    assert output_msgs[0]["role"] == "assistant"
+    # Output contains a tool call
+    tool_part = next(p for p in output_msgs[0]["parts"] if p["type"] == "tool_call")
+    assert tool_part["name"] == "get_weather"
+
+    tool_defs = json.loads(chat_span.attributes["gen_ai.tool.definitions"])
+    assert tool_defs[0]["name"] == "get_unit"
+    assert tool_defs[1]["name"] == "get_weather"
+
+    assert chat_span.attributes["gen_ai.response.model"] == "test_model"
+    assert list(chat_span.attributes["gen_ai.response.finish_reasons"]) == ["end_turn"]
+    assert not any(k.startswith("mlflow.") for k in chat_span.attributes)
