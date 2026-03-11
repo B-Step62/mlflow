@@ -48,7 +48,7 @@ class GeminiConverter(GenAiSemconvConverter):
         for candidate in candidates:
             content = candidate.get("content", {})
             parts_list = content.get("parts", [])
-            role = _map_role(content.get("role", "model"))
+            role = content.get("role", "model").replace("model", "assistant")
             parts = [_convert_part(p) for p in parts_list]
             msg = {"role": role, "parts": parts}
             if finish_reason := candidate.get("finish_reason"):
@@ -66,7 +66,11 @@ class GeminiConverter(GenAiSemconvConverter):
             normalized["max_tokens"] = normalized.pop("max_output_tokens")
         if "stop_sequences" in normalized:
             normalized["stop"] = normalized.pop("stop_sequences")
-        return super().extract_request_params(normalized)
+        params = super().extract_request_params(normalized)
+        # Tools are set separately via set_span_chat_tools → mlflow.chat.tools,
+        # so remove the raw (non-serializable) tool references from params.
+        params.pop(GenAiSemconvKey.TOOL_DEFINITIONS, None)
+        return params
 
     def extract_response_attrs(self, outputs: dict[str, Any]) -> dict[str, Any]:
         attrs = super().extract_response_attrs(outputs)
@@ -76,14 +80,8 @@ class GeminiConverter(GenAiSemconvConverter):
         return attrs
 
 
-def _map_role(role: str) -> str:
-    if role == "model":
-        return "assistant"
-    return role
-
-
 def _convert_content_dict(content: dict[str, Any]) -> dict[str, Any]:
-    role = _map_role(content.get("role", "user"))
+    role = content.get("role", "user").replace("model", "assistant")
     parts = [_convert_part(p) for p in content.get("parts", [])]
 
     # function_response parts → role "tool"
@@ -99,11 +97,9 @@ def _convert_part(part: Any) -> dict[str, Any]:
     if not isinstance(part, dict):
         return {"type": "text", "content": str(part)}
 
-    # Gemini's model_dump() includes all keys with None values, so check value truthiness.
-    if part.get("text") is not None:
-        return {"type": "text", "content": part["text"]}
-    elif part.get("inline_data"):
-        inline = part["inline_data"]
+    if (text := part.get("text")) is not None:
+        return {"type": "text", "content": text}
+    elif inline := part.get("inline_data"):
         mime_type = inline.get("mime_type", "")
         result = {
             "type": "blob",
@@ -113,8 +109,7 @@ def _convert_part(part: Any) -> dict[str, Any]:
         if modality := _modality_from_mime_type(mime_type):
             result["modality"] = modality
         return result
-    elif part.get("file_data"):
-        file_data = part["file_data"]
+    elif file_data := part.get("file_data"):
         mime_type = file_data.get("mime_type", "")
         result = {
             "type": "uri",
@@ -124,15 +119,13 @@ def _convert_part(part: Any) -> dict[str, Any]:
         if modality := _modality_from_mime_type(mime_type):
             result["modality"] = modality
         return result
-    elif part.get("function_call"):
-        fc = part["function_call"]
+    elif fc := part.get("function_call"):
         return {
             "type": "tool_call",
             "name": fc.get("name", ""),
             "arguments": fc.get("args", {}),
         }
-    elif part.get("function_response"):
-        fr = part["function_response"]
+    elif fr := part.get("function_response"):
         return {
             "type": "tool_call_response",
             "name": fr.get("name", ""),
