@@ -5,53 +5,56 @@ import { FormattedMessage } from '@databricks/i18n';
 
 import type { ModelTrace, ModelTraceChatMessage } from '../ModelTrace.types';
 import { parseModelTraceToTree, createListFromObject } from '../ModelTraceExplorer.utils';
+import { normalizeLangchainChatInput } from '../chat-utils/langchain';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerSummarySection } from '../summary-view/ModelTraceExplorerSummarySection';
-
-const QUERY_FIELD_NAMES = ['query', 'input', 'message', 'question', 'prompt', 'content'];
 
 /**
  * When standard chat message parsing fails, try to extract a simple
  * user/assistant pair from raw inputs/outputs. This handles frameworks
- * like LangGraph where inputs contain `{ query: "...", thread: {...} }`
- * and outputs are a plain string.
+ * like LangGraph where both inputs and outputs contain a `messages` key
+ * with LangChain-style message objects (e.g. `{ messages: [{ type: "human", content: "..." }] }`).
  */
 export function extractSimpleChatMessages(
   inputs: Record<string, unknown> | string | undefined | null,
   outputs: Record<string, unknown> | string | undefined | null,
 ): ModelTraceChatMessage[] | null {
-  // The assistant response must be a plain string
-  if (typeof outputs !== 'string' || !outputs) {
-    return null;
-  }
-
-  let userContent: string | undefined;
-
-  if (typeof inputs === 'string' && inputs) {
-    userContent = inputs;
-  } else if (inputs && typeof inputs === 'object') {
-    const hasMessages =
-      'messages' in inputs ||
-      Object.values(inputs).some((v) => v && typeof v === 'object' && !Array.isArray(v) && 'messages' in v);
-    if (!hasMessages) {
+  // Try to parse LangGraph/LangChain messages format from inputs
+  const inputMessages = inputs ? normalizeLangchainChatInput(inputs) : null;
+  if (inputMessages && inputMessages.length > 0) {
+    const lastUser = inputMessages.findLast((m) => m.role === 'user');
+    if (!lastUser) {
       return null;
     }
-    for (const field of QUERY_FIELD_NAMES) {
-      if (typeof inputs[field] === 'string' && inputs[field]) {
-        userContent = inputs[field];
-        break;
+
+    // Try to get the assistant response from outputs messages
+    const outputMessages = outputs ? normalizeLangchainChatInput(outputs) : null;
+    if (outputMessages && outputMessages.length > 0) {
+      const lastAssistant = outputMessages.findLast(
+        (m) => m.role === 'assistant' && m.content && !m.tool_calls?.length,
+      );
+      if (lastAssistant) {
+        return [lastUser, lastAssistant];
       }
     }
-  }
 
-  if (!userContent) {
+    // Fall back to string output
+    if (typeof outputs === 'string' && outputs) {
+      return [lastUser, { role: 'assistant', content: outputs }];
+    }
+
     return null;
   }
 
-  return [
-    { role: 'user', content: userContent },
-    { role: 'assistant', content: outputs },
-  ];
+  // Simple string input/output fallback
+  if (typeof inputs === 'string' && inputs && typeof outputs === 'string' && outputs) {
+    return [
+      { role: 'user', content: inputs },
+      { role: 'assistant', content: outputs },
+    ];
+  }
+
+  return null;
 }
 
 export const PREFERRED_INPUT_KEYS = ['messages', 'input', 'inputs'];

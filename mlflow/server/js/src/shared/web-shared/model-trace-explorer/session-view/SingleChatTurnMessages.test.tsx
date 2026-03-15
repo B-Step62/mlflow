@@ -50,14 +50,62 @@ const createTrace = (span: ModelTraceSpanV3): ModelTrace => ({
 });
 
 describe('extractSimpleChatMessages', () => {
-  it('extracts messages from object input with query field and string output', () => {
+  it('extracts user/assistant from LangGraph messages format', () => {
     const result = extractSimpleChatMessages(
-      { query: 'What is MLflow?', thread: { messages: ['old msg 1', 'old msg 2'] } },
-      'MLflow is an open-source platform.',
+      {
+        messages: [
+          { type: 'system', content: 'You are helpful.' },
+          { type: 'human', content: 'What is MLflow?' },
+        ],
+      },
+      {
+        messages: [
+          { type: 'system', content: 'You are helpful.' },
+          { type: 'human', content: 'What is MLflow?' },
+          { type: 'ai', content: 'MLflow is an open-source platform.' },
+        ],
+      },
     );
     expect(result).toEqual([
       { role: 'user', content: 'What is MLflow?' },
       { role: 'assistant', content: 'MLflow is an open-source platform.' },
+    ]);
+  });
+
+  it('skips intermediate tool-calling assistant messages in outputs', () => {
+    const result = extractSimpleChatMessages(
+      {
+        messages: [{ type: 'human', content: 'What is RLM?' }],
+      },
+      {
+        messages: [
+          { type: 'human', content: 'What is RLM?' },
+          {
+            type: 'ai',
+            content: '',
+            tool_calls: [{ name: 'web_search', args: { query: 'RLM' }, id: 'call_1' }],
+          },
+          { type: 'tool', content: 'Search results...', tool_call_id: 'call_1' },
+          { type: 'ai', content: 'RLM stands for Recursive Language Models.' },
+        ],
+      },
+    );
+    expect(result).toEqual([
+      { role: 'user', content: 'What is RLM?' },
+      { role: 'assistant', content: 'RLM stands for Recursive Language Models.' },
+    ]);
+  });
+
+  it('handles LangGraph input messages with string output fallback', () => {
+    const result = extractSimpleChatMessages(
+      {
+        messages: [{ type: 'human', content: 'Hello' }],
+      },
+      'Hi! How can I help?',
+    );
+    expect(result).toEqual([
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi! How can I help?' },
     ]);
   });
 
@@ -69,50 +117,53 @@ describe('extractSimpleChatMessages', () => {
     ]);
   });
 
-  it('returns null when output is not a string', () => {
-    expect(extractSimpleChatMessages({ query: 'test', messages: [] }, { result: 'object output' })).toBeNull();
+  it('returns null when outputs have no assistant message', () => {
+    expect(
+      extractSimpleChatMessages(
+        { messages: [{ type: 'human', content: 'test' }] },
+        { messages: [{ type: 'human', content: 'test' }] },
+      ),
+    ).toBeNull();
   });
 
-  it('returns null when output is empty string', () => {
-    expect(extractSimpleChatMessages({ query: 'test', messages: [] }, '')).toBeNull();
-  });
-
-  it('returns null when object input has no messages key', () => {
-    expect(extractSimpleChatMessages({ query: 'test', config: {} }, 'response')).toBeNull();
-  });
-
-  it('returns null when no recognizable query field in inputs', () => {
-    expect(extractSimpleChatMessages({ thread: { messages: [] }, config: {} }, 'response')).toBeNull();
+  it('returns null when inputs have no user message', () => {
+    expect(
+      extractSimpleChatMessages(
+        { messages: [{ type: 'system', content: 'You are helpful.' }] },
+        { messages: [{ type: 'ai', content: 'response' }] },
+      ),
+    ).toBeNull();
   });
 
   it('returns null when inputs is null', () => {
     expect(extractSimpleChatMessages(null, 'response')).toBeNull();
   });
 
-  it('recognizes all supported query field names', () => {
-    for (const field of ['query', 'input', 'message', 'question', 'prompt', 'content']) {
-      const result = extractSimpleChatMessages({ [field]: 'user text', messages: [] }, 'assistant text');
-      expect(result).toEqual([
-        { role: 'user', content: 'user text' },
-        { role: 'assistant', content: 'assistant text' },
-      ]);
-    }
+  it('returns null when inputs is non-messages object and output is non-string', () => {
+    expect(extractSimpleChatMessages({ config: {} }, { result: 'object output' })).toBeNull();
   });
 
-  it('picks the first matching field by priority order', () => {
-    const result = extractSimpleChatMessages({ query: 'from query', input: 'from input', messages: [] }, 'response');
-    expect(result).toEqual([
-      { role: 'user', content: 'from query' },
-      { role: 'assistant', content: 'response' },
-    ]);
+  it('returns null when string input but non-string output', () => {
+    expect(extractSimpleChatMessages('hello', { result: 'object' })).toBeNull();
   });
 });
 
 describe('SingleChatTurnMessages', () => {
-  it('renders chat bubbles for LangGraph-style inputs with string output', () => {
+  it('renders chat bubbles for LangGraph-style messages format', () => {
     const span = createSpan(
-      { query: 'What is MLflow?', thread: { messages: ['old'] } },
-      'MLflow is an open-source platform.',
+      {
+        messages: [
+          { type: 'system', content: 'You are helpful.' },
+          { type: 'human', content: 'What is MLflow?' },
+        ],
+      },
+      {
+        messages: [
+          { type: 'system', content: 'You are helpful.' },
+          { type: 'human', content: 'What is MLflow?' },
+          { type: 'ai', content: 'MLflow is an open-source platform.' },
+        ],
+      },
     );
 
     render(
@@ -123,19 +174,6 @@ describe('SingleChatTurnMessages', () => {
 
     expect(screen.getByText('What is MLflow?')).toBeInTheDocument();
     expect(screen.getByText('MLflow is an open-source platform.')).toBeInTheDocument();
-  });
-
-  it('renders chat bubbles for simple string input field and string output', () => {
-    const span = createSpan({ input: 'Tell me about tracing', messages: [] }, 'Tracing helps you debug.');
-
-    render(
-      <TestWrapper>
-        <SingleChatTurnMessages trace={createTrace(span)} />
-      </TestWrapper>,
-    );
-
-    expect(screen.getByText('Tell me about tracing')).toBeInTheDocument();
-    expect(screen.getByText('Tracing helps you debug.')).toBeInTheDocument();
   });
 
   it('uses existing chatMessages path when available', () => {
@@ -158,21 +196,8 @@ describe('SingleChatTurnMessages', () => {
     expect(screen.queryByText('should not appear')).not.toBeInTheDocument();
   });
 
-  it('falls through to raw display when output is an object', () => {
-    const span = createSpan({ query: 'test query' }, { result: 'structured output' });
-
-    render(
-      <TestWrapper>
-        <SingleChatTurnMessages trace={createTrace(span)} />
-      </TestWrapper>,
-    );
-
-    expect(screen.getByText('Inputs')).toBeInTheDocument();
-    expect(screen.getByText('Outputs')).toBeInTheDocument();
-  });
-
-  it('falls through to raw display when no recognizable query field exists', () => {
-    const span = createSpan({ thread: { messages: [] }, config: { model: 'gpt-4' } }, 'some response');
+  it('falls through to raw display when no messages format is detected', () => {
+    const span = createSpan({ config: { model: 'gpt-4' } }, { result: 'structured output' });
 
     render(
       <TestWrapper>
