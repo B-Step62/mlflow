@@ -84,7 +84,8 @@ export const EXPERIMENT_PAGE_FEEDBACK_URL = 'https://github.com/mlflow/mlflow/is
 export const MLFLOW_RUN_TYPE_TAG = 'mlflow.runType';
 export const MLFLOW_RUN_COLOR_TAG = 'mlflow.runColor';
 export const MLFLOW_RUN_SOURCE_TYPE_TAG = 'mlflow.runSourceType';
-export const MLFLOW_RUN_TYPE_VALUE_EVALUATION = 'genai_evaluate';
+export const MLFLOW_RUN_TYPE_VALUE_EVALUATION = 'evaluation';
+export const MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE = 'genai_evaluate';
 export const MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION = 'issue_detection';
 export const MLFLOW_ISSUE_DETECTION_JOB_ID_TAG = 'mlflow.issueDetection.jobId';
 

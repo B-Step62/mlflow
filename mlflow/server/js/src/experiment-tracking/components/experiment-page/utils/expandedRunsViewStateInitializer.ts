@@ -16,10 +16,7 @@ export const expandedEvaluationRunRowsUIStateInitializer = (
   }
 
   const evaluationRunIds = runsData.runInfos
-    .filter((run, index) => {
-      const runType = runsData.tagsList[index]?.[MLFLOW_RUN_TYPE_TAG]?.value;
-      return runType === MLFLOW_RUN_TYPE_VALUE_EVALUATION || runType === 'evaluation';
-    })
+    .filter((run, index) => runsData.tagsList[index]?.[MLFLOW_RUN_TYPE_TAG]?.value === MLFLOW_RUN_TYPE_VALUE_EVALUATION)
     .map(({ runUuid }) => runUuid);
 
   const parentIdsOfEvaluationRunIds = compact(
