@@ -5720,6 +5720,7 @@ def get_endpoints(get_handler=get_handler):
         ]
         + get_gateway_endpoints()
         + get_demo_endpoints()
+        + get_genai_endpoints()
         + get_issues_detection_endpoints()
         + get_job_endpoints()
     )
@@ -5751,6 +5752,68 @@ def get_gateway_endpoints():
         (
             _get_ajax_path("/mlflow/scorer/invoke", version=3),
             _invoke_scorer_handler,
+            ["POST"],
+        ),
+    ]
+
+
+@catch_mlflow_exception
+@_disable_if_artifacts_only
+def _generate_scenarios_handler():
+    """Generate additional test case scenarios via LLM and upsert into a dataset."""
+    import json as json_module
+
+    from mlflow.genai.bug_finder import _AgentDescription, _generate_test_cases
+
+    _validate_content_type(request, ["application/json"])
+
+    request_json = _get_validated_flask_request_json(
+        schema={
+            "dataset_id": [_assert_required, _assert_string],
+            "agent_description": [_assert_required, _assert_string],
+            "model": [_assert_required, _assert_string],
+            "testing_guidance": [_assert_required, _assert_string],
+        }
+    )
+
+    agent_desc = _AgentDescription.model_validate(
+        json_module.loads(request_json["agent_description"])
+    )
+
+    test_cases = _generate_test_cases(
+        agent_desc=agent_desc,
+        model=request_json["model"],
+        testing_guidance=request_json["testing_guidance"],
+    )
+
+    records = []
+    for tc in test_cases:
+        guidelines = tc.get("simulation_guidelines", [])
+        if isinstance(guidelines, list):
+            guidelines = "; ".join(guidelines)
+        records.append(
+            {
+                "inputs": {
+                    "goal": tc.get("goal", ""),
+                    "persona": tc.get("persona", ""),
+                    "simulation_guidelines": guidelines,
+                }
+            }
+        )
+
+    _get_tracking_store().upsert_dataset_records(
+        dataset_id=request_json["dataset_id"],
+        records=records,
+    )
+
+    return jsonify({"generated_count": len(test_cases)})
+
+
+def get_genai_endpoints():
+    return [
+        (
+            _get_ajax_path("/mlflow/genai/generate-scenarios", version=3),
+            _generate_scenarios_handler,
             ["POST"],
         ),
     ]

@@ -87,6 +87,9 @@ export const MLFLOW_RUN_SOURCE_TYPE_TAG = 'mlflow.runSourceType';
 export const MLFLOW_RUN_TYPE_VALUE_EVALUATION = 'evaluation';
 export const MLFLOW_RUN_IS_ISSUE_DETECTION_TAG = 'mlflow.run.isIssueDetection';
 export const MLFLOW_ISSUE_DETECTION_JOB_ID_TAG = 'mlflow.issueDetection.jobId';
+export const MLFLOW_FIND_BUGS_DATASET_ID_TAG = 'mlflow.findBugs.datasetId';
+export const MLFLOW_FIND_BUGS_AGENT_DESCRIPTION_TAG = 'mlflow.findBugs.agentDescription';
+export const MLFLOW_FIND_BUGS_MODEL_TAG = 'mlflow.findBugs.model';
 
 export const MLFLOW_RUN_GIT_SOURCE_BRANCH_TAG = 'mlflow.source.git.branch';
 export const MLFLOW_PROMPT_VERSION_COUNT_TAG = 'PromptVersionCount';
@@ -103,6 +106,7 @@ export enum RunPageTabName {
   OVERVIEW = 'overview',
   TRACES = 'traces',
   ISSUES = 'issues',
+  SCENARIOS = 'scenarios',
   MODEL_METRIC_CHARTS = 'model-metrics',
   SYSTEM_METRIC_CHARTS = 'system-metrics',
   ARTIFACTS = 'artifacts',

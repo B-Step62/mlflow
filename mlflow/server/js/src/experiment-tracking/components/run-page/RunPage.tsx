@@ -18,6 +18,7 @@ import { RenameRunModal } from '../modals/RenameRunModal';
 import { RunViewArtifactTab } from './RunViewArtifactTab';
 import { RunViewHeader, type RunViewHeaderProps } from './RunViewHeader';
 import { RunViewIssuesTab } from './RunViewIssuesTab';
+import { RunViewScenariosTab } from './RunViewScenariosTab';
 import { RunViewOverview } from './RunViewOverview';
 import { useRunDetailsPageData } from './hooks/useRunDetailsPageData';
 import { useRunViewActiveTab } from './useRunViewActiveTab';
@@ -210,6 +211,15 @@ export const RunPage = (props: RunPageProps) => {
         return renderEvaluationTab();
       case RunPageTabName.ISSUES:
         return <RunViewIssuesTab runUuid={safeRunUuid} experimentId={safeExperimentId} />;
+      case RunPageTabName.SCENARIOS:
+        return (
+          <RunViewScenariosTab
+            runUuid={safeRunUuid}
+            experimentId={safeExperimentId}
+            tags={tags}
+            onTagUpdated={refetchRun}
+          />
+        );
     }
 
     if (renderCustomOverview) {

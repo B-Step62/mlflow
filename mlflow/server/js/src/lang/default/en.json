@@ -467,6 +467,10 @@
     "defaultMessage": "X-axis:",
     "description": "Label text for x-axis in scatter plot comparison in MLflow"
   },
+  "11nwne": {
+    "defaultMessage": "Regenerate Scenarios",
+    "description": "Run page > Scenarios tab > regenerate modal title"
+  },
   "128VYg": {
     "defaultMessage": "User",
     "description": "Label for the user id section"
@@ -754,6 +758,10 @@
     "defaultMessage": "Input",
     "description": "Evaluation review > evaluations list > input sort option label prefix"
   },
+  "2qQcCF": {
+    "defaultMessage": "Cancel",
+    "description": "Run page > Scenarios tab > regenerate modal cancel button"
+  },
   "2tQXw0": {
     "defaultMessage": "Key name cannot be changed.",
     "description": "Tooltip explaining why key name field is disabled"
@@ -796,6 +804,10 @@
   "3Rb4sG": {
     "defaultMessage": "Delete",
     "description": "String for the delete button to delete a particular experiment run"
+  },
+  "3RqAdy": {
+    "defaultMessage": "Goal",
+    "description": "Run page > Scenarios tab > table header > goal"
   },
   "3S3Ah4": {
     "defaultMessage": "Download data",
@@ -1465,6 +1477,10 @@
     "defaultMessage": "Delete runs",
     "description": "Delete evaluation runs action"
   },
+  "7wOd9U": {
+    "defaultMessage": "Scenarios confirmed — sent to simulation.",
+    "description": "Run page > Scenarios tab > confirmed status"
+  },
   "7x6xu8": {
     "defaultMessage": "Create prompt",
     "description": "Label for the create prompt button on the registered prompts page"
@@ -1536,6 +1552,10 @@
   "8I9ipd": {
     "defaultMessage": "The provided value is not valid JSON",
     "description": "Error message for invalid JSON in an assessment edit form"
+  },
+  "8TD1hH": {
+    "defaultMessage": "Generate additional scenarios based on your instructions. Existing scenarios (not deleted) will be preserved.",
+    "description": "Run page > Scenarios tab > regenerate modal description"
   },
   "8Uwpjw": {
     "defaultMessage": "Create run",
@@ -2235,6 +2255,10 @@
   "CUKIO0": {
     "defaultMessage": "The \"{alias}\" alias is also being used on version {otherVersion}. Adding it to this version will remove it from version {otherVersion}.",
     "description": "Alias editor > Warning about reusing alias from the other version"
+  },
+  "CWQ27C": {
+    "defaultMessage": "Guidelines",
+    "description": "Run page > Scenarios tab > table header > guidelines"
   },
   "CX/MSu": {
     "defaultMessage": "Unsafe",
@@ -3169,6 +3193,10 @@
   "JPd7WA": {
     "defaultMessage": "Key must be unique",
     "description": "Error message for unique key in trace tag assignment modal"
+  },
+  "JS/Inj": {
+    "defaultMessage": "Regenerate with instruction",
+    "description": "Run page > Scenarios tab > regenerate button"
   },
   "JUTcIz": {
     "defaultMessage": "Time created",
@@ -4212,6 +4240,10 @@
     "defaultMessage": "No experiments found",
     "description": "Label for the empty state in the experiments table when no experiments are found"
   },
+  "QT5vm7": {
+    "defaultMessage": "e.g., Make personas more technical",
+    "description": "Run page > Scenarios tab > regenerate modal > instructions placeholder"
+  },
   "QUMV9L": {
     "defaultMessage": "On",
     "description": "Runs charts > line chart > display points > on setting label"
@@ -4480,6 +4512,10 @@
     "defaultMessage": "Description",
     "description": "Row heading in a table that contains the description of a function parameter."
   },
+  "SMSnzw": {
+    "defaultMessage": "Additional instructions",
+    "description": "Run page > Scenarios tab > regenerate modal > instructions label"
+  },
   "SMVe/s": {
     "defaultMessage": "Save Changes",
     "description": "Save changes button text"
@@ -4487,6 +4523,10 @@
   "SNvZyR": {
     "defaultMessage": "Time",
     "description": "Label for the time axis on the runs compare chart"
+  },
+  "SOHd2+": {
+    "defaultMessage": "Persona",
+    "description": "Run page > Scenarios tab > table header > persona"
   },
   "SQUVnW": {
     "defaultMessage": "Dataset",
@@ -4914,6 +4954,10 @@
   "V5cjvM": {
     "defaultMessage": "Copy your MLflow models to another registered model for simple model promotion across environments. For more mature production-grade setups, we recommend setting up automated model training workflows to produce models in controlled environments. <link>Learn more</link>",
     "description": "Model registry > OSS Promote model modal > description paragraph body"
+  },
+  "V6iU2V": {
+    "defaultMessage": "No scenarios available for this run.",
+    "description": "Run page > Scenarios tab > empty state description"
   },
   "V9FtFz": {
     "defaultMessage": "Use the parallel coordinates chart to compare how various parameters in model affect your model metrics.",
@@ -5393,6 +5437,10 @@
   "Y9ZFyN": {
     "defaultMessage": "Download artifact",
     "description": "Link to download the artifact of the experiment"
+  },
+  "YDLaR4": {
+    "defaultMessage": "e.g., edge cases, multi-step workflows",
+    "description": "Run page > Scenarios tab > regenerate modal > topics placeholder"
   },
   "YECxws": {
     "defaultMessage": "Compare",
@@ -5888,6 +5936,10 @@
   "bCdY2j": {
     "defaultMessage": "Add \"{label}\"",
     "description": "Evaluation review > assessments > add new custom value element"
+  },
+  "bGE+Kx": {
+    "defaultMessage": "Topics to focus",
+    "description": "Run page > Scenarios tab > regenerate modal > topics label"
   },
   "bHuphj": {
     "defaultMessage": "See the documents below to learn how to customize this model and deploy it for batch or real-time scoring using the pyfunc model flavor.",
@@ -6473,6 +6525,10 @@
     "defaultMessage": "Created:",
     "description": "Label for created date"
   },
+  "evbBKB": {
+    "defaultMessage": "Waiting for review",
+    "description": "Run page > Scenarios tab > pending review status"
+  },
   "ew8ReB": {
     "defaultMessage": "Max Input Tokens",
     "description": "Table header for max input tokens"
@@ -6500,6 +6556,10 @@
   "f4CfIz": {
     "defaultMessage": "(edited)",
     "description": "Link text in an edited assessment that allows the user to click to see the previous value"
+  },
+  "f5wtkx": {
+    "defaultMessage": "No scenarios available",
+    "description": "Run page > Scenarios tab > empty state title"
   },
   "fBB0xR": {
     "defaultMessage": "Assistant Not Available",
@@ -8527,6 +8587,10 @@
     "defaultMessage": "Download as PNG",
     "description": "Experiment page > compare runs tab > chart header > download as PNG option"
   },
+  "s7Mj27": {
+    "defaultMessage": "Confirm & Run",
+    "description": "Run page > Scenarios tab > confirm button"
+  },
   "s8a93+": {
     "defaultMessage": "Traces",
     "description": "Run details page > tab selector > Traces tab"
@@ -8558,6 +8622,10 @@
   "sGXhV4": {
     "defaultMessage": "Welcome to MLflow",
     "description": "Home page hero title"
+  },
+  "sHc65C": {
+    "defaultMessage": "Scenarios",
+    "description": "Run details page > tab selector > scenarios tab"
   },
   "sIC5K3": {
     "defaultMessage": "Time (relative)",
@@ -8654,6 +8722,10 @@
   "sxlGRc": {
     "defaultMessage": "Inputs ({numInputs})",
     "description": "Input section header for schema table in model version page"
+  },
+  "sy3UMo": {
+    "defaultMessage": "Generate",
+    "description": "Run page > Scenarios tab > regenerate modal ok button"
   },
   "syQ4eZ": {
     "defaultMessage": "Are the tool calls and their arguments correct for the request?",

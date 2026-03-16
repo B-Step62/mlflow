@@ -41,6 +41,12 @@ MLFLOW_RUN_IS_EVALUATION = "mlflow.run.isEval"
 MLFLOW_RUN_IS_ISSUE_DETECTION = "mlflow.run.isIssueDetection"
 # The ID of the job that is running issue detection
 MLFLOW_ISSUE_DETECTION_JOB_ID = "mlflow.issueDetection.jobId"
+# The dataset ID used by find_bugs() for test case review
+MLFLOW_FIND_BUGS_DATASET_ID = "mlflow.findBugs.datasetId"
+# The agent description JSON used by find_bugs() for scenario regeneration
+MLFLOW_FIND_BUGS_AGENT_DESCRIPTION = "mlflow.findBugs.agentDescription"
+# The model used by find_bugs() for scenario generation
+MLFLOW_FIND_BUGS_MODEL = "mlflow.findBugs.model"
 
 MLFLOW_DATABRICKS_NOTEBOOK_ID = "mlflow.databricks.notebookID"
 MLFLOW_DATABRICKS_NOTEBOOK_PATH = "mlflow.databricks.notebookPath"

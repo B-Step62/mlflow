@@ -23,6 +23,9 @@ export const useRunViewActiveTab = (): RunPageTabName => {
   if (tabParam === 'issues') {
     return RunPageTabName.ISSUES;
   }
+  if (tabParam === 'scenarios') {
+    return RunPageTabName.SCENARIOS;
+  }
   if (tabParam?.match(/^(artifactPath|artifacts)/)) {
     return RunPageTabName.ARTIFACTS;
   }

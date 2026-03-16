@@ -45,6 +45,9 @@ const TAB_LABELS: Record<RunPageTabName, ReactNode> = {
   [RunPageTabName.ISSUES]: (
     <FormattedMessage defaultMessage="Issues" description="Run details page > tab selector > issues tab" />
   ),
+  [RunPageTabName.SCENARIOS]: (
+    <FormattedMessage defaultMessage="Scenarios" description="Run details page > tab selector > scenarios tab" />
+  ),
   [RunPageTabName.ARTIFACTS]: (
     <FormattedMessage defaultMessage="Artifacts" description="Run details page > tab selector > artifacts tab" />
   ),
