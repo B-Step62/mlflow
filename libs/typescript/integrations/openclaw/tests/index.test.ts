@@ -2,19 +2,18 @@
  * Tests for MLflow OpenClaw integration
  */
 
-import { MLflowTracingPlugin } from '../src';
-import type {
-  PluginContext,
-  ServiceHooks,
-  LlmInputEvent,
-  LlmOutputEvent,
-  ToolStartEvent,
-  ToolEndEvent,
-  SubagentSpawningEvent,
-  SubagentEndedEvent,
-  ModelUsageEvent,
-  AgentEndEvent,
-} from 'openclaw/plugin';
+import type { DiagnosticEventPayload } from 'openclaw/plugin-sdk';
+
+// Capture the diagnostic event handler registered by the service
+let diagnosticHandler: ((evt: DiagnosticEventPayload) => void) | null = null;
+
+jest.mock('openclaw/plugin-sdk', () => ({
+  onDiagnosticEvent: jest.fn((handler: (evt: DiagnosticEventPayload) => void) => {
+    diagnosticHandler = handler;
+    return jest.fn(); // unsubscribe
+  }),
+  emptyPluginConfigSchema: jest.fn(() => ({})),
+}));
 
 // Mock the @mlflow/core module
 jest.mock('@mlflow/core', () => {
@@ -59,132 +58,94 @@ jest.mock('@mlflow/core', () => {
   };
 });
 
-// Import mocked functions after mocking
 import * as mlflowTracing from '@mlflow/core';
+import { createMLflowService } from '../src/service';
 
-// Helper: capture the registered service hooks from the plugin
-function createMockContext(): { context: PluginContext; getHooks: () => ServiceHooks } {
-  let registeredHooks: ServiceHooks = {};
-  const context: PluginContext = {
-    registerService: jest.fn((_name: string, hooks: ServiceHooks) => {
-      registeredHooks = hooks;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type EventHandler = (event: unknown, ctx: unknown) => void;
+
+interface MockApi {
+  on: jest.Mock;
+  registerService: jest.Mock;
+  registerCli: jest.Mock;
+  runtime: { config: { loadConfig: jest.Mock; writeConfigFile: jest.Mock } };
+  pluginConfig: undefined;
+}
+
+interface TestHarness {
+  api: MockApi;
+  fire: (event: string, eventData: Record<string, unknown>, ctx: Record<string, unknown>) => void;
+  fireDiagnostic: (evt: DiagnosticEventPayload) => void;
+  handlers: Map<string, EventHandler>;
+}
+
+function createTestHarness(): TestHarness {
+  const handlers = new Map<string, EventHandler>();
+  const api: MockApi = {
+    on: jest.fn((eventName: string, handler: EventHandler) => {
+      handlers.set(eventName, handler);
     }),
+    registerService: jest.fn(),
+    registerCli: jest.fn(),
+    runtime: {
+      config: {
+        loadConfig: jest.fn(() => ({})),
+        writeConfigFile: jest.fn(),
+      },
+    },
+    pluginConfig: undefined,
   };
-  return { context, getHooks: () => registeredHooks };
-}
 
-// Event factory helpers
-function createLlmInputEvent(overrides: Partial<LlmInputEvent> = {}): LlmInputEvent {
   return {
-    type: 'llm_input',
-    sessionKey: 'session-1',
-    prompt: 'Hello, world!',
-    model: 'gpt-4',
-    provider: 'openai',
-    timestamp: Date.now(),
-    ...overrides,
+    api,
+    handlers,
+    fire(event: string, eventData: Record<string, unknown>, ctx: Record<string, unknown>) {
+      const handler = handlers.get(event);
+      if (handler) handler(eventData, ctx);
+    },
+    fireDiagnostic(evt: DiagnosticEventPayload) {
+      if (diagnosticHandler) diagnosticHandler(evt);
+    },
   };
 }
 
-function createLlmOutputEvent(overrides: Partial<LlmOutputEvent> = {}): LlmOutputEvent {
+function createMockLogger() {
   return {
-    type: 'llm_output',
-    sessionKey: 'session-1',
-    response: 'Hi there!',
-    model: 'gpt-4',
-    provider: 'openai',
-    timestamp: Date.now(),
-    ...overrides,
+    info: jest.fn(),
+    warn: jest.fn(),
   };
 }
 
-function createToolStartEvent(overrides: Partial<ToolStartEvent> = {}): ToolStartEvent {
-  return {
-    type: 'tool_start',
-    sessionKey: 'session-1',
-    toolName: 'web_search',
-    arguments: { query: 'MLflow tracing' },
-    toolCallId: 'tool-call-1',
-    timestamp: Date.now(),
-    ...overrides,
-  };
+async function startService(harness: TestHarness, config: Record<string, unknown> = {}) {
+  const service = createMLflowService(harness.api as any);
+  await service.start!({
+    config: {
+      trackingUri: 'http://localhost:5000',
+      experimentId: 'exp-123',
+      ...config,
+    },
+    logger: createMockLogger(),
+  });
+  return service;
 }
 
-function createToolEndEvent(overrides: Partial<ToolEndEvent> = {}): ToolEndEvent {
-  return {
-    type: 'tool_end',
-    sessionKey: 'session-1',
-    toolName: 'web_search',
-    result: 'Search results here',
-    toolCallId: 'tool-call-1',
-    timestamp: Date.now(),
-    ...overrides,
-  };
-}
-
-function createSubagentSpawningEvent(
-  overrides: Partial<SubagentSpawningEvent> = {},
-): SubagentSpawningEvent {
-  return {
-    type: 'subagent_spawning',
-    sessionKey: 'session-1',
-    agentId: 'sub-agent-1',
-    label: 'research-agent',
-    timestamp: Date.now(),
-    ...overrides,
-  };
-}
-
-function createSubagentEndedEvent(
-  overrides: Partial<SubagentEndedEvent> = {},
-): SubagentEndedEvent {
-  return {
-    type: 'subagent_ended',
-    sessionKey: 'session-1',
-    agentId: 'sub-agent-1',
-    result: 'Subagent completed',
-    timestamp: Date.now(),
-    ...overrides,
-  };
-}
-
-function createModelUsageEvent(overrides: Partial<ModelUsageEvent> = {}): ModelUsageEvent {
-  return {
-    type: 'model.usage',
-    sessionKey: 'session-1',
-    inputTokens: 100,
-    outputTokens: 50,
-    totalTokens: 150,
-    cost: 0.003,
-    model: 'gpt-4',
-    timestamp: Date.now(),
-    ...overrides,
-  };
-}
-
-function createAgentEndEvent(overrides: Partial<AgentEndEvent> = {}): AgentEndEvent {
-  return {
-    type: 'agent_end',
-    sessionKey: 'session-1',
-    userId: 'test-user',
-    summary: 'Agent completed task',
-    timestamp: Date.now(),
-    ...overrides,
-  };
-}
-
-/**
- * Flush microtask queue so queueMicrotask callbacks in agent_end run.
- */
 async function flushMicrotasks(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 describe('MLflowTracingPlugin', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    diagnosticHandler = null;
     process.env = { ...originalEnv };
     delete process.env.MLFLOW_TRACKING_URI;
     delete process.env.MLFLOW_EXPERIMENT_ID;
@@ -194,51 +155,69 @@ describe('MLflowTracingPlugin', () => {
     process.env = originalEnv;
   });
 
-  describe('Plugin Registration', () => {
-    it('should export MLflowTracingPlugin function', () => {
-      expect(typeof MLflowTracingPlugin).toBe('function');
+  describe('Service Lifecycle', () => {
+    it('should return a service with id and start/stop', () => {
+      const harness = createTestHarness();
+      const service = createMLflowService(harness.api as any);
+      expect(service.id).toBe('mlflow-tracing');
+      expect(typeof service.start).toBe('function');
+      expect(typeof service.stop).toBe('function');
     });
 
-    it('should register a service with onEvent hook', () => {
-      const { context } = createMockContext();
-      MLflowTracingPlugin(context);
+    it('should register event hooks on start', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
 
-      expect(context.registerService).toHaveBeenCalledWith(
-        'mlflow-tracing',
-        expect.objectContaining({ onEvent: expect.any(Function) }),
-      );
+      expect(harness.api.on).toHaveBeenCalledWith('llm_input', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('llm_output', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('tool_start', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('tool_end', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('subagent_spawning', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('subagent_ended', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('agent_end', expect.any(Function));
     });
   });
 
-  describe('Environment Variable Handling', () => {
-    it('should not create spans when MLFLOW_TRACKING_URI is not set', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
+  describe('Configuration', () => {
+    it('should not register hooks when trackingUri is missing', async () => {
+      const harness = createTestHarness();
+      const service = createMLflowService(harness.api as any);
+      await service.start!({
+        config: { experimentId: 'exp-123' },
+        logger: createMockLogger(),
+      });
 
-      await getHooks().onEvent!(createLlmInputEvent());
-
-      expect(mlflowTracing.startSpan).not.toHaveBeenCalled();
+      expect(harness.api.on).not.toHaveBeenCalled();
     });
 
-    it('should not create spans when MLFLOW_EXPERIMENT_ID is not set', async () => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
+    it('should not register hooks when experimentId is missing', async () => {
+      const harness = createTestHarness();
+      const service = createMLflowService(harness.api as any);
+      await service.start!({
+        config: { trackingUri: 'http://localhost:5000' },
+        logger: createMockLogger(),
+      });
 
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-
-      await getHooks().onEvent!(createLlmInputEvent());
-
-      expect(mlflowTracing.startSpan).not.toHaveBeenCalled();
+      expect(harness.api.on).not.toHaveBeenCalled();
     });
 
-    it('should initialize SDK when both env variables are set', async () => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
+    it('should fall back to env vars when config is empty', async () => {
+      process.env.MLFLOW_TRACKING_URI = 'http://env-host:5000';
+      process.env.MLFLOW_EXPERIMENT_ID = 'env-exp';
 
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
+      const harness = createTestHarness();
+      const service = createMLflowService(harness.api as any);
+      await service.start!({ config: {}, logger: createMockLogger() });
 
-      await getHooks().onEvent!(createLlmInputEvent());
+      expect(mlflowTracing.init).toHaveBeenCalledWith({
+        trackingUri: 'http://env-host:5000',
+        experimentId: 'env-exp',
+      });
+    });
+
+    it('should initialize SDK with config values', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
 
       expect(mlflowTracing.init).toHaveBeenCalledWith({
         trackingUri: 'http://localhost:5000',
@@ -248,19 +227,12 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Basic LLM Call Tracing', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should create root AGENT and child LLM spans on llm_input', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent({ prompt: 'What is 2+2?' }));
+      harness.fire('llm_input', { prompt: 'What is 2+2?', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
 
-      // Root AGENT span
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'openclaw_agent',
@@ -269,7 +241,6 @@ describe('MLflowTracingPlugin', () => {
         }),
       );
 
-      // Child LLM span
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'llm_call',
@@ -283,14 +254,13 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should end LLM span on llm_output with response', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
       const mockSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[1].value;
 
-      await hooks.onEvent!(createLlmOutputEvent({ response: 'The answer is 4.' }));
+      harness.fire('llm_output', { response: 'The answer is 4.' }, { sessionKey: 'session-1' });
 
       expect(mockSpan.setOutputs).toHaveBeenCalledWith({
         choices: [{ message: { role: 'assistant', content: 'The answer is 4.' } }],
@@ -299,26 +269,22 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should flush traces on agent_end', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createLlmOutputEvent());
-      await hooks.onEvent!(createAgentEndEvent());
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Hi' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', {}, { sessionKey: 'session-1' });
       await flushMicrotasks();
 
       expect(mlflowTracing.flushTraces).toHaveBeenCalled();
     });
 
     it('should set model label from provider and model', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(
-        createLlmInputEvent({ provider: 'anthropic', model: 'claude-3-opus' }),
-      );
+      harness.fire('llm_input', { prompt: 'Hi', provider: 'anthropic', model: 'claude-3-opus' }, { sessionKey: 'session-1' });
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -329,12 +295,13 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should include system prompt in LLM inputs when provided', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(
-        createLlmInputEvent({ prompt: 'hello', systemPrompt: 'You are a helpful assistant.' }),
+      harness.fire(
+        'llm_input',
+        { prompt: 'hello', systemPrompt: 'You are a helpful assistant.', model: 'gpt-4', provider: 'openai' },
+        { sessionKey: 'session-1' },
       );
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
@@ -347,24 +314,15 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Tool Execution Tracing', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should create TOOL span on tool_start', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      // Need a root trace first
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(
-        createToolStartEvent({
-          toolName: 'web_search',
-          arguments: { query: 'MLflow' },
-          toolCallId: 'tc-1',
-        }),
+      harness.fire('llm_input', { prompt: 'Search', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire(
+        'tool_start',
+        { toolName: 'web_search', arguments: { query: 'MLflow' }, toolCallId: 'tc-1' },
+        { sessionKey: 'session-1' },
       );
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
@@ -381,22 +339,18 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should end TOOL span on tool_end with result', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createToolStartEvent({ toolName: 'web_search', toolCallId: 'tc-1' }));
+      harness.fire('llm_input', { prompt: 'Search', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('tool_start', { toolName: 'web_search', toolCallId: 'tc-1' }, { sessionKey: 'session-1' });
 
-      // The tool span is the third startSpan call (root AGENT, LLM, TOOL)
       const toolSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
 
-      await hooks.onEvent!(
-        createToolEndEvent({
-          toolName: 'web_search',
-          toolCallId: 'tc-1',
-          result: 'Found 10 results',
-        }),
+      harness.fire(
+        'tool_end',
+        { toolName: 'web_search', toolCallId: 'tc-1', result: 'Found 10 results' },
+        { sessionKey: 'session-1' },
       );
 
       expect(toolSpan.setOutputs).toHaveBeenCalledWith({ result: 'Found 10 results' });
@@ -404,21 +358,18 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should handle tool errors', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createToolStartEvent({ toolName: 'database', toolCallId: 'tc-2' }));
+      harness.fire('llm_input', { prompt: 'Query', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('tool_start', { toolName: 'database', toolCallId: 'tc-2' }, { sessionKey: 'session-1' });
 
       const toolSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
 
-      await hooks.onEvent!(
-        createToolEndEvent({
-          toolName: 'database',
-          toolCallId: 'tc-2',
-          error: 'Connection timeout',
-        }),
+      harness.fire(
+        'tool_end',
+        { toolName: 'database', toolCallId: 'tc-2', error: 'Connection timeout' },
+        { sessionKey: 'session-1' },
       );
 
       expect(toolSpan.setOutputs).toHaveBeenCalledWith({ error: 'Connection timeout' });
@@ -426,13 +377,12 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should handle multiple concurrent tools', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createToolStartEvent({ toolName: 'search', toolCallId: 'tc-a' }));
-      await hooks.onEvent!(createToolStartEvent({ toolName: 'fetch', toolCallId: 'tc-b' }));
+      harness.fire('llm_input', { prompt: 'Do things', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('tool_start', { toolName: 'search', toolCallId: 'tc-a' }, { sessionKey: 'session-1' });
+      harness.fire('tool_start', { toolName: 'fetch', toolCallId: 'tc-b' }, { sessionKey: 'session-1' });
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'tool_search' }),
@@ -441,13 +391,8 @@ describe('MLflowTracingPlugin', () => {
         expect.objectContaining({ name: 'tool_fetch' }),
       );
 
-      // End them in reverse order
-      await hooks.onEvent!(
-        createToolEndEvent({ toolName: 'fetch', toolCallId: 'tc-b', result: 'fetched' }),
-      );
-      await hooks.onEvent!(
-        createToolEndEvent({ toolName: 'search', toolCallId: 'tc-a', result: 'found' }),
-      );
+      harness.fire('tool_end', { toolName: 'fetch', toolCallId: 'tc-b', result: 'fetched' }, { sessionKey: 'session-1' });
+      harness.fire('tool_end', { toolName: 'search', toolCallId: 'tc-a', result: 'found' }, { sessionKey: 'session-1' });
 
       const searchSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
       const fetchSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[3].value;
@@ -458,19 +403,15 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Subagent Tracing', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should create nested AGENT span on subagent_spawning', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(
-        createSubagentSpawningEvent({ agentId: 'researcher', label: 'research-agent' }),
+      harness.fire('llm_input', { prompt: 'Research', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire(
+        'subagent_spawning',
+        { agentId: 'researcher', label: 'research-agent' },
+        { sessionKey: 'session-1' },
       );
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
@@ -483,36 +424,30 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should end subagent span on subagent_ended', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createSubagentSpawningEvent({ agentId: 'researcher' }));
+      harness.fire('llm_input', { prompt: 'Research', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('subagent_spawning', { agentId: 'researcher', label: 'research-agent' }, { sessionKey: 'session-1' });
 
       const subSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
 
-      await hooks.onEvent!(
-        createSubagentEndedEvent({ agentId: 'researcher', result: 'Research done' }),
-      );
+      harness.fire('subagent_ended', { agentId: 'researcher', result: 'Research done' }, { sessionKey: 'session-1' });
 
       expect(subSpan.setOutputs).toHaveBeenCalledWith({ result: 'Research done' });
       expect(subSpan.end).toHaveBeenCalled();
     });
 
     it('should handle subagent errors', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createSubagentSpawningEvent({ agentId: 'failing-agent' }));
+      harness.fire('llm_input', { prompt: 'Research', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('subagent_spawning', { agentId: 'failing-agent' }, { sessionKey: 'session-1' });
 
       const subSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
 
-      await hooks.onEvent!(
-        createSubagentEndedEvent({ agentId: 'failing-agent', error: 'Out of memory' }),
-      );
+      harness.fire('subagent_ended', { agentId: 'failing-agent', error: 'Out of memory' }, { sessionKey: 'session-1' });
 
       expect(subSpan.setOutputs).toHaveBeenCalledWith({ error: 'Out of memory' });
       expect(subSpan.end).toHaveBeenCalled();
@@ -520,28 +455,27 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Token Usage Tracking', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
+    it('should accumulate token usage from diagnostic events', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
 
-    it('should accumulate token usage from model.usage events', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Hi' }, { sessionKey: 'session-1' });
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createLlmOutputEvent());
-      await hooks.onEvent!(
-        createModelUsageEvent({ inputTokens: 100, outputTokens: 50, totalTokens: 150 }),
-      );
-      await hooks.onEvent!(
-        createModelUsageEvent({ inputTokens: 200, outputTokens: 100, totalTokens: 300 }),
-      );
-      await hooks.onEvent!(createAgentEndEvent());
+      harness.fireDiagnostic({
+        type: 'model.usage',
+        sessionKey: 'session-1',
+        usage: { input: 100, output: 50, total: 150 },
+      });
+      harness.fireDiagnostic({
+        type: 'model.usage',
+        sessionKey: 'session-1',
+        usage: { input: 200, output: 100, total: 300 },
+      });
+
+      harness.fire('agent_end', {}, { sessionKey: 'session-1' });
       await flushMicrotasks();
 
-      // Root span should have accumulated token usage
       const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
       expect(rootSpan.setAttribute).toHaveBeenCalledWith('token_usage', {
         input_tokens: 300,
@@ -550,18 +484,16 @@ describe('MLflowTracingPlugin', () => {
       });
     });
 
-    it('should not set token usage if no model.usage events', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+    it('should not set token usage if no diagnostic events', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
-      await hooks.onEvent!(createLlmOutputEvent());
-      await hooks.onEvent!(createAgentEndEvent());
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Hi' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', {}, { sessionKey: 'session-1' });
       await flushMicrotasks();
 
       const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
-      // setAttribute should not be called with token_usage
       const tokenCalls = rootSpan.setAttribute.mock.calls.filter(
         (call: unknown[]) => call[0] === 'token_usage',
       );
@@ -571,19 +503,16 @@ describe('MLflowTracingPlugin', () => {
 
   describe('Trace Metadata', () => {
     beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
       process.env.USER = 'test-user';
     });
 
     it('should set trace metadata on agent_end', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent({ prompt: 'Hello' }));
-      await hooks.onEvent!(createLlmOutputEvent({ response: 'Hi there!' }));
-      await hooks.onEvent!(createAgentEndEvent({ userId: 'yuki', sessionKey: 'session-1' }));
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Hi there!' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', {}, { sessionKey: 'session-1', userId: 'yuki' });
       await flushMicrotasks();
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -591,15 +520,12 @@ describe('MLflowTracingPlugin', () => {
     });
 
     it('should set requestPreview and responsePreview', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent({ prompt: 'What is MLflow?' }));
-      await hooks.onEvent!(
-        createLlmOutputEvent({ response: 'MLflow is a platform for ML lifecycle.' }),
-      );
-      await hooks.onEvent!(createAgentEndEvent());
+      harness.fire('llm_input', { prompt: 'What is MLflow?', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'MLflow is a platform for ML lifecycle.' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', {}, { sessionKey: 'session-1' });
       await flushMicrotasks();
 
       expect(mlflowTracing.flushTraces).toHaveBeenCalled();
@@ -607,25 +533,18 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Deferred Finalization', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should handle agent_end before llm_output via queueMicrotask', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
 
       // agent_end fires but finalization is deferred via queueMicrotask
-      await hooks.onEvent!(createAgentEndEvent());
+      harness.fire('agent_end', {}, { sessionKey: 'session-1' });
 
       // llm_output fires before microtask runs
-      await hooks.onEvent!(createLlmOutputEvent({ response: 'Late response' }));
+      harness.fire('llm_output', { response: 'Late response' }, { sessionKey: 'session-1' });
 
-      // Now let the microtask run
       await flushMicrotasks();
 
       expect(mlflowTracing.flushTraces).toHaveBeenCalled();
@@ -633,20 +552,16 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('LRU Eviction', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should evict oldest sessions when exceeding max active traces', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
       // Create 51 sessions — the first should be evicted
       for (let i = 0; i < 51; i++) {
-        await hooks.onEvent!(
-          createLlmInputEvent({ sessionKey: `session-${i}`, prompt: `Prompt ${i}` }),
+        harness.fire(
+          'llm_input',
+          { prompt: `Prompt ${i}`, model: 'gpt-4', provider: 'openai' },
+          { sessionKey: `session-${i}` },
         );
       }
 
@@ -655,8 +570,10 @@ describe('MLflowTracingPlugin', () => {
 
       // Sending an event for session-0 should create a new trace (it was evicted)
       jest.clearAllMocks();
-      await hooks.onEvent!(
-        createLlmInputEvent({ sessionKey: 'session-0', prompt: 'Revived prompt' }),
+      harness.fire(
+        'llm_input',
+        { prompt: 'Revived prompt', model: 'gpt-4', provider: 'openai' },
+        { sessionKey: 'session-0' },
       );
 
       // New root AGENT + new LLM span
@@ -665,132 +582,94 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Error Resilience', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should not throw on llm_output without prior llm_input', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      // No llm_input for this session — should not throw
-      await expect(
-        hooks.onEvent!(createLlmOutputEvent({ sessionKey: 'unknown-session' })),
-      ).resolves.not.toThrow();
+      expect(() => {
+        harness.fire('llm_output', { response: 'orphan' }, { sessionKey: 'unknown-session' });
+      }).not.toThrow();
     });
 
     it('should not throw on tool_end without prior tool_start', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
+      harness.fire('llm_input', { prompt: 'Hi', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
 
-      await expect(
-        hooks.onEvent!(createToolEndEvent({ toolName: 'unknown', toolCallId: 'tc-unknown' })),
-      ).resolves.not.toThrow();
+      expect(() => {
+        harness.fire(
+          'tool_end',
+          { toolName: 'unknown', toolCallId: 'tc-unknown' },
+          { sessionKey: 'session-1' },
+        );
+      }).not.toThrow();
     });
 
     it('should not throw on subagent_ended without prior subagent_spawning', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await hooks.onEvent!(createLlmInputEvent());
+      harness.fire('llm_input', { prompt: 'Hi', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
 
-      await expect(
-        hooks.onEvent!(createSubagentEndedEvent({ agentId: 'ghost-agent' })),
-      ).resolves.not.toThrow();
+      expect(() => {
+        harness.fire('subagent_ended', { agentId: 'ghost-agent' }, { sessionKey: 'session-1' });
+      }).not.toThrow();
     });
 
     it('should not throw on agent_end without prior events', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      await expect(
-        hooks.onEvent!(createAgentEndEvent({ sessionKey: 'nonexistent' })),
-      ).resolves.not.toThrow();
+      expect(() => {
+        harness.fire('agent_end', {}, { sessionKey: 'nonexistent' });
+      }).not.toThrow();
     });
 
     it('should handle tool_start without a root trace gracefully', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
-      // tool_start for unknown session — no root trace exists
-      await expect(
-        hooks.onEvent!(createToolStartEvent({ sessionKey: 'no-root' })),
-      ).resolves.not.toThrow();
+      expect(() => {
+        harness.fire('tool_start', { toolName: 'search' }, { sessionKey: 'no-root' });
+      }).not.toThrow();
     });
   });
 
   describe('Complete Agent Workflow', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should trace a full workflow: LLM → tool → subagent → LLM → end', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
+
+      const ctx = { sessionKey: 'session-1' };
 
       // 1. Initial LLM call
-      await hooks.onEvent!(
-        createLlmInputEvent({ prompt: 'Find and summarize the latest MLflow docs' }),
-      );
-      await hooks.onEvent!(
-        createLlmOutputEvent({ response: 'I will search and summarize for you.' }),
-      );
+      harness.fire('llm_input', { prompt: 'Find and summarize the latest MLflow docs', model: 'gpt-4', provider: 'openai' }, ctx);
+      harness.fire('llm_output', { response: 'I will search and summarize for you.' }, ctx);
 
       // 2. Tool call
-      await hooks.onEvent!(
-        createToolStartEvent({
-          toolName: 'web_search',
-          arguments: { query: 'MLflow documentation' },
-          toolCallId: 'tc-1',
-        }),
-      );
-      await hooks.onEvent!(
-        createToolEndEvent({
-          toolName: 'web_search',
-          result: 'MLflow docs: https://mlflow.org/docs',
-          toolCallId: 'tc-1',
-        }),
-      );
+      harness.fire('tool_start', { toolName: 'web_search', arguments: { query: 'MLflow documentation' }, toolCallId: 'tc-1' }, ctx);
+      harness.fire('tool_end', { toolName: 'web_search', result: 'MLflow docs: https://mlflow.org/docs', toolCallId: 'tc-1' }, ctx);
 
       // 3. Subagent
-      await hooks.onEvent!(
-        createSubagentSpawningEvent({ agentId: 'summarizer', label: 'summary-agent' }),
-      );
-      await hooks.onEvent!(
-        createSubagentEndedEvent({ agentId: 'summarizer', result: 'Summary complete' }),
-      );
+      harness.fire('subagent_spawning', { agentId: 'summarizer', label: 'summary-agent' }, ctx);
+      harness.fire('subagent_ended', { agentId: 'summarizer', result: 'Summary complete' }, ctx);
 
       // 4. Token usage
-      await hooks.onEvent!(
-        createModelUsageEvent({ inputTokens: 500, outputTokens: 200, totalTokens: 700 }),
-      );
+      harness.fireDiagnostic({
+        type: 'model.usage',
+        sessionKey: 'session-1',
+        usage: { input: 500, output: 200, total: 700 },
+      });
 
       // 5. Second LLM call with final response
-      await hooks.onEvent!(
-        createLlmInputEvent({
-          prompt: 'Find and summarize the latest MLflow docs',
-          sessionKey: 'session-1',
-        }),
-      );
-      await hooks.onEvent!(
-        createLlmOutputEvent({ response: 'Here is your summary of MLflow docs.' }),
-      );
+      harness.fire('llm_input', { prompt: 'Find and summarize the latest MLflow docs', model: 'gpt-4', provider: 'openai' }, ctx);
+      harness.fire('llm_output', { response: 'Here is your summary of MLflow docs.' }, ctx);
 
       // 6. End
-      await hooks.onEvent!(createAgentEndEvent());
+      harness.fire('agent_end', {}, ctx);
       await flushMicrotasks();
 
-      // Verify span hierarchy was created
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'openclaw_agent', spanType: 'AGENT' }),
       );
@@ -809,37 +688,25 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Multiple Sessions', () => {
-    beforeEach(() => {
-      process.env.MLFLOW_TRACKING_URI = 'http://localhost:5000';
-      process.env.MLFLOW_EXPERIMENT_ID = 'exp-123';
-    });
-
     it('should handle interleaved events from different sessions', async () => {
-      const { context, getHooks } = createMockContext();
-      MLflowTracingPlugin(context);
-      const hooks = getHooks();
+      const harness = createTestHarness();
+      await startService(harness);
 
       // Session A starts
-      await hooks.onEvent!(createLlmInputEvent({ sessionKey: 'session-A', prompt: 'A prompt' }));
+      harness.fire('llm_input', { prompt: 'A prompt', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-A' });
       // Session B starts
-      await hooks.onEvent!(createLlmInputEvent({ sessionKey: 'session-B', prompt: 'B prompt' }));
+      harness.fire('llm_input', { prompt: 'B prompt', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-B' });
 
       // Session A gets LLM output
-      await hooks.onEvent!(
-        createLlmOutputEvent({ sessionKey: 'session-A', response: 'A response' }),
-      );
+      harness.fire('llm_output', { response: 'A response' }, { sessionKey: 'session-A' });
       // Session B gets LLM output
-      await hooks.onEvent!(
-        createLlmOutputEvent({ sessionKey: 'session-B', response: 'B response' }),
-      );
+      harness.fire('llm_output', { response: 'B response' }, { sessionKey: 'session-B' });
 
       // Both end
-      await hooks.onEvent!(createAgentEndEvent({ sessionKey: 'session-A' }));
-      await hooks.onEvent!(createAgentEndEvent({ sessionKey: 'session-B' }));
+      harness.fire('agent_end', {}, { sessionKey: 'session-A' });
+      harness.fire('agent_end', {}, { sessionKey: 'session-B' });
       await flushMicrotasks();
 
-      // Should have created 2 root spans + 2 LLM spans = 4 total
-      // Plus flushed twice
       expect(mlflowTracing.flushTraces).toHaveBeenCalledTimes(2);
     });
   });

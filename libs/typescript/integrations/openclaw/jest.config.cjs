@@ -22,7 +22,7 @@ module.exports = {
           types: ['jest', 'node'],
           baseUrl: '.',
           paths: {
-            'openclaw/plugin': ['./tests/__mocks__/openclaw/plugin.ts'],
+            'openclaw/plugin-sdk': ['./tests/__mocks__/openclaw/plugin-sdk.ts'],
             '@mlflow/core': ['../../core/src/index.ts'],
             '@mlflow/core/*': ['../../core/src/*'],
           },
@@ -31,9 +31,12 @@ module.exports = {
     ],
   },
   moduleNameMapper: {
-    '^openclaw/plugin$': '<rootDir>/tests/__mocks__/openclaw/plugin.ts',
+    '^openclaw/plugin-sdk$': '<rootDir>/tests/__mocks__/openclaw/plugin-sdk.ts',
     '^@mlflow/core$': '<rootDir>/../../core/src',
     '^@mlflow/core/(.*)$': '<rootDir>/../../core/src/$1',
+    // Remap .js extension imports to source (for ESM-style imports in service.ts)
+    '^\\./(.*)\\.js$': './$1',
+    '^\\.\\./(.*)\\./js$': '../$1',
   },
   testTimeout: 30000,
   forceExit: true,

@@ -7,20 +7,10 @@ This plugin automatically traces OpenClaw agent executions in MLflow, capturing 
 ## Installation
 
 ```bash
-npm install @mlflow/openclaw @mlflow/core
+openclaw plugins install @mlflow/openclaw
 ```
 
-## Usage
-
-Add the plugin to your OpenClaw configuration:
-
-```typescript
-import { MLflowTracingPlugin } from '@mlflow/openclaw';
-
-export default {
-  plugins: [MLflowTracingPlugin],
-};
-```
+## Configuration
 
 Set the required environment variables:
 
@@ -28,6 +18,8 @@ Set the required environment variables:
 export MLFLOW_TRACKING_URI=http://localhost:5000
 export MLFLOW_EXPERIMENT_ID=<your-experiment-id>
 ```
+
+Or configure via the OpenClaw plugin settings UI.
 
 Run your OpenClaw agent normally — tracing happens automatically.
 
@@ -56,23 +48,19 @@ AGENT (openclaw_agent)              ← root span
 | `model.usage`       | _(metadata)_     | Accumulates token usage             |
 | `agent_end`         | AGENT            | Ends root span, flushes trace       |
 
-## Configuration
+## Configuration Options
 
-| Environment Variable        | Description                          | Required |
-| --------------------------- | ------------------------------------ | -------- |
-| `MLFLOW_TRACKING_URI`       | MLflow server URL                    | Yes      |
-| `MLFLOW_EXPERIMENT_ID`      | MLflow experiment ID                 | Yes      |
-| `MLFLOW_OPENCLAW_DEBUG`     | Set to `true` for debug logging      | No       |
+| Setting              | Env Variable            | Description                     | Required |
+| -------------------- | ----------------------- | ------------------------------- | -------- |
+| `trackingUri`        | `MLFLOW_TRACKING_URI`   | MLflow server URL               | Yes      |
+| `experimentId`       | `MLFLOW_EXPERIMENT_ID`  | MLflow experiment ID            | Yes      |
 
 ## Development
 
 ```bash
-# Build
-npm run build
+# Type-check
+npm run typecheck
 
 # Test
 npm test
-
-# Lint
-npm run lint
 ```

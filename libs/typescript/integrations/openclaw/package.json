@@ -1,5 +1,5 @@
 {
-  "name": "@mlflow/openclaw",
+  "name": "@mlflow/mlflow-openclaw",
   "version": "0.2.0",
   "description": "OpenClaw integration package for MLflow Tracing",
   "repository": {
@@ -25,13 +25,11 @@
     "javascript",
     "typescript"
   ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
   "scripts": {
-    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -50,7 +48,17 @@
   "engines": {
     "node": ">=18"
   },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
   "files": [
-    "dist/"
+    "index.ts",
+    "src/service.ts",
+    "src/openclaw-plugin-sdk.d.ts",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
   ]
 }
