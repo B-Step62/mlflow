@@ -157,8 +157,7 @@ async function finalizeTrace(
     trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);
   }
 
-  trace.rootSpan.end();
-
+  // Set trace metadata BEFORE ending root span, since end() triggers export
   try {
     const traceManager = InMemoryTraceManager.getInstance();
     const traceData = traceManager.getTrace(trace.rootSpan.traceId);
@@ -177,6 +176,7 @@ async function finalizeTrace(
     // Silently ignore metadata errors
   }
 
+  trace.rootSpan.end();
   await flushTraces();
 }
 
@@ -204,7 +204,6 @@ export function createMLflowService(
       name: "openclaw_agent",
       inputs: { prompt: cleanPrompt },
       spanType: SpanType.AGENT,
-      attributes: { "session.id": sessionKey },
     });
 
     const trace: ActiveTrace = {
