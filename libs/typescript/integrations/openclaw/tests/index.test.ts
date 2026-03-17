@@ -400,8 +400,8 @@ describe('MLflowTracingPlugin', () => {
     });
   });
 
-  describe('Message Cleaning', () => {
-    it('should strip OpenClaw sender metadata from prompt', async () => {
+  describe('Message Sanitization', () => {
+    it('should strip sender metadata (fenced JSON) from prompt', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
@@ -416,7 +416,22 @@ describe('MLflowTracingPlugin', () => {
       );
     });
 
-    it('should strip [[routing]] directives from response', async () => {
+    it('should strip sender metadata (plain JSON) from prompt', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      const rawPrompt = 'Sender (untrusted metadata):\n{"label": "tui", "id": "gw"}\n\n[Mon 2026-03-18 10:00 GMT+9] Hi there';
+      harness.fire('llm_input', { prompt: rawPrompt, model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'openclaw_agent',
+          inputs: { prompt: 'Hi there' },
+        }),
+      );
+    });
+
+    it('should strip [[reply_to_current]] from response', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
@@ -428,6 +443,23 @@ describe('MLflowTracingPlugin', () => {
       expect(llmSpan.setOutputs).toHaveBeenCalledWith({
         choices: [{ message: { role: 'assistant', content: 'Hello there!' } }],
       });
+    });
+
+    it('should sanitize historyMessages in LLM inputs', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      const history = [{ role: 'user', content: '[[reply_to_current]] test' }];
+      harness.fire('llm_input', { prompt: 'Hi', model: 'gpt-4', provider: 'openai', historyMessages: history }, { sessionKey: 'session-1' });
+
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'llm_call',
+          inputs: expect.objectContaining({
+            messages: [{ role: 'user', content: 'test' }],
+          }),
+        }),
+      );
     });
 
     it('should pass through clean messages unchanged', async () => {

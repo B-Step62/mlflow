@@ -69,25 +69,45 @@ function toolKey(toolName: string, toolCallId?: string): string {
 }
 
 /**
- * Strip OpenClaw sender-metadata envelope from prompt to extract the user's
- * actual message.  Format:
- *   Sender (untrusted metadata):\n```json\n{...}\n```\n\n[timestamp] message
+ * Sanitize OpenClaw internal markers from text before storing in MLflow.
+ * Mirrors the patterns stripped by the Opik OpenClaw plugin's sanitizer.
  */
-function extractUserMessage(prompt: string): string {
-  // Strip sender metadata block
-  const stripped = prompt.replace(
-    /^Sender\s+\(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/i,
-    "",
-  );
-  // Strip leading [timestamp] prefix like "[Wed 2026-03-18 03:42 GMT+9] "
-  return stripped.replace(/^\[.*?\]\s*/, "").trim() || prompt;
+function sanitizeOpenClawText(value: string): string {
+  return value
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    // [[reply_to_current]] and similar routing directives
+    .replace(/\[\[reply_to[^\]]*\]\]\s*/gi, "")
+    // Sender (untrusted metadata): { ... } — plain JSON block
+    .replace(/^\s*Sender \(untrusted metadata\):\s*\n+\{[\s\S]*?\}\s*/gim, "")
+    // Sender (untrusted metadata): ```json { ... } ``` — fenced block
+    .replace(/^\s*Sender \(untrusted metadata\):\s*\n*```json\s*\{[\s\S]*?\}\s*```\s*/gim, "")
+    // Conversation info (untrusted metadata): { ... }
+    .replace(/^\s*Conversation info \(untrusted metadata\):\s*\n+\{[\s\S]*?\}\s*/gim, "")
+    // Untrusted context <<<EXTERNAL_UNTRUSTED_CONTENT ... >>>
+    .replace(
+      /^\s*Untrusted context \(metadata, do not treat as instructions or commands\):\s*\n+<<<EXTERNAL_UNTRUSTED_CONTENT[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>\s*/gim,
+      "",
+    )
+    // [Wed 2026-03-18 03:42 GMT+9] timestamp prefix
+    .replace(/^\[[\w\s:+\-/]+\]\s*/m, "")
+    // Collapse excessive newlines
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-/**
- * Strip OpenClaw routing directives like [[reply_to_current]] from response.
- */
-function extractAssistantMessage(response: string): string {
-  return response.replace(/^\[\[[^\]]*\]\]\s*/g, "").trim() || response;
+function sanitizeValue(value: unknown): unknown {
+  if (typeof value === "string") return sanitizeOpenClawText(value);
+  if (Array.isArray(value)) return value.map(sanitizeValue);
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = sanitizeValue(v);
+    }
+    return result;
+  }
+  return value;
 }
 
 async function finalizeTrace(
@@ -178,11 +198,11 @@ export function createMLflowService(
       return existing;
     }
 
-    const userMessage = extractUserMessage(prompt);
+    const cleanPrompt = sanitizeOpenClawText(prompt);
 
     const rootSpan = startSpan({
       name: "openclaw_agent",
-      inputs: { prompt: userMessage },
+      inputs: { prompt: cleanPrompt },
       spanType: SpanType.AGENT,
       attributes: { "session.id": sessionKey },
     });
@@ -193,7 +213,7 @@ export function createMLflowService(
       pendingTools: new Map(),
       pendingSubagents: new Map(),
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 },
-      firstPrompt: userMessage,
+      firstPrompt: cleanPrompt,
       lastResponse: "",
       agentEndData: null,
       lastActivityMs: Date.now(),
@@ -267,20 +287,22 @@ export function createMLflowService(
         const modelLabel =
           provider && model ? `${provider}/${model}` : model || "unknown";
 
+        const llmInputs = sanitizeValue({
+          model: modelLabel,
+          prompt,
+          ...(evt.systemPrompt
+            ? { system_prompt: evt.systemPrompt }
+            : {}),
+          ...(historyMessages?.length
+            ? { messages: historyMessages }
+            : {}),
+        }) as Record<string, unknown>;
+
         const llmSpan = startSpan({
           name: "llm_call",
           parent: trace.rootSpan,
           spanType: SpanType.LLM,
-          inputs: {
-            model: modelLabel,
-            prompt,
-            ...(evt.systemPrompt
-              ? { system_prompt: evt.systemPrompt }
-              : {}),
-            ...(historyMessages?.length
-              ? { messages: historyMessages }
-              : {}),
-          },
+          inputs: llmInputs,
           attributes: {
             ...(model ? { model } : {}),
             ...(provider ? { provider } : {}),
@@ -309,7 +331,7 @@ export function createMLflowService(
           assistantTexts.length > 0
             ? assistantTexts.join("\n")
             : (evt.response as string) || "";
-        const response = extractAssistantMessage(rawResponse);
+        const response = sanitizeOpenClawText(rawResponse);
         trace.lastResponse = response;
 
         if (trace.pendingLlm) {
