@@ -244,7 +244,7 @@ describe('MLflowTracingPlugin', () => {
           name: 'openclaw_agent',
           spanType: 'AGENT',
           inputs: { prompt: 'What is 2+2?' },
-          attributes: expect.objectContaining({ session_id: 'session-1' }),
+          attributes: expect.objectContaining({ 'session.id': 'session-1' }),
         }),
       );
 
@@ -323,7 +323,7 @@ describe('MLflowTracingPlugin', () => {
       );
     });
 
-    it('should capture assistantTexts and lastAssistant from llm_output', async () => {
+    it('should join assistantTexts as response content', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
@@ -332,20 +332,13 @@ describe('MLflowTracingPlugin', () => {
 
       harness.fire(
         'llm_output',
-        {
-          assistantTexts: ['Part 1', 'Part 2'],
-          lastAssistant: { role: 'assistant', content: 'Part 2' },
-        },
+        { assistantTexts: ['Part 1', 'Part 2'] },
         { sessionKey: 'session-1' },
       );
 
-      expect(llmSpan.setOutputs).toHaveBeenCalledWith(
-        expect.objectContaining({
-          choices: [{ message: { role: 'assistant', content: 'Part 1\nPart 2' } }],
-          assistantTexts: ['Part 1', 'Part 2'],
-          lastAssistant: { role: 'assistant', content: 'Part 2' },
-        }),
-      );
+      expect(llmSpan.setOutputs).toHaveBeenCalledWith({
+        choices: [{ message: { role: 'assistant', content: 'Part 1\nPart 2' } }],
+      });
     });
 
     it('should fall back to response string when assistantTexts is absent', async () => {
@@ -359,6 +352,32 @@ describe('MLflowTracingPlugin', () => {
 
       expect(llmSpan.setOutputs).toHaveBeenCalledWith({
         choices: [{ message: { role: 'assistant', content: 'Plain response' } }],
+      });
+    });
+
+    it('should extract token usage from lastAssistant.usage as fallback', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      const llmSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[1].value;
+
+      harness.fire(
+        'llm_output',
+        {
+          assistantTexts: ['Hi'],
+          lastAssistant: {
+            role: 'assistant',
+            usage: { input: 100, output: 30, totalTokens: 130 },
+          },
+        },
+        { sessionKey: 'session-1' },
+      );
+
+      expect(llmSpan.setAttribute).toHaveBeenCalledWith('token_usage', {
+        input_tokens: 100,
+        output_tokens: 30,
+        total_tokens: 130,
       });
     });
 
@@ -620,8 +639,27 @@ describe('MLflowTracingPlugin', () => {
     });
   });
 
-  describe('Structured Trace Output', () => {
-    it('should set lastAssistant and assistantTexts on root span outputs', async () => {
+  describe('Trace Output', () => {
+    it('should set clean response text on root span outputs', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire(
+        'llm_output',
+        { assistantTexts: ['Response part 1', 'Response part 2'] },
+        { sessionKey: 'session-1' },
+      );
+      harness.fire('agent_end', { success: true }, { sessionKey: 'session-1' });
+      await flushMicrotasks();
+
+      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
+      expect(rootSpan.setOutputs).toHaveBeenCalledWith({
+        response: 'Response part 1\nResponse part 2',
+      });
+    });
+
+    it('should not include lastAssistant or assistantTexts in outputs', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
@@ -629,8 +667,8 @@ describe('MLflowTracingPlugin', () => {
       harness.fire(
         'llm_output',
         {
-          assistantTexts: ['Response part 1', 'Response part 2'],
-          lastAssistant: { role: 'assistant', content: 'Response part 2' },
+          assistantTexts: ['Reply'],
+          lastAssistant: { role: 'assistant', content: 'Reply', usage: { input: 10 } },
         },
         { sessionKey: 'session-1' },
       );
@@ -638,27 +676,8 @@ describe('MLflowTracingPlugin', () => {
       await flushMicrotasks();
 
       const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
-      expect(rootSpan.setOutputs).toHaveBeenCalledWith(
-        expect.objectContaining({
-          response: 'Response part 1\nResponse part 2',
-          lastAssistant: { role: 'assistant', content: 'Response part 2' },
-          assistantTexts: ['Response part 1', 'Response part 2'],
-        }),
-      );
-    });
-
-    it('should omit structured fields when only bare response is available', async () => {
-      const harness = createTestHarness();
-      await startService(harness);
-
-      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
-      harness.fire('llm_output', { response: 'Simple reply' }, { sessionKey: 'session-1' });
-      harness.fire('agent_end', { success: true }, { sessionKey: 'session-1' });
-      await flushMicrotasks();
-
-      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
       const outputCall = rootSpan.setOutputs.mock.calls.find(
-        (call: unknown[]) => (call[0] as Record<string, unknown>).response === 'Simple reply',
+        (call: unknown[]) => (call[0] as Record<string, unknown>).response === 'Reply',
       );
       expect(outputCall).toBeDefined();
       const outputs = outputCall[0] as Record<string, unknown>;

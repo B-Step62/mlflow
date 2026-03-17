@@ -46,8 +46,6 @@ interface ActiveTrace {
   };
   firstPrompt: string;
   lastResponse: string;
-  lastAssistant: unknown | null;
-  assistantTexts: string[];
   agentEndData: {
     success?: boolean;
     error?: string;
@@ -107,12 +105,6 @@ async function finalizeTrace(
   const outputs: Record<string, unknown> = {
     response: trace.lastResponse || "Agent completed",
   };
-  if (trace.lastAssistant != null) {
-    outputs.lastAssistant = trace.lastAssistant;
-  }
-  if (trace.assistantTexts.length > 0) {
-    outputs.assistantTexts = trace.assistantTexts;
-  }
   if (endData?.error) {
     trace.rootSpan.setStatus(SpanStatusCode.ERROR, endData.error);
     outputs.error = endData.error;
@@ -168,7 +160,7 @@ export function createMLflowService(
       name: "openclaw_agent",
       inputs: { prompt },
       spanType: SpanType.AGENT,
-      attributes: { session_id: sessionKey },
+      attributes: { "session.id": sessionKey },
     });
 
     const trace: ActiveTrace = {
@@ -179,8 +171,6 @@ export function createMLflowService(
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 },
       firstPrompt: prompt,
       lastResponse: "",
-      lastAssistant: null,
-      assistantTexts: [],
       agentEndData: null,
       lastActivityMs: Date.now(),
     };
@@ -290,34 +280,30 @@ export function createMLflowService(
 
         trace.lastActivityMs = Date.now();
         const assistantTexts = (evt.assistantTexts as string[] | undefined) ?? [];
-        const lastAssistant = evt.lastAssistant ?? null;
+        const lastAssistant = evt.lastAssistant as Record<string, unknown> | undefined;
         const response =
           assistantTexts.length > 0
             ? assistantTexts.join("\n")
             : (evt.response as string) || "";
         trace.lastResponse = response;
-        trace.lastAssistant = lastAssistant;
-        if (assistantTexts.length > 0) {
-          trace.assistantTexts = assistantTexts;
-        }
 
         if (trace.pendingLlm) {
-          const usage = evt.usage as
-            | { input?: number; output?: number; total?: number }
-            | undefined;
+          // Extract usage from top-level or from lastAssistant as fallback
+          type UsageLike = { input?: number; output?: number; total?: number; totalTokens?: number };
+          const usage =
+            (evt.usage as UsageLike | undefined) ??
+            (lastAssistant?.usage as UsageLike | undefined);
           if (usage) {
             trace.pendingLlm.span.setAttribute(SpanAttributeKey.TOKEN_USAGE, {
               input_tokens: usage.input || 0,
               output_tokens: usage.output || 0,
-              total_tokens: usage.total || 0,
+              total_tokens: usage.total || usage.totalTokens || 0,
             });
           }
           trace.pendingLlm.span.setOutputs({
             choices: [
               { message: { role: "assistant", content: response } },
             ],
-            ...(lastAssistant != null ? { lastAssistant } : {}),
-            ...(assistantTexts.length > 0 ? { assistantTexts } : {}),
           });
           trace.pendingLlm.span.end();
           trace.pendingLlm = null;
