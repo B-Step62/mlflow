@@ -19,11 +19,7 @@ import {
   SpanType,
   SpanStatusCode,
   SpanAttributeKey,
-  TraceMetadataKey,
-  InMemoryTraceManager,
 } from "@mlflow/core";
-
-const MAX_PREVIEW_LENGTH = 1000;
 const MAX_ACTIVE_TRACES = 50;
 
 type SpanLike = ReturnType<typeof startSpan>;
@@ -157,31 +153,8 @@ async function finalizeTrace(
     trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);
   }
 
-  // Set trace metadata BEFORE ending root span, since end() triggers export.
-  try {
-    const traceManager = InMemoryTraceManager.getInstance();
-    // Use OTel span context to resolve the MLflow trace ID — this is the same
-    // path the exporter uses, so it's guaranteed to match.
-    const otelTraceId = (trace.rootSpan as { _span?: { spanContext?: () => { traceId: string } } })
-      ._span?.spanContext?.()?.traceId;
-    const mlflowTraceId = otelTraceId
-      ? traceManager.getMlflowTraceIdFromOtelId(otelTraceId)
-      : null;
-    const traceData = mlflowTraceId ? traceManager.getTrace(mlflowTraceId) : null;
-    if (traceData) {
-      traceData.info.requestPreview = trace.firstPrompt.slice(0, MAX_PREVIEW_LENGTH);
-      if (trace.lastResponse) {
-        traceData.info.responsePreview = trace.lastResponse.slice(0, MAX_PREVIEW_LENGTH);
-      }
-      traceData.info.traceMetadata = {
-        ...traceData.info.traceMetadata,
-        [TraceMetadataKey.TRACE_SESSION]: sessionKey,
-        [TraceMetadataKey.TRACE_USER]: userId || process.env.USER || "",
-      };
-    }
-  } catch {
-    // Best-effort metadata enrichment — don't block trace export
-  }
+  // TODO: Set trace-level metadata (session, user, previews) once we have
+  // a reliable way to look up the in-memory trace before export.
 
   trace.rootSpan.end();
   await flushTraces();
@@ -341,16 +314,16 @@ export function createMLflowService(
         trace.lastResponse = response;
 
         if (trace.pendingLlm) {
-          // Extract usage from top-level or from lastAssistant as fallback
+          // Extract usage: top-level evt.usage → lastAssistant.usage fallback
           type UsageLike = { input?: number; output?: number; total?: number; totalTokens?: number };
-          const usage =
-            (evt.usage as UsageLike | undefined) ??
-            (lastAssistant?.usage as UsageLike | undefined);
-          if (usage) {
+          const evtUsage = evt.usage as UsageLike | undefined;
+          const assistantUsage = lastAssistant?.usage as UsageLike | undefined;
+          const usage = evtUsage ?? assistantUsage;
+          if (usage && (usage.input || usage.output || usage.total || usage.totalTokens)) {
             trace.pendingLlm.span.setAttribute(SpanAttributeKey.TOKEN_USAGE, {
-              input_tokens: usage.input || 0,
-              output_tokens: usage.output || 0,
-              total_tokens: usage.total || usage.totalTokens || 0,
+              input_tokens: usage.input ?? 0,
+              output_tokens: usage.output ?? 0,
+              total_tokens: usage.total ?? usage.totalTokens ?? 0,
             });
           }
           trace.pendingLlm.span.setOutputs({

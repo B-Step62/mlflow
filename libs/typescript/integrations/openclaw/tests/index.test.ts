@@ -689,36 +689,8 @@ describe('MLflowTracingPlugin', () => {
     });
   });
 
-  describe('Trace Metadata', () => {
-    beforeEach(() => {
-      process.env.USER = 'test-user';
-    });
-
-    it('should set trace metadata on agent_end', async () => {
-      const harness = createTestHarness();
-      await startService(harness);
-
-      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
-      harness.fire('llm_output', { response: 'Hi there!' }, { sessionKey: 'session-1' });
-      harness.fire('agent_end', {}, { sessionKey: 'session-1', userId: 'yuki' });
-      await flushMicrotasks();
-
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mlflowTracing.InMemoryTraceManager.getInstance).toHaveBeenCalled();
-    });
-
-    it('should set requestPreview and responsePreview', async () => {
-      const harness = createTestHarness();
-      await startService(harness);
-
-      harness.fire('llm_input', { prompt: 'What is MLflow?', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
-      harness.fire('llm_output', { response: 'MLflow is a platform for ML lifecycle.' }, { sessionKey: 'session-1' });
-      harness.fire('agent_end', {}, { sessionKey: 'session-1' });
-      await flushMicrotasks();
-
-      expect(mlflowTracing.flushTraces).toHaveBeenCalled();
-    });
-  });
+  // TODO: Trace metadata tests (session, user, previews) — blocked on reliable
+  // in-memory trace lookup before export. See service.ts TODO.
 
   describe('Trace Output', () => {
     it('should set clean response text on root span outputs', async () => {
