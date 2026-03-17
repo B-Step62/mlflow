@@ -295,6 +295,67 @@ describe('MLflowTracingPlugin', () => {
       );
     });
 
+    it('should include historyMessages in LLM inputs when provided', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      const history = [
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there' },
+      ];
+      harness.fire(
+        'llm_input',
+        { prompt: 'Follow up', model: 'gpt-4', provider: 'openai', historyMessages: history },
+        { sessionKey: 'session-1' },
+      );
+
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'llm_call',
+          inputs: expect.objectContaining({ messages: history }),
+        }),
+      );
+    });
+
+    it('should capture assistantTexts and lastAssistant from llm_output', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      const llmSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[1].value;
+
+      harness.fire(
+        'llm_output',
+        {
+          assistantTexts: ['Part 1', 'Part 2'],
+          lastAssistant: { role: 'assistant', content: 'Part 2' },
+        },
+        { sessionKey: 'session-1' },
+      );
+
+      expect(llmSpan.setOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: [{ message: { role: 'assistant', content: 'Part 1\nPart 2' } }],
+          assistantTexts: ['Part 1', 'Part 2'],
+          lastAssistant: { role: 'assistant', content: 'Part 2' },
+        }),
+      );
+    });
+
+    it('should fall back to response string when assistantTexts is absent', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      const llmSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[1].value;
+
+      harness.fire('llm_output', { response: 'Plain response' }, { sessionKey: 'session-1' });
+
+      expect(llmSpan.setOutputs).toHaveBeenCalledWith({
+        choices: [{ message: { role: 'assistant', content: 'Plain response' } }],
+      });
+    });
+
     it('should include system prompt in LLM inputs when provided', async () => {
       const harness = createTestHarness();
       await startService(harness);

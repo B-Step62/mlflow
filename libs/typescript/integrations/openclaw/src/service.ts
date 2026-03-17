@@ -45,6 +45,8 @@ interface ActiveTrace {
   };
   firstPrompt: string;
   lastResponse: string;
+  lastAssistant: unknown | null;
+  assistantTexts: string[];
   lastActivityMs: number;
 }
 
@@ -148,6 +150,8 @@ export function createMLflowService(
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 },
       firstPrompt: prompt,
       lastResponse: "",
+      lastAssistant: null,
+      assistantTexts: [],
       lastActivityMs: Date.now(),
     };
 
@@ -207,6 +211,7 @@ export function createMLflowService(
         if (!sessionKey) return;
 
         const prompt = (evt.prompt as string) ?? "";
+        const historyMessages = evt.historyMessages as unknown[] | undefined;
         const trace = getOrCreateTrace(sessionKey, prompt);
 
         if (trace.pendingLlm) {
@@ -227,6 +232,9 @@ export function createMLflowService(
             prompt,
             ...(evt.systemPrompt
               ? { system_prompt: evt.systemPrompt }
+              : {}),
+            ...(historyMessages?.length
+              ? { messages: historyMessages }
               : {}),
           },
           attributes: {
@@ -251,14 +259,25 @@ export function createMLflowService(
         if (!trace) return;
 
         trace.lastActivityMs = Date.now();
-        const response = (evt.response as string) || "";
+        const assistantTexts = (evt.assistantTexts as string[] | undefined) ?? [];
+        const lastAssistant = evt.lastAssistant ?? null;
+        const response =
+          assistantTexts.length > 0
+            ? assistantTexts.join("\n")
+            : (evt.response as string) || "";
         trace.lastResponse = response;
+        trace.lastAssistant = lastAssistant;
+        if (assistantTexts.length > 0) {
+          trace.assistantTexts = assistantTexts;
+        }
 
         if (trace.pendingLlm) {
           trace.pendingLlm.span.setOutputs({
             choices: [
               { message: { role: "assistant", content: response } },
             ],
+            ...(lastAssistant != null ? { lastAssistant } : {}),
+            ...(assistantTexts.length > 0 ? { assistantTexts } : {}),
           });
           trace.pendingLlm.span.end();
           trace.pendingLlm = null;
