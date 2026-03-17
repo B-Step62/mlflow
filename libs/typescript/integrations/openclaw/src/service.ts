@@ -157,23 +157,23 @@ async function finalizeTrace(
     trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);
   }
 
-  // Set trace metadata BEFORE ending root span, since end() triggers export
-  try {
-    const traceManager = InMemoryTraceManager.getInstance();
-    const traceData = traceManager.getTrace(trace.rootSpan.traceId);
-    if (traceData) {
-      traceData.info.requestPreview = trace.firstPrompt.slice(0, MAX_PREVIEW_LENGTH);
-      if (trace.lastResponse) {
-        traceData.info.responsePreview = trace.lastResponse.slice(0, MAX_PREVIEW_LENGTH);
-      }
-      traceData.info.traceMetadata = {
-        ...traceData.info.traceMetadata,
-        [TraceMetadataKey.TRACE_SESSION]: sessionKey,
-        [TraceMetadataKey.TRACE_USER]: userId || process.env.USER || "",
-      };
+  // Set trace metadata BEFORE ending root span, since end() triggers export.
+  // Use updateCurrentTrace API pattern: look up trace by span's traceId.
+  const traceManager = InMemoryTraceManager.getInstance();
+  // traceId attribute is JSON-stringified by the span processor, so parse it
+  const rawTraceId = trace.rootSpan.traceId;
+  const traceId = rawTraceId.startsWith('"') ? JSON.parse(rawTraceId) : rawTraceId;
+  const traceData = traceManager.getTrace(traceId);
+  if (traceData) {
+    traceData.info.requestPreview = trace.firstPrompt.slice(0, MAX_PREVIEW_LENGTH);
+    if (trace.lastResponse) {
+      traceData.info.responsePreview = trace.lastResponse.slice(0, MAX_PREVIEW_LENGTH);
     }
-  } catch {
-    // Silently ignore metadata errors
+    traceData.info.traceMetadata = {
+      ...traceData.info.traceMetadata,
+      [TraceMetadataKey.TRACE_SESSION]: sessionKey,
+      [TraceMetadataKey.TRACE_USER]: userId || process.env.USER || "",
+    };
   }
 
   trace.rootSpan.end();
