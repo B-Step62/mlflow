@@ -160,10 +160,14 @@ async function finalizeTrace(
   // Set trace metadata BEFORE ending root span, since end() triggers export.
   try {
     const traceManager = InMemoryTraceManager.getInstance();
-    // traceId attribute is JSON-stringified by the span processor, so parse it
-    const rawTraceId = trace.rootSpan.traceId;
-    const traceId = rawTraceId.startsWith('"') ? JSON.parse(rawTraceId) : rawTraceId;
-    const traceData = traceManager.getTrace(traceId);
+    // Use OTel span context to resolve the MLflow trace ID — this is the same
+    // path the exporter uses, so it's guaranteed to match.
+    const otelTraceId = (trace.rootSpan as { _span?: { spanContext?: () => { traceId: string } } })
+      ._span?.spanContext?.()?.traceId;
+    const mlflowTraceId = otelTraceId
+      ? traceManager.getMlflowTraceIdFromOtelId(otelTraceId)
+      : null;
+    const traceData = mlflowTraceId ? traceManager.getTrace(mlflowTraceId) : null;
     if (traceData) {
       traceData.info.requestPreview = trace.firstPrompt.slice(0, MAX_PREVIEW_LENGTH);
       if (trace.lastResponse) {

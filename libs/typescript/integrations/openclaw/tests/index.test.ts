@@ -17,13 +17,17 @@ jest.mock('openclaw/plugin-sdk', () => ({
 
 // Mock the @mlflow/core module
 jest.mock('@mlflow/core', () => {
-  const createMockSpan = () => ({
-    traceId: `mock-trace-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    setAttribute: jest.fn(),
-    setOutputs: jest.fn(),
-    setStatus: jest.fn(),
-    end: jest.fn(),
-  });
+  const createMockSpan = () => {
+    const otelTraceId = `otel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return {
+      traceId: `mock-trace-${otelTraceId}`,
+      _span: { spanContext: () => ({ traceId: otelTraceId }) },
+      setAttribute: jest.fn(),
+      setOutputs: jest.fn(),
+      setStatus: jest.fn(),
+      end: jest.fn(),
+    };
+  };
 
   const mockTraceInfo = {
     requestPreview: '',
@@ -59,6 +63,7 @@ jest.mock('@mlflow/core', () => {
     InMemoryTraceManager: {
       getInstance: jest.fn(() => ({
         getTrace: jest.fn(() => mockTrace),
+        getMlflowTraceIdFromOtelId: jest.fn(() => 'mock-mlflow-trace-id'),
       })),
     },
   };
