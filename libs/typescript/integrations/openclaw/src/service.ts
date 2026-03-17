@@ -68,6 +68,28 @@ function toolKey(toolName: string, toolCallId?: string): string {
   return toolCallId ? `${toolName}:${toolCallId}` : toolName;
 }
 
+/**
+ * Strip OpenClaw sender-metadata envelope from prompt to extract the user's
+ * actual message.  Format:
+ *   Sender (untrusted metadata):\n```json\n{...}\n```\n\n[timestamp] message
+ */
+function extractUserMessage(prompt: string): string {
+  // Strip sender metadata block
+  const stripped = prompt.replace(
+    /^Sender\s+\(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/i,
+    "",
+  );
+  // Strip leading [timestamp] prefix like "[Wed 2026-03-18 03:42 GMT+9] "
+  return stripped.replace(/^\[.*?\]\s*/, "").trim() || prompt;
+}
+
+/**
+ * Strip OpenClaw routing directives like [[reply_to_current]] from response.
+ */
+function extractAssistantMessage(response: string): string {
+  return response.replace(/^\[\[[^\]]*\]\]\s*/g, "").trim() || response;
+}
+
 async function finalizeTrace(
   sessionKey: string,
   trace: ActiveTrace,
@@ -156,9 +178,11 @@ export function createMLflowService(
       return existing;
     }
 
+    const userMessage = extractUserMessage(prompt);
+
     const rootSpan = startSpan({
       name: "openclaw_agent",
-      inputs: { prompt },
+      inputs: { prompt: userMessage },
       spanType: SpanType.AGENT,
       attributes: { "session.id": sessionKey },
     });
@@ -169,7 +193,7 @@ export function createMLflowService(
       pendingTools: new Map(),
       pendingSubagents: new Map(),
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 },
-      firstPrompt: prompt,
+      firstPrompt: userMessage,
       lastResponse: "",
       agentEndData: null,
       lastActivityMs: Date.now(),
@@ -281,10 +305,11 @@ export function createMLflowService(
         trace.lastActivityMs = Date.now();
         const assistantTexts = (evt.assistantTexts as string[] | undefined) ?? [];
         const lastAssistant = evt.lastAssistant as Record<string, unknown> | undefined;
-        const response =
+        const rawResponse =
           assistantTexts.length > 0
             ? assistantTexts.join("\n")
             : (evt.response as string) || "";
+        const response = extractAssistantMessage(rawResponse);
         trace.lastResponse = response;
 
         if (trace.pendingLlm) {

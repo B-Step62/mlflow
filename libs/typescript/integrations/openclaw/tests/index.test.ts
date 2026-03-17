@@ -400,6 +400,51 @@ describe('MLflowTracingPlugin', () => {
     });
   });
 
+  describe('Message Cleaning', () => {
+    it('should strip OpenClaw sender metadata from prompt', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      const rawPrompt = 'Sender (untrusted metadata):\n```json\n{\n  "label": "openclaw-tui",\n  "id": "gateway-client"\n}\n```\n\n[Wed 2026-03-18 03:42 GMT+9] Hello';
+      harness.fire('llm_input', { prompt: rawPrompt, model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'openclaw_agent',
+          inputs: { prompt: 'Hello' },
+        }),
+      );
+    });
+
+    it('should strip [[routing]] directives from response', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hi', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      const llmSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[1].value;
+
+      harness.fire('llm_output', { response: '[[reply_to_current]] Hello there!' }, { sessionKey: 'session-1' });
+
+      expect(llmSpan.setOutputs).toHaveBeenCalledWith({
+        choices: [{ message: { role: 'assistant', content: 'Hello there!' } }],
+      });
+    });
+
+    it('should pass through clean messages unchanged', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Just a question', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+
+      expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'openclaw_agent',
+          inputs: { prompt: 'Just a question' },
+        }),
+      );
+    });
+  });
+
   describe('Tool Execution Tracing', () => {
     it('should create TOOL span on tool_start', async () => {
       const harness = createTestHarness();
