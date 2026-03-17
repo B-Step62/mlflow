@@ -140,8 +140,9 @@ async function finalizeTrace(
     trace.lastResponse = JSON.stringify(endData.messages);
   }
 
+  const responseText = trace.lastResponse || "Agent completed";
   const outputs: Record<string, unknown> = {
-    response: trace.lastResponse || "Agent completed",
+    choices: [{ message: { role: "assistant", content: responseText } }],
   };
   if (endData?.error) {
     trace.rootSpan.setStatus(SpanStatusCode.ERROR, endData.error);
@@ -182,9 +183,12 @@ export function createMLflowService(
 
     const rootSpan = startSpan({
       name: "openclaw_agent",
-      inputs: { prompt: cleanPrompt },
+      inputs: {
+        messages: [{ role: "user", content: cleanPrompt }],
+      },
       spanType: SpanType.AGENT,
     });
+    rootSpan.setAttribute(SpanAttributeKey.MESSAGE_FORMAT, "openai");
 
     const trace: ActiveTrace = {
       rootSpan,
