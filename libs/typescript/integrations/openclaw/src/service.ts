@@ -137,6 +137,7 @@ export function createMLflowService(
       name: "openclaw_agent",
       inputs: { prompt },
       spanType: SpanType.AGENT,
+      attributes: { session_id: sessionKey },
     });
 
     const trace: ActiveTrace = {

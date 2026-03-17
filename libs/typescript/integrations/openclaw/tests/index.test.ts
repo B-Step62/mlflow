@@ -238,6 +238,7 @@ describe('MLflowTracingPlugin', () => {
           name: 'openclaw_agent',
           spanType: 'AGENT',
           inputs: { prompt: 'What is 2+2?' },
+          attributes: expect.objectContaining({ session_id: 'session-1' }),
         }),
       );
 
