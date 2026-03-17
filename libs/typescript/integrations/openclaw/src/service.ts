@@ -104,17 +104,20 @@ async function finalizeTrace(
     trace.lastResponse = JSON.stringify(endData.messages);
   }
 
+  const outputs: Record<string, unknown> = {
+    response: trace.lastResponse || "Agent completed",
+  };
+  if (trace.lastAssistant != null) {
+    outputs.lastAssistant = trace.lastAssistant;
+  }
+  if (trace.assistantTexts.length > 0) {
+    outputs.assistantTexts = trace.assistantTexts;
+  }
   if (endData?.error) {
     trace.rootSpan.setStatus(SpanStatusCode.ERROR, endData.error);
-    trace.rootSpan.setOutputs({
-      response: trace.lastResponse || "Agent completed",
-      error: endData.error,
-    });
-  } else {
-    trace.rootSpan.setOutputs({
-      response: trace.lastResponse || "Agent completed",
-    });
+    outputs.error = endData.error;
   }
+  trace.rootSpan.setOutputs(outputs);
 
   if (endData?.durationMs != null) {
     trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);

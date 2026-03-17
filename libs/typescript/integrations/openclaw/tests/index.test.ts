@@ -620,6 +620,53 @@ describe('MLflowTracingPlugin', () => {
     });
   });
 
+  describe('Structured Trace Output', () => {
+    it('should set lastAssistant and assistantTexts on root span outputs', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire(
+        'llm_output',
+        {
+          assistantTexts: ['Response part 1', 'Response part 2'],
+          lastAssistant: { role: 'assistant', content: 'Response part 2' },
+        },
+        { sessionKey: 'session-1' },
+      );
+      harness.fire('agent_end', { success: true }, { sessionKey: 'session-1' });
+      await flushMicrotasks();
+
+      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
+      expect(rootSpan.setOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          response: 'Response part 1\nResponse part 2',
+          lastAssistant: { role: 'assistant', content: 'Response part 2' },
+          assistantTexts: ['Response part 1', 'Response part 2'],
+        }),
+      );
+    });
+
+    it('should omit structured fields when only bare response is available', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Simple reply' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', { success: true }, { sessionKey: 'session-1' });
+      await flushMicrotasks();
+
+      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
+      const outputCall = rootSpan.setOutputs.mock.calls.find(
+        (call: unknown[]) => (call[0] as Record<string, unknown>).response === 'Simple reply',
+      );
+      expect(outputCall).toBeDefined();
+      const outputs = outputCall[0] as Record<string, unknown>;
+      expect(outputs).not.toHaveProperty('lastAssistant');
+      expect(outputs).not.toHaveProperty('assistantTexts');
+    });
+  });
+
   describe('Agent End Data', () => {
     it('should set error status on root span when agent_end has error', async () => {
       const harness = createTestHarness();
