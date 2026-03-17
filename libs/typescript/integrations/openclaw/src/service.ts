@@ -272,6 +272,16 @@ export function createMLflowService(
         }
 
         if (trace.pendingLlm) {
+          const usage = evt.usage as
+            | { input?: number; output?: number; total?: number }
+            | undefined;
+          if (usage) {
+            trace.pendingLlm.span.setAttribute(SpanAttributeKey.TOKEN_USAGE, {
+              input_tokens: usage.input || 0,
+              output_tokens: usage.output || 0,
+              total_tokens: usage.total || 0,
+            });
+          }
           trace.pendingLlm.span.setOutputs({
             choices: [
               { message: { role: "assistant", content: response } },

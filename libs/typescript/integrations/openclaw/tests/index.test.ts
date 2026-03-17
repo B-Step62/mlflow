@@ -517,6 +517,26 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Token Usage Tracking', () => {
+    it('should set token usage on LLM span from llm_output event', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      const llmSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[1].value;
+
+      harness.fire(
+        'llm_output',
+        { response: 'Hi', usage: { input: 50, output: 25, total: 75 } },
+        { sessionKey: 'session-1' },
+      );
+
+      expect(llmSpan.setAttribute).toHaveBeenCalledWith('token_usage', {
+        input_tokens: 50,
+        output_tokens: 25,
+        total_tokens: 75,
+      });
+    });
+
     it('should accumulate token usage from diagnostic events', async () => {
       const harness = createTestHarness();
       await startService(harness);
