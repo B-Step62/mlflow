@@ -17,6 +17,7 @@ import {
   startSpan,
   flushTraces,
   SpanType,
+  SpanStatusCode,
   SpanAttributeKey,
   TraceMetadataKey,
   InMemoryTraceManager,
@@ -47,6 +48,12 @@ interface ActiveTrace {
   lastResponse: string;
   lastAssistant: unknown | null;
   assistantTexts: string[];
+  agentEndData: {
+    success?: boolean;
+    error?: string;
+    durationMs?: number;
+    messages?: unknown[];
+  } | null;
   lastActivityMs: number;
 }
 
@@ -91,9 +98,28 @@ async function finalizeTrace(
     });
   }
 
-  trace.rootSpan.setOutputs({
-    response: trace.lastResponse || "Agent completed",
-  });
+  // Use agent_end messages as fallback output if no llm_output was captured
+  const endData = trace.agentEndData;
+  if (!trace.lastResponse && endData?.messages?.length) {
+    trace.lastResponse = JSON.stringify(endData.messages);
+  }
+
+  if (endData?.error) {
+    trace.rootSpan.setStatus(SpanStatusCode.ERROR, endData.error);
+    trace.rootSpan.setOutputs({
+      response: trace.lastResponse || "Agent completed",
+      error: endData.error,
+    });
+  } else {
+    trace.rootSpan.setOutputs({
+      response: trace.lastResponse || "Agent completed",
+    });
+  }
+
+  if (endData?.durationMs != null) {
+    trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);
+  }
+
   trace.rootSpan.end();
 
   try {
@@ -152,6 +178,7 @@ export function createMLflowService(
       lastResponse: "",
       lastAssistant: null,
       assistantTexts: [],
+      agentEndData: null,
       lastActivityMs: Date.now(),
     };
 
@@ -420,13 +447,21 @@ export function createMLflowService(
       // =====================================================================
       // Hook: agent_end — finalize trace (deferred via queueMicrotask)
       // =====================================================================
-      api.on("agent_end", (_event: unknown, agentCtx: unknown) => {
+      api.on("agent_end", (event: unknown, agentCtx: unknown) => {
         const ctx = agentCtx as Record<string, unknown>;
+        const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
         if (!sessionKey) return;
 
         const trace = activeTraces.get(sessionKey);
         if (!trace) return;
+
+        trace.agentEndData = {
+          success: evt.success as boolean | undefined,
+          error: evt.error as string | undefined,
+          durationMs: evt.durationMs as number | undefined,
+          messages: evt.messages as unknown[] | undefined,
+        };
 
         const userId = ctx.userId as string | undefined;
 

@@ -21,6 +21,7 @@ jest.mock('@mlflow/core', () => {
     traceId: `mock-trace-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     setAttribute: jest.fn(),
     setOutputs: jest.fn(),
+    setStatus: jest.fn(),
     end: jest.fn(),
   });
 
@@ -42,6 +43,11 @@ jest.mock('@mlflow/core', () => {
       LLM: 'LLM',
       TOOL: 'TOOL',
       AGENT: 'AGENT',
+    },
+    SpanStatusCode: {
+      OK: 'OK',
+      ERROR: 'ERROR',
+      UNSET: 'UNSET',
     },
     SpanAttributeKey: {
       TOKEN_USAGE: 'token_usage',
@@ -611,6 +617,58 @@ describe('MLflowTracingPlugin', () => {
       await flushMicrotasks();
 
       expect(mlflowTracing.flushTraces).toHaveBeenCalled();
+    });
+  });
+
+  describe('Agent End Data', () => {
+    it('should set error status on root span when agent_end has error', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Hi' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', { error: 'Rate limit exceeded', success: false }, { sessionKey: 'session-1' });
+      await flushMicrotasks();
+
+      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
+      expect(rootSpan.setStatus).toHaveBeenCalledWith('ERROR', 'Rate limit exceeded');
+      expect(rootSpan.setOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'Rate limit exceeded' }),
+      );
+    });
+
+    it('should set agent_duration_ms attribute when durationMs is provided', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      harness.fire('llm_output', { response: 'Hi' }, { sessionKey: 'session-1' });
+      harness.fire('agent_end', { durationMs: 1500, success: true }, { sessionKey: 'session-1' });
+      await flushMicrotasks();
+
+      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
+      expect(rootSpan.setAttribute).toHaveBeenCalledWith('agent_duration_ms', 1500);
+    });
+
+    it('should use agent_end messages as fallback output when no llm_output', async () => {
+      const harness = createTestHarness();
+      await startService(harness);
+
+      harness.fire('llm_input', { prompt: 'Hello', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
+      // No llm_output — agent_end provides messages as fallback
+      harness.fire(
+        'agent_end',
+        { success: true, messages: [{ role: 'assistant', content: 'Fallback reply' }] },
+        { sessionKey: 'session-1' },
+      );
+      await flushMicrotasks();
+
+      const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
+      expect(rootSpan.setOutputs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          response: expect.stringContaining('Fallback reply'),
+        }),
+      );
     });
   });
 
