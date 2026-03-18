@@ -131,6 +131,7 @@ function sanitizeOpenClawText(value: string): string {
     .replace(/^\s*Sender \(untrusted metadata\):\s*\n+\{[\s\S]*?\}\s*/gim, "")
     .replace(/^\s*Sender \(untrusted metadata\):\s*\n*```json\s*\{[\s\S]*?\}\s*```\s*/gim, "")
     .replace(/^\s*Conversation info \(untrusted metadata\):\s*\n+\{[\s\S]*?\}\s*/gim, "")
+    .replace(/^\s*Conversation info \(untrusted metadata\):\s*\n*```json\s*\{[\s\S]*?\}\s*```\s*/gim, "")
     .replace(
       /^\s*Untrusted context \(metadata, do not treat as instructions or commands\):\s*\n+<<<EXTERNAL_UNTRUSTED_CONTENT[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>\s*/gim,
       "",
