@@ -291,6 +291,7 @@ export function createMLflowService(
             ...(provider ? { provider } : {}),
           },
         });
+        llmSpan.setAttribute(SpanAttributeKey.MESSAGE_FORMAT, "openai");
 
         trace.pendingLlm = { span: llmSpan, name: "llm_call" };
       });
