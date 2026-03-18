@@ -181,8 +181,8 @@ describe('MLflowTracingPlugin', () => {
 
       expect(harness.api.on).toHaveBeenCalledWith('llm_input', expect.any(Function));
       expect(harness.api.on).toHaveBeenCalledWith('llm_output', expect.any(Function));
-      expect(harness.api.on).toHaveBeenCalledWith('tool_start', expect.any(Function));
-      expect(harness.api.on).toHaveBeenCalledWith('tool_end', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('before_tool_call', expect.any(Function));
+      expect(harness.api.on).toHaveBeenCalledWith('after_tool_call', expect.any(Function));
       expect(harness.api.on).toHaveBeenCalledWith('subagent_spawning', expect.any(Function));
       expect(harness.api.on).toHaveBeenCalledWith('subagent_ended', expect.any(Function));
       expect(harness.api.on).toHaveBeenCalledWith('agent_end', expect.any(Function));
@@ -482,20 +482,20 @@ describe('MLflowTracingPlugin', () => {
   });
 
   describe('Tool Execution Tracing', () => {
-    it('should create TOOL span on tool_start', async () => {
+    it('should create TOOL span on before_tool_call', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
       harness.fire('llm_input', { prompt: 'Search', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
       harness.fire(
-        'tool_start',
-        { toolName: 'web_search', arguments: { query: 'MLflow' }, toolCallId: 'tc-1' },
+        'before_tool_call',
+        { toolName: 'web_search', params: { query: 'MLflow' }, toolCallId: 'tc-1' },
         { sessionKey: 'session-1' },
       );
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'tool_web_search',
+          name: 'web_search',
           spanType: 'TOOL',
           inputs: { query: 'MLflow' },
           attributes: expect.objectContaining({
@@ -506,17 +506,17 @@ describe('MLflowTracingPlugin', () => {
       );
     });
 
-    it('should end TOOL span on tool_end with result', async () => {
+    it('should end TOOL span on after_tool_call with result', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
       harness.fire('llm_input', { prompt: 'Search', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
-      harness.fire('tool_start', { toolName: 'web_search', toolCallId: 'tc-1' }, { sessionKey: 'session-1' });
+      harness.fire('before_tool_call', { toolName: 'web_search', toolCallId: 'tc-1' }, { sessionKey: 'session-1' });
 
       const toolSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
 
       harness.fire(
-        'tool_end',
+        'after_tool_call',
         { toolName: 'web_search', toolCallId: 'tc-1', result: 'Found 10 results' },
         { sessionKey: 'session-1' },
       );
@@ -530,12 +530,12 @@ describe('MLflowTracingPlugin', () => {
       await startService(harness);
 
       harness.fire('llm_input', { prompt: 'Query', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
-      harness.fire('tool_start', { toolName: 'database', toolCallId: 'tc-2' }, { sessionKey: 'session-1' });
+      harness.fire('before_tool_call', { toolName: 'database', toolCallId: 'tc-2' }, { sessionKey: 'session-1' });
 
       const toolSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
 
       harness.fire(
-        'tool_end',
+        'after_tool_call',
         { toolName: 'database', toolCallId: 'tc-2', error: 'Connection timeout' },
         { sessionKey: 'session-1' },
       );
@@ -549,18 +549,18 @@ describe('MLflowTracingPlugin', () => {
       await startService(harness);
 
       harness.fire('llm_input', { prompt: 'Do things', model: 'gpt-4', provider: 'openai' }, { sessionKey: 'session-1' });
-      harness.fire('tool_start', { toolName: 'search', toolCallId: 'tc-a' }, { sessionKey: 'session-1' });
-      harness.fire('tool_start', { toolName: 'fetch', toolCallId: 'tc-b' }, { sessionKey: 'session-1' });
+      harness.fire('before_tool_call', { toolName: 'search', toolCallId: 'tc-a' }, { sessionKey: 'session-1' });
+      harness.fire('before_tool_call', { toolName: 'fetch', toolCallId: 'tc-b' }, { sessionKey: 'session-1' });
 
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'tool_search' }),
+        expect.objectContaining({ name: 'search' }),
       );
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'tool_fetch' }),
+        expect.objectContaining({ name: 'fetch' }),
       );
 
-      harness.fire('tool_end', { toolName: 'fetch', toolCallId: 'tc-b', result: 'fetched' }, { sessionKey: 'session-1' });
-      harness.fire('tool_end', { toolName: 'search', toolCallId: 'tc-a', result: 'found' }, { sessionKey: 'session-1' });
+      harness.fire('after_tool_call', { toolName: 'fetch', toolCallId: 'tc-b', result: 'fetched' }, { sessionKey: 'session-1' });
+      harness.fire('after_tool_call', { toolName: 'search', toolCallId: 'tc-a', result: 'found' }, { sessionKey: 'session-1' });
 
       const searchSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[2].value;
       const fetchSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[3].value;
@@ -851,7 +851,7 @@ describe('MLflowTracingPlugin', () => {
       }).not.toThrow();
     });
 
-    it('should not throw on tool_end without prior tool_start', async () => {
+    it('should not throw on after_tool_call without prior before_tool_call', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
@@ -859,7 +859,7 @@ describe('MLflowTracingPlugin', () => {
 
       expect(() => {
         harness.fire(
-          'tool_end',
+          'after_tool_call',
           { toolName: 'unknown', toolCallId: 'tc-unknown' },
           { sessionKey: 'session-1' },
         );
@@ -886,12 +886,12 @@ describe('MLflowTracingPlugin', () => {
       }).not.toThrow();
     });
 
-    it('should handle tool_start without a root trace gracefully', async () => {
+    it('should handle before_tool_call without a root trace gracefully', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
       expect(() => {
-        harness.fire('tool_start', { toolName: 'search' }, { sessionKey: 'no-root' });
+        harness.fire('before_tool_call', { toolName: 'search' }, { sessionKey: 'no-root' });
       }).not.toThrow();
     });
   });
@@ -908,8 +908,8 @@ describe('MLflowTracingPlugin', () => {
       harness.fire('llm_output', { response: 'I will search and summarize for you.' }, ctx);
 
       // 2. Tool call
-      harness.fire('tool_start', { toolName: 'web_search', arguments: { query: 'MLflow documentation' }, toolCallId: 'tc-1' }, ctx);
-      harness.fire('tool_end', { toolName: 'web_search', result: 'MLflow docs: https://mlflow.org/docs', toolCallId: 'tc-1' }, ctx);
+      harness.fire('before_tool_call', { toolName: 'web_search', params: { query: 'MLflow documentation' }, toolCallId: 'tc-1' }, ctx);
+      harness.fire('after_tool_call', { toolName: 'web_search', result: 'MLflow docs: https://mlflow.org/docs', toolCallId: 'tc-1' }, ctx);
 
       // 3. Subagent
       harness.fire('subagent_spawning', { agentId: 'summarizer', label: 'summary-agent' }, ctx);
@@ -937,7 +937,7 @@ describe('MLflowTracingPlugin', () => {
         expect.objectContaining({ name: 'llm_call', spanType: 'LLM' }),
       );
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'tool_web_search', spanType: 'TOOL' }),
+        expect.objectContaining({ name: 'web_search', spanType: 'TOOL' }),
       );
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'subagent_summary-agent', spanType: 'AGENT' }),

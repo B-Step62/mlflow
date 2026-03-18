@@ -341,9 +341,9 @@ export function createMLflowService(
       });
 
       // =====================================================================
-      // Hook: tool_start — create TOOL span
+      // Hook: before_tool_call — create TOOL span
       // =====================================================================
-      api.on("tool_start", (event: unknown, agentCtx: unknown) => {
+      api.on("before_tool_call", (event: unknown, agentCtx: unknown) => {
         const ctx = agentCtx as Record<string, unknown>;
         const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
@@ -358,10 +358,12 @@ export function createMLflowService(
         const key = toolKey(toolName, toolCallId);
 
         const toolSpan = startSpan({
-          name: `tool_${toolName}`,
+          name: toolName,
           parent: trace.rootSpan,
           spanType: SpanType.TOOL,
-          inputs: (evt.arguments as Record<string, unknown>) || {},
+          inputs: sanitizeValue(
+            (evt.params as Record<string, unknown>) || {},
+          ) as Record<string, unknown>,
           attributes: {
             tool_name: toolName,
             ...(toolCallId ? { tool_id: toolCallId } : {}),
@@ -372,9 +374,9 @@ export function createMLflowService(
       });
 
       // =====================================================================
-      // Hook: tool_end — end TOOL span with result or error
+      // Hook: after_tool_call — end TOOL span with result or error
       // =====================================================================
-      api.on("tool_end", (event: unknown, agentCtx: unknown) => {
+      api.on("after_tool_call", (event: unknown, agentCtx: unknown) => {
         const ctx = agentCtx as Record<string, unknown>;
         const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
