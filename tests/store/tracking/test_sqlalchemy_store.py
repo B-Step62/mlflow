@@ -6500,6 +6500,123 @@ def test_search_traces_with_expectation_like_filters(store: SqlAlchemyStore):
     assert traces[0].request_id == trace1_id
 
 
+def test_search_traces_with_assessment_numeric_filters(store: SqlAlchemyStore):
+    exp_id = store.create_experiment("test_assessment_numeric")
+
+    trace1_id = "trace1"
+    trace2_id = "trace2"
+    trace3_id = "trace3"
+    trace4_id = "trace4"
+    trace5_id = "trace5"
+
+    _create_trace(store, trace1_id, exp_id)
+    _create_trace(store, trace2_id, exp_id)
+    _create_trace(store, trace3_id, exp_id)
+    _create_trace(store, trace4_id, exp_id)
+    _create_trace(store, trace5_id, exp_id)
+
+    # Create feedback with numeric values
+    for trace_id, value in [
+        (trace1_id, 5),
+        (trace2_id, 0.8),
+        (trace3_id, 3.5),
+    ]:
+        store.create_assessment(
+            Feedback(
+                trace_id=trace_id,
+                name="score",
+                value=value,
+                source=AssessmentSource(source_type="HUMAN", source_id="user@example.com"),
+            )
+        )
+
+    # trace4: string feedback (should be excluded from numeric comparisons)
+    store.create_assessment(
+        Feedback(
+            trace_id=trace4_id,
+            name="score",
+            value="high",
+            source=AssessmentSource(source_type="HUMAN", source_id="user@example.com"),
+        )
+    )
+    # trace5: boolean feedback (maps to 1.0)
+    store.create_assessment(
+        Feedback(
+            trace_id=trace5_id,
+            name="score",
+            value=True,
+            source=AssessmentSource(source_type="HUMAN", source_id="user@example.com"),
+        )
+    )
+
+    # Test: > 3 should match 5 and 3.5
+    traces, _ = store.search_traces([exp_id], filter_string="feedback.score > 3")
+    trace_ids = {t.request_id for t in traces}
+    assert trace_ids == {trace1_id, trace3_id}
+
+    # Test: >= 5 should match only 5
+    traces, _ = store.search_traces([exp_id], filter_string="feedback.score >= 5")
+    trace_ids = {t.request_id for t in traces}
+    assert trace_ids == {trace1_id}
+
+    # Test: < 1.0 should match 0.8
+    traces, _ = store.search_traces([exp_id], filter_string="feedback.score < 1.0")
+    trace_ids = {t.request_id for t in traces}
+    assert trace_ids == {trace2_id}
+
+    # Test: <= 3.5 should match 0.8, 3.5, and True (1.0)
+    traces, _ = store.search_traces([exp_id], filter_string="feedback.score <= 3.5")
+    trace_ids = {t.request_id for t in traces}
+    assert trace_ids == {trace2_id, trace3_id, trace5_id}
+
+    # Test: combined with string equality filter
+    store.create_assessment(
+        Feedback(
+            trace_id=trace1_id,
+            name="quality",
+            value="high",
+            source=AssessmentSource(source_type="HUMAN", source_id="user@example.com"),
+        )
+    )
+    store.create_assessment(
+        Feedback(
+            trace_id=trace3_id,
+            name="quality",
+            value="high",
+            source=AssessmentSource(source_type="HUMAN", source_id="user@example.com"),
+        )
+    )
+    traces, _ = store.search_traces(
+        [exp_id],
+        filter_string='feedback.score > 3 AND feedback.quality = "high"',
+    )
+    trace_ids = {t.request_id for t in traces}
+    assert trace_ids == {trace1_id, trace3_id}
+
+    # Test: expectation numeric filters
+    store.create_assessment(
+        Expectation(
+            trace_id=trace1_id,
+            name="response_length",
+            value=150,
+            source=AssessmentSource(source_type="CODE", source_id="scorer"),
+        )
+    )
+    store.create_assessment(
+        Expectation(
+            trace_id=trace2_id,
+            name="response_length",
+            value=50,
+            source=AssessmentSource(source_type="CODE", source_id="scorer"),
+        )
+    )
+    traces, _ = store.search_traces(
+        [exp_id], filter_string="expectation.response_length > 100"
+    )
+    trace_ids = {t.request_id for t in traces}
+    assert trace_ids == {trace1_id}
+
+
 def test_search_traces_with_metadata_like_filters(store: SqlAlchemyStore):
     exp_id = store.create_experiment("test_metadata_like")
 
