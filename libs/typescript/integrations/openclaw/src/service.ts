@@ -16,9 +16,11 @@ import {
   init,
   startSpan,
   flushTraces,
+  tracingContext,
   SpanType,
   SpanStatusCode,
   SpanAttributeKey,
+  TraceMetadataKey,
 } from "@mlflow/core";
 const MAX_ACTIVE_TRACES = 50;
 
@@ -154,9 +156,6 @@ async function finalizeTrace(
     trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);
   }
 
-  // TODO: Set trace-level metadata (session, user, previews) once we have
-  // a reliable way to look up the in-memory trace before export.
-
   trace.rootSpan.end();
   await flushTraces();
 }
@@ -181,13 +180,22 @@ export function createMLflowService(
 
     const cleanPrompt = sanitizeOpenClawText(prompt);
 
-    const rootSpan = startSpan({
-      name: "openclaw_agent",
-      inputs: {
-        messages: [{ role: "user", content: cleanPrompt }],
+    const rootSpan = tracingContext(
+      {
+        metadata: {
+          [TraceMetadataKey.TRACE_SESSION]: sessionKey,
+          [TraceMetadataKey.TRACE_USER]: process.env.USER || "",
+        },
       },
-      spanType: SpanType.AGENT,
-    });
+      () =>
+        startSpan({
+          name: "openclaw_agent",
+          inputs: {
+            messages: [{ role: "user", content: cleanPrompt }],
+          },
+          spanType: SpanType.AGENT,
+        }),
+    );
     rootSpan.setAttribute(SpanAttributeKey.MESSAGE_FORMAT, "openai");
 
     const trace: ActiveTrace = {

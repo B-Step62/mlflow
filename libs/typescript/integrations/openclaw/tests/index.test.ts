@@ -42,6 +42,7 @@ jest.mock('@mlflow/core', () => {
   return {
     init: jest.fn(),
     startSpan: jest.fn(() => createMockSpan()),
+    tracingContext: jest.fn((_opts: unknown, fn: () => unknown) => fn()),
     flushTraces: jest.fn().mockResolvedValue(undefined),
     SpanType: {
       LLM: 'LLM',
