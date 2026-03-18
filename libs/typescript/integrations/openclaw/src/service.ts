@@ -307,8 +307,8 @@ export function createMLflowService(
           spanType: SpanType.LLM,
           inputs: llmInputs,
           attributes: {
-            ...(model ? { model } : {}),
-            ...(provider ? { provider } : {}),
+            ...(model ? { "mlflow.llm.model": model } : {}),
+            ...(provider ? { "mlflow.llm.provider": provider } : {}),
           },
         });
         llmSpan.setAttribute(SpanAttributeKey.MESSAGE_FORMAT, "openai");
@@ -340,15 +340,24 @@ export function createMLflowService(
 
         if (trace.pendingLlm) {
           // Extract usage: top-level evt.usage → lastAssistant.usage fallback
-          type UsageLike = { input?: number; output?: number; total?: number; totalTokens?: number };
+          type UsageLike = {
+            input?: number; output?: number; total?: number;
+            totalTokens?: number; cacheRead?: number; cacheWrite?: number;
+          };
           const evtUsage = evt.usage as UsageLike | undefined;
           const assistantUsage = lastAssistant?.usage as UsageLike | undefined;
           const usage = evtUsage ?? assistantUsage;
           if (usage && (usage.input || usage.output || usage.total || usage.totalTokens)) {
+            const inputTokens = usage.input ?? 0;
+            const outputTokens = usage.output ?? 0;
+            const cacheRead = usage.cacheRead ?? 0;
+            const cacheWrite = usage.cacheWrite ?? 0;
             trace.pendingLlm.span.setAttribute(SpanAttributeKey.TOKEN_USAGE, {
-              input_tokens: usage.input ?? 0,
-              output_tokens: usage.output ?? 0,
-              total_tokens: usage.total ?? usage.totalTokens ?? 0,
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              total_tokens: inputTokens + outputTokens + cacheRead + cacheWrite,
+              ...(cacheRead ? { cache_read_input_tokens: cacheRead } : {}),
+              ...(cacheWrite ? { cache_creation_input_tokens: cacheWrite } : {}),
             });
           }
           trace.pendingLlm.span.setOutputs({
