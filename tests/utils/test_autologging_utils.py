@@ -4,7 +4,6 @@ from threading import Thread
 from mlflow import MlflowClient
 from mlflow.entities import Metric
 from mlflow.utils.autologging_utils.logging_and_warnings import (
-    ORIGINAL_SHOWWARNING,
     _WarningsController,
 )
 from mlflow.utils.autologging_utils.metrics_queue import (
@@ -46,11 +45,12 @@ def test_flush_metrics_queue_is_thread_safe():
 
 
 def test_double_patch_does_not_overwrite(monkeypatch):
-    monkeypatch.setattr(warnings, "showwarning", ORIGINAL_SHOWWARNING)
+    original = warnings.showwarning
+    monkeypatch.setattr(warnings, "showwarning", original)
 
     controller = _WarningsController()
 
-    assert warnings.showwarning == ORIGINAL_SHOWWARNING
+    assert warnings.showwarning == original
     assert not controller._did_patch_showwarning
 
     controller.set_non_mlflow_warnings_disablement_state_for_current_thread(True)
@@ -66,4 +66,17 @@ def test_double_patch_does_not_overwrite(monkeypatch):
 
     controller.set_non_mlflow_warnings_disablement_state_for_current_thread(False)
 
-    assert warnings.showwarning == ORIGINAL_SHOWWARNING
+    assert warnings.showwarning == original
+
+
+def test_user_showwarning_survives_patch_unpatch_cycle(monkeypatch):
+    custom_handler = lambda *args, **kwargs: None
+    monkeypatch.setattr(warnings, "showwarning", custom_handler)
+
+    controller = _WarningsController()
+
+    controller.set_non_mlflow_warnings_disablement_state_for_current_thread(True)
+    assert warnings.showwarning == controller._patched_showwarning
+
+    controller.set_non_mlflow_warnings_disablement_state_for_current_thread(False)
+    assert warnings.showwarning is custom_handler
