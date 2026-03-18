@@ -708,7 +708,7 @@ describe('MLflowTracingPlugin', () => {
 
       const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
       expect(rootSpan.setOutputs).toHaveBeenCalledWith({
-        choices: [{ message: { role: 'assistant', content: 'Response part 1\nResponse part 2' } }],
+        messages: [{ role: 'assistant', content: 'Response part 1\nResponse part 2' }],
       });
     });
 
@@ -731,8 +731,8 @@ describe('MLflowTracingPlugin', () => {
       const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
       const outputCall = rootSpan.setOutputs.mock.calls.find(
         (call: unknown[]) => {
-          const choices = (call[0] as Record<string, unknown>).choices as { message: { content: string } }[];
-          return choices?.[0]?.message?.content === 'Reply';
+          const msgs = (call[0] as Record<string, unknown>).messages as { content: string }[];
+          return msgs?.[0]?.content === 'Reply';
         },
       );
       expect(outputCall).toBeDefined();
@@ -787,8 +787,8 @@ describe('MLflowTracingPlugin', () => {
 
       const rootSpan = (mlflowTracing.startSpan as jest.Mock).mock.results[0].value;
       const call = rootSpan.setOutputs.mock.calls[0][0] as Record<string, unknown>;
-      const choices = call.choices as { message: { content: string } }[];
-      expect(choices[0].message.content).toContain('Fallback reply');
+      const msgs = call.messages as { content: string }[];
+      expect(msgs[0].content).toContain('Fallback reply');
     });
   });
 

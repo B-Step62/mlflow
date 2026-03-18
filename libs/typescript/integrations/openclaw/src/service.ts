@@ -142,7 +142,7 @@ async function finalizeTrace(
 
   const responseText = trace.lastResponse || "Agent completed";
   const outputs: Record<string, unknown> = {
-    choices: [{ message: { role: "assistant", content: responseText } }],
+    messages: [{ role: "assistant", content: responseText }],
   };
   if (endData?.error) {
     trace.rootSpan.setStatus(SpanStatusCode.ERROR, endData.error);
