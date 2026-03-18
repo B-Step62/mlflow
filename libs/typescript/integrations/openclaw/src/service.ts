@@ -277,10 +277,22 @@ export function createMLflowService(
         }
         if (historyMessages?.length) {
           for (const msg of historyMessages) {
-            const m = msg as { role?: string; content?: string };
-            if (m.role && m.content) {
-              messages.push({ role: m.role, content: m.content });
-            }
+            const m = msg as { role?: string; content?: unknown };
+            if (!m.role) continue;
+            // Normalize OpenClaw roles to OpenAI roles
+            const role = m.role === "toolResult" ? "tool" : m.role;
+            // Flatten array content (e.g. toolResult content parts) to string
+            const content =
+              typeof m.content === "string"
+                ? m.content
+                : Array.isArray(m.content)
+                  ? m.content
+                      .map((p: { text?: string }) => p.text ?? "")
+                      .join("\n")
+                  : m.content != null
+                    ? JSON.stringify(m.content)
+                    : "";
+            messages.push({ role, content });
           }
         }
         messages.push({ role: "user", content: prompt });
