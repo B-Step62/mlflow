@@ -22,7 +22,21 @@ import {
   SpanAttributeKey,
   TraceMetadataKey,
 } from "@mlflow/core";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const MAX_ACTIVE_TRACES = 50;
+const DEFAULT_STALE_TRACE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_STALE_SWEEP_INTERVAL_MS = 60 * 1000; // 1 minute
+const DEFAULT_FLUSH_RETRY_COUNT = 2;
+const DEFAULT_FLUSH_RETRY_BASE_DELAY_MS = 250;
+const MAX_FLUSH_RETRY_DELAY_MS = 5000;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type SpanLike = ReturnType<typeof startSpan>;
 
@@ -42,6 +56,13 @@ interface ActiveTrace {
     totalTokens: number;
     cost: number;
   };
+  costMeta: {
+    costUsd?: number;
+    contextLimit?: number;
+    contextUsed?: number;
+    model?: string;
+    provider?: string;
+  };
   firstPrompt: string;
   lastResponse: string;
   agentEndData: {
@@ -50,8 +71,16 @@ interface ActiveTrace {
     durationMs?: number;
     messages?: unknown[];
   } | null;
+  channelId?: string;
+  trigger?: string;
+  model?: string;
+  provider?: string;
   lastActivityMs: number;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function evictOldest<K, V>(map: Map<K, V>, maxSize: number): void {
   while (map.size > maxSize) {
@@ -66,6 +95,29 @@ function toolKey(toolName: string, toolCallId?: string): string {
   return toolCallId ? `${toolName}:${toolCallId}` : toolName;
 }
 
+function normalizeProvider(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) return undefined;
+  if (
+    normalized === "openai-codex" ||
+    normalized === "openai_codex" ||
+    normalized === "codex" ||
+    (normalized.includes("openai") && normalized.includes("codex"))
+  ) {
+    return "openai";
+  }
+  return normalized;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Sanitize OpenClaw internal markers from text before storing in MLflow.
  * Mirrors the patterns stripped by the Opik OpenClaw plugin's sanitizer.
@@ -75,22 +127,15 @@ function sanitizeOpenClawText(value: string): string {
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
-    // [[reply_to_current]] and similar routing directives
     .replace(/\[\[reply_to[^\]]*\]\]\s*/gi, "")
-    // Sender (untrusted metadata): { ... } — plain JSON block
     .replace(/^\s*Sender \(untrusted metadata\):\s*\n+\{[\s\S]*?\}\s*/gim, "")
-    // Sender (untrusted metadata): ```json { ... } ``` — fenced block
     .replace(/^\s*Sender \(untrusted metadata\):\s*\n*```json\s*\{[\s\S]*?\}\s*```\s*/gim, "")
-    // Conversation info (untrusted metadata): { ... }
     .replace(/^\s*Conversation info \(untrusted metadata\):\s*\n+\{[\s\S]*?\}\s*/gim, "")
-    // Untrusted context <<<EXTERNAL_UNTRUSTED_CONTENT ... >>>
     .replace(
       /^\s*Untrusted context \(metadata, do not treat as instructions or commands\):\s*\n+<<<EXTERNAL_UNTRUSTED_CONTENT[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>\s*/gim,
       "",
     )
-    // [Wed 2026-03-18 03:42 GMT+9] timestamp prefix
     .replace(/^\[[\w\s:+\-/]+\]\s*/m, "")
-    // Collapse excessive newlines
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -107,6 +152,10 @@ function sanitizeValue(value: unknown): unknown {
   }
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// Finalize trace
+// ---------------------------------------------------------------------------
 
 async function finalizeTrace(
   sessionKey: string,
@@ -156,15 +205,108 @@ async function finalizeTrace(
     trace.rootSpan.setAttribute("agent_duration_ms", endData.durationMs);
   }
 
+  // Store model/provider at trace level
+  const traceModel = trace.model ?? trace.costMeta.model;
+  const traceProvider = trace.provider ?? trace.costMeta.provider;
+  if (traceModel) {
+    trace.rootSpan.setAttribute("mlflow.llm.model", traceModel);
+  }
+  if (traceProvider) {
+    trace.rootSpan.setAttribute("mlflow.llm.provider", traceProvider);
+  }
+
+  // Store cost metadata from diagnostics
+  if (trace.costMeta.costUsd != null) {
+    trace.rootSpan.setAttribute("mlflow.llm.cost", {
+      total_cost: trace.costMeta.costUsd,
+    });
+  }
+
   trace.rootSpan.end();
   await flushTraces();
 }
+
+// ---------------------------------------------------------------------------
+// Service factory
+// ---------------------------------------------------------------------------
 
 export function createMLflowService(
   api: OpenClawPluginApi,
 ): OpenClawPluginService {
   const activeTraces = new Map<string, ActiveTrace>();
+  const sessionByAgentId = new Map<string, string>();
+  let lastActiveSessionKey: string | undefined;
+  let warnedMissingAfterToolSessionKey = false;
   let cleanup: (() => void) | null = null;
+  let log: { info: (msg: string) => void; warn: (msg: string) => void } = {
+    info: () => undefined,
+    warn: () => undefined,
+  };
+
+  // Exporter metrics
+  const metrics = {
+    flushSuccesses: 0,
+    flushFailures: 0,
+    flushRetries: 0,
+    spanErrors: 0,
+  };
+
+  function rememberSession(sessionKey: string, agentId?: unknown): void {
+    lastActiveSessionKey = sessionKey;
+    if (typeof agentId === "string" && agentId.length > 0) {
+      sessionByAgentId.set(agentId, sessionKey);
+    }
+  }
+
+  function forgetSession(sessionKey: string): void {
+    if (lastActiveSessionKey === sessionKey) {
+      lastActiveSessionKey = undefined;
+    }
+    for (const [agentId, mapped] of sessionByAgentId) {
+      if (mapped === sessionKey) sessionByAgentId.delete(agentId);
+    }
+  }
+
+  function resolveAfterToolSessionKey(
+    ctx: Record<string, unknown>,
+  ): string | undefined {
+    // Primary: from context
+    const direct = asNonEmptyString(ctx.sessionKey);
+    if (direct && activeTraces.has(direct)) return direct;
+
+    // Fallback 1: agentId → sessionKey map
+    const agentId = asNonEmptyString(ctx.agentId);
+    if (agentId) {
+      const byAgent = sessionByAgentId.get(agentId);
+      if (byAgent && activeTraces.has(byAgent)) {
+        if (!warnedMissingAfterToolSessionKey) {
+          warnedMissingAfterToolSessionKey = true;
+          log.warn("mlflow: after_tool_call missing sessionKey; using agentId fallback");
+        }
+        return byAgent;
+      }
+    }
+
+    // Fallback 2: single active trace
+    if (activeTraces.size === 1) {
+      if (!warnedMissingAfterToolSessionKey) {
+        warnedMissingAfterToolSessionKey = true;
+        log.warn("mlflow: after_tool_call missing sessionKey; using single-active-trace fallback");
+      }
+      return activeTraces.keys().next().value as string | undefined;
+    }
+
+    // Fallback 3: last active session
+    if (lastActiveSessionKey && activeTraces.has(lastActiveSessionKey)) {
+      if (!warnedMissingAfterToolSessionKey) {
+        warnedMissingAfterToolSessionKey = true;
+        log.warn("mlflow: after_tool_call missing sessionKey; using last-active-session fallback");
+      }
+      return lastActiveSessionKey;
+    }
+
+    return undefined;
+  }
 
   function getOrCreateTrace(
     sessionKey: string,
@@ -204,6 +346,7 @@ export function createMLflowService(
       pendingTools: new Map(),
       pendingSubagents: new Map(),
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 },
+      costMeta: {},
       firstPrompt: cleanPrompt,
       lastResponse: "",
       agentEndData: null,
@@ -216,10 +359,34 @@ export function createMLflowService(
     return trace;
   }
 
+  // Flush with exponential backoff retry
+  async function flushWithRetry(reason: string): Promise<void> {
+    const attempts = DEFAULT_FLUSH_RETRY_COUNT + 1;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await flushTraces();
+        metrics.flushSuccesses += 1;
+        return;
+      } catch (err) {
+        metrics.flushFailures += 1;
+        log.warn(`mlflow: flush failed (${reason}) attempt ${attempt}/${attempts}: ${err}`);
+        if (attempt >= attempts) return;
+        metrics.flushRetries += 1;
+        const delayMs = Math.min(
+          DEFAULT_FLUSH_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+          MAX_FLUSH_RETRY_DELAY_MS,
+        );
+        await sleep(delayMs);
+      }
+    }
+  }
+
   return {
     id: "mlflow-tracing",
 
     async start(ctx) {
+      log = { info: ctx.logger.info.bind(ctx.logger), warn: ctx.logger.warn.bind(ctx.logger) };
+
       const pluginCfg = (api.pluginConfig ?? {}) as Record<string, unknown>;
       const runtimeCfg = (ctx.config ?? {}) as Record<string, unknown>;
       const trackingUri =
@@ -264,19 +431,31 @@ export function createMLflowService(
         const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
         if (!sessionKey) return;
+        rememberSession(sessionKey, ctx.agentId);
 
         const prompt = (evt.prompt as string) ?? "";
         const historyMessages = evt.historyMessages as unknown[] | undefined;
         const trace = getOrCreateTrace(sessionKey, prompt);
 
+        // Extract channel/trigger context
+        const channelId = asNonEmptyString(ctx.channelId) ?? asNonEmptyString(ctx.messageProvider);
+        if (channelId) trace.channelId = channelId;
+        const trigger = asNonEmptyString(ctx.trigger);
+        if (trigger) trace.trigger = trigger;
+
         if (trace.pendingLlm) {
           trace.pendingLlm.span.end();
         }
 
-        const provider = evt.provider as string | undefined;
+        const rawProvider = evt.provider as string | undefined;
+        const provider = normalizeProvider(rawProvider) ?? rawProvider;
         const model = evt.model as string | undefined;
         const modelLabel =
           provider && model ? `${provider}/${model}` : model || "unknown";
+
+        // Track last-known model/provider at trace level
+        if (model) trace.model = model;
+        if (provider) trace.provider = provider;
 
         // Build OpenAI-style messages array for chat UI rendering
         const messages: { role: string; content: string }[] = [];
@@ -287,9 +466,7 @@ export function createMLflowService(
           for (const msg of historyMessages) {
             const m = msg as { role?: string; content?: unknown };
             if (!m.role) continue;
-            // Normalize OpenClaw roles to OpenAI roles
             const role = m.role === "toolResult" ? "tool" : m.role;
-            // Flatten array content (e.g. toolResult content parts) to string
             const content =
               typeof m.content === "string"
                 ? m.content
@@ -332,6 +509,7 @@ export function createMLflowService(
         const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
         if (!sessionKey) return;
+        rememberSession(sessionKey, ctx.agentId);
 
         const trace = activeTraces.get(sessionKey);
         if (!trace) return;
@@ -346,8 +524,12 @@ export function createMLflowService(
         const response = sanitizeOpenClawText(rawResponse);
         trace.lastResponse = response;
 
+        // Update model/provider from output
+        const rawProvider = evt.provider as string | undefined;
+        if (rawProvider) trace.provider = normalizeProvider(rawProvider) ?? rawProvider;
+        if (evt.model) trace.model = evt.model as string;
+
         if (trace.pendingLlm) {
-          // Extract usage: top-level evt.usage → lastAssistant.usage fallback
           type UsageLike = {
             input?: number; output?: number; total?: number;
             totalTokens?: number; cacheRead?: number; cacheWrite?: number;
@@ -386,6 +568,7 @@ export function createMLflowService(
         const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
         if (!sessionKey) return;
+        rememberSession(sessionKey, ctx.agentId);
 
         const trace = activeTraces.get(sessionKey);
         if (!trace) return;
@@ -417,8 +600,11 @@ export function createMLflowService(
       api.on("after_tool_call", (event: unknown, agentCtx: unknown) => {
         const ctx = agentCtx as Record<string, unknown>;
         const evt = event as Record<string, unknown>;
-        const sessionKey = ctx.sessionKey as string | undefined;
+
+        // Session correlation with fallbacks
+        const sessionKey = resolveAfterToolSessionKey(ctx);
         if (!sessionKey) return;
+        rememberSession(sessionKey, ctx.agentId);
 
         const trace = activeTraces.get(sessionKey);
         if (!trace) return;
@@ -511,9 +697,16 @@ export function createMLflowService(
         const evt = event as Record<string, unknown>;
         const sessionKey = ctx.sessionKey as string | undefined;
         if (!sessionKey) return;
+        rememberSession(sessionKey, ctx.agentId);
 
         const trace = activeTraces.get(sessionKey);
         if (!trace) return;
+
+        // Extract channel/trigger if not already set
+        const channelId = asNonEmptyString(ctx.channelId) ?? asNonEmptyString(ctx.messageProvider);
+        if (channelId && !trace.channelId) trace.channelId = channelId;
+        const trigger = asNonEmptyString(ctx.trigger);
+        if (trigger && !trace.trigger) trace.trigger = trigger;
 
         trace.agentEndData = {
           success: evt.success as boolean | undefined,
@@ -529,6 +722,7 @@ export function createMLflowService(
             const t = activeTraces.get(sessionKey);
             if (t) {
               activeTraces.delete(sessionKey);
+              forgetSession(sessionKey);
               await finalizeTrace(sessionKey, t, userId);
             }
           } catch {
@@ -538,7 +732,7 @@ export function createMLflowService(
       });
 
       // =====================================================================
-      // Diagnostic: model.usage — accumulate token usage
+      // Diagnostic: model.usage — accumulate token usage + cost metadata
       // =====================================================================
       const unsubDiagnostics = onDiagnosticEvent(
         (evt: DiagnosticEventPayload) => {
@@ -556,14 +750,40 @@ export function createMLflowService(
             trace.tokenUsage.outputTokens += evt.usage.output || 0;
             trace.tokenUsage.totalTokens += evt.usage.total || 0;
           }
-          if (evt.costUsd) {
-            trace.tokenUsage.cost += evt.costUsd;
+          if (evt.costUsd != null) {
+            trace.costMeta.costUsd = (trace.costMeta.costUsd ?? 0) + evt.costUsd;
+          }
+          if (evt.context?.limit != null) trace.costMeta.contextLimit = evt.context.limit;
+          if (evt.context?.used != null) trace.costMeta.contextUsed = evt.context.used;
+          if (evt.model) trace.costMeta.model = evt.model;
+          if (evt.provider) {
+            trace.costMeta.provider = normalizeProvider(evt.provider) ?? evt.provider;
           }
         },
       );
 
+      // =====================================================================
+      // Stale trace cleanup sweep
+      // =====================================================================
+      const sweepInterval = setInterval(() => {
+        const now = Date.now();
+        for (const [key, trace] of activeTraces) {
+          if (now - trace.lastActivityMs > DEFAULT_STALE_TRACE_TIMEOUT_MS) {
+            log.warn(`mlflow: force-closing stale trace sessionKey=${key}`);
+            activeTraces.delete(key);
+            forgetSession(key);
+            trace.rootSpan.setStatus(SpanStatusCode.ERROR, "Trace exceeded inactivity timeout");
+            finalizeTrace(key, trace).catch(() => undefined);
+          }
+        }
+      }, DEFAULT_STALE_SWEEP_INTERVAL_MS);
+
+      // =====================================================================
+      // Wire cleanup
+      // =====================================================================
       cleanup = () => {
         unsubDiagnostics();
+        clearInterval(sweepInterval);
       };
     },
 
@@ -575,6 +795,12 @@ export function createMLflowService(
         await finalizeTrace(sessionKey, trace);
       }
       activeTraces.clear();
+      sessionByAgentId.clear();
+      lastActiveSessionKey = undefined;
+
+      log.info(
+        `mlflow: exporter metrics flushSuccesses=${metrics.flushSuccesses} flushFailures=${metrics.flushFailures} flushRetries=${metrics.flushRetries} spanErrors=${metrics.spanErrors}`,
+      );
     },
   };
 }
