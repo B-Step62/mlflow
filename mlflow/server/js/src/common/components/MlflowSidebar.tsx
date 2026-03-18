@@ -4,6 +4,7 @@ import {
   BeakerIcon,
   Button,
   CloudModelIcon,
+  FolderBranchIcon,
   GearIcon,
   HomeIcon,
   ModelsIcon,
@@ -27,7 +28,11 @@ import GatewayRoutes from '../../gateway/routes';
 import { FormattedMessage } from 'react-intl';
 import { useLogTelemetryEvent } from '../../telemetry/hooks/useLogTelemetryEvent';
 import { useWorkflowType, WorkflowType } from '../contexts/WorkflowTypeContext';
-import { shouldEnableWorkflowBasedNavigation, shouldEnableWorkspaces } from '../utils/FeatureUtils';
+import {
+  shouldEnableWorkflowBasedNavigation,
+  shouldEnableWorkspaces,
+  shouldEnableScopeBrowser,
+} from '../utils/FeatureUtils';
 import { AssistantSparkleIcon } from '../../assistant/AssistantIconButton';
 import { useAssistant } from '../../assistant/AssistantContext';
 import { extractWorkspaceFromSearchParams } from '../../workspaces/utils/WorkspaceUtils';
@@ -38,6 +43,7 @@ import { WorkspaceSelector } from '../../workspaces/components/WorkspaceSelector
 import { MlflowSidebarExperimentItems } from './MlflowSidebarExperimentItems';
 import { MlflowSidebarGatewayItems } from './MlflowSidebarGatewayItems';
 import { MlflowSidebarWorkflowSwitch } from './MlflowSidebarWorkflowSwitch';
+import { ScopeSidebarItems } from '../../experiment-tracking/components/scope-browser/ScopeSidebarItems';
 
 const isInsideExperiment = (location: Location) =>
   Boolean(matchPath('/experiments/:experimentId/*', location.pathname));
@@ -51,6 +57,7 @@ const isModelsActive = (location: Location) => Boolean(matchPath('/models/*', lo
 const isPromptsActive = (location: Location) => Boolean(matchPath('/prompts/*', location.pathname));
 const isGatewayActive = (location: Location) => Boolean(matchPath('/gateway/*', location.pathname));
 const isSettingsActive = (location: Location) => Boolean(matchPath('/settings/*', location.pathname));
+const isScopesActive = (location: Location) => Boolean(matchPath('/scopes/*', location.pathname));
 
 type MlFlowSidebarMenuDropdownComponentId =
   | 'mlflow_sidebar.create_experiment_button'
@@ -115,6 +122,36 @@ export function MlflowSidebar({
   const activeExperimentId = isInsideExperiment(location) ? experimentId : lastSelectedExperimentIdRef.current;
   const showNestedExperimentItems = Boolean(activeExperimentId) && shouldEnableWorkflowBasedNavigation();
 
+  const enableScopeBrowser = shouldEnableScopeBrowser();
+
+  // Scope browser: detect active scope path from URL
+  const scopeMatch = matchPath('/scopes/*', location.pathname);
+  const scopeWildcard = scopeMatch?.params['*'] ?? '';
+  const activeScopePath = scopeWildcard.split('/').filter(Boolean);
+  // Filter out tab suffixes (traces, runs, etc.) to get just the scope path
+  const scopeTabNames = new Set(['traces', 'runs', 'datasets', 'judges', 'prompts', 'models', 'evaluation-runs']);
+  const scopePathWithoutTab =
+    activeScopePath.length > 0 && scopeTabNames.has(activeScopePath[activeScopePath.length - 1])
+      ? activeScopePath.slice(0, -1)
+      : activeScopePath;
+  // Show nested scope items when inside a specific scope (not root /scopes or /scopes/search)
+  const isInsideScope =
+    enableScopeBrowser &&
+    scopePathWithoutTab.length > 0 &&
+    scopePathWithoutTab[0] !== 'search' &&
+    shouldEnableWorkflowBasedNavigation();
+
+  // Persist the last selected scope path so nested view stays visible when navigating away
+  const lastSelectedScopePathRef = useRef<string[] | null>(null);
+  if (isInsideScope) {
+    lastSelectedScopePathRef.current = scopePathWithoutTab;
+  }
+  const activeScopeNavPath = isInsideScope ? scopePathWithoutTab : lastSelectedScopePathRef.current;
+  const showNestedScopeItems = Boolean(activeScopeNavPath && activeScopeNavPath.length > 0);
+  const clearLastSelectedScope = useCallback(() => {
+    lastSelectedScopePathRef.current = null;
+  }, []);
+
   const { openPanel, closePanel, isPanelOpen, isLocalServer } = useAssistant();
   const [isAssistantHovered, setIsAssistantHovered] = useState(false);
 
@@ -135,7 +172,7 @@ export function MlflowSidebar({
 
   const menuItems: MenuItemWithNested[] = useMemo(
     () => [
-      ...(!showNestedExperimentItems
+      ...(!showNestedExperimentItems && !showNestedScopeItems
         ? [
             {
               key: 'home',
@@ -167,6 +204,27 @@ export function MlflowSidebar({
           />
         ) : undefined,
       },
+      ...(enableScopeBrowser && !showNestedExperimentItems
+        ? [
+            {
+              key: 'scopes',
+              icon: <FolderBranchIcon />,
+              linkProps: {
+                to: ExperimentTrackingRoutes.scopeBrowserRoute,
+                isActive: isScopesActive,
+                children: <FormattedMessage defaultMessage="Scopes" description="Sidebar link for scope browser" />,
+              },
+              componentId: 'mlflow.sidebar.scopes_tab_link',
+              nestedItems: showNestedScopeItems ? (
+                <ScopeSidebarItems
+                  collapsed={!showSidebar}
+                  scopePath={activeScopeNavPath ?? []}
+                  onBackClick={clearLastSelectedScope}
+                />
+              ) : undefined,
+            },
+          ]
+        : []),
       ...(workflowType === WorkflowType.MACHINE_LEARNING || !enableWorkflowBasedNavigation
         ? [
             {
@@ -220,6 +278,10 @@ export function MlflowSidebar({
     ],
     [
       showNestedExperimentItems,
+      showNestedScopeItems,
+      activeScopeNavPath,
+      clearLastSelectedScope,
+      enableScopeBrowser,
       activeExperimentId,
       workflowType,
       clearLastSelectedExperiment,

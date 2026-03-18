@@ -215,6 +215,24 @@ const getExperimentPageRouteDefs = () => {
   ];
 };
 
+const getScopeBrowserRouteDefs = () => {
+  return [
+    {
+      path: RoutePaths.scopeBrowserPage,
+      element: createLazyRouteElement(() => import('./pages/ScopeBrowserPage')),
+      pageId: PageId.scopeBrowserPage,
+      handle: {
+        getPageTitle: () => 'Scope Browser',
+        getAssistantPrompts: () => [
+          'How do I organize my scopes?',
+          'Show me the resources in this scope.',
+          'What scopes do I have access to?',
+        ],
+      } satisfies RouteHandle,
+    },
+  ];
+};
+
 export const getRouteDefs = () => [
   {
     path: RoutePaths.rootRoute,
@@ -340,4 +358,5 @@ export const getRouteDefs = () => [
     } satisfies RouteHandle,
   },
   ...getPromptPagesRouteDefs(),
+  ...getScopeBrowserRouteDefs(),
 ];

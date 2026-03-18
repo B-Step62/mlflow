@@ -34,6 +34,7 @@ export enum PageId {
   runPageDirect = 'mlflow.experiment.run.details.direct',
   compareRuns = 'mlflow.experiment.run.compare',
   metricPage = 'mlflow.metric.details',
+  scopeBrowserPage = 'mlflow.scope-browser',
 }
 
 // Route path definitions (used in defining route elements)
@@ -141,6 +142,9 @@ export class RoutePaths {
   static get settingsPage() {
     return createMLflowRoutePath('/settings');
   }
+  static get scopeBrowserPage() {
+    return createMLflowRoutePath('/scopes/*');
+  }
 }
 
 // Concrete routes and functions for generating parametrized paths
@@ -164,6 +168,10 @@ class Routes {
 
   static get settingsPageRoute() {
     return RoutePaths.settingsPage;
+  }
+
+  static get scopeBrowserRoute() {
+    return '/scopes';
   }
 
   static getExperimentPageRoute(experimentId: string, isComparingRuns = false, shareState?: string) {

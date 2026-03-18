@@ -193,3 +193,9 @@ export const shouldEnableIssueDetection = () => {
 export const shouldShowEvalRunsIssuesPanel = () => {
   return true;
 };
+
+/**
+ * Enables the Scope Browser UI (hierarchical scope navigation).
+ * Currently hardcoded ON for frontend mock/prototype.
+ */
+export const shouldEnableScopeBrowser = () => true;
