@@ -258,7 +258,9 @@ describe('MLflowTracingPlugin', () => {
           spanType: 'LLM',
           inputs: expect.objectContaining({
             model: 'openai/gpt-4',
-            prompt: 'What is 2+2?',
+            messages: expect.arrayContaining([
+              { role: 'user', content: 'What is 2+2?' },
+            ]),
           }),
         }),
       );
@@ -322,7 +324,13 @@ describe('MLflowTracingPlugin', () => {
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'llm_call',
-          inputs: expect.objectContaining({ messages: history }),
+          inputs: expect.objectContaining({
+            messages: [
+              { role: 'user', content: 'Hello' },
+              { role: 'assistant', content: 'Hi there' },
+              { role: 'user', content: 'Follow up' },
+            ],
+          }),
         }),
       );
     });
@@ -385,7 +393,7 @@ describe('MLflowTracingPlugin', () => {
       });
     });
 
-    it('should include system prompt in LLM inputs when provided', async () => {
+    it('should include system prompt in LLM inputs as system message', async () => {
       const harness = createTestHarness();
       await startService(harness);
 
@@ -398,7 +406,12 @@ describe('MLflowTracingPlugin', () => {
       expect(mlflowTracing.startSpan).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'llm_call',
-          inputs: expect.objectContaining({ system_prompt: 'You are a helpful assistant.' }),
+          inputs: expect.objectContaining({
+            messages: [
+              { role: 'system', content: 'You are a helpful assistant.' },
+              { role: 'user', content: 'hello' },
+            ],
+          }),
         }),
       );
     });
@@ -460,7 +473,10 @@ describe('MLflowTracingPlugin', () => {
         expect.objectContaining({
           name: 'llm_call',
           inputs: expect.objectContaining({
-            messages: [{ role: 'user', content: 'test' }],
+            messages: [
+              { role: 'user', content: 'test' },
+              { role: 'user', content: 'Hi' },
+            ],
           }),
         }),
       );

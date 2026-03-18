@@ -270,15 +270,23 @@ export function createMLflowService(
         const modelLabel =
           provider && model ? `${provider}/${model}` : model || "unknown";
 
+        // Build OpenAI-style messages array for chat UI rendering
+        const messages: { role: string; content: string }[] = [];
+        if (evt.systemPrompt) {
+          messages.push({ role: "system", content: evt.systemPrompt as string });
+        }
+        if (historyMessages?.length) {
+          for (const msg of historyMessages) {
+            const m = msg as { role?: string; content?: string };
+            if (m.role && m.content) {
+              messages.push({ role: m.role, content: m.content });
+            }
+          }
+        }
+        messages.push({ role: "user", content: prompt });
         const llmInputs = sanitizeValue({
+          messages,
           model: modelLabel,
-          prompt,
-          ...(evt.systemPrompt
-            ? { system_prompt: evt.systemPrompt }
-            : {}),
-          ...(historyMessages?.length
-            ? { messages: historyMessages }
-            : {}),
         }) as Record<string, unknown>;
 
         const llmSpan = startSpan({
