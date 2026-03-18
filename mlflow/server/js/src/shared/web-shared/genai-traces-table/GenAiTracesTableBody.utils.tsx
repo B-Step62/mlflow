@@ -117,7 +117,7 @@ export const formatResponseTitle = (outputs: string) => {
     else if (Array.isArray(parsedOutputs['messages'])) {
       const lastMsg = [...parsedOutputs['messages']].reverse().find((m: Record<string, unknown>) => m?.['content']);
       if (lastMsg?.['content']) {
-        outputsTitle = lastMsg['content'];
+        outputsTitle = lastMsg['content'] as string;
       } else {
         outputsTitle = stringifyValue(outputs);
       }
