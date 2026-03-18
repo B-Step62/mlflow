@@ -126,7 +126,24 @@ export const TableFilterItemValueInput = ({
 
   if (tableFilter.column === TracesTableColumnGroup.ASSESSMENT) {
     const assessmentInfo = assessmentInfos.find((assessment) => assessment.name === tableFilter.key);
-    if (assessmentInfo && assessmentInfo.dtype !== 'numeric' && assessmentInfo.dtype !== 'unknown') {
+    if (assessmentInfo && assessmentInfo.dtype === 'numeric') {
+      return (
+        <Input
+          aria-label="Value"
+          componentId="mlflow.evaluations_review.table_ui.filter_value"
+          id={id}
+          placeholder="Number"
+          type="number"
+          value={localValue as string}
+          onChange={(e) => {
+            setLocalValue(e.target.value);
+          }}
+          onBlur={onValueBlur}
+          css={{ width: 200 }}
+        />
+      );
+    }
+    if (assessmentInfo && assessmentInfo.dtype !== 'unknown') {
       const options: TableFilterOption[] = Array.from(assessmentInfo.uniqueValues.values()).map((value) => {
         return {
           value: assessmentValueToSerializedString(value),
@@ -222,8 +239,6 @@ export const TableFilterItemValueInput = ({
       }}
       onBlur={onValueBlur}
       css={{ width: 200 }}
-      // Disable it for assessment column at this point, since the data type is not supported yet.
-      disabled={tableFilter.column === TracesTableColumnGroup.ASSESSMENT}
     />
   );
 };

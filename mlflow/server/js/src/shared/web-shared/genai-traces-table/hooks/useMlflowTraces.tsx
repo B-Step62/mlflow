@@ -713,7 +713,9 @@ export const createMlflowSearchFilter = (
           } else if (networkFilter.value !== 'undefined') {
             // Skip 'undefined' values - these must be filtered client-side since they represent
             // absence of an assessment, which cannot be queried on the backend
-            filter.push(`feedback.\`${networkFilter.key}\` ${networkFilter.operator} '${networkFilter.value}'`);
+            const isNumericValue = !isNaN(Number(networkFilter.value)) && networkFilter.value !== '';
+            const formattedValue = isNumericValue ? networkFilter.value : `'${networkFilter.value}'`;
+            filter.push(`feedback.\`${networkFilter.key}\` ${networkFilter.operator} ${formattedValue}`);
           }
           break;
         case TracesTableColumnGroup.EXPECTATION:

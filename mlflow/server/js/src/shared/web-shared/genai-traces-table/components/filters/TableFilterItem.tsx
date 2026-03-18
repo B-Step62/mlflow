@@ -67,7 +67,7 @@ const getFilterableInfoColumns = (usesV4APIs?: boolean) => {
   ];
 };
 
-const getAvailableOperators = (column: string, key?: string): FilterOperator[] => {
+const getAvailableOperators = (column: string, key?: string, assessmentDtype?: string): FilterOperator[] => {
   if (column === EXECUTION_DURATION_COLUMN_ID) {
     return [
       FilterOperator.EQUALS,
@@ -96,6 +96,18 @@ const getAvailableOperators = (column: string, key?: string): FilterOperator[] =
   }
 
   if (column === TracesTableColumnGroup.ASSESSMENT) {
+    if (assessmentDtype === 'numeric') {
+      return [
+        FilterOperator.EQUALS,
+        FilterOperator.NOT_EQUALS,
+        FilterOperator.GREATER_THAN,
+        FilterOperator.LESS_THAN,
+        FilterOperator.GREATER_THAN_OR_EQUALS,
+        FilterOperator.LESS_THAN_OR_EQUALS,
+        FilterOperator.IS_NULL,
+        FilterOperator.IS_NOT_NULL,
+      ];
+    }
     return [FilterOperator.EQUALS, FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL];
   }
 
@@ -132,12 +144,13 @@ export const TableFilterItem = ({
 
   const availableFilterableInfoColumns = useMemo(() => getFilterableInfoColumns(usesV4APIs), [usesV4APIs]);
 
-  // For now, we don't support filtering on numeric values.
+  const currentAssessmentDtype = useMemo(
+    () => assessmentInfos.find((a) => a.name === key)?.dtype,
+    [assessmentInfos, key],
+  );
+
   const assessmentKeyOptions: TableFilterOption[] = useMemo(
-    () =>
-      assessmentInfos
-        .filter((assessment) => assessment.dtype !== 'numeric')
-        .map((assessment) => ({ value: assessment.name, renderValue: () => assessment.displayName })),
+    () => assessmentInfos.map((assessment) => ({ value: assessment.name, renderValue: () => assessment.displayName })),
     [assessmentInfos],
   );
 
@@ -282,7 +295,8 @@ export const TableFilterItem = ({
             />
           </FormUI.Label>
           {(() => {
-            const isOperatorSelectorDisabled = column !== '' && getAvailableOperators(column, key).length === 1;
+            const isOperatorSelectorDisabled =
+              column !== '' && getAvailableOperators(column, key, currentAssessmentDtype).length === 1;
             return (
               <SimpleSelect
                 aria-label="Operator"
@@ -294,13 +308,15 @@ export const TableFilterItem = ({
                   // Set the z-index to be higher than the Popover
                   style: { zIndex: theme.options.zIndexBase + 100 },
                 }}
-                value={!isOperatorSelectorDisabled ? operator : getAvailableOperators(column, key)[0]}
+                value={
+                  !isOperatorSelectorDisabled ? operator : getAvailableOperators(column, key, currentAssessmentDtype)[0]
+                }
                 disabled={isOperatorSelectorDisabled}
                 onChange={(e) => {
                   onChange({ ...tableFilter, operator: e.target.value as FilterOperator }, index);
                 }}
               >
-                {getAvailableOperators(column, key).map((op) => (
+                {getAvailableOperators(column, key, currentAssessmentDtype).map((op) => (
                   <SimpleSelectOption key={op} value={op}>
                     {op}
                   </SimpleSelectOption>
