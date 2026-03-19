@@ -3,6 +3,11 @@ from unittest.mock import patch
 
 import anthropic
 import pytest
+from packaging.version import Version
+
+if Version(anthropic.__version__) < Version("0.55"):
+    pytest.skip("GenAI semconv converter requires anthropic >= 0.55", allow_module_level=True)
+
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import mlflow

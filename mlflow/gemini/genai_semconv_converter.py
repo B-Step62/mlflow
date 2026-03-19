@@ -132,5 +132,3 @@ def _convert_part(part: Any) -> dict[str, Any]:
             "result": fr.get("response", {}),
         }
     return {"type": "text", "content": json.dumps(part)}
-
-
