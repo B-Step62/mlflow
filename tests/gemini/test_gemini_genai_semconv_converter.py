@@ -3,35 +3,24 @@ from unittest.mock import patch
 
 import pytest
 from google import genai
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import mlflow
 from mlflow.gemini.genai_semconv_converter import _convert_part
-from mlflow.tracing.processor.otel import OtelSpanProcessor
-from mlflow.tracing.provider import provider as tracer_provider_wrapper
 
 from tests.gemini.test_gemini_autolog import (
     _dummy_generate_content,
     _generate_content_response,
     multiply,
 )
-from tests.tracing.helper import reset_autolog_state  # noqa: F401
+from tests.tracing.helper import capture_otel_export, reset_autolog_state  # noqa: F401
 
 MODEL = "gemini-1.5-flash"
 
 
-@pytest.fixture
-def genai_semconv_capture(monkeypatch):
+@pytest.fixture(autouse=True)
+def enable_genai_semconv(monkeypatch):
     monkeypatch.setenv("MLFLOW_ENABLE_OTEL_GENAI_SEMCONV", "true")
-    exporter = InMemorySpanExporter()
-    tracer_provider_wrapper.get_or_init_tracer("test")
-    tp = tracer_provider_wrapper.get()
-    processor = OtelSpanProcessor(span_exporter=exporter, export_metrics=False)
-    processor._should_register_traces = False
-    tp.add_span_processor(processor)
-    yield exporter, processor
-    processor.force_flush(timeout_millis=5000)
-    processor.shutdown()
+    return
 
 
 def _get_llm_span(exporter, processor):
@@ -41,8 +30,8 @@ def _get_llm_span(exporter, processor):
 
 
 @pytest.mark.usefixtures("reset_autolog_state")
-def test_autolog_basic(genai_semconv_capture):
-    exporter, processor = genai_semconv_capture
+def test_autolog_basic(capture_otel_export):
+    exporter, processor = capture_otel_export
 
     mlflow.gemini.autolog()
     with patch(
@@ -65,15 +54,12 @@ def test_autolog_basic(genai_semconv_capture):
     assert len(output_msgs) == 1
     assert output_msgs[0]["role"] == "assistant"
     assert output_msgs[0]["parts"][0]["content"] == "test answer"
-    assert output_msgs[0]["finish_reason"] == "STOP"
-
-    assert list(llm_span.attributes["gen_ai.response.finish_reasons"]) == ["STOP"]
     assert not any(k.startswith("mlflow.") for k in llm_span.attributes)
 
 
 @pytest.mark.usefixtures("reset_autolog_state")
-def test_autolog_with_tool_calls(genai_semconv_capture):
-    exporter, processor = genai_semconv_capture
+def test_autolog_with_tool_calls(capture_otel_export):
+    exporter, processor = capture_otel_export
 
     tool_call_content = {
         "parts": [
@@ -121,8 +107,6 @@ def test_autolog_with_tool_calls(genai_semconv_capture):
 
     assert "gen_ai.tool.definitions" in llm_span.attributes
     assert "multiply" in llm_span.attributes["gen_ai.tool.definitions"]
-
-    assert list(llm_span.attributes["gen_ai.response.finish_reasons"]) == ["STOP"]
     assert not any(k.startswith("mlflow.") for k in llm_span.attributes)
 
 

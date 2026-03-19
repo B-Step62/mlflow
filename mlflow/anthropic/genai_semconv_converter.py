@@ -24,11 +24,8 @@ class AnthropicConverter(GenAiSemconvConverter):
         content = outputs.get("content")
         if not isinstance(content, list):
             return None
-        parts = [_convert_output_block(b) for b in content]
-        result = {"role": outputs.get("role", "assistant"), "parts": parts}
-        if stop_reason := outputs.get("stop_reason"):
-            result["finish_reason"] = stop_reason
-        return [result]
+        parts = [_convert_block(b) for b in content]
+        return [{"role": outputs.get("role", "assistant"), "parts": parts}]
 
     def extract_request_params(self, inputs: dict[str, Any]) -> dict[str, Any]:
         params = super().extract_request_params(inputs)
@@ -39,12 +36,6 @@ class AnthropicConverter(GenAiSemconvConverter):
         if GenAiSemconvKey.TOOL_DEFINITIONS in params:
             params[GenAiSemconvKey.TOOL_DEFINITIONS] = json.dumps(inputs.get("tools", []))
         return params
-
-    def extract_response_attrs(self, outputs: dict[str, Any]) -> dict[str, Any]:
-        attrs = super().extract_response_attrs(outputs)
-        if stop_reason := outputs.get("stop_reason"):
-            attrs[GenAiSemconvKey.RESPONSE_FINISH_REASONS] = [stop_reason]
-        return attrs
 
 
 def _convert_message(msg: dict[str, Any]) -> dict[str, Any]:
@@ -62,7 +53,7 @@ def _convert_message(msg: dict[str, Any]) -> dict[str, Any]:
             parts.append(converted)
             if converted.get("type") == "tool_call_response":
                 has_tool_result = True
-        # Single tool_result block → role becomes "tool"
+        # Anthropic uses "user" role for tool result. Override it to "tool"
         if has_tool_result and len(parts) == 1:
             return {"role": "tool", "parts": parts}
         return {"role": role, "parts": parts}
@@ -106,19 +97,5 @@ def _convert_block(block: dict[str, Any]) -> dict[str, Any]:
                 "result": block.get("content", ""),
             }
         case _:
-            return {"type": "text", "content": json.dumps(block)}
-
-
-def _convert_output_block(block: dict[str, Any]) -> dict[str, Any]:
-    match block.get("type"):
-        case "text":
-            return {"type": "text", "content": block.get("text", "")}
-        case "tool_use":
-            return {
-                "type": "tool_call",
-                "id": block.get("id", ""),
-                "name": block.get("name", ""),
-                "arguments": block.get("input"),
-            }
-        case _:
+            # Fallback to text with dumped content block
             return {"type": "text", "content": json.dumps(block)}

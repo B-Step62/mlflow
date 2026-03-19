@@ -30,15 +30,14 @@ class GeminiConverter(GenAiSemconvConverter):
         if not isinstance(config, dict):
             return None
         system_instruction = config.get("system_instruction")
+
         if system_instruction is None:
             return None
-        if isinstance(system_instruction, str):
+        elif isinstance(system_instruction, str):
             return [{"type": "text", "content": system_instruction}]
-        if isinstance(system_instruction, dict):
-            # Content dict with "parts"
+        elif isinstance(system_instruction, dict):
             parts = system_instruction.get("parts", [])
             return [_convert_part(p) for p in parts]
-        return None
 
     def convert_outputs(self, outputs: dict[str, Any]) -> list[dict[str, Any]] | None:
         candidates = outputs.get("candidates")
@@ -51,8 +50,6 @@ class GeminiConverter(GenAiSemconvConverter):
             role = content.get("role", "model").replace("model", "assistant")
             parts = [_convert_part(p) for p in parts_list]
             msg = {"role": role, "parts": parts}
-            if finish_reason := candidate.get("finish_reason"):
-                msg["finish_reason"] = finish_reason
             result.append(msg)
         return result
 
@@ -71,13 +68,6 @@ class GeminiConverter(GenAiSemconvConverter):
         # so remove the raw (non-serializable) tool references from params.
         params.pop(GenAiSemconvKey.TOOL_DEFINITIONS, None)
         return params
-
-    def extract_response_attrs(self, outputs: dict[str, Any]) -> dict[str, Any]:
-        attrs = super().extract_response_attrs(outputs)
-        if candidates := outputs.get("candidates"):
-            if reasons := [c.get("finish_reason") for c in candidates if c.get("finish_reason")]:
-                attrs[GenAiSemconvKey.RESPONSE_FINISH_REASONS] = reasons
-        return attrs
 
 
 def _convert_content_dict(content: dict[str, Any]) -> dict[str, Any]:
