@@ -367,8 +367,17 @@ const ExperimentEvaluationRunsPageImpl = () => {
           : undefined
       }
       setSelectedRunUuid={(runUuid: string) => {
-        setSelectedRunUuid(runUuid);
-        setCompareToRunUuid(undefined);
+        // Set selectedRunUuid and clear compareToRunUuid in a single
+        // setSearchParams call to avoid the second call clobbering
+        // the first when React Router batches navigations.
+        setSearchParams(
+          (params) => {
+            params.set('selectedRunUuid', runUuid);
+            params.delete('compareToRunUuid');
+            return params;
+          },
+          { replace: true },
+        );
         // When flag is ON, also set isViewingSelectedRun to show the split view
         if (showIssuesPanelFlag) {
           setIsViewingSelectedRun(true);
