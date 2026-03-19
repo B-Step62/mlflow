@@ -151,7 +151,7 @@ def _extract_workflow_inputs(arguments: dict[str, Any]) -> dict[str, Any]:
     try:
         from llama_index.core.workflow import StartEvent
 
-        if isinstance(start_event, StartEvent) and hasattr(start_event, "to_dict"):
+        if isinstance(start_event, StartEvent):
             return start_event.to_dict()
     except ImportError:
         pass
