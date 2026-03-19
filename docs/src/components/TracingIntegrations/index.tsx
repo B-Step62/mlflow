@@ -405,6 +405,34 @@ const TRACING_INTEGRATIONS: TracingIntegration[] = [
     link: '/genai/tracing/integrations/listing/claude_code',
     category: 'Tools',
   },
+  {
+    id: 'opencode',
+    name: 'Opencode',
+    logoPath: '/images/logos/opencode-logo.png',
+    link: '/genai/tracing/integrations/listing/opencode',
+    category: 'Tools',
+  },
+  {
+    id: 'langfuse',
+    name: 'Langfuse',
+    logoPath: '/images/logos/langfuse-logo.png',
+    link: '/genai/tracing/integrations/listing/langfuse',
+    category: 'Tools',
+  },
+  {
+    id: 'arize-phoenix',
+    name: 'Arize / Phoenix',
+    logoPath: '/images/logos/arize-phoenix-logo.png',
+    link: '/genai/tracing/integrations/listing/arize',
+    category: 'Tools',
+  },
+  {
+    id: 'goose',
+    name: 'Goose',
+    logoPath: '/images/logos/goose-logo.png',
+    link: '/genai/tracing/integrations/listing/goose',
+    category: 'No-Code',
+  },
   // Gateways
   {
     id: 'mlflow-ai-gateway',
