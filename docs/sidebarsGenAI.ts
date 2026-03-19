@@ -33,7 +33,7 @@ const sidebarsGenAI: SidebarsConfig = {
     {
       type: 'doc',
       id: 'getting-started/try-assistant',
-      label: 'Try MLflow Assistant',
+      label: "Try MLflow's AI Assistant",
       className: 'sidebar-top-level-category',
     },
     {
@@ -83,8 +83,44 @@ const sidebarsGenAI: SidebarsConfig = {
             },
             {
               type: 'category',
+              label: 'View & Manage Traces',
+              items: [
+                {
+                  type: 'doc',
+                  id: 'tracing/observe-with-traces/dashboard',
+                  label: 'Dashboard (Overview)',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/observe-with-traces/ui',
+                  label: 'View Traces',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/search-traces',
+                  label: 'Search Traces',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/observe-with-traces/delete-traces',
+                  label: 'Delete Traces',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/observe-with-traces/multimodal',
+                  label: 'Multimodal Content',
+                },
+              ],
+            },
+            {
+              type: 'category',
               label: 'Enhance Your Traces',
               items: [
+                {
+                  type: 'doc',
+                  id: 'tracing/token-usage-cost/index',
+                  label: 'Token Usage and Cost',
+                },
                 {
                   type: 'doc',
                   id: 'tracing/track-users-sessions/index',
@@ -109,27 +145,6 @@ const sidebarsGenAI: SidebarsConfig = {
                   type: 'doc',
                   id: 'tracing/track-environments-context/index',
                   label: 'Track Application Versions',
-                },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'View & Manage Traces',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'tracing/observe-with-traces/ui',
-                  label: 'View Traces in the UI',
-                },
-                {
-                  type: 'doc',
-                  id: 'tracing/search-traces',
-                  label: 'Search Traces',
-                },
-                {
-                  type: 'doc',
-                  id: 'tracing/observe-with-traces/delete-traces',
-                  label: 'Delete Traces',
                 },
               ],
             },
@@ -208,6 +223,11 @@ const sidebarsGenAI: SidebarsConfig = {
                   type: 'doc',
                   id: 'tracing/integrations/listing/langchain',
                   label: 'LangChain',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/integrations/listing/goose',
+                  label: 'Goose',
                 },
                 {
                   type: 'doc',
@@ -416,6 +436,11 @@ const sidebarsGenAI: SidebarsConfig = {
                   id: 'tracing/integrations/listing/instructor',
                   label: 'Instructor',
                 },
+                {
+                  type: 'doc',
+                  id: 'tracing/integrations/listing/opencode',
+                  label: 'OpenCode',
+                },
               ],
             },
             {
@@ -502,6 +527,11 @@ const sidebarsGenAI: SidebarsConfig = {
               type: 'doc',
               id: 'tracing/opentelemetry/export',
             },
+            {
+              type: 'doc',
+              id: 'tracing/opentelemetry/attribute-mapping',
+              label: 'Attribute Mapping',
+            },
           ],
         },
         {
@@ -517,7 +547,7 @@ const sidebarsGenAI: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Evaluate & Monitor',
+      label: 'Evaluation & Monitoring',
       className: 'sidebar-top-level-category',
       items: [
         {
@@ -674,6 +704,16 @@ const sidebarsGenAI: SidebarsConfig = {
                       type: 'doc',
                       id: 'eval-monitor/scorers/third-party/phoenix',
                       label: 'Arize Phoenix',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'eval-monitor/scorers/third-party/trulens',
+                      label: 'TruLens',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'eval-monitor/scorers/third-party/guardrails',
+                      label: 'Guardrails AI',
                     },
                   ],
                   collapsed: false,
@@ -954,6 +994,11 @@ const sidebarsGenAI: SidebarsConfig = {
           label: 'Usage Tracking',
         },
         {
+          type: 'doc',
+          id: 'governance/ai-gateway/budget-alerts-limits',
+          label: 'Budget Alerts & Limits',
+        },
+        {
           type: 'category',
           label: 'Gateway Server (Legacy)',
           items: [
@@ -1142,7 +1187,7 @@ const sidebarsGenAI: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Model Serving',
+      label: 'Agent Serving',
       className: 'sidebar-top-level-category',
       items: [
         {
@@ -1163,7 +1208,7 @@ const sidebarsGenAI: SidebarsConfig = {
       ],
       link: {
         type: 'doc',
-        id: 'serving/index',
+        id: 'serving/agent-server',
       },
     },
     {

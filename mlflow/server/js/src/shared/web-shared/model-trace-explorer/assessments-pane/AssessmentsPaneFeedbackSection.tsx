@@ -10,7 +10,7 @@ import {
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
-import { FeedbackAssessment } from '../ModelTrace.types';
+import type { FeedbackAssessment } from '../ModelTrace.types';
 import { FeedbackGroup } from './FeedbackGroup';
 import { useEffect, useMemo, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { invalidateMlflowSearchTracesCache } from '../hooks/invalidateMlflowSearchTracesCache';
 import { FETCH_TRACE_INFO_QUERY_KEY } from '../ModelTraceExplorer.utils';
 import { isEvaluatingTracesInDetailsViewEnabled } from '../FeatureUtils';
+import { INTERNAL_ASSESSMENT_ISSUE_DISCOVERY_JUDGE } from '../constants';
 
 type GroupedFeedbacksByValue = { [value: string]: FeedbackAssessment[] };
 
@@ -80,17 +81,14 @@ const AddFeedbackButton = ({
               size="small"
               icon={<PlusIcon />}
             >
-              <FormattedMessage
-                defaultMessage="Add feedback"
-                description="Label for the button to add a new feedback"
-              />
+              <FormattedMessage defaultMessage="Add feedback" description="Label for the button to add new feedback" />
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
             <DropdownMenu.Item componentId="mlflow.model-trace-explorer.add-human-feedback" onClick={onClick}>
               <FormattedMessage
                 defaultMessage="Human feedback"
-                description="Label for the button to add a human feedback to the trace"
+                description="Label for the button to add human feedback to the trace"
               />
             </DropdownMenu.Item>
             <DropdownMenu.Item
@@ -99,7 +97,7 @@ const AddFeedbackButton = ({
             >
               <FormattedMessage
                 defaultMessage="LLM judge feedback"
-                description="Label for the button to add a LLM judge feedback to the trace"
+                description="Label for the button to add LLM judge feedback to the trace"
               />
             </DropdownMenu.Item>
           </DropdownMenu.Content>
@@ -121,7 +119,7 @@ const AddFeedbackButton = ({
       icon={<PlusIcon />}
       onClick={onClick}
     >
-      <FormattedMessage defaultMessage="Add feedback" description="Label for the button to add a new feedback" />
+      <FormattedMessage defaultMessage="Add feedback" description="Label for the button to add new feedback" />
     </Button>
   );
 };
@@ -139,7 +137,11 @@ export const AssessmentsPaneFeedbackSection = ({
   traceId: string;
   sessionId?: string;
 }) => {
-  const groupedFeedbacks = useMemo(() => groupFeedbacks(feedbacks), [feedbacks]);
+  const visibleFeedbacks = useMemo(
+    () => feedbacks.filter((f) => f.assessment_name !== INTERNAL_ASSESSMENT_ISSUE_DISCOVERY_JUDGE),
+    [feedbacks],
+  );
+  const groupedFeedbacks = useMemo(() => groupFeedbacks(visibleFeedbacks), [visibleFeedbacks]);
 
   const [createFormVisible, setCreateFormVisible] = useState(false);
 
@@ -209,7 +211,7 @@ export const AssessmentsPaneFeedbackSection = ({
             defaultMessage="Feedback"
             description="Label for the feedback section in the assessments pane"
           />{' '}
-          {!isEmpty(groupedFeedbacks) && <>({feedbacks?.length})</>}
+          {!isEmpty(groupedFeedbacks) && <>({visibleFeedbacks.length})</>}
         </Typography.Text>
       </div>
 
@@ -295,10 +297,17 @@ export const AssessmentsPaneFeedbackSection = ({
           }}
         >
           <Typography.Hint>
-            <FormattedMessage
-              defaultMessage="Add a custom feedback to this trace."
-              description="Hint message prompting user to add a new feedback"
-            />{' '}
+            {sessionId ? (
+              <FormattedMessage
+                defaultMessage="Add custom feedback to this session."
+                description="Hint message prompting user to add new feedback to a session"
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="Add custom feedback to this trace."
+                description="Hint message prompting user to add new feedback to a trace"
+              />
+            )}{' '}
             <Typography.Link
               componentId="shared.model-trace-explorer.feedback-learn-more-link"
               openInNewTab
