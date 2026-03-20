@@ -6,6 +6,7 @@ from google import genai
 
 import mlflow
 from mlflow.gemini.genai_semconv_converter import _convert_part
+from mlflow.tracing.constant import GenAiSemconvKey
 
 from tests.gemini.test_gemini_autolog import (
     _dummy_generate_content,
@@ -26,7 +27,9 @@ def enable_genai_semconv(monkeypatch):
 def _get_llm_span(exporter, processor):
     processor.force_flush(timeout_millis=5000)
     spans = exporter.get_finished_spans()
-    return next(s for s in spans if s.attributes.get("gen_ai.operation.name") == "generate_content")
+    return next(
+        s for s in spans if s.attributes.get(GenAiSemconvKey.OPERATION_NAME) == "generate_content"
+    )
 
 
 @pytest.mark.usefixtures("reset_autolog_state")
@@ -42,15 +45,15 @@ def test_autolog_basic(capture_otel_export):
         client.models.generate_content(model=MODEL, contents="test content")
 
     llm_span = _get_llm_span(exporter, processor)
-    assert llm_span.attributes["gen_ai.operation.name"] == "generate_content"
-    assert llm_span.attributes["gen_ai.request.model"] == MODEL
+    assert llm_span.attributes[GenAiSemconvKey.OPERATION_NAME] == "generate_content"
+    assert llm_span.attributes[GenAiSemconvKey.REQUEST_MODEL] == MODEL
 
-    input_msgs = json.loads(llm_span.attributes["gen_ai.input.messages"])
+    input_msgs = json.loads(llm_span.attributes[GenAiSemconvKey.INPUT_MESSAGES])
     assert input_msgs[0]["role"] == "user"
     assert input_msgs[0]["parts"][0]["type"] == "text"
     assert input_msgs[0]["parts"][0]["content"] == "test content"
 
-    output_msgs = json.loads(llm_span.attributes["gen_ai.output.messages"])
+    output_msgs = json.loads(llm_span.attributes[GenAiSemconvKey.OUTPUT_MESSAGES])
     assert len(output_msgs) == 1
     assert output_msgs[0]["role"] == "assistant"
     assert output_msgs[0]["parts"][0]["content"] == "test answer"
@@ -90,14 +93,14 @@ def test_autolog_with_tool_calls(capture_otel_export):
         )
 
     llm_span = _get_llm_span(exporter, processor)
-    assert llm_span.attributes["gen_ai.operation.name"] == "generate_content"
-    assert llm_span.attributes["gen_ai.request.model"] == MODEL
+    assert llm_span.attributes[GenAiSemconvKey.OPERATION_NAME] == "generate_content"
+    assert llm_span.attributes[GenAiSemconvKey.REQUEST_MODEL] == MODEL
 
-    input_msgs = json.loads(llm_span.attributes["gen_ai.input.messages"])
+    input_msgs = json.loads(llm_span.attributes[GenAiSemconvKey.INPUT_MESSAGES])
     assert input_msgs[0]["role"] == "user"
     assert input_msgs[0]["parts"][0]["content"] == "How much is 57 * 44?"
 
-    output_msgs = json.loads(llm_span.attributes["gen_ai.output.messages"])
+    output_msgs = json.loads(llm_span.attributes[GenAiSemconvKey.OUTPUT_MESSAGES])
     assert len(output_msgs) == 1
     assert output_msgs[0]["role"] == "assistant"
     tool_part = output_msgs[0]["parts"][0]
@@ -105,8 +108,8 @@ def test_autolog_with_tool_calls(capture_otel_export):
     assert tool_part["name"] == "multiply"
     assert tool_part["arguments"] == {"a": 57.0, "b": 44.0}
 
-    assert "gen_ai.tool.definitions" in llm_span.attributes
-    assert "multiply" in llm_span.attributes["gen_ai.tool.definitions"]
+    assert GenAiSemconvKey.TOOL_DEFINITIONS in llm_span.attributes
+    assert "multiply" in llm_span.attributes[GenAiSemconvKey.TOOL_DEFINITIONS]
     assert not any(k.startswith("mlflow.") for k in llm_span.attributes)
 
 

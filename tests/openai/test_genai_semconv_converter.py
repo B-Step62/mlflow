@@ -7,8 +7,6 @@ from packaging.version import Version
 
 import mlflow
 from mlflow.openai.genai_semconv_converter import _convert_content, _convert_message
-from mlflow.tracing.processor.otel import OtelSpanProcessor
-from mlflow.tracing.provider import provider as tracer_provider_wrapper
 
 from tests.tracing.helper import capture_otel_export, reset_autolog_state  # noqa: F401
 

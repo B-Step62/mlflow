@@ -47,7 +47,8 @@ class GeminiConverter(GenAiSemconvConverter):
         for candidate in candidates:
             content = candidate.get("content", {})
             parts_list = content.get("parts", [])
-            role = content.get("role", "model").replace("model", "assistant")
+            role = content.get("role", "user")
+            role = "assistant" if role == "model" else role
             parts = [_convert_part(p) for p in parts_list]
             msg = {"role": role, "parts": parts}
             result.append(msg)
@@ -71,7 +72,8 @@ class GeminiConverter(GenAiSemconvConverter):
 
 
 def _convert_content_dict(content: dict[str, Any]) -> dict[str, Any]:
-    role = content.get("role", "user").replace("model", "assistant")
+    role = content.get("role", "user")
+    role = "assistant" if role == "model" else role
     parts = [_convert_part(p) for p in content.get("parts", [])]
 
     # function_response parts → role "tool"
