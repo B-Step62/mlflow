@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 from typing import Optional
 
@@ -24,8 +23,6 @@ from mlflow.metrics import (
     token_count,
     toxicity,
 )
-from mlflow.metrics.genai.genai_metric import _GENAI_CUSTOM_METRICS_FILE_NAME
-from mlflow.models.evaluation.artifacts import JsonEvaluationArtifact
 from mlflow.models.evaluation.base import EvaluationMetric, EvaluationResult, _ModelType
 from mlflow.models.evaluation.default_evaluator import (
     _LATENCY_METRIC_NAME,
@@ -65,7 +62,6 @@ class DefaultEvaluator(BuiltInEvaluator):
             if extra_metric.name == _LATENCY_METRIC_NAME:
                 compute_latency = True
                 extra_metrics.remove(extra_metric)
-        self._log_genai_custom_metrics(extra_metrics)
 
         # Generate model predictions and evaluate metrics
         y_pred, other_model_outputs, self.predictions = self._generate_model_predictions(
@@ -203,34 +199,3 @@ class DefaultEvaluator(BuiltInEvaluator):
         ) = _extract_output_and_other_columns(model_predictions, output_column_name)
 
         return y_pred, other_output_df, predictions_column_name
-
-    def _log_genai_custom_metrics(self, extra_metrics: list[EvaluationMetric]):
-        genai_custom_metrics = [
-            extra_metric.genai_metric_args
-            for extra_metric in extra_metrics
-            # When the field is present, the metric is created from either make_genai_metric
-            # or make_genai_metric_from_prompt. We will log the metric definition.
-            if extra_metric.genai_metric_args is not None
-        ]
-
-        if len(genai_custom_metrics) == 0:
-            return
-
-        names = []
-        versions = []
-        metric_args_list = []
-
-        for metric_args in genai_custom_metrics:
-            names.append(metric_args["name"])
-            # Custom metrics created from make_genai_metric_from_prompt don't have version
-            versions.append(metric_args.get("version", ""))
-            metric_args_list.append(metric_args)
-
-        data = {"name": names, "version": versions, "metric_args": metric_args_list}
-
-        mlflow.log_table(data, artifact_file=_GENAI_CUSTOM_METRICS_FILE_NAME)
-
-        artifact_name = os.path.splitext(_GENAI_CUSTOM_METRICS_FILE_NAME)[0]
-        self.artifacts[artifact_name] = JsonEvaluationArtifact(
-            uri=mlflow.get_artifact_uri(_GENAI_CUSTOM_METRICS_FILE_NAME)
-        )

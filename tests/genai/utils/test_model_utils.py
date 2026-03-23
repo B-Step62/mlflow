@@ -7,11 +7,11 @@ import pytest
 from mlflow.deployments.server.config import Endpoint
 from mlflow.exceptions import MlflowException
 from mlflow.gateway.config import EndpointModelInfo
-from mlflow.metrics.genai.model_utils import (
+from mlflow.genai.judges.adapters.gateway_adapter import _score_model_on_payload
+from mlflow.genai.utils.model_utils import (
     _parse_model_uri,
     call_deployments_api,
     get_endpoint_type,
-    score_model_on_payload,
 )
 
 
@@ -69,14 +69,14 @@ def test_parse_model_uri_throws_for_malformed():
 
 def test_score_model_on_payload_throws_for_invalid():
     with pytest.raises(MlflowException, match="Unknown model uri prefix"):
-        score_model_on_payload("myprovider:/gpt-4o-mini", "")
+        _score_model_on_payload("myprovider:/gpt-4o-mini", "")
 
 
 def test_score_model_openai_without_key():
     with pytest.raises(
         MlflowException, match="OpenAI API key must be set in the ``OPENAI_API_KEY``"
     ):
-        score_model_on_payload("openai:/gpt-4o-mini", "")
+        _score_model_on_payload("openai:/gpt-4o-mini", "")
 
 
 _OAI_RESPONSE = {
@@ -105,9 +105,9 @@ _OAI_RESPONSE = {
 
 def test_score_model_openai(set_envs):
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request", return_value=_OAI_RESPONSE
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request", return_value=_OAI_RESPONSE
     ) as mock_post:
-        resp = score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+        resp = _score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
 
         assert resp == "\n\nThis is a test!"
         mock_post.assert_called_once_with(
@@ -123,9 +123,9 @@ def test_score_model_openai(set_envs):
 
 def test_score_model_openai_with_custom_header_and_proxy_url(set_envs):
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request", return_value=_OAI_RESPONSE
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request", return_value=_OAI_RESPONSE
     ) as mock_post:
-        resp = score_model_on_payload(
+        resp = _score_model_on_payload(
             model_uri="openai:/gpt-4o-mini",
             payload="my prompt",
             eval_parameters={"temperature": 0.1},
@@ -147,18 +147,18 @@ def test_score_model_openai_with_custom_header_and_proxy_url(set_envs):
 
 def test_openai_other_error(set_envs):
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request",
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request",
         side_effect=Exception("foo"),
     ):
         with pytest.raises(Exception, match="foo"):
-            score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+            _score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
 
 
 def test_score_model_azure_openai(set_azure_envs):
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request", return_value=_OAI_RESPONSE
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request", return_value=_OAI_RESPONSE
     ) as mock_post:
-        resp = score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
+        resp = _score_model_on_payload("openai:/gpt-4o-mini", "my prompt", {"temperature": 0.1})
 
         assert resp == "\n\nThis is a test!"
         mock_post.assert_called_once_with(
@@ -191,9 +191,9 @@ def test_score_model_anthropic(monkeypatch):
     }
 
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request", return_value=resp
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request", return_value=resp
     ) as mock_request:
-        response = score_model_on_payload(
+        response = _score_model_on_payload(
             model_uri="anthropic:/claude-3-5-sonnet-20241022",
             payload="input prompt",
             eval_parameters={"max_tokens": 1000, "top_p": 1},
@@ -243,7 +243,7 @@ def test_score_model_bedrock(monkeypatch):
             "body": mock.MagicMock(read=mock.MagicMock(return_value=json.dumps(resp).encode()))
         }
 
-        response = score_model_on_payload(
+        response = _score_model_on_payload(
             model_uri="bedrock:/anthropic.claude-3-5-sonnet-20241022-v2:0",
             payload="input prompt",
             eval_parameters={
@@ -280,9 +280,9 @@ def test_score_model_mistral(monkeypatch):
 
     # Mistral AI API is compatible with OpenAI format
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request", return_value=_OAI_RESPONSE
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request", return_value=_OAI_RESPONSE
     ) as mock_request:
-        response = score_model_on_payload(
+        response = _score_model_on_payload(
             model_uri="mistral:/mistral-small-latest",
             payload="input prompt",
             eval_parameters={"temperature": 0.1},
@@ -313,9 +313,9 @@ def test_score_model_togetherai(monkeypatch):
     }
 
     with mock.patch(
-        "mlflow.metrics.genai.model_utils._send_request", return_value=resp
+        "mlflow.genai.judges.adapters.gateway_adapter._send_request", return_value=resp
     ) as mock_request:
-        response = score_model_on_payload(
+        response = _score_model_on_payload(
             model_uri="togetherai:/mistralai/Mixtral-8x7B-Instruct-v0.1",
             payload="input prompt",
             eval_parameters={"temperature": 0, "max_tokens": 1000},
@@ -368,7 +368,7 @@ def test_score_model_gateway_completions():
             "mlflow.deployments.get_deploy_client", return_value=MlflowDeploymentClient("url")
         ),
     ):
-        response = score_model_on_payload("gateway:/my-route", "")
+        response = _score_model_on_payload("gateway:/my-route", "")
         assert response == expected_output["choices"][0]["text"]
 
 
@@ -413,7 +413,7 @@ def test_score_model_gateway_chat():
             "mlflow.deployments.get_deploy_client", return_value=MlflowDeploymentClient("url")
         ),
     ):
-        response = score_model_on_payload("gateway:/my-route", "")
+        response = _score_model_on_payload("gateway:/my-route", "")
         assert response == expected_output["choices"][0]["message"]["content"]
 
 
@@ -455,7 +455,7 @@ _TEST_CHAT_RESPONSE = {
 def test_score_model_endpoints_chat(set_deployment_envs):
     with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
         mock_get_deploy_client().predict.return_value = _TEST_CHAT_RESPONSE
-        response = score_model_on_payload(
+        response = _score_model_on_payload(
             model_uri="endpoints:/my-endpoint",
             payload="my prompt",
             eval_parameters={"temperature": 0.1},
@@ -483,7 +483,7 @@ _TEST_COMPLETION_RESPONSE = {
 def test_score_model_endpoints_completions(set_deployment_envs):
     with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
         mock_get_deploy_client().predict.return_value = _TEST_COMPLETION_RESPONSE
-        response = score_model_on_payload(
+        response = _score_model_on_payload(
             model_uri="endpoints:/my-endpoint",
             payload="my prompt",
             eval_parameters={"temperature": 0.1},

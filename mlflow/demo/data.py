@@ -741,24 +741,24 @@ SESSION_TRACES: list[DemoTrace] = [
             "Use MLflow's evaluation framework for systematic comparison:\n\n"
             "```python\n"
             "import mlflow\n"
-            "from mlflow.metrics.genai import relevance, faithfulness\n\n"
+            "from mlflow.genai.scorers import RelevanceToQuery, RetrievalGroundedness\n\n"
             "# Create evaluation dataset\n"
             "eval_data = pd.DataFrame({\n"
             "    'inputs': questions,\n"
-            "    'ground_truth': expected_answers\n"
+            "    'expectations': expected_answers\n"
             "})\n\n"
             "# Run evaluation\n"
-            "results = mlflow.evaluate(\n"
-            "    model=your_rag_pipeline,\n"
+            "results = mlflow.genai.evaluate(\n"
+            "    predict_fn=predict_fn,\n"
             "    data=eval_data,\n"
-            "    scorers=[relevance(), faithfulness()]\n"
+            "    scorers=[RelevanceToQuery(), RetrievalGroundedness()]\n"
             ")\n"
             "```\n\n"
             "Compare runs in the MLflow UI's comparison view to see which config wins!"
         ),
         expected_response=(
-            "Use mlflow.evaluate() with relevance() and faithfulness() scorers. "
-            "Create eval dataset with inputs and ground_truth, then compare runs in UI."
+            "Use mlflow.genai.evaluate() with RelevanceToQuery() and RetrievalGroundedness() "
+            "scorers. Create eval dataset with inputs and expectations, then compare runs in UI."
         ),
         trace_type="session",
         session_id="session-rag-debug",

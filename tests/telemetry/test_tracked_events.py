@@ -1221,15 +1221,15 @@ def test_invoke_custom_judge_model(
             with (
                 mock.patch.object(
                     __import__(
-                        "mlflow.metrics.genai.model_utils",
-                        fromlist=["score_model_on_payload"],
+                        "mlflow.genai.judges.adapters.gateway_adapter",
+                        fromlist=["_score_model_on_payload"],
                     ),
-                    "score_model_on_payload",
+                    "_score_model_on_payload",
                     return_value=mock_response,
                 ),
                 mock.patch.object(
                     __import__(
-                        "mlflow.metrics.genai.model_utils",
+                        "mlflow.genai.utils.model_utils",
                         fromlist=["get_endpoint_type"],
                     ),
                     "get_endpoint_type",

@@ -15,12 +15,12 @@ from mlflow.genai.judges.optimizers.dspy_utils import (
     format_demos_as_examples,
     trace_to_dspy_example,
 )
+from mlflow.genai.utils.model_utils import convert_mlflow_uri_to_litellm
 from mlflow.genai.utils.trace_utils import (
     extract_expectations_from_trace,
     extract_request_from_trace,
     extract_response_from_trace,
 )
-from mlflow.metrics.genai.model_utils import convert_mlflow_uri_to_litellm
 
 from tests.genai.judges.optimizers.conftest import MockJudge
 

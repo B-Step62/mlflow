@@ -209,11 +209,11 @@ def _call_llm_via_gateway(
     # the request, while this path sends them as-is. Not an issue for OpenAI
     # and Anthropic which both support structured outputs. Also missing:
     # no context window management and no per-request cost tracking.
-    from mlflow.metrics.genai.model_utils import (
+    from mlflow.genai.judges.adapters.gateway_adapter import (
         _get_provider_instance,
-        _parse_model_uri,
         _send_request,
     )
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     provider_name, model_name = _parse_model_uri(model)
     provider = _get_provider_instance(provider_name, model_name)
@@ -284,7 +284,7 @@ def _fetch_model_cost(model_name: str) -> _ModelCost | None:
 
 
 def _lookup_model_cost(model_uri: str, input_tokens: int, output_tokens: int) -> float | None:
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     _, model_name = _parse_model_uri(model_uri)
     if cost := _fetch_model_cost(model_name):

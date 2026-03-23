@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import re
 from os.path import join as path_join
 from pathlib import Path
@@ -26,18 +25,8 @@ import mlflow
 from mlflow.exceptions import MlflowException
 from mlflow.metrics import (
     MetricValue,
-    flesch_kincaid_grade_level,
     make_metric,
-    toxicity,
 )
-from mlflow.metrics.genai import model_utils
-from mlflow.metrics.genai.base import EvaluationExample
-from mlflow.metrics.genai.genai_metric import (
-    _GENAI_CUSTOM_METRICS_FILE_NAME,
-    make_genai_metric_from_prompt,
-    retrieve_custom_metrics,
-)
-from mlflow.metrics.genai.metric_definitions import answer_similarity
 from mlflow.models import Model
 from mlflow.models.evaluation.artifacts import (
     CsvEvaluationArtifact,
@@ -3254,82 +3243,6 @@ def test_evaluate_with_latency_static_dataset():
     assert all(grade == 0.0 for grade in logged_data["latency"])
 
 
-properly_formatted_openai_response1 = """\
-{
-  "score": 3,
-  "justification": "justification"
-}"""
-
-
-def test_evaluate_with_correctness():
-    metric = mlflow.metrics.genai.make_genai_metric(
-        name="correctness",
-        definition=(
-            "Correctness refers to how well the generated output matches "
-            "or aligns with the reference or ground truth text that is considered "
-            "accurate and appropriate for the given input. The ground truth serves as "
-            "a benchmark against which the provided output is compared to determine the "
-            "level of accuracy and fidelity."
-        ),
-        grading_prompt=(
-            "Correctness: If the answer correctly answer the question, below "
-            "are the details for different scores: "
-            "- Score 0: the answer is completely incorrect, doesn't mention anything about "
-            "the question or is completely contrary to the correct answer. "
-            "- Score 1: the answer provides some relevance to the question and answer "
-            "one aspect of the question correctly. "
-            "- Score 2: the answer mostly answer the question but is missing or hallucinating "
-            "on one critical aspect. "
-            "- Score 4: the answer correctly answer the question and not missing any "
-            "major aspect"
-        ),
-        examples=[],
-        version="v1",
-        model="openai:/gpt-4o-mini",
-        grading_context_columns=["ground_truth"],
-        parameters={"temperature": 0.0},
-        aggregations=["mean", "variance", "p90"],
-        greater_is_better=True,
-    )
-
-    with mock.patch.object(
-        model_utils,
-        "score_model_on_payload",
-        return_value=properly_formatted_openai_response1,
-    ):
-        with mlflow.start_run():
-            eval_df = pd.DataFrame({
-                "inputs": [
-                    "What is MLflow?",
-                    "What is Spark?",
-                    "What is Python?",
-                ],
-                "ground_truth": [
-                    "MLflow is an open-source platform",
-                    "Apache Spark is an open-source, distributed computing system",
-                    "Python is a high-level programming language",
-                ],
-                "prediction": [
-                    "MLflow is an open-source platform",
-                    "Apache Spark is an open-source, distributed computing system",
-                    "Python is a high-level programming language",
-                ],
-            })
-            results = mlflow.evaluate(
-                data=eval_df,
-                evaluators="default",
-                targets="ground_truth",
-                predictions="prediction",
-                extra_metrics=[metric],
-            )
-
-            assert results.metrics == {
-                "correctness/v1/mean": 3.0,
-                "correctness/v1/variance": 0.0,
-                "correctness/v1/p90": 3.0,
-            }
-
-
 def test_evaluate_custom_metrics_string_values():
     with mlflow.start_run():
         model_info = mlflow.pyfunc.log_model(
@@ -3721,76 +3634,6 @@ def test_evaluate_with_numpy_array():
         ]
 
 
-def test_target_prediction_col_mapping():
-    metric = mlflow.metrics.genai.make_genai_metric(
-        name="correctness",
-        definition=(
-            "Correctness refers to how well the generated output matches "
-            "or aligns with the reference or ground truth text that is considered "
-            "accurate and appropriate for the given input. The ground truth serves as "
-            "a benchmark against which the provided output is compared to determine the "
-            "level of accuracy and fidelity."
-        ),
-        grading_prompt=(
-            "Correctness: If the answer correctly answer the question, below "
-            "are the details for different scores: "
-            "- Score 0: the answer is completely incorrect, doesn't mention anything about "
-            "the question or is completely contrary to the correct answer. "
-            "- Score 1: the answer provides some relevance to the question and answer "
-            "one aspect of the question correctly. "
-            "- Score 2: the answer mostly answer the question but is missing or hallucinating "
-            "on one critical aspect. "
-            "- Score 3: the answer correctly answer the question and not missing any "
-            "major aspect"
-        ),
-        examples=[],
-        version="v1",
-        model="openai:/gpt-4",
-        grading_context_columns=["renamed_ground_truth"],
-        parameters={"temperature": 0.0},
-        aggregations=["mean", "variance", "p90"],
-        greater_is_better=True,
-    )
-
-    with mock.patch.object(
-        model_utils,
-        "score_model_on_payload",
-        return_value=properly_formatted_openai_response1,
-    ):
-        with mlflow.start_run():
-            eval_df = pd.DataFrame({
-                "inputs": [
-                    "What is MLflow?",
-                    "What is Spark?",
-                    "What is Python?",
-                ],
-                "ground_truth": [
-                    "MLflow is an open-source platform",
-                    "Apache Spark is an open-source, distributed computing system",
-                    "Python is a high-level programming language",
-                ],
-                "prediction": [
-                    "MLflow is an open-source platform",
-                    "Apache Spark is an open-source, distributed computing system",
-                    "Python is a high-level programming language",
-                ],
-            })
-            results = mlflow.evaluate(
-                data=eval_df,
-                evaluators="default",
-                targets="renamed_ground_truth",
-                predictions="prediction",
-                extra_metrics=[metric],
-                evaluator_config={"col_mapping": {"renamed_ground_truth": "ground_truth"}},
-            )
-
-            assert results.metrics == {
-                "correctness/v1/mean": 3.0,
-                "correctness/v1/variance": 0.0,
-                "correctness/v1/p90": 3.0,
-            }
-
-
 def test_precanned_metrics_work():
     metric = mlflow.metrics.rouge1()
     with mlflow.start_run():
@@ -3910,157 +3753,6 @@ def test_evaluate_custom_metric_with_string_type():
             data["text"],
             check_names=False,
         )
-
-
-def test_do_not_log_built_in_metrics_as_artifacts():
-    with mlflow.start_run() as run:
-        model_info = mlflow.pyfunc.log_model(
-            name="model", python_model=language_model, input_example=["a"]
-        )
-        data = pd.DataFrame({
-            "inputs": ["words random", "This is a sentence."],
-            "ground_truth": ["words random", "This is a sentence."],
-        })
-        evaluate(
-            model_info.model_uri,
-            data,
-            targets="ground_truth",
-            predictions="answer",
-            model_type="question-answering",
-            evaluators="default",
-            extra_metrics=[
-                toxicity(),
-                flesch_kincaid_grade_level(),
-            ],
-        )
-        client = mlflow.MlflowClient()
-        artifacts = [a.path for a in client.list_artifacts(run.info.run_id)]
-        assert _GENAI_CUSTOM_METRICS_FILE_NAME not in artifacts
-
-        results = retrieve_custom_metrics(run_id=run.info.run_id)
-        assert len(results) == 0
-
-
-def test_log_genai_custom_metrics_as_artifacts():
-    with mlflow.start_run() as run:
-        model_info = mlflow.pyfunc.log_model(
-            name="model", python_model=language_model, input_example=["a"]
-        )
-        data = pd.DataFrame({
-            "inputs": ["words random", "This is a sentence."],
-            "ground_truth": ["words random", "This is a sentence."],
-        })
-        example = EvaluationExample(
-            input="What is MLflow?",
-            output="MLflow is an open-source platform for managing machine learning workflows.",
-            score=4,
-            justification="test",
-            grading_context={"targets": "test"},
-        )
-        # This simulates the code path for metrics created from make_genai_metric
-        answer_similarity_metric = answer_similarity(
-            model="gateway:/gpt-4o-mini", examples=[example]
-        )
-        another_custom_metric = make_genai_metric_from_prompt(
-            name="another custom llm judge",
-            judge_prompt="This is another custom judge prompt.",
-            greater_is_better=False,
-            parameters={"temperature": 0.0},
-        )
-        result = evaluate(
-            model_info.model_uri,
-            data,
-            targets="ground_truth",
-            predictions="answer",
-            model_type="question-answering",
-            evaluators="default",
-            extra_metrics=[
-                answer_similarity_metric,
-                another_custom_metric,
-            ],
-        )
-
-    client = mlflow.MlflowClient()
-    artifacts = [a.path for a in client.list_artifacts(run.info.run_id)]
-    assert _GENAI_CUSTOM_METRICS_FILE_NAME in artifacts
-
-    table = result.tables[os.path.splitext(_GENAI_CUSTOM_METRICS_FILE_NAME)[0]]
-    assert table.loc[0, "name"] == "answer_similarity"
-    assert table.loc[0, "version"] == "v1"
-    assert table.loc[1, "name"] == "another custom llm judge"
-    assert table.loc[1, "version"] == ""
-    assert table["version"].dtype == "object"
-
-    results = retrieve_custom_metrics(run.info.run_id)
-    assert len(results) == 2
-    assert [r.name for r in results] == ["answer_similarity", "another custom llm judge"]
-
-    results = retrieve_custom_metrics(run_id=run.info.run_id, name="another custom llm judge")
-    assert len(results) == 1
-    assert results[0].name == "another custom llm judge"
-
-    results = retrieve_custom_metrics(run_id=run.info.run_id, version="v1")
-    assert len(results) == 1
-    assert results[0].name == "answer_similarity"
-
-    results = retrieve_custom_metrics(
-        run_id=run.info.run_id, name="answer_similarity", version="v1"
-    )
-    assert len(results) == 1
-    assert results[0].name == "answer_similarity"
-
-    results = retrieve_custom_metrics(run_id=run.info.run_id, name="do not match")
-    assert len(results) == 0
-
-    results = retrieve_custom_metrics(run_id=run.info.run_id, version="do not match")
-    assert len(results) == 0
-
-
-def test_all_genai_custom_metrics_are_from_user_prompt():
-    with mlflow.start_run() as run:
-        model_info = mlflow.pyfunc.log_model(
-            name="model", python_model=language_model, input_example=["a"]
-        )
-        data = pd.DataFrame({
-            "inputs": ["words random", "This is a sentence."],
-            "ground_truth": ["words random", "This is a sentence."],
-            "custom_column": ["test", "test"],
-        })
-        custom_metric = make_genai_metric_from_prompt(
-            name="custom llm judge",
-            judge_prompt="This is a custom judge prompt. {custom_column}.",
-            greater_is_better=False,
-            parameters={"temperature": 0.0},
-        )
-        another_custom_metric = make_genai_metric_from_prompt(
-            name="another custom llm judge",
-            judge_prompt="This is another custom judge prompt. {custom_column}.",
-            greater_is_better=False,
-            parameters={"temperature": 0.7},
-        )
-        result = evaluate(
-            model_info.model_uri,
-            data,
-            targets="ground_truth",
-            predictions="answer",
-            model_type="question-answering",
-            evaluators="default",
-            extra_metrics=[
-                custom_metric,
-                another_custom_metric,
-            ],
-        )
-
-    client = mlflow.MlflowClient()
-    artifacts = [a.path for a in client.list_artifacts(run.info.run_id)]
-    assert _GENAI_CUSTOM_METRICS_FILE_NAME in artifacts
-
-    table = result.tables[os.path.splitext(_GENAI_CUSTOM_METRICS_FILE_NAME)[0]]
-    assert table.loc[0, "name"] == "custom llm judge"
-    assert table.loc[1, "name"] == "another custom llm judge"
-    assert table.loc[0, "version"] == ""
-    assert table.loc[1, "version"] == ""
-    assert table["version"].dtype == "object"
 
 
 def test_xgboost_model_evaluate_work_with_shap_explainer():
