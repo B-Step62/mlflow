@@ -1,6 +1,5 @@
 import os
 
-from mlflow.metrics import genai
 from mlflow.metrics.base import MetricValue
 from mlflow.metrics.metric_definitions import (
     _accuracy_eval_fn,
@@ -511,6 +510,5 @@ __all__ = [
     "f1_score",
     "token_count",
     "latency",
-    "genai",
     "bleu",
 ]
