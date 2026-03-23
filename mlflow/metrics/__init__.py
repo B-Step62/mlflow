@@ -2,7 +2,6 @@ import os
 
 from mlflow.metrics import genai
 from mlflow.metrics.base import MetricValue
-from mlflow.metrics.genai.utils import _MIGRATION_GUIDE
 from mlflow.metrics.metric_definitions import (
     _accuracy_eval_fn,
     _ari_eval_fn,
@@ -31,6 +30,13 @@ from mlflow.models import (
     make_metric,
 )
 from mlflow.utils.annotations import deprecated
+
+
+_MIGRATION_GUIDE = (
+    "Use the new GenAI evaluation functionality instead. See "
+    "https://mlflow.org/docs/latest/genai/eval-monitor/legacy-llm-evaluation/ "
+    "for the migration guide."
+)
 
 
 @deprecated(since="3.4.0", impact=_MIGRATION_GUIDE)

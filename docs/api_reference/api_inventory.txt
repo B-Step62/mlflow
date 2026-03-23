@@ -1366,16 +1366,6 @@ mlflow.metrics.bleu
 mlflow.metrics.exact_match
 mlflow.metrics.f1_score
 mlflow.metrics.flesch_kincaid_grade_level
-mlflow.metrics.genai.EvaluationExample
-mlflow.metrics.genai.answer_correctness
-mlflow.metrics.genai.answer_relevance
-mlflow.metrics.genai.answer_similarity
-mlflow.metrics.genai.base.EvaluationExample
-mlflow.metrics.genai.faithfulness
-mlflow.metrics.genai.make_genai_metric
-mlflow.metrics.genai.make_genai_metric_from_prompt
-mlflow.metrics.genai.relevance
-mlflow.metrics.genai.retrieve_custom_metrics
 mlflow.metrics.latency
 mlflow.metrics.mae
 mlflow.metrics.make_metric
