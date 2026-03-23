@@ -159,7 +159,7 @@ def _call_llm_via_litellm(
 ) -> Any:
     from mlflow.genai.judges.adapters.litellm_adapter import _invoke_litellm
     from mlflow.genai.utils.gateway_utils import get_gateway_litellm_config
-    from mlflow.metrics.genai.model_utils import _parse_model_uri, convert_mlflow_uri_to_litellm
+    from mlflow.genai.utils.model_utils import _parse_model_uri, convert_mlflow_uri_to_litellm
 
     provider, model_name = _parse_model_uri(model)
 

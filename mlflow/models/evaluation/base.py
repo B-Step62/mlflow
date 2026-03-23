@@ -1076,7 +1076,7 @@ def _is_model_deployment_endpoint_uri(model: Any) -> bool:
     if not isinstance(model, str):
         return False
 
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     try:
         schema, path = _parse_model_uri(model)
@@ -1088,7 +1088,7 @@ def _is_model_deployment_endpoint_uri(model: Any) -> bool:
 def _get_model_from_deployment_endpoint_uri(
     endpoint_uri: str, params: dict[str, Any] | None = None
 ):
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
     from mlflow.pyfunc.model import ModelFromDeploymentEndpoint, _PythonModelPyfuncWrapper
 
     _, endpoint = _parse_model_uri(endpoint_uri)

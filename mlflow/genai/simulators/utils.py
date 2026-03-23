@@ -62,7 +62,7 @@ def invoke_model_without_tracing(
     """
     import litellm
 
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     with delete_trace_if_created():
         if model_uri in (_DATABRICKS_DEFAULT_JUDGE_MODEL, _DATABRICKS_AGENTIC_JUDGE_MODEL):

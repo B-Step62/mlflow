@@ -75,7 +75,7 @@ def validate_judge_model(model_uri: str) -> None:
     from mlflow.genai.judges.adapters.databricks_managed_judge_adapter import (
         _check_databricks_agents_installed,
     )
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
     from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 
     # Special handling for Databricks default model

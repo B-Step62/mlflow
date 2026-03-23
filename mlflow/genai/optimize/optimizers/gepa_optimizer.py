@@ -132,7 +132,7 @@ class GepaPromptOptimizer(BasePromptOptimizer):
             The outputs of the prompt optimizer that includes the optimized prompts
             as a dict (prompt template name -> prompt template).
         """
-        from mlflow.metrics.genai.model_utils import _parse_model_uri
+        from mlflow.genai.utils.model_utils import _parse_model_uri
 
         if not train_data:
             raise MlflowException.invalid_parameter_value(

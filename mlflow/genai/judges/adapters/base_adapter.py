@@ -52,7 +52,7 @@ class AdapterInvocationInput:
     @property
     def model_provider(self) -> str:
         if self._model_provider is None:
-            from mlflow.metrics.genai.model_utils import _parse_model_uri
+            from mlflow.genai.utils.model_utils import _parse_model_uri
 
             self._model_provider, self._model_name = _parse_model_uri(self.model_uri)
         return self._model_provider
@@ -60,7 +60,7 @@ class AdapterInvocationInput:
     @property
     def model_name(self) -> str:
         if self._model_name is None:
-            from mlflow.metrics.genai.model_utils import _parse_model_uri
+            from mlflow.genai.utils.model_utils import _parse_model_uri
 
             self._model_provider, self._model_name = _parse_model_uri(self.model_uri)
         return self._model_name

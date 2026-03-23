@@ -230,7 +230,7 @@ def get_chat_completions_with_structured_output(
     if model_uri == _DATABRICKS_DEFAULT_JUDGE_MODEL:
         return _invoke_databricks_structured_output(messages, output_schema, trace)
 
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     model_provider, model_name = _parse_model_uri(model_uri)
 

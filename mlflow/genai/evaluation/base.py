@@ -604,7 +604,7 @@ def to_predict_fn(endpoint_uri: str) -> Callable[..., Any]:
             f"deployment endpoint URI or Databricks App URI (endpoints:/<name> or apps:/<name>)."
         )
 
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     schema, path = _parse_model_uri(endpoint_uri)
 

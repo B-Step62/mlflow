@@ -154,7 +154,7 @@ def recreate_function(source: str, signature: str, func_name: str) -> Callable[.
 def is_gateway_model(model: str | None) -> bool:
     if model is None:
         return False
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     try:
         provider, _ = _parse_model_uri(model)
@@ -164,7 +164,7 @@ def is_gateway_model(model: str | None) -> bool:
 
 
 def extract_endpoint_ref(model: str) -> str:
-    from mlflow.metrics.genai.model_utils import _parse_model_uri
+    from mlflow.genai.utils.model_utils import _parse_model_uri
 
     _, endpoint_ref = _parse_model_uri(model)
     return endpoint_ref

@@ -187,7 +187,7 @@ class MetaPromptOptimizer(BasePromptOptimizer):
         lm_kwargs: dict[str, Any] | None = None,
         guidelines: str | None = None,
     ):
-        from mlflow.metrics.genai.model_utils import _parse_model_uri
+        from mlflow.genai.utils.model_utils import _parse_model_uri
 
         self.reflection_model = reflection_model
         self.lm_kwargs = lm_kwargs or {}

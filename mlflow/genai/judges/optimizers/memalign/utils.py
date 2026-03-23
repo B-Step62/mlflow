@@ -28,7 +28,7 @@ from mlflow.genai.utils.trace_utils import (
     extract_request_from_trace,
     extract_response_from_trace,
 )
-from mlflow.metrics.genai.model_utils import convert_mlflow_uri_to_litellm
+from mlflow.genai.utils.model_utils import convert_mlflow_uri_to_litellm
 
 # Try to import litellm at module level
 try:

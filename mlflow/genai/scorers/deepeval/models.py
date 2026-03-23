@@ -11,7 +11,7 @@ from mlflow.genai.judges.adapters.databricks_managed_judge_adapter import (
 )
 from mlflow.genai.judges.constants import _DATABRICKS_DEFAULT_JUDGE_MODEL
 from mlflow.genai.utils.gateway_utils import get_gateway_litellm_config
-from mlflow.metrics.genai.model_utils import _parse_model_uri
+from mlflow.genai.utils.model_utils import _parse_model_uri
 
 
 def _build_json_prompt_with_schema(prompt: str, schema) -> str:

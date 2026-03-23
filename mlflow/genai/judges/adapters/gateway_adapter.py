@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 import pydantic
+import requests
 
 if TYPE_CHECKING:
+    from mlflow.gateway.providers import BaseProvider
     from mlflow.types.llm import ChatMessage
 
 from mlflow.entities.assessment import Feedback
@@ -22,7 +26,14 @@ from mlflow.genai.judges.utils.parsing_utils import (
     _sanitize_justification,
     _strip_markdown_code_blocks,
 )
+from mlflow.genai.utils.model_utils import (
+    _parse_model_uri,
+    call_deployments_api,
+    get_endpoint_type,
+)
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE
+
+_logger = logging.getLogger(__name__)
 
 # "endpoints" is a special case for MLflow deployment endpoints (e.g. Databricks model serving).
 _NATIVE_PROVIDERS = ["openai", "anthropic", "gemini", "mistral", "endpoints"]
@@ -58,13 +69,6 @@ def _invoke_via_gateway(
     Raises:
         MlflowException: If the provider is not natively supported or invocation fails.
     """
-    from mlflow.metrics.genai.model_utils import (
-        _call_llm_provider_api,
-        _parse_model_uri,
-        get_endpoint_type,
-        score_model_on_payload,
-    )
-
     if provider not in _NATIVE_PROVIDERS:
         raise MlflowException(
             f"LiteLLM is required for using '{provider}' LLM. Please install it with "
@@ -73,7 +77,7 @@ def _invoke_via_gateway(
         )
 
     if isinstance(prompt, str):
-        return score_model_on_payload(
+        return _score_model_on_payload(
             model_uri=model_uri,
             payload=prompt,
             eval_parameters=inference_params,
@@ -93,6 +97,192 @@ def _invoke_via_gateway(
     )
 
 
+def _score_model_on_payload(
+    model_uri,
+    payload,
+    eval_parameters=None,
+    extra_headers=None,
+    proxy_url=None,
+    endpoint_type=None,
+):
+    """Call the model identified by the given uri with the given string prompt."""
+    from mlflow.deployments import get_deploy_client
+
+    eval_parameters = eval_parameters or {}
+    extra_headers = extra_headers or {}
+
+    prefix, suffix = _parse_model_uri(model_uri)
+
+    if prefix in ["gateway", "endpoints"]:
+        if isinstance(payload, str) and endpoint_type is None:
+            client = get_deploy_client()
+            endpoint_type = client.get_endpoint(suffix).endpoint_type
+        return call_deployments_api(suffix, payload, eval_parameters, endpoint_type)
+    elif prefix in ("model", "runs"):
+        # TODO: call _load_model_or_server
+        raise NotImplementedError
+
+    # Import here to avoid loading gateway module at the top level
+    from mlflow.gateway.provider_registry import is_supported_provider
+
+    if is_supported_provider(prefix):
+        return _call_llm_provider_api(
+            prefix, suffix, payload, eval_parameters, extra_headers, proxy_url
+        )
+
+    raise MlflowException(
+        f"Unknown model uri prefix '{prefix}'",
+        error_code=INVALID_PARAMETER_VALUE,
+    )
+
+
+def _call_llm_provider_api(
+    provider_name: str,
+    model: str,
+    input_data: str,
+    eval_parameters: dict[str, Any],
+    extra_headers: dict[str, str],
+    proxy_url: str | None = None,
+) -> str:
+    from mlflow.gateway.config import Provider
+    from mlflow.gateway.schemas import chat
+
+    provider = _get_provider_instance(provider_name, model)
+
+    chat_request = chat.RequestPayload(
+        model=model,
+        messages=[
+            chat.RequestMessage(role="user", content=input_data),
+        ],
+        **eval_parameters,
+    )
+
+    filtered_keys = {"messages", *eval_parameters.keys()}
+
+    payload = {
+        k: v
+        for k, v in chat_request.model_dump(exclude_none=True).items()
+        if (v is not None) and (k in filtered_keys)
+    }
+    chat_payload = provider.adapter_class.chat_to_model(payload, provider.config)
+    chat_payload.update(eval_parameters)
+
+    if provider_name in [Provider.AMAZON_BEDROCK, Provider.BEDROCK]:
+        if proxy_url or extra_headers:
+            _logger.warning(
+                "Proxy URL and extra headers are not supported for Bedrock LLMs. "
+                "Ignoring the provided proxy URL and extra headers.",
+            )
+        response = provider._request(chat_payload)
+    else:
+        response = _send_request(
+            endpoint=proxy_url or provider.get_endpoint_url("llm/v1/chat"),
+            headers=provider.headers | extra_headers,
+            payload=chat_payload,
+        )
+    chat_response = provider.adapter_class.model_to_chat(response, provider.config)
+    if len(chat_response.choices) == 0:
+        raise MlflowException(
+            "Failed to score the provided input as the judge LLM did not return "
+            "any chat completion results in the response."
+        )
+    content = chat_response.choices[0].message.content
+
+    # NB: Evaluation only handles text content for now.
+    return content[0].text if isinstance(content, list) else content
+
+
+def _get_provider_instance(provider: str, model: str) -> BaseProvider:
+    from mlflow.gateway.config import EndpointConfig, Provider
+
+    def _get_route_config(config):
+        return EndpointConfig(
+            name=provider,
+            endpoint_type="llm/v1/chat",
+            model={
+                "provider": provider,
+                "name": model,
+                "config": config.model_dump(),
+            },
+        )
+
+    if provider == Provider.OPENAI:
+        from mlflow.gateway.providers.openai import OpenAIConfig, OpenAIProvider
+        from mlflow.openai.model import _get_api_config, _OAITokenHolder
+
+        api_config = _get_api_config()
+        api_token = _OAITokenHolder(api_config.api_type)
+        api_token.refresh()
+
+        config = OpenAIConfig(
+            openai_api_key=api_token.token,
+            openai_api_type=api_config.api_type or "openai",
+            openai_api_base=api_config.api_base,
+            openai_api_version=api_config.api_version,
+            openai_deployment_name=api_config.deployment_id,
+            openai_organization=api_config.organization,
+        )
+        return OpenAIProvider(_get_route_config(config))
+
+    elif provider == Provider.ANTHROPIC:
+        from mlflow.gateway.providers.anthropic import AnthropicConfig, AnthropicProvider
+
+        config = AnthropicConfig(anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        return AnthropicProvider(_get_route_config(config))
+
+    elif provider in [Provider.AMAZON_BEDROCK, Provider.BEDROCK]:
+        from mlflow.gateway.config import AWSIdAndKey, AWSRole
+        from mlflow.gateway.providers.bedrock import AmazonBedrockConfig, AmazonBedrockProvider
+
+        if aws_role_arn := os.environ.get("AWS_ROLE_ARN"):
+            aws_config = AWSRole(
+                aws_region=os.environ.get("AWS_REGION"),
+                aws_role_arn=aws_role_arn,
+            )
+        else:
+            aws_config = AWSIdAndKey(
+                aws_region=os.environ.get("AWS_REGION"),
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
+            )
+        config = AmazonBedrockConfig(aws_config=aws_config)
+        return AmazonBedrockProvider(_get_route_config(config))
+
+    elif provider == Provider.MISTRAL:
+        from mlflow.gateway.providers.mistral import MistralConfig, MistralProvider
+
+        config = MistralConfig(mistral_api_key=os.environ.get("MISTRAL_API_KEY"))
+        return MistralProvider(_get_route_config(config))
+
+    elif provider == Provider.TOGETHERAI:
+        from mlflow.gateway.providers.togetherai import TogetherAIConfig, TogetherAIProvider
+
+        config = TogetherAIConfig(togetherai_api_key=os.environ.get("TOGETHERAI_API_KEY"))
+        return TogetherAIProvider(_get_route_config(config))
+
+    raise MlflowException(f"Provider '{provider}' is not supported for evaluation.")
+
+
+def _send_request(
+    endpoint: str, headers: dict[str, str], payload: dict[str, Any]
+) -> dict[str, Any]:
+    try:
+        response = requests.post(
+            url=endpoint,
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        raise MlflowException(
+            f"Failed to call LLM endpoint at {endpoint}.\n- Error: {e}\n- Input payload: {payload}."
+        )
+
+    return response.json()
+
+
 class GatewayAdapter(BaseJudgeAdapter):
     """Adapter for native AI Gateway providers (fallback when LiteLLM is not available)."""
 
@@ -102,8 +292,6 @@ class GatewayAdapter(BaseJudgeAdapter):
         model_uri: str,
         prompt: str | list["ChatMessage"],
     ) -> bool:
-        from mlflow.metrics.genai.model_utils import _parse_model_uri
-
         model_provider, _ = _parse_model_uri(model_uri)
         if model_provider not in _NATIVE_PROVIDERS:
             return False

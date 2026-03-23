@@ -1517,7 +1517,7 @@ class ModelFromDeploymentEndpoint(PythonModel):
         Returns:
             The prediction result from the MLflow Deployments endpoint as a dictionary.
         """
-        from mlflow.metrics.genai.model_utils import call_deployments_api, get_endpoint_type
+        from mlflow.genai.utils.model_utils import call_deployments_api, get_endpoint_type
 
         endpoint_type = get_endpoint_type(f"endpoints:/{self.endpoint}")
 
