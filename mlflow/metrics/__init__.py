@@ -31,7 +31,6 @@ from mlflow.models import (
 )
 from mlflow.utils.annotations import deprecated
 
-
 _MIGRATION_GUIDE = (
     "Use the new GenAI evaluation functionality instead. See "
     "https://mlflow.org/docs/latest/genai/eval-monitor/legacy-llm-evaluation/ "

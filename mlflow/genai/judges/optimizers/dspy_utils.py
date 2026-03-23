@@ -17,14 +17,14 @@ from mlflow.genai.judges.constants import (
     _DATABRICKS_DEFAULT_JUDGE_MODEL,
     USE_CASE_JUDGE_ALIGNMENT,
 )
+from mlflow.genai.utils.model_utils import (
+    _parse_model_uri,
+    convert_mlflow_uri_to_litellm,
+)
 from mlflow.genai.utils.trace_utils import (
     extract_expectations_from_trace,
     extract_request_from_trace,
     extract_response_from_trace,
-)
-from mlflow.genai.utils.model_utils import (
-    _parse_model_uri,
-    convert_mlflow_uri_to_litellm,
 )
 from mlflow.utils import AttrDict
 

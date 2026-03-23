@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import BaseModel
+
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 
@@ -48,8 +50,6 @@ def get_endpoint_type(endpoint_uri: str) -> str | None:
     endpoint. For other endpoints e.g. OpenAI, or if the
     endpoint does not specify type, return None.
     """
-    from pydantic import BaseModel
-
     schema, path = _parse_model_uri(endpoint_uri)
 
     if schema != "endpoints":
