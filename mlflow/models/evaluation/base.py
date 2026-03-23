@@ -1115,7 +1115,6 @@ def evaluate(
     model_config=None,
     inference_params=None,
     model_id=None,
-    _called_from_genai_evaluate=False,
 ):
     '''
     Evaluate the model performance on given data and selected metrics.
@@ -1586,8 +1585,6 @@ def evaluate(
         model_id: (Optional) The ID of the MLflow LoggedModel or Model Version to which the
                   evaluation results (e.g. metrics and traces) will be linked. If `model_id` is not
                   specified but `model` is specified, the ID from `model` will be used.
-
-        _called_from_genai_evaluate: (Optional) Only used internally.
 
     Returns:
         An :py:class:`mlflow.models.EvaluationResult` instance containing
