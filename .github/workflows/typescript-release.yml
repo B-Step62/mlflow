@@ -62,13 +62,16 @@ jobs:
             echo "> **DRY RUN** — no packages will be published" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  publish-test:
+  pre-publish-checks:
     needs: validate
     if: needs.validate.outputs.any_publish == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       contents: read
+    defaults:
+      run:
+        working-directory: libs/typescript
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -81,11 +84,51 @@ jobs:
           cache: "npm"
           cache-dependency-path: libs/typescript/package-lock.json
 
-      - name: Test publish with Verdaccio
-        run: bash libs/typescript/scripts/test-ts-publish.sh
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify build artifacts
+        run: |
+          echo "Verifying all packages have dist folders..."
+          for pkg_dir in core integrations/*; do
+            if [ ! -f "$pkg_dir/package.json" ]; then
+              continue
+            fi
+            pkg_name=$(node -p "require('./$pkg_dir/package.json').name")
+            if [ ! -d "$pkg_dir/dist" ]; then
+              echo "Error: Missing dist folder for $pkg_name"
+              exit 1
+            fi
+            echo "OK: $pkg_name dist/ exists"
+          done
+
+          echo ""
+          echo "Checking for suspicious files in dist folders..."
+          if find core/dist integrations/*/dist -type f \( -name "*.sh" -o -name "*.exe" -o -name "*.bat" -o -name "*.cmd" \) 2>/dev/null | grep -q .; then
+            echo "Error: Found suspicious executable files in dist folders:"
+            find core/dist integrations/*/dist -type f \( -name "*.sh" -o -name "*.exe" -o -name "*.bat" -o -name "*.cmd" \)
+            exit 1
+          fi
+          echo "OK: No suspicious files found"
+
+      - name: Dry-run pack
+        run: |
+          echo "Verifying package contents with npm pack --dry-run..."
+          for pkg_dir in core integrations/*; do
+            if [ ! -f "$pkg_dir/package.json" ]; then
+              continue
+            fi
+            pkg_name=$(node -p "require('./$pkg_dir/package.json').name")
+            echo ""
+            echo "--- $pkg_name ---"
+            npm pack --dry-run --workspace "$pkg_dir" 2>&1
+          done
 
   publish:
-    needs: [validate, publish-test]
+    needs: [validate, pre-publish-checks]
     if: needs.validate.outputs.any_publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -111,7 +154,7 @@ jobs:
           cache-dependency-path: libs/typescript/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
