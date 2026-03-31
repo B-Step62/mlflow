@@ -234,6 +234,18 @@ export enum SpanDimensionKey {
 }
 
 /**
+ * Prefix for attribute-based dimension keys.
+ * Any span attribute promoted to dimension_attributes can be queried as a dimension
+ * using this prefix: `${ATTRIBUTE_DIMENSION_PREFIX}mlflow.skill.name`
+ */
+export const ATTRIBUTE_DIMENSION_PREFIX = 'attribute.';
+
+/** Attribute dimension for skill name */
+export const SKILL_NAME_DIMENSION = `${ATTRIBUTE_DIMENSION_PREFIX}mlflow.skill.name`;
+/** Attribute dimension for skill version */
+export const SKILL_VERSION_DIMENSION = `${ATTRIBUTE_DIMENSION_PREFIX}mlflow.skill.version`;
+
+/**
  * The level at which to aggregate metrics.
  */
 export enum MetricViewType {

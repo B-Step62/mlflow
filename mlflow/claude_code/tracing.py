@@ -507,10 +507,12 @@ def _create_llm_and_tool_spans(
                     skill_name = tool_use.get("input", {}).get("skill")
                     if skill_name:
                         span_name = f"tool_Skill:{skill_name}"
-                        attributes["skill_name"] = skill_name
+                        attributes[SpanAttributeKey.SKILL_NAME] = skill_name
                         skill_meta = _load_skill_metadata(skill_name)
                         if skill_meta:
-                            attributes["skill_version"] = skill_meta.get("version")
+                            attributes[SpanAttributeKey.SKILL_VERSION] = str(
+                                skill_meta.get("version", "")
+                            )
                             attributes["skill_source"] = skill_meta.get("source")
 
                 tool_span = mlflow.start_span_no_context(

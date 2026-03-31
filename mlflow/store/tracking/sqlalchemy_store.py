@@ -169,6 +169,7 @@ from mlflow.telemetry.events import UpdateIssueEvent
 from mlflow.telemetry.track import record_usage_event
 from mlflow.tracing.analysis import TraceFilterCorrelationResult
 from mlflow.tracing.constant import (
+    DIMENSION_ATTRIBUTE_KEYS,
     AssessmentMetadataKey,
     SpanAttributeKey,
     SpansLocation,
@@ -4609,10 +4610,9 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
 
                 content_json = json.dumps(span_dict, cls=TraceJSONEncoder)
 
-                # Prepare dimension attributes with model name and provider if available
-                dimension_attribute_keys = [SpanAttributeKey.MODEL, SpanAttributeKey.MODEL_PROVIDER]
+                # Prepare dimension attributes for efficient GROUP BY queries
                 dimension_attributes = {}
-                for key in dimension_attribute_keys:
+                for key in DIMENSION_ATTRIBUTE_KEYS:
                     if value := span_attributes.get(key):
                         dimension_attributes[key] = _try_parse_json_string(value)
 

@@ -24,6 +24,8 @@ from mlflow.store.tracking.dbmodels.models import (
     SqlTraceTag,
 )
 from mlflow.tracing.constant import (
+    ATTRIBUTE_DIMENSION_PREFIX,
+    DIMENSION_ATTRIBUTE_KEYS,
     AssessmentMetricDimensionKey,
     AssessmentMetricKey,
     AssessmentMetricSearchKey,
@@ -430,6 +432,9 @@ def _apply_dimension_to_query(
                         SpanAttributeKey.MODEL_PROVIDER,
                         SpanMetricDimensionKey.SPAN_MODEL_PROVIDER,
                     )
+                case dimension if dimension.startswith(ATTRIBUTE_DIMENSION_PREFIX):
+                    json_key = dimension[len(ATTRIBUTE_DIMENSION_PREFIX) :]
+                    return query, _get_json_dimension_column(db_type, json_key, dimension)
         case MetricViewType.ASSESSMENTS:
             match dimension:
                 case AssessmentMetricDimensionKey.ASSESSMENT_NAME:
@@ -798,8 +803,22 @@ def validate_query_trace_metrics_params(
         )
 
     dimensions_list = dimensions or []
-    if invalid_dimensions := (set(dimensions_list) - metrics_config.dimensions):
+    allowed_attr_keys = {k for k in DIMENSION_ATTRIBUTE_KEYS}
+    invalid_dimensions = set()
+    for dim in dimensions_list:
+        if dim in metrics_config.dimensions:
+            continue
+        if (
+            view_type == MetricViewType.SPANS
+            and dim.startswith(ATTRIBUTE_DIMENSION_PREFIX)
+            and dim[len(ATTRIBUTE_DIMENSION_PREFIX) :] in allowed_attr_keys
+        ):
+            continue
+        invalid_dimensions.add(dim)
+
+    if invalid_dimensions:
         supported_dims = sorted([d for d in metrics_config.dimensions if d is not None])
+        supported_dims.append(f'{ATTRIBUTE_DIMENSION_PREFIX}<key>')
         raise MlflowException.invalid_parameter_value(
             f"Found invalid dimension(s): {sorted(invalid_dimensions)}. "
             f"Supported dimensions: {supported_dims}",

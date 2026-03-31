@@ -27,6 +27,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.genai.judges import CategoricalRating
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
 from mlflow.tracing.constant import (
+    ATTRIBUTE_DIMENSION_PREFIX,
     AssessmentMetricDimensionKey,
     AssessmentMetricKey,
     SpanAttributeKey,
@@ -4738,3 +4739,198 @@ def test_query_span_metrics_count_by_span_status_and_model_provider(store: SqlAl
         },
         "values": {"COUNT": 2},
     }
+
+
+def test_query_span_metrics_count_by_attribute_skill_name(store: SqlAlchemyStore):
+    exp_id = store.create_experiment("test_attr_skill_name")
+
+    trace_info = TraceInfo(
+        trace_id="trace1",
+        trace_location=trace_location.TraceLocation.from_experiment_id(exp_id),
+        request_time=get_current_time_millis(),
+        execution_duration=100,
+        state=TraceStatus.OK,
+        tags={TraceTagKey.TRACE_NAME: "test_trace"},
+    )
+    store.start_trace(trace_info)
+
+    spans = [
+        create_test_span(
+            "trace1",
+            "tool_Skill:agent-eval",
+            span_id=1,
+            span_type="TOOL",
+            start_ns=1000000000,
+            attributes={
+                SpanAttributeKey.SKILL_NAME: "agent-eval",
+                SpanAttributeKey.SKILL_VERSION: "2",
+            },
+        ),
+        create_test_span(
+            "trace1",
+            "tool_Skill:agent-eval",
+            span_id=2,
+            span_type="TOOL",
+            start_ns=1100000000,
+            attributes={
+                SpanAttributeKey.SKILL_NAME: "agent-eval",
+                SpanAttributeKey.SKILL_VERSION: "2",
+            },
+        ),
+        create_test_span(
+            "trace1",
+            "tool_Skill:search-docs",
+            span_id=3,
+            span_type="TOOL",
+            start_ns=1200000000,
+            attributes={
+                SpanAttributeKey.SKILL_NAME: "search-docs",
+                SpanAttributeKey.SKILL_VERSION: "1",
+            },
+        ),
+    ]
+    store.log_spans(exp_id, spans)
+
+    skill_name_dim = f"{ATTRIBUTE_DIMENSION_PREFIX}{SpanAttributeKey.SKILL_NAME}"
+    result = store.query_trace_metrics(
+        experiment_ids=[exp_id],
+        view_type=MetricViewType.SPANS,
+        metric_name=SpanMetricKey.SPAN_COUNT,
+        aggregations=[MetricAggregation(aggregation_type=AggregationType.COUNT)],
+        dimensions=[skill_name_dim],
+    )
+
+    assert len(result) == 2
+    assert asdict(result[0]) == {
+        "metric_name": SpanMetricKey.SPAN_COUNT,
+        "dimensions": {skill_name_dim: "agent-eval"},
+        "values": {"COUNT": 2},
+    }
+    assert asdict(result[1]) == {
+        "metric_name": SpanMetricKey.SPAN_COUNT,
+        "dimensions": {skill_name_dim: "search-docs"},
+        "values": {"COUNT": 1},
+    }
+
+
+def test_query_span_metrics_count_by_attribute_skill_version(store: SqlAlchemyStore):
+    exp_id = store.create_experiment("test_attr_skill_version")
+
+    trace_info = TraceInfo(
+        trace_id="trace1",
+        trace_location=trace_location.TraceLocation.from_experiment_id(exp_id),
+        request_time=get_current_time_millis(),
+        execution_duration=100,
+        state=TraceStatus.OK,
+        tags={TraceTagKey.TRACE_NAME: "test_trace"},
+    )
+    store.start_trace(trace_info)
+
+    spans = [
+        create_test_span(
+            "trace1",
+            "tool_Skill:agent-eval",
+            span_id=1,
+            span_type="TOOL",
+            start_ns=1000000000,
+            attributes={
+                SpanAttributeKey.SKILL_NAME: "agent-eval",
+                SpanAttributeKey.SKILL_VERSION: "1",
+            },
+        ),
+        create_test_span(
+            "trace1",
+            "tool_Skill:agent-eval",
+            span_id=2,
+            span_type="TOOL",
+            start_ns=1100000000,
+            attributes={
+                SpanAttributeKey.SKILL_NAME: "agent-eval",
+                SpanAttributeKey.SKILL_VERSION: "2",
+            },
+        ),
+    ]
+    store.log_spans(exp_id, spans)
+
+    skill_version_dim = f"{ATTRIBUTE_DIMENSION_PREFIX}{SpanAttributeKey.SKILL_VERSION}"
+    result = store.query_trace_metrics(
+        experiment_ids=[exp_id],
+        view_type=MetricViewType.SPANS,
+        metric_name=SpanMetricKey.SPAN_COUNT,
+        aggregations=[MetricAggregation(aggregation_type=AggregationType.COUNT)],
+        dimensions=[skill_version_dim],
+    )
+
+    assert len(result) == 2
+    assert asdict(result[0]) == {
+        "metric_name": SpanMetricKey.SPAN_COUNT,
+        "dimensions": {skill_version_dim: "1"},
+        "values": {"COUNT": 1},
+    }
+    assert asdict(result[1]) == {
+        "metric_name": SpanMetricKey.SPAN_COUNT,
+        "dimensions": {skill_version_dim: "2"},
+        "values": {"COUNT": 1},
+    }
+
+
+def test_query_span_metrics_rejects_unknown_attribute_dimension(store: SqlAlchemyStore):
+    exp_id = store.create_experiment("test_reject_unknown_attr")
+
+    with pytest.raises(MlflowException, match="Found invalid dimension"):
+        store.query_trace_metrics(
+            experiment_ids=[exp_id],
+            view_type=MetricViewType.SPANS,
+            metric_name=SpanMetricKey.SPAN_COUNT,
+            aggregations=[MetricAggregation(aggregation_type=AggregationType.COUNT)],
+            dimensions=[f"{ATTRIBUTE_DIMENSION_PREFIX}not.a.real.key"],
+        )
+
+
+def test_query_span_metrics_mixed_named_and_attribute_dimensions(store: SqlAlchemyStore):
+    exp_id = store.create_experiment("test_mixed_dims")
+
+    trace_info = TraceInfo(
+        trace_id="trace1",
+        trace_location=trace_location.TraceLocation.from_experiment_id(exp_id),
+        request_time=get_current_time_millis(),
+        execution_duration=100,
+        state=TraceStatus.OK,
+        tags={TraceTagKey.TRACE_NAME: "test_trace"},
+    )
+    store.start_trace(trace_info)
+
+    spans = [
+        create_test_span(
+            "trace1",
+            "tool_Skill:agent-eval",
+            span_id=1,
+            span_type="TOOL",
+            start_ns=1000000000,
+            attributes={SpanAttributeKey.SKILL_NAME: "agent-eval"},
+        ),
+        create_test_span(
+            "trace1",
+            "tool_Bash",
+            span_id=2,
+            span_type="TOOL",
+            start_ns=1100000000,
+        ),
+    ]
+    store.log_spans(exp_id, spans)
+
+    skill_name_dim = f"{ATTRIBUTE_DIMENSION_PREFIX}{SpanAttributeKey.SKILL_NAME}"
+    result = store.query_trace_metrics(
+        experiment_ids=[exp_id],
+        view_type=MetricViewType.SPANS,
+        metric_name=SpanMetricKey.SPAN_COUNT,
+        aggregations=[MetricAggregation(aggregation_type=AggregationType.COUNT)],
+        dimensions=[SpanMetricDimensionKey.SPAN_NAME, skill_name_dim],
+    )
+
+    # Spans without the attribute get NULL for the dimension, which forms its own group
+    dims_list = [asdict(r)["dimensions"] for r in result]
+    assert {
+        SpanMetricDimensionKey.SPAN_NAME: "tool_Skill:agent-eval",
+        skill_name_dim: "agent-eval",
+    } in dims_list

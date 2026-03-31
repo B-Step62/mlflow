@@ -121,6 +121,10 @@ class SpanAttributeKey:
     # endpoint is called by a traced agent via distributed tracing (traceparent header).
     LINKED_GATEWAY_TRACE_ID = "mlflow.gateway.linkedTraceId"
 
+    # Skill metadata attributes for Claude Code skill tracking
+    SKILL_NAME = "mlflow.skill.name"
+    SKILL_VERSION = "mlflow.skill.version"
+
     # User and session IDs copied from trace metadata to root span attributes for OTLP export.
     # Following OTel semantic conventions:
     # https://opentelemetry.io/docs/specs/semconv/registry/attributes/user/#user-id
@@ -257,6 +261,21 @@ class SpanMetricDimensionKey:
     SPAN_STATUS = "span_status"
     SPAN_MODEL_NAME = "span_model_name"
     SPAN_MODEL_PROVIDER = "span_model_provider"
+
+
+# Prefix for attribute-based dimension keys in the trace metrics API.
+# Usage: "attribute.mlflow.skill.name" resolves to dimension_attributes["mlflow.skill.name"]
+ATTRIBUTE_DIMENSION_PREFIX = "attribute."
+
+# Span attribute keys that are extracted into the dimension_attributes JSON column
+# for efficient GROUP BY queries. Any key in this list becomes queryable as a dimension
+# via the "attribute.<key>" prefix convention.
+DIMENSION_ATTRIBUTE_KEYS = [
+    SpanAttributeKey.MODEL,
+    SpanAttributeKey.MODEL_PROVIDER,
+    SpanAttributeKey.SKILL_NAME,
+    SpanAttributeKey.SKILL_VERSION,
+]
 
 
 class AssessmentMetricKey:
