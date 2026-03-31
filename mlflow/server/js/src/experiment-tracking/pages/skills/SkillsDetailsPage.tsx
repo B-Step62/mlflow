@@ -38,6 +38,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { RegisteredSkillVersion, SkillVersionFile } from './types';
 import { RegisteredSkillsApi } from './api';
 import { CopyButton } from '@mlflow/mlflow/src/shared/building_blocks/CopyButton';
+import { SkillUsageTab } from './components/SkillUsageTab';
 import { CodeSnippet } from '@databricks/web-shared/snippet';
 
 const INTERNAL_TAG_PREFIX = 'mlflow.';
@@ -757,19 +758,7 @@ const SkillsDetailsPage = () => {
           />
         )}
 
-        {activeTab === 'usage' && (
-          <div
-            css={{
-              border: `1px dashed ${theme.colors.borderDecorative}`,
-              borderRadius: theme.borders.borderRadiusSm,
-              padding: theme.spacing.lg,
-              textAlign: 'center',
-              color: theme.colors.textSecondary,
-            }}
-          >
-            To be constructed — skill usage analytics and trace linkage will appear here.
-          </div>
-        )}
+        {activeTab === 'usage' && <SkillUsageTab skillName={skillName || ''} />}
       </div>
 
       <UseSkillModal
