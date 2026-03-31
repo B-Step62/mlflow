@@ -226,8 +226,8 @@ const SkillCard = ({
           {skill.latest_version != null && (
             <span
               css={{
-                backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
-                color: theme.colors.actionPrimaryTextDefault,
+                backgroundColor: theme.colors.tagDefault,
+                color: theme.colors.textSecondary,
                 borderRadius: theme.borders.borderRadiusSm,
                 padding: `0 ${theme.spacing.xs}px`,
                 fontSize: 11,
