@@ -3,7 +3,6 @@
 import getpass
 import json
 import logging
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -47,27 +46,36 @@ def _validate_skill_name(name: str) -> None:
         )
 
 
-def _get_skill_artifact_root() -> Path:
-    """Get the root directory for skill artifacts, derived from the tracking URI."""
-    tracking_uri = mlflow.get_tracking_uri()
-    if tracking_uri.startswith("sqlite:"):
-        # For sqlite:///path/to/mlflow.db, store skills next to the DB
-        db_path = tracking_uri.replace("sqlite:///", "").replace("sqlite:", "")
-        return Path(db_path).parent / "skill_artifacts"
-    # Default: store in current working directory
-    return Path("skill_artifacts")
+def _get_skill_artifact_root_uri() -> str:
+    """Derive the base URI for skill artifact storage from the configured artifact store.
+
+    Uses the default experiment's artifact location to infer the artifact root, so skills
+    are stored in the same artifact store as runs (local filesystem, S3, GCS, etc.).
+    """
+    from mlflow.utils.uri import append_to_uri_path
+
+    client = mlflow.MlflowClient()
+    exp = client.get_experiment("0")
+    if exp and exp.artifact_location:
+        # Default experiment artifact_location is "{root}/0" — strip the experiment ID component
+        base = exp.artifact_location.rstrip("/").rsplit("/", 1)[0]
+        return append_to_uri_path(base, "skills")
+    return append_to_uri_path(mlflow.get_tracking_uri(), "skill_artifacts")
 
 
 def _store_skill_bundle(name: str, version: int, skill_dir: Path) -> str:
-    """Copy skill bundle to the artifact storage location.
+    """Upload skill bundle to the configured MLflow artifact store.
 
     Returns:
-        The artifact_location path.
+        The artifact URI where the skill bundle was stored.
     """
-    dest = _get_skill_artifact_root() / name / str(version)
-    dest.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(skill_dir, dest, dirs_exist_ok=True)
-    return str(dest)
+    from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
+    from mlflow.utils.uri import append_to_uri_path
+
+    artifact_uri = append_to_uri_path(_get_skill_artifact_root_uri(), name, str(version))
+    repo = get_artifact_repository(artifact_uri)
+    repo.log_artifacts(str(skill_dir), artifact_path=None)
+    return artifact_uri
 
 
 def _resolve_source(source: str) -> tuple[Path, list[Path]]:
@@ -267,10 +275,6 @@ def install_skill(
     if not artifact_location:
         raise MlflowException(f"Skill '{name}' v{sv.version} has no stored artifacts.")
 
-    artifact_path = Path(artifact_location)
-    if not artifact_path.exists():
-        raise MlflowException(f"Skill artifacts not found at '{artifact_location}'.")
-
     # Determine destination
     if scope == "global":
         dest = Path.home() / ".claude" / "skills" / name
@@ -281,9 +285,12 @@ def install_skill(
     else:
         raise MlflowException.invalid_parameter_value(f"Invalid scope: {scope}")
 
-    # Copy skill files
+    # Download skill files using MLflow's artifact infrastructure (supports S3, GCS, Azure, etc.)
+    from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
+
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(artifact_path, dest, dirs_exist_ok=True)
+    repo = get_artifact_repository(artifact_location)
+    repo.download_artifacts("", dst_path=str(dest))
 
     # Write metadata sidecar for trace linkage
     metadata = {
