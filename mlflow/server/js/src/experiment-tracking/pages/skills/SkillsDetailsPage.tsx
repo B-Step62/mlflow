@@ -328,6 +328,7 @@ const SkillsDetailsPage = () => {
   const { theme } = useDesignSystemTheme();
   const { skill, versions, error, isLoading } = useSkillDetailsQuery(skillName || '');
   const [useModalVisible, setUseModalVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<'files' | 'versions' | 'usage'>('files');
 
   // Version selection — default to latest
   const latestVersion = useMemo(
@@ -362,8 +363,6 @@ const SkillsDetailsPage = () => {
       </ScrollablePageWrapper>
     );
   }
-
-  const [activeTab, setActiveTab] = useState<'files' | 'versions' | 'usage'>('files');
 
   return (
     <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, padding: `0 ${theme.spacing.lg}px` }}>
