@@ -206,6 +206,11 @@ def stop_hook_handler() -> None:
         session_id = hook_data.get("session_id")
         transcript_path = hook_data.get("transcript_path")
 
+        if not session_id or not transcript_path:
+            response = get_hook_response()
+            print(json.dumps(response))  # noqa: T201
+            return
+
         setup_mlflow()
         response = _process_stop_hook(session_id, transcript_path)
         print(json.dumps(response))  # noqa: T201

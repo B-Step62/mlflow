@@ -156,8 +156,10 @@ def _load_skill_metadata(skill_name: str) -> dict[str, Any] | None:
 
 def read_hook_input() -> dict[str, Any]:
     """Read JSON input from stdin for Claude Code hook processing."""
+    input_data = sys.stdin.read()
+    if not input_data.strip():
+        return {}
     try:
-        input_data = sys.stdin.read()
         return json.loads(input_data)
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(f"Failed to parse hook input: {e}", input_data, 0) from e
