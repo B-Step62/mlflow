@@ -565,38 +565,14 @@ const SkillsPage = () => {
       <Spacer shrinks={false} />
       <div css={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <SkillUsageBreakdown />
-        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.md, marginTop: theme.spacing.md }}>
-          <div css={{ flex: 1 }}>
-            <Input
-              componentId="mlflow.skills.list.search"
-              placeholder="Search skills..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              allowClear
-            />
-          </div>
-          {selectedSkills.size > 0 && (
-            <>
-              <Button
-                componentId="mlflow.skills.list.bulk_use"
-                type="primary"
-                onClick={() => setBulkUseModalVisible(true)}
-              >
-                <FormattedMessage
-                  defaultMessage="Use ({count})"
-                  description="Bulk use button"
-                  values={{ count: selectedSkills.size }}
-                />
-              </Button>
-              <Button componentId="mlflow.skills.list.bulk_delete" type="primary" onClick={handleBulkDelete} danger>
-                <FormattedMessage
-                  defaultMessage="Delete ({count})"
-                  description="Bulk delete button"
-                  values={{ count: selectedSkills.size }}
-                />
-              </Button>
-            </>
-          )}
+        <div css={{ marginBottom: theme.spacing.md, marginTop: theme.spacing.md }}>
+          <Input
+            componentId="mlflow.skills.list.search"
+            placeholder="Search skills..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            allowClear
+          />
         </div>
         {!isLoading && data.length > 0 && (
           <div
@@ -627,6 +603,40 @@ const SkillsPage = () => {
           onToggleSelect={handleToggleSelect}
         />
       </div>
+      {/* Floating action bar */}
+      {selectedSkills.size > 0 && (
+        <div
+          css={{
+            position: 'fixed',
+            bottom: theme.spacing.lg,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            backgroundColor: theme.colors.backgroundPrimary,
+            border: `1px solid ${theme.colors.borderDecorative}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+            zIndex: 100,
+          }}
+        >
+          <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>
+            {selectedSkills.size} selected
+          </Typography.Text>
+          <Button
+            componentId="mlflow.skills.list.bulk_use"
+            type="primary"
+            onClick={() => setBulkUseModalVisible(true)}
+          >
+            Use
+          </Button>
+          <Button componentId="mlflow.skills.list.bulk_delete" type="primary" onClick={handleBulkDelete} danger>
+            Delete
+          </Button>
+        </div>
+      )}
       {RegisterSkillModal}
       <InstallCommandModal
         skillNames={Array.from(selectedSkills)}
