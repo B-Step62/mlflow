@@ -57,6 +57,7 @@ export function useSkillUsageBreakdownData(): UseSkillUsageBreakdownDataResult {
 
   const { breakdown, totalCount } = useMemo(() => {
     const dataPoints = data?.data_points ?? [];
+    const skillPrefix = 'tool_Skill:';
     const result: SkillUsageBreakdown[] = [];
     let total = 0;
 

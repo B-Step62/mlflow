@@ -7,7 +7,7 @@ export const SkillUsageBreakdown: React.FC = () => {
   const { theme } = useDesignSystemTheme();
   const { breakdown, totalCount, isLoading, error } = useSkillUsageBreakdownData();
 
-  if (error || (!isLoading && breakdown.length === 0)) {
+  if (error) {
     return null;
   }
 
