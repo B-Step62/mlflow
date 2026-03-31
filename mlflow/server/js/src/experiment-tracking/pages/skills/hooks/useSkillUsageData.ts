@@ -76,15 +76,16 @@ export function useSkillUsageData(skillName: string): UseSkillUsageDataResult {
       total += count;
     }
 
-    // Build daily buckets for the 30-day range
+    // Build daily buckets for the 30-day range, aligned to UTC days
+    // to match the server's time bucketing
     const result: SkillUsageDataPoint[] = [];
-    for (let ts = startTimeMs; ts <= endTimeMs; ts += ONE_DAY_SECONDS * 1000) {
-      const dayStart = new Date(ts);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayMs = dayStart.getTime();
+    const utcDayMs = ONE_DAY_SECONDS * 1000;
+    const firstBucket = Math.floor(startTimeMs / utcDayMs) * utcDayMs;
+    for (let ts = firstBucket; ts <= endTimeMs; ts += utcDayMs) {
+      const date = new Date(ts);
       result.push({
-        timestamp: dayStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        count: dataByTimestamp.get(dayMs) || 0,
+        timestamp: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        count: dataByTimestamp.get(ts) || 0,
       });
     }
 
