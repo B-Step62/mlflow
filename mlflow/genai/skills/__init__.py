@@ -329,6 +329,7 @@ def install_skill(
         "name": sv.name,
         "version": sv.version,
         "source": sv.source,
+        "commit_hash": sv.tags.get("mlflow.skill.commit_hash"),
         "tracking_uri": mlflow.get_tracking_uri(),
         "installed_at": datetime.now(tz=timezone.utc).isoformat(),
     }
