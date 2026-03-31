@@ -299,6 +299,46 @@ type TreeNode = {
   depth: number;
 };
 
+/** Build a DFS-ordered flat list from a flat file list with is_dir markers.
+ *  Within each directory: subdirs first (alphabetical), then files (alphabetical). */
+function buildDfsTree(files: SkillVersionFile[]): TreeNode[] {
+  // Map path → children paths
+  const childrenOf = new Map<string, SkillVersionFile[]>();
+  childrenOf.set('', []);
+
+  for (const f of files) {
+    const parts = f.path.split('/');
+    const parentPath = parts.slice(0, -1).join('/');
+    if (!childrenOf.has(parentPath)) childrenOf.set(parentPath, []);
+    childrenOf.get(parentPath)!.push(f);
+  }
+
+  // Sort each level: dirs before files, then alphabetical
+  for (const children of childrenOf.values()) {
+    children.sort((a, b) => {
+      if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+      return a.path.localeCompare(b.path);
+    });
+  }
+
+  // DFS flatten
+  const result: TreeNode[] = [];
+  const visit = (parentPath: string, depth: number) => {
+    for (const f of childrenOf.get(parentPath) ?? []) {
+      result.push({
+        name: f.path.split('/').pop() ?? f.path,
+        path: f.path,
+        isDir: f.is_dir,
+        content: f.content,
+        depth,
+      });
+      if (f.is_dir) visit(f.path, depth + 1);
+    }
+  };
+  visit('', 0);
+  return result;
+}
+
 const FileExplorer = ({ skillName, version }: { skillName: string; version: number }) => {
   const { theme } = useDesignSystemTheme();
   const [files, setFiles] = useState<SkillVersionFile[]>([]);
@@ -312,7 +352,7 @@ const FileExplorer = ({ skillName, version }: { skillName: string; version: numb
     RegisteredSkillsApi.getSkillVersionFiles(skillName, version)
       .then((data) => {
         setFiles(data);
-        setExpandedFolders(new Set(data.filter((f) => f.is_dir).map((f) => f.path)));
+        setExpandedFolders(new Set());
         const first = data.find((f) => !f.is_dir && f.path === 'SKILL.md') ?? data.find((f) => !f.is_dir);
         setSelectedPath(first?.path ?? null);
       })
@@ -328,20 +368,7 @@ const FileExplorer = ({ skillName, version }: { skillName: string; version: numb
     });
   };
 
-  const treeNodes: TreeNode[] = [...files]
-    .sort((a, b) => {
-      const aDir = a.is_dir ? 0 : 1;
-      const bDir = b.is_dir ? 0 : 1;
-      if (aDir !== bDir) return aDir - bDir;
-      return a.path.localeCompare(b.path);
-    })
-    .map((f) => ({
-      name: f.path.split('/').pop() ?? f.path,
-      path: f.path,
-      isDir: f.is_dir,
-      content: f.content,
-      depth: f.path.split('/').length - 1,
-    }));
+  const treeNodes = buildDfsTree(files);
 
   const activeFile = files.find((f) => !f.is_dir && f.path === selectedPath);
 
