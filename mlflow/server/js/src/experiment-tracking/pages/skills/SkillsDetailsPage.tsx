@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   ChevronDownIcon,
+  ChevronRightIcon,
   CopyIcon,
   DropdownMenu,
   FileCodeIcon,
@@ -73,7 +74,15 @@ const GitHubIcon = ({ size = 14 }: { size?: number }) => (
 // "Use" Modal — CLI + Python snippets
 // ============================================================================
 
-const CodeBlock = ({ code, language = 'bash', componentId }: { code: string; language?: 'bash' | 'python'; componentId: string }) => {
+const CodeBlock = ({
+  code,
+  language = 'bash',
+  componentId,
+}: {
+  code: string;
+  language?: 'bash' | 'python';
+  componentId: string;
+}) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div css={{ position: 'relative' }}>
@@ -182,7 +191,8 @@ const UseSkillModal = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
               <Typography.Text bold>Install to local filesystem</Typography.Text>
               <Typography.Text color="secondary" style={{ fontSize: theme.typography.fontSizeSm }}>
-                Download the skill files so Claude Code can use them. Use <code>scope="project"</code> to install in the current directory only.
+                Download the skill files so Claude Code can use them. Use <code>scope="project"</code> to install in the
+                current directory only.
               </Typography.Text>
               <CodeBlock
                 language="python"
@@ -249,14 +259,18 @@ const VersionsList = ({
             <TableCell>
               <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
                 {v.aliases?.map((a) => (
-                  <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>{a}</Tag>
+                  <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>
+                    {a}
+                  </Tag>
                 ))}
               </div>
             </TableCell>
             <TableCell>
               <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
                 {vUserTags.map((t) => (
-                  <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>{t}</Tag>
+                  <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>
+                    {t}
+                  </Tag>
                 ))}
               </div>
             </TableCell>
@@ -277,10 +291,19 @@ const getFileIcon = (filename: string) => {
   return <FileIcon />;
 };
 
+type TreeNode = {
+  name: string;
+  path: string;
+  isDir: boolean;
+  content?: string | null;
+  depth: number;
+};
+
 const FileExplorer = ({ skillName, version }: { skillName: string; version: number }) => {
   const { theme } = useDesignSystemTheme();
   const [files, setFiles] = useState<SkillVersionFile[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -289,17 +312,38 @@ const FileExplorer = ({ skillName, version }: { skillName: string; version: numb
     RegisteredSkillsApi.getSkillVersionFiles(skillName, version)
       .then((data) => {
         setFiles(data);
-        const first =
-          data.find((f) => !f.is_dir && f.path === 'SKILL.md') ??
-          data.find((f) => !f.is_dir);
+        setExpandedFolders(new Set(data.filter((f) => f.is_dir).map((f) => f.path)));
+        const first = data.find((f) => !f.is_dir && f.path === 'SKILL.md') ?? data.find((f) => !f.is_dir);
         setSelectedPath(first?.path ?? null);
       })
       .catch(() => setFiles([]))
       .finally(() => setIsLoading(false));
   }, [skillName, version]);
 
-  const leafFiles = files.filter((f) => !f.is_dir);
-  const activeFile = leafFiles.find((f) => f.path === selectedPath);
+  const toggleFolder = (path: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.has(path) ? next.delete(path) : next.add(path);
+      return next;
+    });
+  };
+
+  const treeNodes: TreeNode[] = [...files]
+    .sort((a, b) => {
+      const aDir = a.is_dir ? 0 : 1;
+      const bDir = b.is_dir ? 0 : 1;
+      if (aDir !== bDir) return aDir - bDir;
+      return a.path.localeCompare(b.path);
+    })
+    .map((f) => ({
+      name: f.path.split('/').pop() ?? f.path,
+      path: f.path,
+      isDir: f.is_dir,
+      content: f.content,
+      depth: f.path.split('/').length - 1,
+    }));
+
+  const activeFile = files.find((f) => !f.is_dir && f.path === selectedPath);
 
   if (isLoading) {
     return (
@@ -309,12 +353,8 @@ const FileExplorer = ({ skillName, version }: { skillName: string; version: numb
     );
   }
 
-  if (!leafFiles.length) {
-    return (
-      <div css={{ color: theme.colors.textSecondary, padding: theme.spacing.md }}>
-        No files available.
-      </div>
-    );
+  if (!files.some((f) => !f.is_dir)) {
+    return <div css={{ color: theme.colors.textSecondary, padding: theme.spacing.md }}>No files available.</div>;
   }
 
   return (
@@ -338,38 +378,85 @@ const FileExplorer = ({ skillName, version }: { skillName: string; version: numb
           flexShrink: 0,
         }}
       >
-        <div css={{ padding: `${theme.spacing.sm}px ${theme.spacing.sm}px`, display: 'flex', alignItems: 'center', gap: theme.spacing.xs, borderBottom: `1px solid ${theme.colors.borderDecorative}` }}>
+        <div
+          css={{
+            padding: `${theme.spacing.sm}px ${theme.spacing.sm}px`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            borderBottom: `1px solid ${theme.colors.borderDecorative}`,
+          }}
+        >
           <FolderIcon css={{ color: theme.colors.textSecondary }} />
-          <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>Files</Typography.Text>
+          <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>
+            Files
+          </Typography.Text>
         </div>
-        {leafFiles.map((f) => (
-          <div
-            key={f.path}
-            onClick={() => setSelectedPath(f.path)}
-            css={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.xs,
-              padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-              cursor: 'pointer',
-              fontSize: theme.typography.fontSizeSm,
-              backgroundColor: f.path === selectedPath ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
-              '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
-            }}
-          >
-            {getFileIcon(f.path)}
-            <span css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.path}>
-              {f.path}
-            </span>
-          </div>
-        ))}
+        {treeNodes.map((node) => {
+          // Hide if any ancestor folder is collapsed
+          const parts = node.path.split('/');
+          const ancestors = parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('/'));
+          if (ancestors.some((a) => !expandedFolders.has(a))) return null;
+
+          const indent = node.depth * 12 + theme.spacing.sm;
+
+          if (node.isDir) {
+            const isExpanded = expandedFolders.has(node.path);
+            return (
+              <div
+                key={node.path}
+                onClick={() => toggleFolder(node.path)}
+                css={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.xs,
+                  padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+                  paddingLeft: indent,
+                  cursor: 'pointer',
+                  fontSize: theme.typography.fontSizeSm,
+                  '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
+                }}
+              >
+                {isExpanded ? (
+                  <ChevronDownIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+                ) : (
+                  <ChevronRightIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+                )}
+                <FolderIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+                <span css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={node.path}
+              onClick={() => setSelectedPath(node.path)}
+              css={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+                paddingLeft: indent,
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSizeSm,
+                backgroundColor:
+                  node.path === selectedPath ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
+                '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
+              }}
+            >
+              {getFileIcon(node.name)}
+              <span css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={node.path}>
+                {node.name}
+              </span>
+            </div>
+          );
+        })}
       </div>
       {/* File content */}
       <div css={{ flex: 1, overflow: 'auto', padding: theme.spacing.md }}>
         {selectedPath?.endsWith('.md') ? (
-          <GenAIMarkdownRenderer urlTransform={defaultUrlTransform}>
-            {activeFile?.content ?? ''}
-          </GenAIMarkdownRenderer>
+          <GenAIMarkdownRenderer urlTransform={defaultUrlTransform}>{activeFile?.content ?? ''}</GenAIMarkdownRenderer>
         ) : (
           <pre
             css={{
@@ -430,13 +517,26 @@ const SkillsDetailsPage = () => {
   if (error) {
     return (
       <ScrollablePageWrapper>
-        <Alert type="error" message={(error as Error).message} componentId="mlflow.skills.details.error" closable={false} />
+        <Alert
+          type="error"
+          message={(error as Error).message}
+          componentId="mlflow.skills.details.error"
+          closable={false}
+        />
       </ScrollablePageWrapper>
     );
   }
 
   return (
-    <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, padding: `0 ${theme.spacing.lg}px` }}>
+    <ScrollablePageWrapper
+      css={{
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        padding: `0 ${theme.spacing.lg}px`,
+      }}
+    >
       <Spacer shrinks={false} size="lg" />
 
       {/* Breadcrumb */}
@@ -511,11 +611,7 @@ const SkillsDetailsPage = () => {
           </span>
         }
         buttons={
-          <Button
-            componentId="mlflow.skills.details.use"
-            type="primary"
-            onClick={() => setUseModalVisible(true)}
-          >
+          <Button componentId="mlflow.skills.details.use" type="primary" onClick={() => setUseModalVisible(true)}>
             Use
           </Button>
         }
@@ -552,9 +648,7 @@ const SkillsDetailsPage = () => {
             {isGitHub && <GitHubIcon />}
             <span css={{ fontFamily: 'monospace', fontSize: 12 }}>
               {sourceLabel}
-              {shortHash && (
-                <span css={{ fontSize: 10, opacity: 0.75 }}>({shortHash})</span>
-              )}
+              {shortHash && <span css={{ fontSize: 10, opacity: 0.75 }}>({shortHash})</span>}
             </span>
           </a>
         )}
@@ -565,7 +659,15 @@ const SkillsDetailsPage = () => {
 
       {/* Description */}
       {skill?.description && (
-        <Typography.Text css={{ color: theme.colors.textSecondary, display: 'block', marginTop: theme.spacing.md, fontSize: theme.typography.fontSizeMd, lineHeight: 1.5 }}>
+        <Typography.Text
+          css={{
+            color: theme.colors.textSecondary,
+            display: 'block',
+            marginTop: theme.spacing.md,
+            fontSize: theme.typography.fontSizeMd,
+            lineHeight: 1.5,
+          }}
+        >
           {skill.description}
         </Typography.Text>
       )}
@@ -585,7 +687,13 @@ const SkillsDetailsPage = () => {
 
       {/* Tabs: Versions | Usage | Files */}
       <div css={{ borderBottom: `1px solid ${theme.colors.borderDecorative}`, display: 'flex', gap: 0 }}>
-        {([['versions', 'Versions'], ['usage', 'Usage'], ['files', 'Files']] as const).map(([tab, label]) => (
+        {(
+          [
+            ['versions', 'Versions'],
+            ['usage', 'Usage'],
+            ['files', 'Files'],
+          ] as const
+        ).map(([tab, label]) => (
           <button
             key={tab}
             type="button"
@@ -593,7 +701,10 @@ const SkillsDetailsPage = () => {
             css={{
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === tab ? `2px solid ${theme.colors.actionPrimaryBackgroundDefault}` : '2px solid transparent',
+              borderBottom:
+                activeTab === tab
+                  ? `2px solid ${theme.colors.actionPrimaryBackgroundDefault}`
+                  : '2px solid transparent',
               padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
               cursor: 'pointer',
               fontWeight: activeTab === tab ? 600 : 400,
@@ -609,9 +720,7 @@ const SkillsDetailsPage = () => {
 
       {/* Tab content — fills remaining space */}
       <div css={{ flex: 1, overflow: 'auto', paddingTop: theme.spacing.md }}>
-        {activeTab === 'files' && (
-          <FileExplorer skillName={skillName || ''} version={activeVersionNum} />
-        )}
+        {activeTab === 'files' && <FileExplorer skillName={skillName || ''} version={activeVersionNum} />}
 
         {activeTab === 'versions' && (
           <VersionsList
