@@ -15,6 +15,10 @@ import {
   SegmentedControlGroup,
   Spacer,
   Spinner,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
   Tag,
   Typography,
   useDesignSystemTheme,
@@ -207,45 +211,52 @@ const VersionsList = ({
   const sortedVersions = useMemo(() => [...versions].sort((a, b) => b.version - a.version), [versions]);
 
   return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+    <Table aria-label="Skill versions">
+      <TableRow isHeader>
+        <TableHeader componentId="mlflow.skills.details.versions.col.version">Version</TableHeader>
+        <TableHeader componentId="mlflow.skills.details.versions.col.created">Created</TableHeader>
+        <TableHeader componentId="mlflow.skills.details.versions.col.aliases">Aliases</TableHeader>
+        <TableHeader componentId="mlflow.skills.details.versions.col.tags">Tags</TableHeader>
+      </TableRow>
       {sortedVersions.map((v) => {
         const isSelected = v.version === selectedVersion;
         const vUserTags = getUserTags(v.tags);
         return (
-          <div
+          <TableRow
             key={v.version}
             onClick={() => onSelectVersion(v.version)}
             css={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.sm,
-              padding: theme.spacing.sm,
-              borderRadius: theme.borders.borderRadiusSm,
               cursor: 'pointer',
-              backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
+              backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : undefined,
               '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
             }}
           >
-            <span css={{ fontWeight: isSelected ? 600 : 400, minWidth: 36 }}>v{v.version}</span>
-            {v.creation_timestamp && (
-              <span css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
-                {formatRelativeTime(v.creation_timestamp)}
-              </span>
-            )}
-            {v.aliases?.map((a) => (
-              <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>
-                {a}
-              </Tag>
-            ))}
-            {vUserTags.map((t) => (
-              <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>
-                {t}
-              </Tag>
-            ))}
-          </div>
+            <TableCell>
+              <Typography.Text bold={isSelected}>v{v.version}</Typography.Text>
+            </TableCell>
+            <TableCell>
+              <Typography.Text color="secondary">
+                {v.creation_timestamp ? formatRelativeTime(v.creation_timestamp) : '—'}
+              </Typography.Text>
+            </TableCell>
+            <TableCell>
+              <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+                {v.aliases?.map((a) => (
+                  <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>{a}</Tag>
+                ))}
+              </div>
+            </TableCell>
+            <TableCell>
+              <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+                {vUserTags.map((t) => (
+                  <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>{t}</Tag>
+                ))}
+              </div>
+            </TableCell>
+          </TableRow>
         );
       })}
-    </div>
+    </Table>
   );
 };
 
