@@ -83,7 +83,7 @@ export function useTraceMetricsQuery({
       const response = await queryTraceMetrics(queryParams);
       return response;
     },
-    enabled: experimentIds.length > 0 && enabled,
+    enabled,
     refetchOnWindowFocus: false,
   });
 }

@@ -3931,7 +3931,7 @@ def _query_trace_metrics() -> Response:
     request_message = _get_request_message(
         QueryTraceMetrics(),
         schema={
-            "experiment_ids": [_assert_array, _assert_required, _assert_item_type_string],
+            "experiment_ids": [_assert_array, _assert_item_type_string],
             "view_type": [_assert_required],
             "metric_name": [_assert_string, _assert_required],
             "aggregations": [_assert_array, _assert_required],

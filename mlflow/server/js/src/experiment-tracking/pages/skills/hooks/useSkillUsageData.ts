@@ -15,14 +15,6 @@ import type { QueryTraceMetricsRequest, QueryTraceMetricsResponse } from '@datab
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const ONE_DAY_SECONDS = 86400;
 
-async function fetchAllExperimentIds(): Promise<string[]> {
-  const response = await fetchOrFail(getAjaxUrl('ajax-api/2.0/mlflow/experiments/search'), {
-    method: 'GET',
-  });
-  const data = await response.json();
-  return (data.experiments ?? []).map((e: { experiment_id: string }) => e.experiment_id);
-}
-
 async function queryTraceMetrics(params: QueryTraceMetricsRequest): Promise<QueryTraceMetricsResponse> {
   const response = await fetchOrFail(getAjaxUrl('ajax-api/3.0/mlflow/traces/metrics'), {
     method: 'POST',
@@ -51,12 +43,9 @@ export function useSkillUsageData(skillName: string): UseSkillUsageDataResult {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['skillUsage', skillName, startTimeMs, endTimeMs],
-    queryFn: async () => {
-      const experimentIds = await fetchAllExperimentIds();
-      if (experimentIds.length === 0) return { data_points: [] };
-
-      return queryTraceMetrics({
-        experiment_ids: experimentIds,
+    queryFn: async () =>
+      queryTraceMetrics({
+        experiment_ids: [],
         view_type: MetricViewType.SPANS,
         metric_name: SpanMetricKey.SPAN_COUNT,
         aggregations: [{ aggregation_type: AggregationType.COUNT }],
@@ -67,8 +56,7 @@ export function useSkillUsageData(skillName: string): UseSkillUsageDataResult {
         time_interval_seconds: ONE_DAY_SECONDS,
         start_time_ms: startTimeMs,
         end_time_ms: endTimeMs,
-      });
-    },
+      }),
     enabled: Boolean(skillName),
     refetchOnWindowFocus: false,
   });
