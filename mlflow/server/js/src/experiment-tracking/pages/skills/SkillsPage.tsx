@@ -186,6 +186,10 @@ const SkillCard = ({
           // Show action buttons on hover
           '& .skill-card-actions': { opacity: 0, transition: 'opacity 0.15s' },
           '&:hover .skill-card-actions': { opacity: 1 },
+          // Checkbox space is always reserved (visibility:hidden) to avoid layout shift
+          '& .skill-card-checkbox': { visibility: 'hidden' as const },
+          '&:hover .skill-card-checkbox': { visibility: 'visible' as const },
+          '& .skill-card-checkbox-selected': { visibility: 'visible' as const },
           '&:hover': {
             borderColor: theme.colors.actionPrimaryBackgroundDefault,
             boxShadow: `0 2px 8px ${theme.colors.borderDecorative}`,
@@ -195,7 +199,11 @@ const SkillCard = ({
         {/* Top row: checkbox + name + version + actions */}
         <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div css={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            <div onClick={handleCheckbox} css={{ display: 'flex', alignItems: 'center', marginRight: -2 }}>
+            <div
+              className={selected ? 'skill-card-checkbox-selected' : 'skill-card-checkbox'}
+              onClick={handleCheckbox}
+              css={{ display: 'flex', alignItems: 'center', marginRight: -2 }}
+            >
               <Checkbox componentId="mlflow.skills.card.checkbox" isChecked={selected} onChange={() => {}} />
             </div>
             <span

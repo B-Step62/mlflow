@@ -363,12 +363,14 @@ const SkillsDetailsPage = () => {
     );
   }
 
+  const [activeTab, setActiveTab] = useState<'files' | 'versions' | 'usage'>('files');
+
   return (
-    <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
-      <Spacer shrinks={false} />
+    <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, padding: `0 ${theme.spacing.lg}px` }}>
+      <Spacer shrinks={false} size="lg" />
 
       {/* Breadcrumb */}
-      <div css={{ marginBottom: theme.spacing.sm }}>
+      <div css={{ marginBottom: theme.spacing.md }}>
         <Link componentId="mlflow.skills.details.breadcrumb_link" to={Routes.skillsPageRoute}>
           <FormattedMessage defaultMessage="← Skills" description="Breadcrumb back to skills list" />
         </Link>
@@ -415,14 +417,7 @@ const SkillsDetailsPage = () => {
         }
       />
 
-      {/* Description */}
-      {skill?.description && (
-        <Typography.Text css={{ color: theme.colors.textSecondary, display: 'block', marginBottom: theme.spacing.sm }}>
-          {skill.description}
-        </Typography.Text>
-      )}
-
-      {/* Meta row: source, updated, tags — card-style */}
+      {/* Meta row: source + updated — above description */}
       <div
         css={{
           display: 'flex',
@@ -431,50 +426,95 @@ const SkillsDetailsPage = () => {
           fontSize: theme.typography.fontSizeSm,
           color: theme.colors.textSecondary,
           flexWrap: 'wrap',
-          marginBottom: theme.spacing.md,
+          marginTop: theme.spacing.md,
         }}
       >
         {sourceLabel && (
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: 5, lineHeight: 1 }}>
+          <a
+            href={activeVersion?.source}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            css={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              lineHeight: 1,
+              color: theme.colors.actionPrimaryBackgroundDefault,
+              textDecoration: 'none',
+              '&:hover': { textDecoration: 'underline' },
+            }}
+          >
             {isGitHub && <GitHubIcon />}
-            <span css={{ fontFamily: 'monospace', fontSize: 11 }}>{sourceLabel}</span>
-          </span>
+            <span css={{ fontFamily: 'monospace', fontSize: 12 }}>{sourceLabel}</span>
+          </a>
         )}
         {activeVersion?.creation_timestamp && (
           <span>Updated {formatRelativeTime(activeVersion.creation_timestamp)}</span>
         )}
-        {userTags.map((tag) => (
-          <Tag componentId={`mlflow.skills.details.meta.tag.${tag}`} key={tag}>
-            {tag}
-          </Tag>
+      </div>
+
+      {/* Description */}
+      {skill?.description && (
+        <Typography.Text css={{ color: theme.colors.textSecondary, display: 'block', marginTop: theme.spacing.md, fontSize: theme.typography.fontSizeMd, lineHeight: 1.5 }}>
+          {skill.description}
+        </Typography.Text>
+      )}
+
+      {/* Tags */}
+      {userTags.length > 0 && (
+        <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap', marginTop: theme.spacing.md }}>
+          {userTags.map((tag) => (
+            <Tag componentId={`mlflow.skills.details.meta.tag.${tag}`} key={tag}>
+              {tag}
+            </Tag>
+          ))}
+        </div>
+      )}
+
+      <Spacer shrinks={false} size="lg" />
+
+      {/* Tabs: Files | Versions | Usage */}
+      <div css={{ borderBottom: `1px solid ${theme.colors.borderDecorative}`, display: 'flex', gap: 0 }}>
+        {(['files', 'versions', 'usage'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            css={{
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === tab ? `2px solid ${theme.colors.actionPrimaryBackgroundDefault}` : '2px solid transparent',
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+              cursor: 'pointer',
+              fontWeight: activeTab === tab ? 600 : 400,
+              color: activeTab === tab ? theme.colors.textPrimary : theme.colors.textSecondary,
+              fontSize: theme.typography.fontSizeMd,
+              '&:hover': { color: theme.colors.textPrimary },
+            }}
+          >
+            {tab === 'files' && 'Files'}
+            {tab === 'versions' && `Versions (${versions.length})`}
+            {tab === 'usage' && 'Usage'}
+          </button>
         ))}
       </div>
 
-      <Spacer shrinks={false} />
-
-      {/* Main content area */}
-      <div css={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: theme.spacing.lg }}>
-
-        {/* Versions — collapsible */}
-        <VersionsList
-          versions={versions}
-          selectedVersion={activeVersionNum}
-          onSelectVersion={setSelectedVersionNum}
-        />
-
-        {/* Files — artifact-style explorer */}
-        <div>
-          <Typography.Title level={4}>
-            <FormattedMessage defaultMessage="Files" description="Files section title" />
-          </Typography.Title>
+      {/* Tab content — fills remaining space */}
+      <div css={{ flex: 1, overflow: 'auto', paddingTop: theme.spacing.md }}>
+        {activeTab === 'files' && (
           <FileExplorer content={activeVersion?.manifest_content} />
-        </div>
+        )}
 
-        {/* Usage — placeholder */}
-        <div>
-          <Typography.Title level={4}>
-            <FormattedMessage defaultMessage="Usage" description="Usage section title" />
-          </Typography.Title>
+        {activeTab === 'versions' && (
+          <VersionsList
+            versions={versions}
+            selectedVersion={activeVersionNum}
+            onSelectVersion={setSelectedVersionNum}
+          />
+        )}
+
+        {activeTab === 'usage' && (
           <div
             css={{
               border: `1px dashed ${theme.colors.borderDecorative}`,
@@ -486,7 +526,7 @@ const SkillsDetailsPage = () => {
           >
             To be constructed — skill usage analytics and trace linkage will appear here.
           </div>
-        </div>
+        )}
       </div>
 
       <UseSkillModal
