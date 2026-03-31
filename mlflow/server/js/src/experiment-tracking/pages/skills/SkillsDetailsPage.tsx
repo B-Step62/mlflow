@@ -3,7 +3,9 @@ import { useSkillDetailsQuery } from './hooks/useSkillDetailsQuery';
 import {
   Alert,
   Button,
+  ChevronDownIcon,
   CopyIcon,
+  DropdownMenu,
   FileCodeIcon,
   FileDocumentIcon,
   FileIcon,
@@ -412,6 +414,8 @@ const SkillsDetailsPage = () => {
   const userTags = getUserTags(activeVersion?.tags);
   const sourceLabel = activeVersion?.source?.replace(/^https?:\/\/(www\.)?github\.com\//, '');
   const isGitHub = activeVersion?.source?.includes('github.com');
+  const commitHash = activeVersion?.tags?.['mlflow.skill.commit_hash'];
+  const shortHash = commitHash?.slice(0, 7);
 
   if (isLoading) {
     return (
@@ -457,19 +461,53 @@ const SkillsDetailsPage = () => {
               <LightningIcon />
             </span>
             {skillName}
-            <span
-              css={{
-                backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
-                color: theme.colors.actionPrimaryTextDefault,
-                borderRadius: theme.borders.borderRadiusSm,
-                padding: `0 ${theme.spacing.xs}px`,
-                fontSize: 12,
-                fontWeight: 600,
-                lineHeight: '20px',
-              }}
-            >
-              v{activeVersionNum}
-            </span>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <span
+                  role="button"
+                  css={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
+                    color: theme.colors.actionPrimaryTextDefault,
+                    borderRadius: theme.borders.borderRadiusSm,
+                    padding: `0 ${theme.spacing.xs}px`,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: '20px',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    '&:hover': {
+                      opacity: 0.85,
+                    },
+                  }}
+                >
+                  v{activeVersionNum}
+                  <ChevronDownIcon css={{ fontSize: 10 }} />
+                </span>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content>
+                {[...versions]
+                  .sort((a, b) => b.version - a.version)
+                  .map((v) => (
+                    <DropdownMenu.Item
+                      key={v.version}
+                      componentId={`mlflow.skills.details.version_select.${v.version}`}
+                      onClick={() => setSelectedVersionNum(v.version)}
+                    >
+                      <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                        <span css={{ minWidth: 40 }}>v{v.version}</span>
+                        {v.version === latestVersion && (
+                          <Tag componentId="mlflow.skills.details.version_latest_tag" color="indigo">
+                            latest
+                          </Tag>
+                        )}
+                      </span>
+                    </DropdownMenu.Item>
+                  ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
           </span>
         }
         buttons={
@@ -513,6 +551,23 @@ const SkillsDetailsPage = () => {
           >
             {isGitHub && <GitHubIcon />}
             <span css={{ fontFamily: 'monospace', fontSize: 12 }}>{sourceLabel}</span>
+          </a>
+        )}
+        {isGitHub && shortHash && (
+          <a
+            href={`${activeVersion?.source}/commit/${commitHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            css={{
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: theme.colors.textSecondary,
+              textDecoration: 'none',
+              '&:hover': { textDecoration: 'underline', color: theme.colors.actionPrimaryBackgroundDefault },
+            }}
+          >
+            @{shortHash}
           </a>
         )}
         {activeVersion?.creation_timestamp && (
