@@ -3,6 +3,7 @@ import { useSkillDetailsQuery } from './hooks/useSkillDetailsQuery';
 import {
   Alert,
   Button,
+  CopyIcon,
   FileCodeIcon,
   FileDocumentIcon,
   FileIcon,
@@ -29,6 +30,7 @@ import ErrorUtils from '../../../common/utils/ErrorUtils';
 import { useState, useCallback, useMemo } from 'react';
 import type { RegisteredSkillVersion } from './types';
 import { CopyButton } from '@mlflow/mlflow/src/shared/building_blocks/CopyButton';
+import { CodeSnippet } from '@databricks/web-shared/snippet';
 
 const INTERNAL_TAG_PREFIX = 'mlflow.';
 
@@ -64,6 +66,36 @@ const GitHubIcon = ({ size = 14 }: { size?: number }) => (
 // "Use" Modal — CLI + Python snippets
 // ============================================================================
 
+const CodeBlock = ({ code, language = 'bash', componentId }: { code: string; language?: 'bash' | 'python'; componentId: string }) => {
+  const { theme } = useDesignSystemTheme();
+  return (
+    <div css={{ position: 'relative' }}>
+      <CopyButton
+        css={{ zIndex: 1, position: 'absolute', top: theme.spacing.xs, right: theme.spacing.xs }}
+        showLabel={false}
+        copyText={code}
+        icon={<CopyIcon />}
+        componentId={componentId}
+      />
+      <CodeSnippet
+        language={language as any}
+        showLineNumbers={false}
+        style={{
+          padding: theme.spacing.md,
+          color: theme.colors.textPrimary,
+          backgroundColor: theme.colors.backgroundSecondary,
+          whiteSpace: 'pre-wrap',
+          fontSize: theme.typography.fontSizeSm,
+          lineHeight: 1.6,
+        }}
+        wrapLongLines
+      >
+        {code}
+      </CodeSnippet>
+    </div>
+  );
+};
+
 const UseSkillModal = ({
   skillName,
   version,
@@ -76,25 +108,7 @@ const UseSkillModal = ({
   onClose: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-
-  const cliSnippet = `# Install to Claude Code (global)
-mlflow skills load ${skillName} --version ${version} --scope global
-
-# Install to current project
-mlflow skills load ${skillName} --version ${version} --scope project`;
-
-  const pythonSnippet = `import mlflow.genai
-
-# Load skill metadata
-skill = mlflow.genai.load_skill("${skillName}", version=${version})
-print(skill.manifest_content)
-
-# Install to local filesystem
-path = mlflow.genai.install_skill("${skillName}", version=${version}, scope="global")
-print(f"Installed to {path}")`;
-
   const [tab, setTab] = useState<'cli' | 'python'>('cli');
-  const activeSnippet = tab === 'cli' ? cliSnippet : pythonSnippet;
 
   if (!visible) return null;
 
@@ -109,29 +123,68 @@ print(f"Installed to {path}")`;
       cancelButtonProps={{ style: { display: 'none' } }}
       size="wide"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-        <SegmentedControlGroup componentId="mlflow.skills.use_modal.tabs" name="use-tab" value={tab} onChange={(e) => setTab(e.target.value as 'cli' | 'python')}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+        <SegmentedControlGroup
+          componentId="mlflow.skills.use_modal.tabs"
+          name="use-tab"
+          value={tab}
+          onChange={(e) => setTab(e.target.value as 'cli' | 'python')}
+        >
           <SegmentedControlButton value="cli">CLI</SegmentedControlButton>
           <SegmentedControlButton value="python">Python</SegmentedControlButton>
         </SegmentedControlGroup>
-        <div style={{ position: 'relative' }}>
-          <pre
-            style={{
-              backgroundColor: theme.colors.backgroundSecondary,
-              borderRadius: theme.borders.borderRadiusSm,
-              padding: theme.spacing.md,
-              fontFamily: 'monospace',
-              fontSize: theme.typography.fontSizeSm,
-              overflowX: 'auto',
-              margin: 0,
-            }}
-          >
-            {activeSnippet}
-          </pre>
-          <div style={{ position: 'absolute', top: theme.spacing.xs, right: theme.spacing.xs }}>
-            <CopyButton copyText={activeSnippet} showLabel={false} componentId="mlflow.skills.use_modal.copy" />
+
+        {tab === 'cli' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              <Typography.Text bold>Install for all projects (global)</Typography.Text>
+              <Typography.Text color="secondary" style={{ fontSize: theme.typography.fontSizeSm }}>
+                Makes this skill available in Claude Code across every project on this machine.
+              </Typography.Text>
+              <CodeBlock
+                code={`mlflow skills load ${skillName} --version ${version} --scope global`}
+                componentId="mlflow.skills.use_modal.copy_global"
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              <Typography.Text bold>Install for current project only</Typography.Text>
+              <Typography.Text color="secondary" style={{ fontSize: theme.typography.fontSizeSm }}>
+                Installs the skill into <code>.claude/skills/</code> in your current working directory.
+              </Typography.Text>
+              <CodeBlock
+                code={`mlflow skills load ${skillName} --version ${version} --scope project`}
+                componentId="mlflow.skills.use_modal.copy_project"
+              />
+            </div>
           </div>
-        </div>
+        )}
+
+        {tab === 'python' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              <Typography.Text bold>Load skill metadata</Typography.Text>
+              <Typography.Text color="secondary" style={{ fontSize: theme.typography.fontSizeSm }}>
+                Fetch the skill manifest and version details from the registry without installing it.
+              </Typography.Text>
+              <CodeBlock
+                language="python"
+                code={`import mlflow.genai\n\nskill = mlflow.genai.load_skill("${skillName}", version=${version})\nprint(skill.manifest_content)`}
+                componentId="mlflow.skills.use_modal.copy_load"
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              <Typography.Text bold>Install to local filesystem</Typography.Text>
+              <Typography.Text color="secondary" style={{ fontSize: theme.typography.fontSizeSm }}>
+                Download the skill files so Claude Code can use them. Use <code>scope="project"</code> to install in the current directory only.
+              </Typography.Text>
+              <CodeBlock
+                language="python"
+                code={`path = mlflow.genai.install_skill("${skillName}", version=${version}, scope="global")\nprint(f"Installed to {path}")`}
+                componentId="mlflow.skills.use_modal.copy_install"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -308,7 +361,7 @@ const SkillsDetailsPage = () => {
   const { theme } = useDesignSystemTheme();
   const { skill, versions, error, isLoading } = useSkillDetailsQuery(skillName || '');
   const [useModalVisible, setUseModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'files' | 'versions' | 'usage'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'versions' | 'usage'>('versions');
 
   // Version selection — default to latest
   const latestVersion = useMemo(
@@ -453,9 +506,9 @@ const SkillsDetailsPage = () => {
 
       <Spacer shrinks={false} size="lg" />
 
-      {/* Tabs: Files | Versions | Usage */}
+      {/* Tabs: Versions | Usage | Files */}
       <div css={{ borderBottom: `1px solid ${theme.colors.borderDecorative}`, display: 'flex', gap: 0 }}>
-        {(['files', 'versions', 'usage'] as const).map((tab) => (
+        {([['versions', 'Versions'], ['usage', 'Usage'], ['files', 'Files']] as const).map(([tab, label]) => (
           <button
             key={tab}
             type="button"
@@ -472,9 +525,7 @@ const SkillsDetailsPage = () => {
               '&:hover': { color: theme.colors.textPrimary },
             }}
           >
-            {tab === 'files' && 'Files'}
-            {tab === 'versions' && `Versions (${versions.length})`}
-            {tab === 'usage' && 'Usage'}
+            {label}
           </button>
         ))}
       </div>
