@@ -2,6 +2,7 @@
 
 import logging
 import traceback
+from pathlib import PurePosixPath
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -59,6 +60,13 @@ class SkillVersionResponse(BaseModel):
     tags: dict[str, str] = {}
     aliases: list[str] = []
     created_by: str | None = None
+
+
+class SkillFileEntry(BaseModel):
+    path: str
+    content: str | None = None
+    is_dir: bool = False
+    file_size: int | None = None
 
 
 class SetTagRequest(BaseModel):
@@ -229,6 +237,59 @@ async def get_skill_version(name: str, version: int) -> SkillVersionResponse:
         return _version_to_response(sv)
     except MlflowException as e:
         _handle_mlflow_exception(e)
+
+
+_TEXT_EXTENSIONS = {
+    '.md', '.py', '.sh', '.ts', '.js', '.json', '.yaml', '.yml',
+    '.txt', '.toml', '.cfg', '.ini', '.env',
+}
+_MAX_FILE_SIZE = 512 * 1024  # 512 KB
+
+
+def _collect_skill_files(repo, path: str = "") -> list[SkillFileEntry]:
+    """Recursively list artifact files, reading content for small text files."""
+    entries = []
+    for file_info in repo.list_artifacts(path):
+        if file_info.is_dir:
+            entries.append(SkillFileEntry(path=file_info.path, is_dir=True))
+            entries.extend(_collect_skill_files(repo, file_info.path))
+        else:
+            content = None
+            size = file_info.file_size
+            ext = PurePosixPath(file_info.path).suffix.lower()
+            if ext in _TEXT_EXTENSIONS and (size is None or size <= _MAX_FILE_SIZE):
+                try:
+                    local_path = repo.download_artifacts(file_info.path)
+                    content = open(local_path, encoding="utf-8", errors="replace").read()
+                except Exception:
+                    pass
+            entries.append(SkillFileEntry(
+                path=file_info.path,
+                content=content,
+                is_dir=False,
+                file_size=size,
+            ))
+    return entries
+
+
+@skills_router.get("/{name}/versions/{version}/files")
+async def get_skill_version_files(name: str, version: int) -> list[SkillFileEntry]:
+    """List all files in a skill version's artifact bundle with content for text files."""
+    from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
+    from mlflow.tracking.client import MlflowClient
+
+    try:
+        sv = MlflowClient().get_skill_version(name, version)
+        artifact_location = sv.artifact_location or sv.tags.get("mlflow.skill.artifact_location")
+        if not artifact_location:
+            return []
+        repo = get_artifact_repository(artifact_location)
+        return _collect_skill_files(repo)
+    except MlflowException as e:
+        _handle_mlflow_exception(e)
+    except Exception as e:
+        _logger.warning("Failed to list skill version files for %s v%d: %s", name, version, e)
+        return []
 
 
 @skills_router.delete("/{name}/versions/{version}")

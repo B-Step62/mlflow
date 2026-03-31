@@ -31,8 +31,9 @@ import { Link } from '../../../common/utils/RoutingUtils';
 import Routes from '../../routes';
 import { withErrorBoundary } from '../../../common/utils/withErrorBoundary';
 import ErrorUtils from '../../../common/utils/ErrorUtils';
-import { useState, useCallback, useMemo } from 'react';
-import type { RegisteredSkillVersion } from './types';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import type { RegisteredSkillVersion, SkillVersionFile } from './types';
+import { RegisteredSkillsApi } from './api';
 import { CopyButton } from '@mlflow/mlflow/src/shared/building_blocks/CopyButton';
 import { CodeSnippet } from '@databricks/web-shared/snippet';
 
@@ -168,11 +169,11 @@ const UseSkillModal = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
               <Typography.Text bold>Load skill metadata</Typography.Text>
               <Typography.Text color="secondary" style={{ fontSize: theme.typography.fontSizeSm }}>
-                Fetch the skill manifest and version details from the registry without installing it.
+                Fetch version details from the registry without installing files.
               </Typography.Text>
               <CodeBlock
                 language="python"
-                code={`import mlflow.genai\n\nskill = mlflow.genai.load_skill("${skillName}", version=${version})\nprint(skill.manifest_content)`}
+                code={`import mlflow.genai\n\nskill = mlflow.genai.load_skill("${skillName}", version=${version})\nprint(skill.name, skill.version, skill.source)`}
                 componentId="mlflow.skills.use_modal.copy_load"
               />
             </div>
@@ -274,23 +275,39 @@ const getFileIcon = (filename: string) => {
   return <FileIcon />;
 };
 
-const FileExplorer = ({ content }: { content?: string }) => {
+const FileExplorer = ({ skillName, version }: { skillName: string; version: number }) => {
   const { theme } = useDesignSystemTheme();
-  const [selectedFile, setSelectedFile] = useState<string>('SKILL.md');
+  const [files, setFiles] = useState<SkillVersionFile[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Parse manifest content to extract file structure
-  // For now, we show SKILL.md as the primary file since that's what we store
-  const files = useMemo(() => {
-    const result: { name: string; content: string }[] = [];
-    if (content) {
-      result.push({ name: 'SKILL.md', content });
-    }
-    return result;
-  }, [content]);
+  useEffect(() => {
+    if (!skillName || !version) return;
+    setIsLoading(true);
+    RegisteredSkillsApi.getSkillVersionFiles(skillName, version)
+      .then((data) => {
+        setFiles(data);
+        const first =
+          data.find((f) => !f.is_dir && f.path === 'SKILL.md') ??
+          data.find((f) => !f.is_dir);
+        setSelectedPath(first?.path ?? null);
+      })
+      .catch(() => setFiles([]))
+      .finally(() => setIsLoading(false));
+  }, [skillName, version]);
 
-  const activeFile = files.find((f) => f.name === selectedFile);
+  const leafFiles = files.filter((f) => !f.is_dir);
+  const activeFile = leafFiles.find((f) => f.path === selectedPath);
 
-  if (!files.length) {
+  if (isLoading) {
+    return (
+      <div css={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.lg }}>
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (!leafFiles.length) {
     return (
       <div css={{ color: theme.colors.textSecondary, padding: theme.spacing.md }}>
         No files available.
@@ -323,10 +340,10 @@ const FileExplorer = ({ content }: { content?: string }) => {
           <FolderIcon css={{ color: theme.colors.textSecondary }} />
           <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>Files</Typography.Text>
         </div>
-        {files.map((f) => (
+        {leafFiles.map((f) => (
           <div
-            key={f.name}
-            onClick={() => setSelectedFile(f.name)}
+            key={f.path}
+            onClick={() => setSelectedPath(f.path)}
             css={{
               display: 'flex',
               alignItems: 'center',
@@ -334,20 +351,22 @@ const FileExplorer = ({ content }: { content?: string }) => {
               padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
               cursor: 'pointer',
               fontSize: theme.typography.fontSizeSm,
-              backgroundColor: f.name === selectedFile ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
+              backgroundColor: f.path === selectedPath ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
               '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
             }}
           >
-            {getFileIcon(f.name)}
-            {f.name}
+            {getFileIcon(f.path)}
+            <span css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.path}>
+              {f.path}
+            </span>
           </div>
         ))}
       </div>
       {/* File content */}
       <div css={{ flex: 1, overflow: 'auto', padding: theme.spacing.md }}>
-        {selectedFile.endsWith('.md') ? (
+        {selectedPath?.endsWith('.md') ? (
           <GenAIMarkdownRenderer urlTransform={defaultUrlTransform}>
-            {activeFile?.content || ''}
+            {activeFile?.content ?? ''}
           </GenAIMarkdownRenderer>
         ) : (
           <pre
@@ -359,7 +378,7 @@ const FileExplorer = ({ content }: { content?: string }) => {
               lineHeight: 1.5,
             }}
           >
-            {activeFile?.content || ''}
+            {activeFile?.content ?? (activeFile && activeFile.content === null ? '(binary or large file)' : '')}
           </pre>
         )}
       </div>
@@ -548,7 +567,7 @@ const SkillsDetailsPage = () => {
       {/* Tab content — fills remaining space */}
       <div css={{ flex: 1, overflow: 'auto', paddingTop: theme.spacing.md }}>
         {activeTab === 'files' && (
-          <FileExplorer content={activeVersion?.manifest_content} />
+          <FileExplorer skillName={skillName || ''} version={activeVersionNum} />
         )}
 
         {activeTab === 'versions' && (

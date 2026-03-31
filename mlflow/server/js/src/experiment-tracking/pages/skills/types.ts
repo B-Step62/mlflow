@@ -23,6 +23,13 @@ export interface RegisteredSkillVersion {
   created_by?: string;
 }
 
+export interface SkillVersionFile {
+  path: string;
+  content?: string | null;
+  is_dir: boolean;
+  file_size?: number | null;
+}
+
 export interface RegisteredSkillsListResponse {
   skills: RegisteredSkill[];
 }

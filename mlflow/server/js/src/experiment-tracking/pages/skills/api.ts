@@ -1,5 +1,5 @@
 import { fetchEndpoint } from '../../../common/utils/FetchUtils';
-import type { RegisteredSkill, RegisteredSkillVersion, RegisteredSkillDetailsResponse } from './types';
+import type { RegisteredSkill, RegisteredSkillVersion, RegisteredSkillDetailsResponse, SkillVersionFile } from './types';
 
 const defaultErrorHandler = async ({
   reject,
@@ -87,6 +87,14 @@ export const RegisteredSkillsApi = {
       body: JSON.stringify({ key, value }),
       error: defaultErrorHandler,
     });
+  },
+
+  getSkillVersionFiles: (skillName: string, version: number) => {
+    const relativeUrl = `ajax-api/3.0/mlflow/skills/${encodeURIComponent(skillName)}/versions/${version}/files`;
+    return fetchEndpoint({
+      relativeUrl,
+      error: defaultErrorHandler,
+    }) as Promise<SkillVersionFile[]>;
   },
 
   setSkillAlias: (skillName: string, alias: string, version: number) => {
