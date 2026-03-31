@@ -58,6 +58,7 @@ class SkillVersionResponse(BaseModel):
     creation_timestamp: int | None = None
     tags: dict[str, str] = {}
     aliases: list[str] = []
+    created_by: str | None = None
 
 
 class SetTagRequest(BaseModel):
@@ -106,6 +107,7 @@ def _version_to_response(sv) -> SkillVersionResponse:
         creation_timestamp=sv.creation_timestamp,
         tags=sv.tags,
         aliases=sv.aliases,
+        created_by=sv.created_by,
     )
 
 

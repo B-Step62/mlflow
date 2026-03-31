@@ -20,6 +20,7 @@ export interface RegisteredSkillVersion {
   creation_timestamp?: number;
   tags?: Record<string, string>;
   aliases?: string[];
+  created_by?: string;
 }
 
 export interface RegisteredSkillsListResponse {

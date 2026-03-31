@@ -215,6 +215,7 @@ const VersionsList = ({
       <TableRow isHeader>
         <TableHeader componentId="mlflow.skills.details.versions.col.version">Version</TableHeader>
         <TableHeader componentId="mlflow.skills.details.versions.col.created">Created</TableHeader>
+        <TableHeader componentId="mlflow.skills.details.versions.col.created_by">Created by</TableHeader>
         <TableHeader componentId="mlflow.skills.details.versions.col.aliases">Aliases</TableHeader>
         <TableHeader componentId="mlflow.skills.details.versions.col.tags">Tags</TableHeader>
       </TableRow>
@@ -238,6 +239,9 @@ const VersionsList = ({
               <Typography.Text color="secondary">
                 {v.creation_timestamp ? formatRelativeTime(v.creation_timestamp) : '—'}
               </Typography.Text>
+            </TableCell>
+            <TableCell>
+              <Typography.Text color="secondary">{v.created_by ?? '—'}</Typography.Text>
             </TableCell>
             <TableCell>
               <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>

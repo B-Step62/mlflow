@@ -3058,6 +3058,7 @@ class SqlSkillVersion(Base):
     manifest_content = Column(Text, nullable=True)
     artifact_location = Column(Text, nullable=True)
     creation_timestamp = Column(BigInteger, default=get_current_time_millis)
+    created_by = Column(String(255), nullable=True)
 
     skill = relationship("SqlRegisteredSkill", back_populates="versions")
     tags = relationship(
@@ -3088,6 +3089,7 @@ class SqlSkillVersion(Base):
             creation_timestamp=self.creation_timestamp,
             tags=tags_dict,
             aliases=aliases,
+            created_by=self.created_by,
         )
 
     def __repr__(self):

@@ -1,5 +1,6 @@
 """MLflow Skill Registry — register, version, and install agent skills."""
 
+import getpass
 import json
 import logging
 import shutil
@@ -160,6 +161,7 @@ def register_skill(
             description=description,
             manifest_content=content,
             tags=tags,
+            created_by=getpass.getuser(),
         )
 
         artifact_location = _store_skill_bundle(name, sv.version, skill_dir)

@@ -6429,7 +6429,7 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
 
     def create_skill_version(
         self, name, source=None, description=None, manifest_content=None,
-        artifact_location=None, tags=None,
+        artifact_location=None, tags=None, created_by=None,
     ):
         with self.ManagedSessionMaker() as session:
             sql_skill = session.query(SqlRegisteredSkill).filter_by(name=name).first()
@@ -6454,6 +6454,7 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
                 manifest_content=manifest_content,
                 artifact_location=artifact_location,
                 creation_timestamp=now,
+                created_by=created_by,
             )
             if tags:
                 sql_version.tags = [

@@ -12,6 +12,7 @@ class SkillVersion:
         creation_timestamp: int | None = None,
         tags: dict[str, str] | None = None,
         aliases: list[str] | None = None,
+        created_by: str | None = None,
     ):
         self._name = name
         self._version = version
@@ -22,6 +23,7 @@ class SkillVersion:
         self._creation_timestamp = creation_timestamp
         self._tags = tags or {}
         self._aliases = aliases or []
+        self._created_by = created_by
 
     @property
     def name(self) -> str:
@@ -58,6 +60,10 @@ class SkillVersion:
     @property
     def aliases(self) -> list[str]:
         return list(self._aliases)
+
+    @property
+    def created_by(self) -> str | None:
+        return self._created_by
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, SkillVersion):
