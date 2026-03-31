@@ -1,34 +1,30 @@
-import React from 'react';
-import { Typography, useDesignSystemTheme, Spinner } from '@databricks/design-system';
+import React, { useState } from 'react';
+import {
+  Typography,
+  useDesignSystemTheme,
+  Spinner,
+  SegmentedControlButton,
+  SegmentedControlGroup,
+} from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { useAllSkillsUsageData } from '../hooks/useAllSkillsUsageData';
+import { useAllSkillsUsageData, type TimeRangeOption } from '../hooks/useAllSkillsUsageData';
 
 const CHART_COLORS = ['#2272B4', '#C15F18', '#1A7C40', '#8B3FC0', '#C4343A', '#6B7280'];
 
+const TIME_RANGE_LABELS: Record<TimeRangeOption, string> = {
+  '24h': '24h',
+  '7d': '7d',
+  '30d': '30d',
+};
+
 export const SkillUsageBreakdown: React.FC = () => {
   const { theme } = useDesignSystemTheme();
-  const { chartData, skillNames, totalCount, isLoading, error, hasData } = useAllSkillsUsageData();
+  const [timeRange, setTimeRange] = useState<TimeRangeOption>('30d');
+  const { chartData, skillNames, totalCount, isLoading, error, hasData } = useAllSkillsUsageData(timeRange);
 
   if (error) {
     return null;
-  }
-
-  if (isLoading) {
-    return (
-      <div
-        css={{
-          display: 'flex',
-          justifyContent: 'center',
-          padding: theme.spacing.md,
-          border: `1px solid ${theme.colors.border}`,
-          borderRadius: theme.borders.borderRadiusMd,
-          flexShrink: 0,
-        }}
-      >
-        <Spinner label="Loading usage data" />
-      </div>
-    );
   }
 
   return (
@@ -44,18 +40,18 @@ export const SkillUsageBreakdown: React.FC = () => {
         css={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'baseline',
+          alignItems: 'center',
           marginBottom: theme.spacing.sm,
         }}
       >
         <div css={{ display: 'flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
           <Typography.Text bold>
             <FormattedMessage
-              defaultMessage="Usage Over Time"
+              defaultMessage="Skill Usage"
               description="Title for the skill usage over time chart on skills list page"
             />
           </Typography.Text>
-          {hasData && (
+          {!isLoading && hasData && (
             <Typography.Text color="secondary" size="sm">
               {totalCount}{' '}
               <FormattedMessage
@@ -65,13 +61,26 @@ export const SkillUsageBreakdown: React.FC = () => {
             </Typography.Text>
           )}
         </div>
-        <Typography.Text color="secondary" size="sm">
-          <FormattedMessage defaultMessage="last 30 days" description="Time range label for skill usage breakdown" />
-        </Typography.Text>
+        <SegmentedControlGroup
+          componentId="mlflow.skills.usage.time_range"
+          name="skill-usage-time-range"
+          value={timeRange}
+          onChange={(e) => setTimeRange(e.target.value as TimeRangeOption)}
+        >
+          {Object.entries(TIME_RANGE_LABELS).map(([value, label]) => (
+            <SegmentedControlButton key={value} value={value}>
+              {label}
+            </SegmentedControlButton>
+          ))}
+        </SegmentedControlGroup>
       </div>
 
       <div css={{ height: 150 }}>
-        {hasData ? (
+        {isLoading ? (
+          <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <Spinner label="Loading usage data" />
+          </div>
+        ) : hasData ? (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
               <XAxis
@@ -108,15 +117,7 @@ export const SkillUsageBreakdown: React.FC = () => {
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div
-            css={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: theme.colors.textSecondary,
-            }}
-          >
+          <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <Typography.Text color="secondary" size="sm">
               <FormattedMessage
                 defaultMessage="No skill usage recorded yet."

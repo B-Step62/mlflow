@@ -13,8 +13,8 @@ import {
 } from '@databricks/web-shared/model-trace-explorer';
 import type { QueryTraceMetricsRequest, QueryTraceMetricsResponse } from '@databricks/web-shared/model-trace-explorer';
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const ONE_DAY_SECONDS = 86400;
+const ONE_HOUR_SECONDS = 3600;
 
 async function queryTraceMetrics(params: QueryTraceMetricsRequest): Promise<QueryTraceMetricsResponse> {
   const response = await fetchOrFail(getAjaxUrl('ajax-api/3.0/mlflow/traces/metrics'), {
@@ -39,12 +39,21 @@ export interface UseAllSkillsUsageDataResult {
   hasData: boolean;
 }
 
-export function useAllSkillsUsageData(): UseAllSkillsUsageDataResult {
+export type TimeRangeOption = '24h' | '7d' | '30d';
+
+export const TIME_RANGE_CONFIG: Record<TimeRangeOption, { ms: number; intervalSeconds: number }> = {
+  '24h': { ms: 24 * 60 * 60 * 1000, intervalSeconds: ONE_HOUR_SECONDS },
+  '7d': { ms: 7 * 24 * 60 * 60 * 1000, intervalSeconds: ONE_DAY_SECONDS },
+  '30d': { ms: 30 * 24 * 60 * 60 * 1000, intervalSeconds: ONE_DAY_SECONDS },
+};
+
+export function useAllSkillsUsageData(timeRange: TimeRangeOption = '30d'): UseAllSkillsUsageDataResult {
+  const config = TIME_RANGE_CONFIG[timeRange];
   const endTimeMs = useMemo(() => Date.now(), []);
-  const startTimeMs = endTimeMs - THIRTY_DAYS_MS;
+  const startTimeMs = endTimeMs - config.ms;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['allSkillsUsage', startTimeMs, endTimeMs],
+    queryKey: ['allSkillsUsage', timeRange, startTimeMs, endTimeMs],
     queryFn: async () =>
       queryTraceMetrics({
         experiment_ids: [],
@@ -53,7 +62,7 @@ export function useAllSkillsUsageData(): UseAllSkillsUsageDataResult {
         aggregations: [{ aggregation_type: AggregationType.COUNT }],
         filters: [createSpanFilter(SpanFilterKey.TYPE, SpanType.TOOL)],
         dimensions: [SKILL_NAME_DIMENSION],
-        time_interval_seconds: ONE_DAY_SECONDS,
+        time_interval_seconds: config.intervalSeconds,
         start_time_ms: startTimeMs,
         end_time_ms: endTimeMs,
       }),
@@ -86,15 +95,18 @@ export function useAllSkillsUsageData(): UseAllSkillsUsageDataResult {
 
     const sortedSkillNames = Array.from(skillSet).sort();
 
-    // Build daily UTC-aligned buckets
-    const utcDayMs = ONE_DAY_SECONDS * 1000;
-    const firstBucket = Math.floor(startTimeMs / utcDayMs) * utcDayMs;
+    // Build UTC-aligned buckets
+    const bucketMs = config.intervalSeconds * 1000;
+    const firstBucket = Math.floor(startTimeMs / bucketMs) * bucketMs;
+    const isHourly = config.intervalSeconds < ONE_DAY_SECONDS;
     const result: AllSkillsUsageDataPoint[] = [];
-    for (let ts = firstBucket; ts <= endTimeMs; ts += utcDayMs) {
+    for (let ts = firstBucket; ts <= endTimeMs; ts += bucketMs) {
       const date = new Date(ts);
       const skillCounts = dataByTimestamp.get(ts);
       const point: AllSkillsUsageDataPoint = {
-        timestamp: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        timestamp: isHourly
+          ? date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+          : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       };
       for (const name of sortedSkillNames) {
         point[name] = skillCounts?.get(name) || 0;
