@@ -20,7 +20,7 @@ import {
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useRegisterSkillModal } from './hooks/useRegisterSkillModal';
 import Routes from '../../routes';
 import { useNavigate } from '../../../common/utils/RoutingUtils';
@@ -121,7 +121,7 @@ const SkillCard = ({
 }: {
   skill: RegisteredSkill;
   selected: boolean;
-  onToggleSelect: (name: string) => void;
+  onToggleSelect: (name: string, shiftKey: boolean) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const navigate = useNavigate();
@@ -136,7 +136,7 @@ const SkillCard = ({
   const handleCheckbox = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onToggleSelect(skill.name);
+      onToggleSelect(skill.name, e.shiftKey);
     },
     [skill.name, onToggleSelect],
   );
@@ -331,7 +331,7 @@ const SkillsCardGrid = ({
   skills: RegisteredSkill[];
   isLoading: boolean;
   selectedSkills: Set<string>;
-  onToggleSelect: (name: string) => void;
+  onToggleSelect: (name: string, shiftKey: boolean) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -490,17 +490,38 @@ const SkillsPage = () => {
 
   const { RegisterSkillModal, openModal } = useRegisterSkillModal({ onSuccess: refetch });
 
-  const handleToggleSelect = useCallback((name: string) => {
-    setSelectedSkills((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
-      }
-      return next;
-    });
-  }, []);
+  const lastSelectedRef = useRef<string | null>(null);
+
+  const handleToggleSelect = useCallback(
+    (name: string, shiftKey: boolean) => {
+      setSelectedSkills((prev) => {
+        const next = new Set(prev);
+
+        if (shiftKey && lastSelectedRef.current && lastSelectedRef.current !== name) {
+          const allNames = data.map((s) => s.name);
+          const lastIdx = allNames.indexOf(lastSelectedRef.current);
+          const curIdx = allNames.indexOf(name);
+          if (lastIdx !== -1 && curIdx !== -1) {
+            const [start, end] = lastIdx < curIdx ? [lastIdx, curIdx] : [curIdx, lastIdx];
+            for (let i = start; i <= end; i++) {
+              next.add(allNames[i]);
+            }
+            lastSelectedRef.current = name;
+            return next;
+          }
+        }
+
+        if (next.has(name)) {
+          next.delete(name);
+        } else {
+          next.add(name);
+        }
+        lastSelectedRef.current = name;
+        return next;
+      });
+    },
+    [data],
+  );
 
   const handleBulkDelete = useCallback(async () => {
     if (!selectedSkills.size) return;
