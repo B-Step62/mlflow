@@ -7,15 +7,20 @@ to FastAPI endpoints.
 """
 
 import json
+import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.wsgi import WSGIMiddleware
 from fastapi.responses import JSONResponse
 from flask import Flask
 
+_logger = logging.getLogger(__name__)
+
 from mlflow.exceptions import MlflowException
 from mlflow.server import app as flask_app
 from mlflow.server.assistant.api import assistant_router
+from mlflow.server.skills.api import skills_router
 from mlflow.server.fastapi_security import init_fastapi_security
 from mlflow.server.gateway_api import gateway_router
 from mlflow.server.job_api import job_api_router
@@ -77,6 +82,22 @@ def create_fastapi_app(flask_app: Flask = flask_app):
         openapi_url=None,
     )
 
+    @fastapi_app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        _logger.error("Request validation error for %s %s: %s", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "errors": exc.errors()},
+        )
+
+    @fastapi_app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        _logger.error("Unhandled error for %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc)},
+        )
+
     # Initialize security middleware BEFORE adding routes
     init_fastapi_security(fastapi_app)
 
@@ -95,6 +116,7 @@ def create_fastapi_app(flask_app: Flask = flask_app):
     # Include Assistant API router for AI-powered trace analysis
     # This provides /ajax-api/3.0/mlflow/assistant/* endpoints (localhost only)
     fastapi_app.include_router(assistant_router)
+    fastapi_app.include_router(skills_router)
 
     # Mount the entire Flask application at the root path
     # This ensures compatibility with existing APIs

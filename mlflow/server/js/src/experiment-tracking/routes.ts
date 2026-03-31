@@ -11,6 +11,8 @@ export enum PageId {
   settingsPage = 'mlflow.settings',
   promptsPage = 'mlflow.prompts',
   promptDetailsPage = 'mlflow.prompts.details',
+  skillsPage = 'mlflow.skills',
+  skillDetailsPage = 'mlflow.skills.details',
   experimentPageTabbed = 'mlflow.experiment.details.tab',
   experimentLoggedModelDetailsPageTab = 'mlflow.logged-model.details.tab',
   experimentLoggedModelDetailsPage = 'mlflow.logged-model.details',
@@ -137,6 +139,12 @@ export class RoutePaths {
   }
   static get promptDetailsPage() {
     return createMLflowRoutePath('/prompts/:promptName');
+  }
+  static get skillsPage() {
+    return createMLflowRoutePath('/skills');
+  }
+  static get skillDetailsPage() {
+    return createMLflowRoutePath('/skills/:skillName');
   }
   static get settingsPage() {
     return createMLflowRoutePath('/settings');
@@ -329,6 +337,14 @@ class Routes {
       return generatePath(RoutePaths.experimentPageTabPromptDetails, { experimentId, promptName });
     }
     return generatePath(RoutePaths.promptDetailsPage, { promptName });
+  }
+
+  static get skillsPageRoute() {
+    return RoutePaths.skillsPage;
+  }
+
+  static getSkillDetailsPageRoute(skillName: string) {
+    return generatePath(RoutePaths.skillDetailsPage, { skillName });
   }
 }
 

@@ -133,6 +133,27 @@ def is_tracing_enabled() -> bool:
 # ============================================================================
 
 
+def _load_skill_metadata(skill_name: str) -> dict[str, Any] | None:
+    """Load .mlflow_skill_info sidecar for an installed skill.
+
+    Searches global (~/.claude/skills/) and project (.claude/skills/) locations.
+    Returns the parsed JSON metadata dict, or None if not found.
+    """
+    from mlflow.genai.skills.constants import SKILL_METADATA_FILENAME
+
+    search_paths = [
+        Path.home() / ".claude" / "skills" / skill_name / SKILL_METADATA_FILENAME,
+        Path(os.getcwd()) / ".claude" / "skills" / skill_name / SKILL_METADATA_FILENAME,
+    ]
+    for path in search_paths:
+        try:
+            if path.exists():
+                return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return None
+
+
 def read_hook_input() -> dict[str, Any]:
     """Read JSON input from stdin for Claude Code hook processing."""
     try:
@@ -472,16 +493,31 @@ def _create_llm_and_tool_spans(
                 tool_use_id = tool_use.get("id", "")
                 tool_result = tool_results.get(tool_use_id, "No result found")
 
+                tool_name = tool_use.get("name", "unknown")
+                span_name = f"tool_{tool_name}"
+                attributes = {
+                    "tool_name": tool_name,
+                    "tool_id": tool_use_id,
+                }
+
+                # Enrich Skill tool spans with registry metadata
+                if tool_name == "Skill":
+                    skill_name = tool_use.get("input", {}).get("skill")
+                    if skill_name:
+                        span_name = f"tool_Skill:{skill_name}"
+                        attributes["skill_name"] = skill_name
+                        skill_meta = _load_skill_metadata(skill_name)
+                        if skill_meta:
+                            attributes["skill_version"] = skill_meta.get("version")
+                            attributes["skill_source"] = skill_meta.get("source")
+
                 tool_span = mlflow.start_span_no_context(
-                    name=f"tool_{tool_use.get('name', 'unknown')}",
+                    name=span_name,
                     parent_span=parent_span,
                     span_type=SpanType.TOOL,
                     start_time_ns=tool_start_ns,
                     inputs=tool_use.get("input", {}),
-                    attributes={
-                        "tool_name": tool_use.get("name", "unknown"),
-                        "tool_id": tool_use_id,
-                    },
+                    attributes=attributes,
                 )
 
                 tool_span.set_outputs({"result": tool_result})

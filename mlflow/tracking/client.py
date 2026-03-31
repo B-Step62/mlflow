@@ -6709,3 +6709,62 @@ class MlflowClient:
             WebhookTestResult indicating success/failure and response details.
         """
         return self._get_registry_client().test_webhook(webhook_id, event)
+
+    # ========================================================================
+    # Skill Registry
+    # ========================================================================
+
+    def create_skill(self, name: str, description: str | None = None):
+        return self._tracking_client.create_skill(name=name, description=description)
+
+    def get_skill(self, name: str):
+        return self._tracking_client.get_skill(name)
+
+    def search_skills(
+        self, filter_string: str | None = None, max_results: int = 100, page_token: str | None = None
+    ):
+        return self._tracking_client.search_skills(
+            filter_string=filter_string, max_results=max_results, page_token=page_token,
+        )
+
+    def delete_skill(self, name: str) -> None:
+        self._tracking_client.delete_skill(name)
+
+    def create_skill_version(
+        self,
+        name: str,
+        source: str | None = None,
+        description: str | None = None,
+        manifest_content: str | None = None,
+        artifact_location: str | None = None,
+        tags: dict[str, str] | None = None,
+    ):
+        return self._tracking_client.create_skill_version(
+            name=name, source=source, description=description,
+            manifest_content=manifest_content, artifact_location=artifact_location,
+            tags=tags,
+        )
+
+    def get_skill_version(self, name: str, version: int):
+        return self._tracking_client.get_skill_version(name, version)
+
+    def get_skill_version_by_alias(self, name: str, alias: str):
+        return self._tracking_client.get_skill_version_by_alias(name, alias)
+
+    def get_latest_skill_version(self, name: str):
+        return self._tracking_client.get_latest_skill_version(name)
+
+    def delete_skill_version(self, name: str, version: int) -> None:
+        self._tracking_client.delete_skill_version(name, version)
+
+    def set_skill_version_tag(self, name: str, version: int, key: str, value: str) -> None:
+        self._tracking_client.set_skill_version_tag(name, version, key, value)
+
+    def delete_skill_version_tag(self, name: str, version: int, key: str) -> None:
+        self._tracking_client.delete_skill_version_tag(name, version, key)
+
+    def set_skill_alias(self, name: str, alias: str, version: int) -> None:
+        self._tracking_client.set_skill_alias(name, alias, version)
+
+    def delete_skill_alias(self, name: str, alias: str) -> None:
+        self._tracking_client.delete_skill_alias(name, alias)

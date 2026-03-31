@@ -50,6 +50,7 @@ const isExperimentsActive = (location: Location) =>
   );
 const isModelsActive = (location: Location) => Boolean(matchPath('/models/*', location.pathname));
 const isPromptsActive = (location: Location) => Boolean(matchPath('/prompts/*', location.pathname));
+const isSkillsActive = (location: Location) => Boolean(matchPath('/skills/*', location.pathname));
 const isGatewayActive = (location: Location) => Boolean(matchPath('/gateway/*', location.pathname));
 const isApiKeysActive = (location: Location) => Boolean(matchPath('/gateway/api-keys', location.pathname));
 const isSettingsActive = (location: Location) => Boolean(matchPath('/settings/*', location.pathname));
@@ -196,6 +197,20 @@ export function MlflowSidebar({
                 children: <FormattedMessage defaultMessage="Prompts" description="Sidebar link for prompts tab" />,
               },
               componentId: 'mlflow.sidebar.prompts_tab_link',
+            },
+          ]
+        : []),
+      ...(shouldShowGenAIFeatures(enableWorkflowBasedNavigation, workflowType) && !showNestedExperimentItems
+        ? [
+            {
+              key: 'skills',
+              icon: <BeakerIcon />,
+              linkProps: {
+                to: ExperimentTrackingRoutes.skillsPageRoute,
+                isActive: isSkillsActive,
+                children: <FormattedMessage defaultMessage="Skills" description="Sidebar link for skills tab" />,
+              },
+              componentId: 'mlflow.sidebar.skills_tab_link',
             },
           ]
         : []),

@@ -1323,6 +1323,11 @@ try:
 except ImportError:
     pass
 
+# Add Skill Registry CLI commands
+from mlflow.genai.skills.cli import commands as skills_commands
+
+cli.add_command(skills_commands)
+
 # We are conditional loading these commands since the skinny client does
 # not support them due to the pandas and numpy dependencies of MLflow Models
 try:

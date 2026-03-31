@@ -215,6 +215,37 @@ const getExperimentPageRouteDefs = () => {
   ];
 };
 
+const getSkillPagesRouteDefs = () => {
+  return [
+    {
+      path: RoutePaths.skillsPage,
+      element: createLazyRouteElement(() => import('./pages/skills/SkillsPage')),
+      pageId: PageId.skillsPage,
+      handle: {
+        getPageTitle: () => 'Skills',
+        getAssistantPrompts: () => [
+          'How do I register a new skill?',
+          'How do I install a skill for Claude Code?',
+          'How do I version my skills?',
+        ],
+      } satisfies RouteHandle,
+    },
+    {
+      path: RoutePaths.skillDetailsPage,
+      element: createLazyRouteElement(() => import('./pages/skills/SkillsDetailsPage')),
+      pageId: PageId.skillDetailsPage,
+      handle: {
+        getPageTitle: (params) => `Skill: ${params['skillName']}`,
+        getAssistantPrompts: () => [
+          'Explain what this skill does.',
+          'Show me how to install this skill.',
+          'What versions are available?',
+        ],
+      } satisfies RouteHandle,
+    },
+  ];
+};
+
 export const getRouteDefs = () => [
   {
     path: RoutePaths.rootRoute,
@@ -340,4 +371,5 @@ export const getRouteDefs = () => [
     } satisfies RouteHandle,
   },
   ...getPromptPagesRouteDefs(),
+  ...getSkillPagesRouteDefs(),
 ];

@@ -64,6 +64,8 @@ from mlflow.entities import (
     TraceInfo,
     ViewType,
 )
+from mlflow.entities.skill import Skill, SkillAlias
+from mlflow.entities.skill_version import SkillVersion
 from mlflow.entities.dataset_record import DATASET_RECORD_WRAPPED_OUTPUT_KEY
 from mlflow.entities.gateway_budget_policy import (
     BudgetAction,
@@ -2999,3 +3001,144 @@ class SqlGatewayBudgetPolicy(Base):
             last_updated_by=self.last_updated_by,
             workspace=self.workspace,
         )
+
+
+# ============================================================================
+# Skill Registry Tables
+# ============================================================================
+
+
+class SqlRegisteredSkill(Base):
+    __tablename__ = "registered_skills"
+
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    creation_timestamp = Column(BigInteger, default=get_current_time_millis)
+    last_updated_timestamp = Column(BigInteger, default=get_current_time_millis)
+
+    versions = relationship(
+        "SqlSkillVersion", back_populates="skill", cascade="all, delete-orphan"
+    )
+    aliases = relationship(
+        "SqlSkillAlias", back_populates="skill", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    __table_args__ = (
+        PrimaryKeyConstraint("name", name="registered_skills_pk"),
+    )
+
+    def to_mlflow_entity(self):
+        latest_version = None
+        if self.versions:
+            latest_version = max(v.version for v in self.versions)
+        return Skill(
+            name=self.name,
+            description=self.description,
+            creation_timestamp=self.creation_timestamp,
+            last_updated_timestamp=self.last_updated_timestamp,
+            latest_version=latest_version,
+            aliases=[a.to_mlflow_entity() for a in self.aliases],
+        )
+
+    def __repr__(self):
+        return f"<SqlRegisteredSkill ({self.name})>"
+
+
+class SqlSkillVersion(Base):
+    __tablename__ = "skill_versions"
+
+    name = Column(
+        String(255),
+        ForeignKey("registered_skills.name", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version = Column(Integer, nullable=False)
+    source = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    manifest_content = Column(Text, nullable=True)
+    artifact_location = Column(Text, nullable=True)
+    creation_timestamp = Column(BigInteger, default=get_current_time_millis)
+
+    skill = relationship("SqlRegisteredSkill", back_populates="versions")
+    tags = relationship(
+        "SqlSkillVersionTag", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    __table_args__ = (
+        PrimaryKeyConstraint("name", "version", name="skill_versions_pk"),
+        Index("index_skill_versions_name", "name"),
+    )
+
+    def to_mlflow_entity(self):
+        tags_dict = {tag.key: tag.value for tag in self.tags} if self.tags else {}
+        # Resolve aliases from parent skill if loaded
+        aliases = []
+        state = inspect(self)
+        if "skill" in state.dict and self.skill and self.skill.aliases:
+            aliases = [
+                a.alias for a in self.skill.aliases if a.version == self.version
+            ]
+        return SkillVersion(
+            name=self.name,
+            version=self.version,
+            source=self.source,
+            description=self.description,
+            manifest_content=self.manifest_content,
+            artifact_location=self.artifact_location,
+            creation_timestamp=self.creation_timestamp,
+            tags=tags_dict,
+            aliases=aliases,
+        )
+
+    def __repr__(self):
+        return f"<SqlSkillVersion ({self.name} v{self.version})>"
+
+
+class SqlSkillVersionTag(Base):
+    __tablename__ = "skill_version_tags"
+
+    name = Column(String(255), nullable=False)
+    version = Column(Integer, nullable=False)
+    key = Column(String(255), nullable=False)
+    value = Column(String(5000), nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("name", "version", "key", name="skill_version_tags_pk"),
+        ForeignKeyConstraint(
+            ["name", "version"],
+            ["skill_versions.name", "skill_versions.version"],
+            name="fk_skill_version_tags",
+            ondelete="CASCADE",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<SqlSkillVersionTag ({self.name} v{self.version}: {self.key})>"
+
+
+class SqlSkillAlias(Base):
+    __tablename__ = "skill_aliases"
+
+    name = Column(
+        String(255),
+        ForeignKey("registered_skills.name", ondelete="CASCADE"),
+        nullable=False,
+    )
+    alias = Column(String(255), nullable=False)
+    version = Column(Integer, nullable=False)
+
+    skill = relationship("SqlRegisteredSkill", back_populates="aliases")
+
+    __table_args__ = (
+        PrimaryKeyConstraint("name", "alias", name="skill_aliases_pk"),
+    )
+
+    def to_mlflow_entity(self):
+        return SkillAlias(
+            name=self.name,
+            alias=self.alias,
+            version=self.version,
+        )
+
+    def __repr__(self):
+        return f"<SqlSkillAlias ({self.name}@{self.alias} -> v{self.version})>"

@@ -145,9 +145,13 @@ from mlflow.store.tracking.dbmodels.models import (
     SqlMetric,
     SqlOnlineScoringConfig,
     SqlParam,
+    SqlRegisteredSkill,
     SqlRun,
     SqlScorer,
     SqlScorerVersion,
+    SqlSkillAlias,
+    SqlSkillVersion,
+    SqlSkillVersionTag,
     SqlSpan,
     SqlSpanMetrics,
     SqlTag,
@@ -6362,6 +6366,238 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
                 secret_id=sql_secret.secret_id,
                 secret_name=sql_secret.secret_name,
             )
+
+    # ========================================================================
+    # Skill Registry
+    # ========================================================================
+
+    def create_skill(self, name, description=None):
+        with self.ManagedSessionMaker() as session:
+            existing = session.query(SqlRegisteredSkill).filter_by(name=name).first()
+            if existing:
+                raise MlflowException(
+                    f"Skill '{name}' already exists.",
+                    RESOURCE_ALREADY_EXISTS,
+                )
+            now = get_current_time_millis()
+            sql_skill = SqlRegisteredSkill(
+                name=name,
+                description=description,
+                creation_timestamp=now,
+                last_updated_timestamp=now,
+            )
+            session.add(sql_skill)
+            session.flush()
+            return sql_skill.to_mlflow_entity()
+
+    def get_skill(self, name):
+        with self.ManagedSessionMaker() as session:
+            sql_skill = session.query(SqlRegisteredSkill).filter_by(name=name).first()
+            if sql_skill is None:
+                raise MlflowException(
+                    f"Skill '{name}' not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            return sql_skill.to_mlflow_entity()
+
+    def search_skills(self, filter_string=None, max_results=100, page_token=None):
+        with self.ManagedSessionMaker() as session:
+            offset = SearchUtils.parse_start_offset_from_page_token(page_token)
+            query = session.query(SqlRegisteredSkill).order_by(
+                SqlRegisteredSkill.last_updated_timestamp.desc(),
+                SqlRegisteredSkill.name.asc(),
+            )
+            if filter_string:
+                query = query.filter(SqlRegisteredSkill.name.ilike(f"%{filter_string}%"))
+            skills = query.offset(offset).limit(max_results + 1).all()
+            entities = [s.to_mlflow_entity() for s in skills]
+            next_page_token = None
+            if len(entities) > max_results:
+                final_offset = offset + max_results
+                next_page_token = SearchUtils.create_page_token(final_offset)
+            return PagedList(entities[:max_results], next_page_token)
+
+    def delete_skill(self, name):
+        with self.ManagedSessionMaker() as session:
+            sql_skill = session.query(SqlRegisteredSkill).filter_by(name=name).first()
+            if sql_skill is None:
+                raise MlflowException(
+                    f"Skill '{name}' not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            session.delete(sql_skill)
+
+    def create_skill_version(
+        self, name, source=None, description=None, manifest_content=None,
+        artifact_location=None, tags=None,
+    ):
+        with self.ManagedSessionMaker() as session:
+            sql_skill = session.query(SqlRegisteredSkill).filter_by(name=name).first()
+            if sql_skill is None:
+                raise MlflowException(
+                    f"Skill '{name}' not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            # Auto-increment version
+            max_version = (
+                session.query(sqlalchemy.func.max(SqlSkillVersion.version))
+                .filter_by(name=name)
+                .scalar()
+            )
+            new_version = (max_version or 0) + 1
+            now = get_current_time_millis()
+            sql_version = SqlSkillVersion(
+                name=name,
+                version=new_version,
+                source=source,
+                description=description,
+                manifest_content=manifest_content,
+                artifact_location=artifact_location,
+                creation_timestamp=now,
+            )
+            if tags:
+                sql_version.tags = [
+                    SqlSkillVersionTag(name=name, version=new_version, key=k, value=v)
+                    for k, v in tags.items()
+                ]
+            session.add(sql_version)
+            # Update parent skill timestamp
+            sql_skill.last_updated_timestamp = now
+            session.flush()
+            return sql_version.to_mlflow_entity()
+
+    def get_skill_version(self, name, version):
+        with self.ManagedSessionMaker() as session:
+            sql_version = (
+                session.query(SqlSkillVersion)
+                .filter_by(name=name, version=version)
+                .first()
+            )
+            if sql_version is None:
+                raise MlflowException(
+                    f"Skill version '{name}' v{version} not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            return sql_version.to_mlflow_entity()
+
+    def get_skill_version_by_alias(self, name, alias):
+        with self.ManagedSessionMaker() as session:
+            sql_alias = (
+                session.query(SqlSkillAlias)
+                .filter_by(name=name, alias=alias)
+                .first()
+            )
+            if sql_alias is None:
+                raise MlflowException(
+                    f"Skill alias '{name}@{alias}' not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            return self.get_skill_version(name, sql_alias.version)
+
+    def get_latest_skill_version(self, name):
+        with self.ManagedSessionMaker() as session:
+            sql_version = (
+                session.query(SqlSkillVersion)
+                .filter_by(name=name)
+                .order_by(SqlSkillVersion.version.desc())
+                .first()
+            )
+            if sql_version is None:
+                raise MlflowException(
+                    f"No versions found for skill '{name}'.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            return sql_version.to_mlflow_entity()
+
+    def delete_skill_version(self, name, version):
+        with self.ManagedSessionMaker() as session:
+            sql_version = (
+                session.query(SqlSkillVersion)
+                .filter_by(name=name, version=version)
+                .first()
+            )
+            if sql_version is None:
+                raise MlflowException(
+                    f"Skill version '{name}' v{version} not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            session.delete(sql_version)
+
+    def set_skill_version_tag(self, name, version, key, value):
+        with self.ManagedSessionMaker() as session:
+            # Verify version exists
+            sql_version = (
+                session.query(SqlSkillVersion)
+                .filter_by(name=name, version=version)
+                .first()
+            )
+            if sql_version is None:
+                raise MlflowException(
+                    f"Skill version '{name}' v{version} not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            existing = (
+                session.query(SqlSkillVersionTag)
+                .filter_by(name=name, version=version, key=key)
+                .first()
+            )
+            if existing:
+                existing.value = value
+            else:
+                session.add(SqlSkillVersionTag(
+                    name=name, version=version, key=key, value=value,
+                ))
+
+    def delete_skill_version_tag(self, name, version, key):
+        with self.ManagedSessionMaker() as session:
+            tag = (
+                session.query(SqlSkillVersionTag)
+                .filter_by(name=name, version=version, key=key)
+                .first()
+            )
+            if tag is None:
+                raise MlflowException(
+                    f"Tag '{key}' not found on skill '{name}' v{version}.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            session.delete(tag)
+
+    def set_skill_alias(self, name, alias, version):
+        with self.ManagedSessionMaker() as session:
+            # Verify skill and version exist
+            sql_version = (
+                session.query(SqlSkillVersion)
+                .filter_by(name=name, version=version)
+                .first()
+            )
+            if sql_version is None:
+                raise MlflowException(
+                    f"Skill version '{name}' v{version} not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            existing = (
+                session.query(SqlSkillAlias)
+                .filter_by(name=name, alias=alias)
+                .first()
+            )
+            if existing:
+                existing.version = version
+            else:
+                session.add(SqlSkillAlias(name=name, alias=alias, version=version))
+
+    def delete_skill_alias(self, name, alias):
+        with self.ManagedSessionMaker() as session:
+            sql_alias = (
+                session.query(SqlSkillAlias)
+                .filter_by(name=name, alias=alias)
+                .first()
+            )
+            if sql_alias is None:
+                raise MlflowException(
+                    f"Skill alias '{name}@{alias}' not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            session.delete(sql_alias)
 
 
 def _get_sqlalchemy_filter_clauses(parsed, session, dialect):

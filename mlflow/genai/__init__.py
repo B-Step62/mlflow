@@ -44,6 +44,18 @@ from mlflow.genai.scheduled_scorers import (
 )
 from mlflow.genai.scorers import Scorer, delete_scorer, get_scorer, list_scorers, scorer
 from mlflow.genai.simulators import ConversationSimulator
+from mlflow.genai.skills import (
+    delete_skill,
+    delete_skill_alias,
+    delete_skill_tag,
+    delete_skill_version,
+    install_skill,
+    load_skill,
+    register_skill,
+    search_skills,
+    set_skill_alias,
+    set_skill_tag,
+)
 
 __all__ = [
     "datasets",
@@ -91,4 +103,15 @@ __all__ = [
     "enable_git_model_versioning",
     # conversation simulation
     "ConversationSimulator",
+    # skill registry
+    "register_skill",
+    "load_skill",
+    "search_skills",
+    "set_skill_tag",
+    "delete_skill_tag",
+    "set_skill_alias",
+    "delete_skill_alias",
+    "delete_skill",
+    "delete_skill_version",
+    "install_skill",
 ]

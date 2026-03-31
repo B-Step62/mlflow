@@ -1128,3 +1128,55 @@ class TrackingServiceClient:
             raise MlflowException.invalid_parameter_value("run_id cannot be empty")
 
         return self.store.unlink_traces_from_run(trace_ids, run_id)
+
+    # ========================================================================
+    # Skill Registry
+    # ========================================================================
+
+    def create_skill(self, name, description=None):
+        return self.store.create_skill(name=name, description=description)
+
+    def get_skill(self, name):
+        return self.store.get_skill(name)
+
+    def search_skills(self, filter_string=None, max_results=100, page_token=None):
+        return self.store.search_skills(
+            filter_string=filter_string, max_results=max_results, page_token=page_token,
+        )
+
+    def delete_skill(self, name):
+        return self.store.delete_skill(name)
+
+    def create_skill_version(
+        self, name, source=None, description=None, manifest_content=None,
+        artifact_location=None, tags=None,
+    ):
+        return self.store.create_skill_version(
+            name=name, source=source, description=description,
+            manifest_content=manifest_content, artifact_location=artifact_location,
+            tags=tags,
+        )
+
+    def get_skill_version(self, name, version):
+        return self.store.get_skill_version(name, version)
+
+    def get_skill_version_by_alias(self, name, alias):
+        return self.store.get_skill_version_by_alias(name, alias)
+
+    def get_latest_skill_version(self, name):
+        return self.store.get_latest_skill_version(name)
+
+    def delete_skill_version(self, name, version):
+        return self.store.delete_skill_version(name, version)
+
+    def set_skill_version_tag(self, name, version, key, value):
+        return self.store.set_skill_version_tag(name, version, key, value)
+
+    def delete_skill_version_tag(self, name, version, key):
+        return self.store.delete_skill_version_tag(name, version, key)
+
+    def set_skill_alias(self, name, alias, version):
+        return self.store.set_skill_alias(name, alias, version)
+
+    def delete_skill_alias(self, name, alias):
+        return self.store.delete_skill_alias(name, alias)
