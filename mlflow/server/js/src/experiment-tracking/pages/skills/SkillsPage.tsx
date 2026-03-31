@@ -334,10 +334,10 @@ const SkillsCardGrid = ({
   onToggleSelect: (name: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = useCallback((repo: string) => {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(repo)) {
         next.delete(repo);
@@ -384,7 +384,7 @@ const SkillsCardGrid = ({
   return (
     <div css={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
       {[...groupedSkills.entries()].map(([repo, groupSkills]) => {
-        const collapsed = collapsedGroups.has(repo);
+        const collapsed = !expandedGroups.has(repo);
         return (
           <div key={repo}>
             {/* Folder header */}
