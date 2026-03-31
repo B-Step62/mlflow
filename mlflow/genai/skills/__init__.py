@@ -49,18 +49,34 @@ def _validate_skill_name(name: str) -> None:
 def _get_skill_artifact_root_uri() -> str:
     """Derive the base URI for skill artifact storage from the configured artifact store.
 
-    Uses the default experiment's artifact location to infer the artifact root, so skills
-    are stored in the same artifact store as runs (local filesystem, S3, GCS, etc.).
+    For HTTP/HTTPS tracking servers, uses mlflow-artifacts: so the server proxies to its
+    configured backend (S3, GCS, Azure, etc.). For local stores (SQLite, file://), reads
+    the store's artifact_root_uri directly to avoid mlflow-artifacts: URIs that require
+    a live server.
     """
     from mlflow.utils.uri import append_to_uri_path
 
-    client = mlflow.MlflowClient()
-    exp = client.get_experiment("0")
-    if exp and exp.artifact_location:
-        # Default experiment artifact_location is "{root}/0" — strip the experiment ID component
-        base = exp.artifact_location.rstrip("/").rsplit("/", 1)[0]
-        return append_to_uri_path(base, "skills")
-    return append_to_uri_path(mlflow.get_tracking_uri(), "skill_artifacts")
+    tracking_uri = mlflow.get_tracking_uri()
+
+    # HTTP/HTTPS: route through the server's artifact proxy — works with any backend
+    if tracking_uri.startswith(("http://", "https://")):
+        return append_to_uri_path("mlflow-artifacts:", "skills")
+
+    # Local stores: read artifact_root_uri directly from the store instance
+    from mlflow.tracking._tracking_service.utils import _get_store
+
+    store = _get_store(store_uri=tracking_uri)
+    if hasattr(store, "artifact_root_uri"):
+        return append_to_uri_path(store.artifact_root_uri, "skills")
+
+    # Fallback: store alongside the tracking directory
+    from mlflow.utils.file_utils import path_to_local_file_uri
+    from mlflow.store.tracking import DEFAULT_LOCAL_FILE_AND_ARTIFACT_PATH
+
+    return append_to_uri_path(
+        path_to_local_file_uri(str(Path(DEFAULT_LOCAL_FILE_AND_ARTIFACT_PATH).resolve())),
+        "skills",
+    )
 
 
 def _store_skill_bundle(name: str, version: int, skill_dir: Path) -> str:
