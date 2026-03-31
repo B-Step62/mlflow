@@ -3,6 +3,7 @@
 import getpass
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -64,10 +65,21 @@ def _get_skill_artifact_root_uri() -> str:
 
     # Local stores: read artifact_root_uri directly from the store instance
     from mlflow.tracking._tracking_service.utils import _get_store
+    from mlflow.utils.uri import resolve_uri_if_local
 
     store = _get_store(store_uri=tracking_uri)
     if hasattr(store, "artifact_root_uri"):
-        return append_to_uri_path(store.artifact_root_uri, "skills")
+        artifact_root = store.artifact_root_uri
+        # When serve_artifacts is enabled, the server sets artifact_root_uri to
+        # "mlflow-artifacts:/" — a proxy URI that cannot be used inside the server
+        # process itself. Use the actual storage destination instead (mirrors
+        # handlers._get_artifact_repo_mlflow_artifacts pattern).
+        if artifact_root.startswith("mlflow-artifacts:"):
+            from mlflow.server.constants import ARTIFACTS_DESTINATION_ENV_VAR
+
+            destination = os.environ.get(ARTIFACTS_DESTINATION_ENV_VAR, "./mlartifacts")
+            return append_to_uri_path(resolve_uri_if_local(destination), "skills")
+        return append_to_uri_path(artifact_root, "skills")
 
     # Fallback: store alongside the tracking directory
     from mlflow.utils.file_utils import path_to_local_file_uri
@@ -94,10 +106,11 @@ def _store_skill_bundle(name: str, version: int, skill_dir: Path) -> str:
     return artifact_uri
 
 
-def _resolve_source(source: str) -> tuple[Path, list[Path]]:
-    """Resolve a source to a root path and list of skill directories."""
+def _resolve_source(source: str) -> tuple[Path, list[Path], str | None]:
+    """Resolve a source to a root path, skill directories, and optional commit hash."""
+    commit_hash = None
     if is_github_url(source):
-        skill_root = fetch_from_github(source)
+        skill_root, commit_hash = fetch_from_github(source)
     else:
         skill_root = Path(source).expanduser().resolve()
         if not skill_root.exists():
@@ -112,7 +125,7 @@ def _resolve_source(source: str) -> tuple[Path, list[Path]]:
                 f"No SKILL.md files found in '{source}'. "
                 "Each skill must contain a SKILL.md manifest."
             )
-    return skill_root, skill_dirs
+    return skill_root, skill_dirs, commit_hash
 
 
 def preview_skills(source: str) -> list[dict]:
@@ -124,7 +137,7 @@ def preview_skills(source: str) -> list[dict]:
     Returns:
         List of dicts with 'name' and 'description' for each skill found.
     """
-    _, skill_dirs = _resolve_source(source)
+    _, skill_dirs, _ = _resolve_source(source)
     results = []
     for skill_dir in skill_dirs:
         manifest = parse_skill_manifest(skill_dir / "SKILL.md")
@@ -154,10 +167,15 @@ def register_skill(
     Returns:
         List of created SkillVersion objects.
     """
-    _, skill_dirs = _resolve_source(source)
+    _, skill_dirs, commit_hash = _resolve_source(source)
 
     client = mlflow.MlflowClient()
     versions = []
+
+    # Merge commit hash into internal tags without mutating the caller's dict
+    version_tags = dict(tags or {})
+    if commit_hash:
+        version_tags["mlflow.skill.commit_hash"] = commit_hash
 
     for skill_dir in skill_dirs:
         manifest = parse_skill_manifest(skill_dir / "SKILL.md")
@@ -182,7 +200,7 @@ def register_skill(
             name=name,
             source=source,
             description=description,
-            tags=tags,
+            tags=version_tags,
             created_by=getpass.getuser(),
         )
 
