@@ -3,8 +3,6 @@ import { useSkillDetailsQuery } from './hooks/useSkillDetailsQuery';
 import {
   Alert,
   Button,
-  ChevronDownIcon,
-  ChevronRightIcon,
   FileCodeIcon,
   FileDocumentIcon,
   FileIcon,
@@ -20,6 +18,8 @@ import {
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
+import { GenAIMarkdownRenderer } from '../../../shared/web-shared/genai-markdown-renderer';
+import { defaultUrlTransform } from 'react-markdown-10';
 import { FormattedMessage } from 'react-intl';
 import { useParams } from '../../../common/utils/RoutingUtils';
 import { Link } from '../../../common/utils/RoutingUtils';
@@ -151,72 +151,47 @@ const VersionsList = ({
   onSelectVersion: (v: number) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const [expanded, setExpanded] = useState(false);
-
   const sortedVersions = useMemo(() => [...versions].sort((a, b) => b.version - a.version), [versions]);
 
   return (
-    <div>
-      <div
-        onClick={() => setExpanded(!expanded)}
-        css={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.xs,
-          cursor: 'pointer',
-          userSelect: 'none',
-          padding: `${theme.spacing.sm}px 0`,
-        }}
-      >
-        {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
-        <Typography.Text bold>
-          Versions ({versions.length})
-        </Typography.Text>
-        <span css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
-          — viewing v{selectedVersion}
-        </span>
-      </div>
-      {expanded && (
-        <div css={{ display: 'flex', flexDirection: 'column', gap: 1, marginLeft: theme.spacing.md }}>
-          {sortedVersions.map((v) => {
-            const isSelected = v.version === selectedVersion;
-            const vUserTags = getUserTags(v.tags);
-            return (
-              <div
-                key={v.version}
-                onClick={() => onSelectVersion(v.version)}
-                css={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  padding: theme.spacing.sm,
-                  borderRadius: theme.borders.borderRadiusSm,
-                  cursor: 'pointer',
-                  backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
-                  '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
-                }}
-              >
-                <span css={{ fontWeight: isSelected ? 600 : 400, minWidth: 36 }}>v{v.version}</span>
-                {v.creation_timestamp && (
-                  <span css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
-                    {formatRelativeTime(v.creation_timestamp)}
-                  </span>
-                )}
-                {v.aliases?.map((a) => (
-                  <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>
-                    {a}
-                  </Tag>
-                ))}
-                {vUserTags.map((t) => (
-                  <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>
-                    {t}
-                  </Tag>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <div css={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {sortedVersions.map((v) => {
+        const isSelected = v.version === selectedVersion;
+        const vUserTags = getUserTags(v.tags);
+        return (
+          <div
+            key={v.version}
+            onClick={() => onSelectVersion(v.version)}
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+              padding: theme.spacing.sm,
+              borderRadius: theme.borders.borderRadiusSm,
+              cursor: 'pointer',
+              backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
+              '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
+            }}
+          >
+            <span css={{ fontWeight: isSelected ? 600 : 400, minWidth: 36 }}>v{v.version}</span>
+            {v.creation_timestamp && (
+              <span css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
+                {formatRelativeTime(v.creation_timestamp)}
+              </span>
+            )}
+            {v.aliases?.map((a) => (
+              <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>
+                {a}
+              </Tag>
+            ))}
+            {vUserTags.map((t) => (
+              <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>
+                {t}
+              </Tag>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -301,19 +276,24 @@ const FileExplorer = ({ content }: { content?: string }) => {
         ))}
       </div>
       {/* File content */}
-      <div css={{ flex: 1, overflow: 'auto' }}>
-        <pre
-          css={{
-            margin: 0,
-            padding: theme.spacing.md,
-            fontFamily: 'monospace',
-            fontSize: theme.typography.fontSizeSm,
-            whiteSpace: 'pre-wrap',
-            lineHeight: 1.5,
-          }}
-        >
-          {activeFile?.content || ''}
-        </pre>
+      <div css={{ flex: 1, overflow: 'auto', padding: theme.spacing.md }}>
+        {selectedFile.endsWith('.md') ? (
+          <GenAIMarkdownRenderer urlTransform={defaultUrlTransform}>
+            {activeFile?.content || ''}
+          </GenAIMarkdownRenderer>
+        ) : (
+          <pre
+            css={{
+              margin: 0,
+              fontFamily: 'monospace',
+              fontSize: theme.typography.fontSizeSm,
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.5,
+            }}
+          >
+            {activeFile?.content || ''}
+          </pre>
+        )}
       </div>
     </div>
   );
