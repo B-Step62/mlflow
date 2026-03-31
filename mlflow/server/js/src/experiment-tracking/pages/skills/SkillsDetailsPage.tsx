@@ -131,8 +131,8 @@ const UseSkillModal = ({
 
   if (!visible) return null;
 
-  const versionFlag = isLatest ? '' : ` --version ${version}`;
-  const versionArg = isLatest ? '' : `, version=${version}`;
+  const cliRef = isLatest ? skillName : `${skillName}/${version}`;
+  const pyVersionArg = isLatest ? '' : `, version=${version}`;
 
   return (
     <Modal
@@ -164,7 +164,7 @@ const UseSkillModal = ({
                 Makes this skill available in Claude Code across every project on this machine.
               </Typography.Text>
               <CodeBlock
-                code={`mlflow skills load ${skillName}${versionFlag}`}
+                code={`mlflow skills load ${cliRef}`}
                 componentId="mlflow.skills.use_modal.copy_global"
               />
             </div>
@@ -174,7 +174,7 @@ const UseSkillModal = ({
                 Installs the skill into <code>.claude/skills/</code> in your current working directory.
               </Typography.Text>
               <CodeBlock
-                code={`mlflow skills load ${skillName}${versionFlag} --scope project`}
+                code={`mlflow skills load ${cliRef} --scope project`}
                 componentId="mlflow.skills.use_modal.copy_project"
               />
             </div>
@@ -190,7 +190,7 @@ const UseSkillModal = ({
               </Typography.Text>
               <CodeBlock
                 language="python"
-                code={`import mlflow.genai\n\nskill = mlflow.genai.load_skill("${skillName}"${versionArg})\nprint(skill.name, skill.version, skill.source)`}
+                code={`import mlflow.genai\n\nskill = mlflow.genai.load_skill("${skillName}"${pyVersionArg})\nprint(skill.name, skill.version, skill.source)`}
                 componentId="mlflow.skills.use_modal.copy_load"
               />
             </div>
@@ -202,7 +202,7 @@ const UseSkillModal = ({
               </Typography.Text>
               <CodeBlock
                 language="python"
-                code={`path = mlflow.genai.install_skill("${skillName}"${versionArg}, scope="global")\nprint(f"Installed to {path}")`}
+                code={`path = mlflow.genai.install_skill("${skillName}"${pyVersionArg}, scope="global")\nprint(f"Installed to {path}")`}
                 componentId="mlflow.skills.use_modal.copy_install"
               />
             </div>

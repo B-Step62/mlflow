@@ -6,6 +6,27 @@ from pathlib import Path
 import click
 
 
+def _parse_skill_ref(ref: str) -> tuple[str, int | None, str | None]:
+    """Parse a skill reference: ``name``, ``name/version``, or ``name@alias``."""
+    if "/" in ref:
+        match ref.rsplit("/", 1):
+            case [name, ver] if ver.isdigit():
+                return name, int(ver), None
+            case _:
+                raise click.BadParameter(
+                    f"Invalid skill reference '{ref}'. Version must be an integer (e.g. my-skill/3)."
+                )
+    if "@" in ref:
+        match ref.rsplit("@", 1):
+            case [name, alias] if alias:
+                return name, None, alias
+            case _:
+                raise click.BadParameter(
+                    f"Invalid skill reference '{ref}'. Expected format: name@alias."
+                )
+    return ref, None, None
+
+
 @click.group("skills")
 def commands():
     """Manage skills in the MLflow Skill Registry."""
@@ -47,9 +68,7 @@ def list_cmd(filter_string, max_results):
 
 
 @commands.command("load")
-@click.argument("names", nargs=-1, required=True)
-@click.option("--version", "-v", type=int, default=None, help="Specific version (applies to all skills).")
-@click.option("--alias", "-a", default=None, help="Alias to resolve (applies to all skills).")
+@click.argument("refs", nargs=-1, required=True)
 @click.option(
     "--scope",
     type=click.Choice(["global", "project"]),
@@ -57,15 +76,27 @@ def list_cmd(filter_string, max_results):
     help="Installation scope.",
 )
 @click.option("--project-path", type=click.Path(), default=None, help="Project directory.")
-def load_cmd(names, version, alias, scope, project_path):
-    """Install one or more skills from the registry to the local filesystem.
+def load_cmd(refs, scope, project_path):
+    """Install one or more skills from the registry.
 
-    Omit --version to install the latest version of each skill.
+    \b
+    Each REF can be:
+      name          install latest version
+      name/3        install version 3
+      name@alias    install the version pointed to by alias
+
+    \b
+    Examples:
+      mlflow skills load my-skill
+      mlflow skills load my-skill/3
+      mlflow skills load my-skill@champion
+      mlflow skills load skill-a skill-b/2 skill-c@prod
     """
     from mlflow.genai.skills import install_skill
 
     pp = Path(project_path) if project_path else None
-    for name in names:
+    for ref in refs:
+        name, version, alias = _parse_skill_ref(ref)
         path = install_skill(
             name=name,
             version=version,
@@ -77,13 +108,20 @@ def load_cmd(names, version, alias, scope, project_path):
 
 
 @commands.command("show")
-@click.argument("name")
-@click.option("--version", "-v", type=int, default=None)
-def show_cmd(name, version):
-    """Show details of a skill or skill version."""
+@click.argument("ref")
+def show_cmd(ref):
+    """Show details of a skill or skill version.
+
+    \b
+    REF can be:
+      name          show latest version
+      name/3        show version 3
+      name@alias    show the version pointed to by alias
+    """
     from mlflow.genai.skills import load_skill
 
-    sv = load_skill(name, version=version)
+    name, version, alias = _parse_skill_ref(ref)
+    sv = load_skill(name, version=version, alias=alias)
     click.echo(f"Name: {sv.name}")
     click.echo(f"Version: {sv.version}")
     click.echo(f"Source: {sv.source or '(none)'}")
