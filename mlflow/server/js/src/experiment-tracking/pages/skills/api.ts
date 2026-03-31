@@ -46,11 +46,20 @@ export const RegisteredSkillsApi = {
     }) as Promise<RegisteredSkillDetailsResponse>;
   },
 
-  registerFromSource: (source: string, tags?: Record<string, string>) => {
+  previewSource: (source: string) => {
+    return fetchEndpoint({
+      relativeUrl: 'ajax-api/3.0/mlflow/skills/preview',
+      method: 'POST',
+      body: JSON.stringify({ source }),
+      error: defaultErrorHandler,
+    }) as Promise<{ name: string; description: string | null }[]>;
+  },
+
+  registerFromSource: (source: string, tags?: Record<string, string>, skillNames?: string[]) => {
     return fetchEndpoint({
       relativeUrl: 'ajax-api/3.0/mlflow/skills/register',
       method: 'POST',
-      body: JSON.stringify({ source, tags }),
+      body: JSON.stringify({ source, tags, skill_names: skillNames }),
       error: defaultErrorHandler,
     }) as Promise<RegisteredSkillVersion[]>;
   },

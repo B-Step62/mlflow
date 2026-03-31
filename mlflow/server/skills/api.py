@@ -21,9 +21,19 @@ skills_router = APIRouter(
 # ============================================================================
 
 
+class PreviewSkillsRequest(BaseModel):
+    source: str
+
+
+class PreviewSkillResponse(BaseModel):
+    name: str
+    description: str | None = None
+
+
 class RegisterSkillRequest(BaseModel):
     source: str
     tags: dict[str, str] | None = None
+    skill_names: list[str] | None = None
 
 
 class SkillResponse(BaseModel):
@@ -112,13 +122,33 @@ def _handle_mlflow_exception(e: MlflowException):
 # ============================================================================
 
 
+@skills_router.post("/preview")
+async def preview_skills_endpoint(
+    request: PreviewSkillsRequest,
+) -> list[PreviewSkillResponse]:
+    from mlflow.genai.skills import preview_skills
+
+    _logger.info("preview_skills called with source=%s", request.source)
+    try:
+        results = preview_skills(source=request.source)
+        return [PreviewSkillResponse(**r) for r in results]
+    except MlflowException as e:
+        _logger.error("Failed to preview skills: %s", e, exc_info=True)
+        _handle_mlflow_exception(e)
+    except Exception as e:
+        _logger.error("Unexpected error previewing skills: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @skills_router.post("/register")
 async def register_skills(request: RegisterSkillRequest) -> list[SkillVersionResponse]:
     from mlflow.genai.skills import register_skill
 
     _logger.info("register_skills called with source=%s", request.source)
     try:
-        versions = register_skill(source=request.source, tags=request.tags)
+        versions = register_skill(
+            source=request.source, tags=request.tags, skill_names=request.skill_names
+        )
         _logger.info("Registered %d skill versions", len(versions))
         return [_version_to_response(sv) for sv in versions]
     except MlflowException as e:

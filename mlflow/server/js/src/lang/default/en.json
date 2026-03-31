@@ -2870,6 +2870,10 @@
     "defaultMessage": "Always show parents of matched spans, regardless of filter conditions",
     "description": "Tooltip for a span filter setting that enables showing parents of matched spans"
   },
+  "HCgCN0": {
+    "defaultMessage": "No skills registered yet. Click '+ New Skill' to get started.",
+    "description": "Empty state message for skills list"
+  },
   "HF6L/f": {
     "defaultMessage": "Monitor quality metrics from scorers",
     "description": "Empty state title for the quality tab in overview page"
@@ -3650,6 +3654,10 @@
     "defaultMessage": "Actions ({count})",
     "description": "Actions dropdown button label with count of selected sessions"
   },
+  "MaEPS2": {
+    "defaultMessage": "Versions",
+    "description": "Versions section title"
+  },
   "MatV9u": {
     "defaultMessage": "Create",
     "description": "Create button text for creating model in the model registry"
@@ -3729,6 +3737,10 @@
   "N1cbSU": {
     "defaultMessage": "Clear all demo data generated from the home page. This removes demo experiments, traces, evaluations, and prompts.",
     "description": "Demo data settings description"
+  },
+  "N1sq9z": {
+    "defaultMessage": "Select all",
+    "description": "Select all checkbox label"
   },
   "N53jAt": {
     "defaultMessage": "Create custom code judge",
@@ -4033,6 +4045,10 @@
   "OxQK9l": {
     "defaultMessage": "Key name is required",
     "description": "Error message when key name is empty"
+  },
+  "Oz2LM0": {
+    "defaultMessage": "+ New Skill",
+    "description": "Register skill button"
   },
   "OzyPl3": {
     "defaultMessage": "Please select parameters",
@@ -4676,6 +4692,10 @@
   "TCAbKZ": {
     "defaultMessage": "Save",
     "description": "Save webhook button"
+  },
+  "TE0p6h": {
+    "defaultMessage": "SKILL.md (latest)",
+    "description": "SKILL.md preview title"
   },
   "TKtJIK": {
     "defaultMessage": "Page not found",
@@ -5767,6 +5787,10 @@
     "defaultMessage": "Step",
     "description": "Run page > Charts tab > Chart tooltip > Step label"
   },
+  "a05e+e": {
+    "defaultMessage": "Register {count} {count, plural, one {skill} other {skills}}",
+    "description": "Register selected skills button"
+  },
   "a0NgR8": {
     "defaultMessage": "Type",
     "description": "Header for \"type\" column in the UC table schema"
@@ -5942,6 +5966,10 @@
   "axF2gD": {
     "defaultMessage": "Full Path:",
     "description": "Label to display the full path of where the artifact of the experiment runs is located"
+  },
+  "axfagk": {
+    "defaultMessage": "Skills",
+    "description": "Header title for the skills page"
   },
   "b0KTgh": {
     "defaultMessage": "Add/edit alias for prompt version {version}",
@@ -6755,6 +6783,10 @@
     "defaultMessage": "Name",
     "description": "Column title for model name in the registered model page"
   },
+  "g1u6Vu": {
+    "defaultMessage": "Delete ({count})",
+    "description": "Bulk delete button"
+  },
   "g2tInh": {
     "defaultMessage": "Source type: {typeLabel}",
     "description": "Experiment dataset drawer > source type > label"
@@ -6778,6 +6810,10 @@
   "gC2Kxm": {
     "defaultMessage": "Give instructions to the model. Use '{{ }}' or the \"Add new variable\" button to add variables to your prompt.",
     "description": "Experiment page > new run modal > prompt template input hint"
+  },
+  "gFRRK0": {
+    "defaultMessage": "Enter a GitHub repository URL or local directory path containing SKILL.md files.",
+    "description": "Instructions for register skill modal"
   },
   "gFYM0j": {
     "defaultMessage": "Cancel",
@@ -7094,6 +7130,10 @@
   "i7hyJK": {
     "defaultMessage": "API Keys",
     "description": "Sidebar link for API keys"
+  },
+  "i82Hjx": {
+    "defaultMessage": "Skills",
+    "description": "Sidebar link for skills tab"
   },
   "i9OADf": {
     "defaultMessage": "Params",
@@ -8419,6 +8459,10 @@
     "defaultMessage": "Model Config:",
     "description": "Label for model configuration in the prompt details page"
   },
+  "qMdh7x": {
+    "defaultMessage": "← Skills",
+    "description": "Breadcrumb back to skills list"
+  },
   "qMwRy3": {
     "defaultMessage": "Registered Models",
     "description": "Header for displaying models in the model registry"
@@ -9635,6 +9679,10 @@
     "defaultMessage": "Use",
     "description": "Use endpoint button"
   },
+  "yLFRbS": {
+    "defaultMessage": "Register skill",
+    "description": "Title for register skill modal"
+  },
   "yM9S/n": {
     "defaultMessage": "Please select a model to run the judge",
     "description": "Tooltip message when model is not selected"
@@ -9711,6 +9759,13 @@
     "defaultMessage": "MLflow Model",
     "description": "Heading text for mlflow model artifact"
   },
+  "z3X/4M": {
+    "defaultMessage": "Next",
+    "description": "Next button in skill modal"
+  },
+  "z3jAVQ": {
+    "defaultMessage": "Failed to delete webhook"
+  },
   "z42Rsj": {
     "defaultMessage": "Source run",
     "description": "Label for the column indicating a run being the source of the logged model's metric (i.e. source run). Displayed in the logged model details metrics table."
@@ -9762,6 +9817,10 @@
   "zEXwQL": {
     "defaultMessage": "Error",
     "description": "Label for an assessment with an error"
+  },
+  "zG+Gqi": {
+    "defaultMessage": "Found {count} {count, plural, one {skill} other {skills}} in the source. Select which to register:",
+    "description": "Skill selection instructions"
   },
   "zLTdCZ": {
     "defaultMessage": "Reviewed",

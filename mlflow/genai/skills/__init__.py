@@ -26,6 +26,7 @@ _logger = logging.getLogger(__name__)
 
 __all__ = [
     "register_skill",
+    "preview_skills",
     "load_skill",
     "search_skills",
     "set_skill_tag",
@@ -68,22 +69,8 @@ def _store_skill_bundle(name: str, version: int, skill_dir: Path) -> str:
     return str(dest)
 
 
-def register_skill(
-    source: str,
-    tags: dict[str, str] | None = None,
-) -> list[SkillVersion]:
-    """Register skill(s) from a GitHub URL or local directory path.
-
-    Finds all SKILL.md files in the source, registers each as a versioned skill.
-    If the skill already exists, creates a new version.
-
-    Args:
-        source: GitHub repository URL or local directory path.
-        tags: Optional tags to apply to each skill version.
-
-    Returns:
-        List of created SkillVersion objects.
-    """
+def _resolve_source(source: str) -> tuple[Path, list[Path]]:
+    """Resolve a source to a root path and list of skill directories."""
     if is_github_url(source):
         skill_root = fetch_from_github(source)
     else:
@@ -100,6 +87,49 @@ def register_skill(
                 f"No SKILL.md files found in '{source}'. "
                 "Each skill must contain a SKILL.md manifest."
             )
+    return skill_root, skill_dirs
+
+
+def preview_skills(source: str) -> list[dict]:
+    """Preview skills found in a source without registering them.
+
+    Args:
+        source: GitHub repository URL or local directory path.
+
+    Returns:
+        List of dicts with 'name' and 'description' for each skill found.
+    """
+    _, skill_dirs = _resolve_source(source)
+    results = []
+    for skill_dir in skill_dirs:
+        manifest = parse_skill_manifest(skill_dir / "SKILL.md")
+        results.append({
+            "name": manifest["name"],
+            "description": manifest.get("description"),
+        })
+    return results
+
+
+def register_skill(
+    source: str,
+    tags: dict[str, str] | None = None,
+    skill_names: list[str] | None = None,
+) -> list[SkillVersion]:
+    """Register skill(s) from a GitHub URL or local directory path.
+
+    Finds all SKILL.md files in the source, registers each as a versioned skill.
+    If the skill already exists, creates a new version.
+
+    Args:
+        source: GitHub repository URL or local directory path.
+        tags: Optional tags to apply to each skill version.
+        skill_names: Optional list of skill names to register. If provided, only
+            skills whose name matches are registered. If None, all skills are registered.
+
+    Returns:
+        List of created SkillVersion objects.
+    """
+    _, skill_dirs = _resolve_source(source)
 
     client = mlflow.MlflowClient()
     versions = []
@@ -109,6 +139,9 @@ def register_skill(
         name = manifest["name"]
         description = manifest.get("description")
         content = manifest["content"]
+
+        if skill_names is not None and name not in skill_names:
+            continue
 
         _validate_skill_name(name)
 
