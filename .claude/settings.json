@@ -33,6 +33,21 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory=$CLAUDE_PROJECT_DIR mlflow autolog claude stop-hook"
+          }
+        ]
+      }
     ]
+  },
+  "env": {
+    "MLFLOW_CLAUDE_TRACING_ENABLED": "true",
+    "MLFLOW_TRACKING_URI": "http://localhost:5000",
+    "MLFLOW_EXPERIMENT_ID": "2"
   }
 }

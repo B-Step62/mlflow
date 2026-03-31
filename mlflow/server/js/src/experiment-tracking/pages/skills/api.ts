@@ -1,5 +1,10 @@
 import { fetchEndpoint } from '../../../common/utils/FetchUtils';
-import type { RegisteredSkill, RegisteredSkillVersion, RegisteredSkillDetailsResponse, SkillVersionFile } from './types';
+import type {
+  RegisteredSkill,
+  RegisteredSkillVersion,
+  RegisteredSkillDetailsResponse,
+  SkillVersionFile,
+} from './types';
 
 const defaultErrorHandler = async ({
   reject,

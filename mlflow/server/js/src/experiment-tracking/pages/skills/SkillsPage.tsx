@@ -57,10 +57,20 @@ const GitHubIcon = ({ size = 14 }: { size?: number }) => (
   </svg>
 );
 
-const InstallCommandModal = ({ skillName, visible, onClose }: { skillName: string; visible: boolean; onClose: () => void }) => {
+const InstallCommandModal = ({
+  skillName,
+  visible,
+  onClose,
+}: {
+  skillName: string;
+  visible: boolean;
+  onClose: () => void;
+}) => {
   const { theme } = useDesignSystemTheme();
   const command = `mlflow skills load ${skillName} --scope global`;
-  const handleCopy = useCallback(() => { navigator.clipboard.writeText(command); }, [command]);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(command);
+  }, [command]);
   if (!visible) return null;
   return (
     <Modal
@@ -73,10 +83,25 @@ const InstallCommandModal = ({ skillName, visible, onClose }: { skillName: strin
       cancelButtonProps={{ style: { display: 'none' } }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-        <Typography.Text>Run this command in your terminal to install <strong>{skillName}</strong> for Claude Code:</Typography.Text>
-        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, backgroundColor: theme.colors.backgroundSecondary, borderRadius: theme.borders.borderRadiusSm, padding: theme.spacing.sm, fontFamily: 'monospace', fontSize: theme.typography.fontSizeSm }}>
+        <Typography.Text>
+          Run this command in your terminal to install <strong>{skillName}</strong> for Claude Code:
+        </Typography.Text>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            backgroundColor: theme.colors.backgroundSecondary,
+            borderRadius: theme.borders.borderRadiusSm,
+            padding: theme.spacing.sm,
+            fontFamily: 'monospace',
+            fontSize: theme.typography.fontSizeSm,
+          }}
+        >
           <code style={{ flex: 1, wordBreak: 'break-all' }}>{command}</code>
-          <Button componentId="mlflow.skills.install_modal.copy" type="tertiary" onClick={handleCopy}>Copy</Button>
+          <Button componentId="mlflow.skills.install_modal.copy" type="tertiary" onClick={handleCopy}>
+            Copy
+          </Button>
         </div>
         <Typography.Text style={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
           Use <code>--scope project</code> to install into the current project instead of globally.
@@ -150,11 +175,28 @@ const SkillCard = ({
       >
         {/* Top-right overlay: only mounted on hover or when selected — zero DOM presence otherwise */}
         {(isHovered || selected) && (
-          <div css={{ position: 'absolute', top: theme.spacing.md, right: theme.spacing.md, display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          <div
+            css={{
+              position: 'absolute',
+              top: theme.spacing.md,
+              right: theme.spacing.md,
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+            }}
+          >
             <button
               type="button"
               onClick={handleInstall}
-              css={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: theme.colors.textSecondary, display: 'flex', '&:hover': { color: theme.colors.textPrimary } }}
+              css={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 2,
+                color: theme.colors.textSecondary,
+                display: 'flex',
+                '&:hover': { color: theme.colors.textPrimary },
+              }}
             >
               <CloudDownloadIcon />
             </button>
@@ -382,12 +424,7 @@ const SkillsPage = () => {
         buttons={
           <div css={{ display: 'flex', gap: theme.spacing.sm }}>
             {selectedSkills.size > 0 && (
-              <Button
-                componentId="mlflow.skills.list.bulk_delete"
-                type="tertiary"
-                onClick={handleBulkDelete}
-                danger
-              >
+              <Button componentId="mlflow.skills.list.bulk_delete" type="tertiary" onClick={handleBulkDelete} danger>
                 <FormattedMessage
                   defaultMessage="Delete ({count})"
                   description="Bulk delete button"
@@ -418,7 +455,13 @@ const SkillsPage = () => {
           />
         </div>
         {!isLoading && data.length > 0 && (
-          <div css={{ marginBottom: theme.spacing.sm, color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
+          <div
+            css={{
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.textSecondary,
+              fontSize: theme.typography.fontSizeSm,
+            }}
+          >
             {data.length} skill{data.length !== 1 ? 's' : ''}
           </div>
         )}

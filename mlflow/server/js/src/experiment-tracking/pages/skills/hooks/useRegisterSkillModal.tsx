@@ -93,9 +93,7 @@ export const useRegisterSkillModal = ({ onSuccess }: { onSuccess: () => void }) 
   const RegisterSkillModal = isOpen ? (
     <Modal
       componentId="mlflow.skills.register_modal"
-      title={
-        <FormattedMessage defaultMessage="Register skill" description="Title for register skill modal" />
-      }
+      title={<FormattedMessage defaultMessage="Register skill" description="Title for register skill modal" />}
       visible
       onCancel={handleClose}
       onOk={step === 'input' ? handlePreview : handleRegister}
