@@ -4,6 +4,8 @@ import {
   Alert,
   Button,
   Checkbox,
+  ChevronDownIcon,
+  ChevronRightIcon,
   CloudDownloadIcon,
   Header,
   Input,
@@ -331,6 +333,19 @@ const SkillsCardGrid = ({
   onToggleSelect: (name: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = useCallback((repo: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(repo)) {
+        next.delete(repo);
+      } else {
+        next.add(repo);
+      }
+      return next;
+    });
+  }, []);
 
   const groupedSkills = useMemo(() => {
     const groups = new Map<string, RegisteredSkill[]>();
@@ -367,63 +382,78 @@ const SkillsCardGrid = ({
 
   return (
     <div css={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-      {[...groupedSkills.entries()].map(([repo, groupSkills]) => (
-        <div key={repo}>
-          <div
-            css={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.xs,
-              marginBottom: theme.spacing.sm,
-              color: theme.colors.textSecondary,
-              fontSize: theme.typography.fontSizeSm,
-              fontWeight: 600,
-            }}
-          >
-            {repo ? (
-              <>
-                <GitHubIcon />
-                <a
-                  href={`https://github.com/${repo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  css={{
-                    fontFamily: 'monospace',
-                    color: theme.colors.textSecondary,
-                    textDecoration: 'none',
-                    '&:hover': { textDecoration: 'underline', color: theme.colors.actionPrimaryBackgroundDefault },
-                  }}
-                >
-                  {repo}
-                </a>
-                <span css={{ fontWeight: 400 }}>
-                  · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}
-                </span>
-              </>
-            ) : (
-              <span>Other · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}</span>
+      {[...groupedSkills.entries()].map(([repo, groupSkills]) => {
+        const collapsed = collapsedGroups.has(repo);
+        return (
+          <div key={repo}>
+            <div
+              role="button"
+              onClick={() => toggleGroup(repo)}
+              css={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                marginBottom: collapsed ? 0 : theme.spacing.sm,
+                color: theme.colors.textSecondary,
+                fontSize: theme.typography.fontSizeSm,
+                fontWeight: 600,
+                cursor: 'pointer',
+                userSelect: 'none',
+                '&:hover': { color: theme.colors.textPrimary },
+              }}
+            >
+              {collapsed ? (
+                <ChevronRightIcon css={{ fontSize: 14 }} />
+              ) : (
+                <ChevronDownIcon css={{ fontSize: 14 }} />
+              )}
+              {repo ? (
+                <>
+                  <GitHubIcon />
+                  <a
+                    href={`https://github.com/${repo}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    css={{
+                      fontFamily: 'monospace',
+                      color: 'inherit',
+                      textDecoration: 'none',
+                      '&:hover': { textDecoration: 'underline' },
+                    }}
+                  >
+                    {repo}
+                  </a>
+                  <span css={{ fontWeight: 400 }}>
+                    · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}
+                  </span>
+                </>
+              ) : (
+                <span>Other · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+            {!collapsed && (
+              <div
+                css={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                  gap: theme.spacing.md,
+                  alignContent: 'start',
+                }}
+              >
+                {groupSkills.map((skill) => (
+                  <SkillCard
+                    key={skill.name}
+                    skill={skill}
+                    selected={selectedSkills.has(skill.name)}
+                    onToggleSelect={onToggleSelect}
+                  />
+                ))}
+              </div>
             )}
           </div>
-          <div
-            css={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-              gap: theme.spacing.md,
-              alignContent: 'start',
-            }}
-          >
-            {groupSkills.map((skill) => (
-              <SkillCard
-                key={skill.name}
-                skill={skill}
-                selected={selectedSkills.has(skill.name)}
-                onToggleSelect={onToggleSelect}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
