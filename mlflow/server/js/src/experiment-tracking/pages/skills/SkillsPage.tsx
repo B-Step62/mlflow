@@ -314,6 +314,11 @@ const SkillCard = ({
   );
 };
 
+const getRepoKey = (source?: string): string => {
+  const match = source?.match(/github\.com\/([^/]+\/[^/]+)/);
+  return match ? match[1] : '';
+};
+
 const SkillsCardGrid = ({
   skills,
   isLoading,
@@ -326,6 +331,20 @@ const SkillsCardGrid = ({
   onToggleSelect: (name: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
+
+  const groupedSkills = useMemo(() => {
+    const groups = new Map<string, RegisteredSkill[]>();
+    for (const skill of skills) {
+      const repo = getRepoKey(skill.source);
+      const list = groups.get(repo);
+      if (list) {
+        list.push(skill);
+      } else {
+        groups.set(repo, [skill]);
+      }
+    }
+    return groups;
+  }, [skills]);
 
   if (isLoading) {
     return (
@@ -347,23 +366,63 @@ const SkillsCardGrid = ({
   }
 
   return (
-    <div
-      css={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: theme.spacing.md,
-        overflow: 'auto',
-        flex: 1,
-        alignContent: 'start',
-      }}
-    >
-      {skills.map((skill) => (
-        <SkillCard
-          key={skill.name}
-          skill={skill}
-          selected={selectedSkills.has(skill.name)}
-          onToggleSelect={onToggleSelect}
-        />
+    <div css={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+      {[...groupedSkills.entries()].map(([repo, groupSkills]) => (
+        <div key={repo}>
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.textSecondary,
+              fontSize: theme.typography.fontSizeSm,
+              fontWeight: 600,
+            }}
+          >
+            {repo ? (
+              <>
+                <GitHubIcon />
+                <a
+                  href={`https://github.com/${repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  css={{
+                    fontFamily: 'monospace',
+                    color: theme.colors.textSecondary,
+                    textDecoration: 'none',
+                    '&:hover': { textDecoration: 'underline', color: theme.colors.actionPrimaryBackgroundDefault },
+                  }}
+                >
+                  {repo}
+                </a>
+                <span css={{ fontWeight: 400 }}>
+                  · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}
+                </span>
+              </>
+            ) : (
+              <span>Other · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          <div
+            css={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: theme.spacing.md,
+              alignContent: 'start',
+            }}
+          >
+            {groupSkills.map((skill) => (
+              <SkillCard
+                key={skill.name}
+                skill={skill}
+                selected={selectedSkills.has(skill.name)}
+                onToggleSelect={onToggleSelect}
+              />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
