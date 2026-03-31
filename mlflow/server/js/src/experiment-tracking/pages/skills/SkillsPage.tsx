@@ -536,7 +536,7 @@ const SkillsPage = () => {
               <>
                 <Button
                   componentId="mlflow.skills.list.bulk_use"
-                  type="tertiary"
+                  type="primary"
                   onClick={() => setBulkUseModalVisible(true)}
                 >
                   <FormattedMessage
@@ -545,7 +545,7 @@ const SkillsPage = () => {
                     values={{ count: selectedSkills.size }}
                   />
                 </Button>
-                <Button componentId="mlflow.skills.list.bulk_delete" type="tertiary" onClick={handleBulkDelete} danger>
+                <Button componentId="mlflow.skills.list.bulk_delete" type="primary" onClick={handleBulkDelete} danger>
                   <FormattedMessage
                     defaultMessage="Delete ({count})"
                     description="Bulk delete button"
