@@ -7,6 +7,7 @@ import {
   GearIcon,
   HomeIcon,
   KeyIcon,
+  LightningIcon,
   ModelsIcon,
   Tag,
   TextBoxIcon,
@@ -204,7 +205,7 @@ export function MlflowSidebar({
         ? [
             {
               key: 'skills',
-              icon: <BeakerIcon />,
+              icon: <LightningIcon />,
               linkProps: {
                 to: ExperimentTrackingRoutes.skillsPageRoute,
                 isActive: isSkillsActive,

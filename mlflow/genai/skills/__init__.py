@@ -133,7 +133,7 @@ def register_skill(
         # Update the artifact_location on the version
         # For now we set it via a tag since we just created the version
         # TODO: add a dedicated update method
-        client.set_skill_version_tag(name, sv.version, "_artifact_location", artifact_location)
+        client.set_skill_version_tag(name, sv.version, "mlflow.skill.artifact_location", artifact_location)
 
         versions.append(sv)
         _logger.info("Registered skill '%s' version %d", name, sv.version)
@@ -228,7 +228,7 @@ def install_skill(
     # Resolve artifact location — check dedicated field first, then tag fallback
     artifact_location = sv.artifact_location
     if not artifact_location:
-        artifact_location = sv.tags.get("_artifact_location")
+        artifact_location = sv.tags.get("mlflow.skill.artifact_location")
     if not artifact_location:
         raise MlflowException(f"Skill '{name}' v{sv.version} has no stored artifacts.")
 

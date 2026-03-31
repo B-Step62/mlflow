@@ -2,21 +2,24 @@ import { ScrollablePageWrapper } from '@mlflow/mlflow/src/common/components/Scro
 import { useSkillsListQuery } from './hooks/useSkillsListQuery';
 import {
   Alert,
-  BeakerIcon,
   Button,
+  Checkbox,
   CloudDownloadIcon,
   Header,
   Input,
+  LightningIcon,
+  Modal,
   Spacer,
   Spinner,
   Tag,
   Tooltip,
   TrashIcon,
+  Typography,
   UserCircleIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useRegisterSkillModal } from './hooks/useRegisterSkillModal';
 import Routes from '../../routes';
 import { useNavigate } from '../../../common/utils/RoutingUtils';
@@ -26,213 +29,302 @@ import { useDebounce } from 'use-debounce';
 import type { RegisteredSkill } from './types';
 import { RegisteredSkillsApi } from './api';
 
-const formatDate = (timestamp?: number) => {
+const INTERNAL_TAG_PREFIX = 'mlflow.';
+
+const getUserTags = (tags?: Record<string, string>): string[] => {
+  if (!tags) return [];
+  return Object.keys(tags).filter((key) => !key.startsWith(INTERNAL_TAG_PREFIX));
+};
+
+const formatRelativeTime = (timestamp?: number): string | null => {
   if (!timestamp) return null;
-  const date = new Date(timestamp);
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 30) {
+    return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return 'just now';
+};
+
+const GitHubIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+  </svg>
+);
+
+const InstallCommandModal = ({
+  skillName,
+  visible,
+  onClose,
+}: {
+  skillName: string;
+  visible: boolean;
+  onClose: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const command = `mlflow skills load ${skillName} --scope global`;
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(command);
+  }, [command]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      componentId="mlflow.skills.install_modal"
+      title="Install skill"
+      visible
+      onCancel={onClose}
+      onOk={onClose}
+      okText="Done"
+      cancelButtonProps={{ style: { display: 'none' } }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+        <Typography.Text>
+          Run this command in your terminal to install <strong>{skillName}</strong> for Claude Code:
+        </Typography.Text>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            backgroundColor: theme.colors.backgroundSecondary,
+            borderRadius: theme.borders.borderRadiusSm,
+            padding: theme.spacing.sm,
+            fontFamily: 'monospace',
+            fontSize: theme.typography.fontSizeSm,
+          }}
+        >
+          <code style={{ flex: 1, wordBreak: 'break-all' }}>{command}</code>
+          <Button componentId="mlflow.skills.install_modal.copy" type="tertiary" onClick={handleCopy}>
+            Copy
+          </Button>
+        </div>
+        <Typography.Text style={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
+          Use <code>--scope project</code> to install into the current project instead of globally.
+        </Typography.Text>
+      </div>
+    </Modal>
+  );
 };
 
 const SkillCard = ({
   skill,
-  onDelete,
+  selected,
+  onToggleSelect,
 }: {
   skill: RegisteredSkill;
-  onDelete: () => void;
+  selected: boolean;
+  onToggleSelect: (name: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const navigate = useNavigate();
-  const tags = skill.tags ? Object.keys(skill.tags) : [];
+  const userTags = getUserTags(skill.tags);
+  const [installModalVisible, setInstallModalVisible] = useState(false);
 
   const handleCardClick = useCallback(() => {
     navigate(Routes.getSkillDetailsPageRoute(skill.name));
   }, [navigate, skill.name]);
 
-  const handleDelete = useCallback(
+  const handleCheckbox = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (window.confirm(`Delete skill "${skill.name}" and all its versions?`)) {
-        RegisteredSkillsApi.deleteRegisteredSkill(skill.name).then(onDelete);
-      }
+      onToggleSelect(skill.name);
     },
-    [skill.name, onDelete],
+    [skill.name, onToggleSelect],
   );
 
-  const handleDownload = useCallback(
+  const handleInstall = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      // TODO: trigger install flow
+      setInstallModalVisible(true);
     },
     [],
   );
 
+  const sourceLabel = useMemo(() => {
+    if (!skill.source) return null;
+    return skill.source.replace(/^https?:\/\/(www\.)?github\.com\//, '');
+  }, [skill.source]);
+
+  const isGitHub = skill.source?.includes('github.com');
+
   return (
-    <div
-      onClick={handleCardClick}
-      css={{
-        border: `1px solid ${theme.colors.borderDecorative}`,
-        borderRadius: theme.borders.borderRadiusMd,
-        padding: theme.spacing.md,
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.sm,
-        transition: 'box-shadow 0.15s ease-in-out, border-color 0.15s ease-in-out',
-        backgroundColor: theme.colors.backgroundPrimary,
-        '&:hover': {
-          borderColor: theme.colors.actionPrimaryBackgroundDefault,
-          boxShadow: `0 2px 8px ${theme.colors.borderDecorative}`,
-        },
-      }}
-    >
-      {/* Top row: name + actions */}
-      <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <>
+      <div
+        onClick={handleCardClick}
+        css={{
+          border: `1px solid ${selected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.borderDecorative}`,
+          borderRadius: theme.borders.borderRadiusMd,
+          padding: theme.spacing.md,
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
+          transition: 'box-shadow 0.15s ease-in-out, border-color 0.15s ease-in-out',
+          backgroundColor: theme.colors.backgroundPrimary,
+          // Show action buttons on hover
+          '& .skill-card-actions': { opacity: 0, transition: 'opacity 0.15s' },
+          '&:hover .skill-card-actions': { opacity: 1 },
+          '&:hover': {
+            borderColor: theme.colors.actionPrimaryBackgroundDefault,
+            boxShadow: `0 2px 8px ${theme.colors.borderDecorative}`,
+          },
+        }}
+      >
+        {/* Top row: checkbox + name + version + actions */}
+        <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+            <div onClick={handleCheckbox} css={{ display: 'flex', alignItems: 'center' }}>
+              <Checkbox componentId="mlflow.skills.card.checkbox" isChecked={selected} onChange={() => {}} />
+            </div>
+            <span
+              css={{
+                fontWeight: 600,
+                fontSize: theme.typography.fontSizeMd,
+                color: theme.colors.textPrimary,
+                wordBreak: 'break-word',
+              }}
+            >
+              {skill.name}
+            </span>
+            {skill.latest_version != null && (
+              <span
+                css={{
+                  backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
+                  color: theme.colors.actionPrimaryTextDefault,
+                  borderRadius: theme.borders.borderRadiusSm,
+                  padding: `0 ${theme.spacing.xs}px`,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  lineHeight: '18px',
+                }}
+              >
+                v{skill.latest_version}
+              </span>
+            )}
+          </div>
+          <div className="skill-card-actions" css={{ display: 'flex', gap: theme.spacing.xs, flexShrink: 0, marginLeft: theme.spacing.sm }}>
+            <Tooltip componentId="mlflow.skills.card.install_tooltip" content="Install skill">
+              <button
+                type="button"
+                onClick={handleInstall}
+                css={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 2,
+                  color: theme.colors.textSecondary,
+                  display: 'flex',
+                  '&:hover': { color: theme.colors.textPrimary },
+                }}
+              >
+                <CloudDownloadIcon />
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+
+        {/* Description */}
         <div
           css={{
-            fontWeight: 600,
-            fontSize: theme.typography.fontSizeMd,
-            color: theme.colors.textPrimary,
-            wordBreak: 'break-word',
+            color: theme.colors.textSecondary,
+            fontSize: theme.typography.fontSizeSm,
+            lineHeight: 1.4,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            minHeight: `calc(${theme.typography.fontSizeSm} * 1.4 * 2)`,
           }}
         >
-          {skill.name}
+          {skill.description || 'No description'}
         </div>
+
+        {/* Meta row: author, source + updated date */}
         <div
           css={{
             display: 'flex',
-            gap: theme.spacing.xs,
-            flexShrink: 0,
-            marginLeft: theme.spacing.sm,
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            fontSize: theme.typography.fontSizeSm,
+            color: theme.colors.textSecondary,
+            flexWrap: 'wrap',
           }}
         >
-          <Tooltip componentId="mlflow.skills.card.download_tooltip" content="Install skill">
-            <button
-              type="button"
-              onClick={handleDownload}
-              css={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 2,
-                color: theme.colors.textSecondary,
-                display: 'flex',
-                '&:hover': { color: theme.colors.textPrimary },
-              }}
-            >
-              <CloudDownloadIcon />
-            </button>
-          </Tooltip>
-          <Tooltip componentId="mlflow.skills.card.delete_tooltip" content="Delete skill">
-            <button
-              type="button"
-              onClick={handleDelete}
-              css={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 2,
-                color: theme.colors.textSecondary,
-                display: 'flex',
-                '&:hover': { color: theme.colors.textValidationDanger },
-              }}
-            >
-              <TrashIcon />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-
-      {/* Description */}
-      <div
-        css={{
-          color: theme.colors.textSecondary,
-          fontSize: theme.typography.fontSizeSm,
-          lineHeight: 1.4,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          minHeight: `calc(${theme.typography.fontSizeSm} * 1.4 * 2)`,
-        }}
-      >
-        {skill.description || 'No description'}
-      </div>
-
-      {/* Meta row: author, date, version */}
-      <div
-        css={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          fontSize: theme.typography.fontSizeSm,
-          color: theme.colors.textSecondary,
-          flexWrap: 'wrap',
-        }}
-      >
-        {skill.created_by && (
-          <span css={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <UserCircleIcon css={{ width: 14, height: 14 }} />
-            {skill.created_by}
-          </span>
-        )}
-        {skill.last_updated_timestamp && <span>{formatDate(skill.last_updated_timestamp)}</span>}
-        {skill.latest_version != null && (
-          <span
-            css={{
-              backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
-              color: theme.colors.actionPrimaryTextDefault,
-              borderRadius: theme.borders.borderRadiusSm,
-              padding: `0 ${theme.spacing.xs}px`,
-              fontSize: theme.typography.fontSizeSm,
-              fontWeight: 600,
-              lineHeight: '20px',
-            }}
-          >
-            v{skill.latest_version}
-          </span>
-        )}
-        {skill.source && (
-          <span
-            css={{
-              maxWidth: 120,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              color: theme.colors.actionPrimaryBackgroundDefault,
-              fontFamily: 'monospace',
-              fontSize: 11,
-            }}
-          >
-            {skill.source.replace(/^https?:\/\/(www\.)?github\.com\//, '')}
-          </span>
-        )}
-      </div>
-
-      {/* Tags */}
-      {tags.length > 0 && (
-        <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
-          {tags.slice(0, 5).map((tag) => (
-            <Tag componentId={`mlflow.skills.card.tag.${tag}`} key={tag}>
-              {tag}
-            </Tag>
-          ))}
-          {tags.length > 5 && (
-            <span css={{ fontSize: theme.typography.fontSizeSm, color: theme.colors.textSecondary }}>
-              +{tags.length - 5} more
+          {skill.created_by && (
+            <span css={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <UserCircleIcon css={{ width: 14, height: 14 }} />
+              {skill.created_by}
             </span>
           )}
+          {sourceLabel && (
+            <span css={{ display: 'inline-flex', alignItems: 'center', gap: 3, lineHeight: 1 }}>
+              {isGitHub && <GitHubIcon />}
+              <span
+                css={{
+                  maxWidth: 140,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  lineHeight: 'normal',
+                }}
+              >
+                {sourceLabel}
+              </span>
+            </span>
+          )}
+          {skill.last_updated_timestamp && (
+            <span css={{ lineHeight: 'normal' }}>updated {formatRelativeTime(skill.last_updated_timestamp)}</span>
+          )}
         </div>
-      )}
-    </div>
+
+        {/* Tags (user-facing only) */}
+        {userTags.length > 0 && (
+          <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+            {userTags.slice(0, 5).map((tag) => (
+              <Tag componentId={`mlflow.skills.card.tag.${tag}`} key={tag}>
+                {tag}
+              </Tag>
+            ))}
+            {userTags.length > 5 && (
+              <span css={{ fontSize: theme.typography.fontSizeSm, color: theme.colors.textSecondary }}>
+                +{userTags.length - 5} more
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <InstallCommandModal
+        skillName={skill.name}
+        visible={installModalVisible}
+        onClose={() => setInstallModalVisible(false)}
+      />
+    </>
   );
 };
 
 const SkillsCardGrid = ({
   skills,
   isLoading,
+  selectedSkills,
+  onToggleSelect,
   onRefresh,
 }: {
   skills: RegisteredSkill[];
   isLoading: boolean;
+  selectedSkills: Set<string>;
+  onToggleSelect: (name: string) => void;
   onRefresh: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
@@ -249,7 +341,7 @@ const SkillsCardGrid = ({
     return (
       <div style={{ textAlign: 'center', padding: theme.spacing.lg, color: theme.colors.textSecondary }}>
         <FormattedMessage
-          defaultMessage="No skills registered yet. Click 'Register skill' to get started."
+          defaultMessage="No skills registered yet. Click '+ New Skill' to get started."
           description="Empty state message for skills list"
         />
       </div>
@@ -268,7 +360,12 @@ const SkillsCardGrid = ({
       }}
     >
       {skills.map((skill) => (
-        <SkillCard key={skill.name} skill={skill} onDelete={onRefresh} />
+        <SkillCard
+          key={skill.name}
+          skill={skill}
+          selected={selectedSkills.has(skill.name)}
+          onToggleSelect={onToggleSelect}
+        />
       ))}
     </div>
   );
@@ -278,12 +375,34 @@ const SkillsPage = () => {
   const { theme } = useDesignSystemTheme();
   const [searchFilter, setSearchFilter] = useState('');
   const [debouncedSearchFilter] = useDebounce(searchFilter, 500);
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
 
   const { data, error, isLoading, refetch } = useSkillsListQuery({
     searchFilter: debouncedSearchFilter || undefined,
   });
 
   const { RegisterSkillModal, openModal } = useRegisterSkillModal({ onSuccess: refetch });
+
+  const handleToggleSelect = useCallback((name: string) => {
+    setSelectedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!selectedSkills.size) return;
+    const names = Array.from(selectedSkills);
+    if (!window.confirm(`Delete ${names.length} selected skill(s) and all their versions?`)) return;
+    await Promise.all(names.map((name) => RegisteredSkillsApi.deleteRegisteredSkill(name)));
+    setSelectedSkills(new Set());
+    refetch();
+  }, [selectedSkills, refetch]);
 
   return (
     <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -299,20 +418,36 @@ const SkillsPage = () => {
                 padding: theme.spacing.sm,
               }}
             >
-              <BeakerIcon />
+              <LightningIcon />
             </span>
             <FormattedMessage defaultMessage="Skills" description="Header title for the skills page" />
           </span>
         }
         buttons={
-          <Button
-            componentId="mlflow.skills.list.register"
-            data-testid="register-skill-button"
-            type="primary"
-            onClick={openModal}
-          >
-            <FormattedMessage defaultMessage="+ New Skill" description="Register skill button" />
-          </Button>
+          <div css={{ display: 'flex', gap: theme.spacing.sm }}>
+            {selectedSkills.size > 0 && (
+              <Button
+                componentId="mlflow.skills.list.bulk_delete"
+                type="tertiary"
+                onClick={handleBulkDelete}
+                danger
+              >
+                <FormattedMessage
+                  defaultMessage="Delete ({count})"
+                  description="Bulk delete button"
+                  values={{ count: selectedSkills.size }}
+                />
+              </Button>
+            )}
+            <Button
+              componentId="mlflow.skills.list.register"
+              data-testid="register-skill-button"
+              type="primary"
+              onClick={openModal}
+            >
+              <FormattedMessage defaultMessage="+ New Skill" description="Register skill button" />
+            </Button>
+          </div>
         }
       />
       <Spacer shrinks={false} />
@@ -342,7 +477,13 @@ const SkillsPage = () => {
             <Spacer />
           </>
         )}
-        <SkillsCardGrid skills={data} isLoading={isLoading} onRefresh={refetch} />
+        <SkillsCardGrid
+          skills={data}
+          isLoading={isLoading}
+          selectedSkills={selectedSkills}
+          onToggleSelect={handleToggleSelect}
+          onRefresh={refetch}
+        />
       </div>
       {RegisterSkillModal}
     </ScrollablePageWrapper>
