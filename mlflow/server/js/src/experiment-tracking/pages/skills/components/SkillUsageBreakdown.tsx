@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Typography,
   useDesignSystemTheme,
@@ -7,10 +7,22 @@ import {
   SegmentedControlGroup,
 } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useAllSkillsUsageData, type TimeRangeOption } from '../hooks/useAllSkillsUsageData';
 
 const CHART_COLORS = ['#2272B4', '#C15F18', '#1A7C40', '#8B3FC0', '#C4343A', '#6B7280'];
+
+function useLegendSelection() {
+  const [selected, setSelected] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleClick = useCallback((e: any) => {
+    const key = String(e.dataKey || e.value || '');
+    setSelected((prev) => (prev === key ? null : key));
+  }, []);
+  const getOpacity = useCallback((key: string) => (selected === null || selected === key ? 1 : 0.15), [selected]);
+  const getStrokeWidth = useCallback((key: string) => (selected === key ? 3 : 2), [selected]);
+  return { selected, handleClick, getOpacity, getStrokeWidth };
+}
 
 const TIME_RANGE_LABELS: Record<TimeRangeOption, string> = {
   '24h': '24h',
@@ -20,6 +32,7 @@ const TIME_RANGE_LABELS: Record<TimeRangeOption, string> = {
 
 export const SkillUsageBreakdown: React.FC = () => {
   const { theme } = useDesignSystemTheme();
+  const legend = useLegendSelection();
   const [timeRange, setTimeRange] = useState<TimeRangeOption>('30d');
   const { chartData, skillNames, totalCount, isLoading, error, hasData } = useAllSkillsUsageData(timeRange);
 
@@ -82,7 +95,7 @@ export const SkillUsageBreakdown: React.FC = () => {
           </div>
         ) : hasData ? (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+            <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
               <XAxis
                 dataKey="timestamp"
                 tick={{ fontSize: 11, fill: theme.colors.textSecondary }}
@@ -105,16 +118,24 @@ export const SkillUsageBreakdown: React.FC = () => {
                 }}
               />
               {skillNames.map((name, index) => (
-                <Bar
+                <Line
                   key={name}
+                  type="monotone"
                   dataKey={name}
-                  stackId="skills"
-                  fill={CHART_COLORS[index % CHART_COLORS.length]}
-                  radius={index === skillNames.length - 1 ? [2, 2, 0, 0] : undefined}
+                  stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                  strokeWidth={legend.getStrokeWidth(name)}
+                  strokeOpacity={legend.getOpacity(name)}
+                  dot={false}
                 />
               ))}
-              {skillNames.length > 1 && <Legend iconType="square" wrapperStyle={{ fontSize: 11 }} />}
-            </BarChart>
+              {skillNames.length > 1 && (
+                <Legend
+                  iconType="line"
+                  wrapperStyle={{ fontSize: 11, cursor: 'pointer' }}
+                  onClick={legend.handleClick}
+                />
+              )}
+            </LineChart>
           </ResponsiveContainer>
         ) : (
           <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
