@@ -12,8 +12,6 @@ import {
   Spacer,
   Spinner,
   Tag,
-  Tooltip,
-  TrashIcon,
   Typography,
   UserCircleIcon,
   useDesignSystemTheme,
@@ -59,24 +57,11 @@ const GitHubIcon = ({ size = 14 }: { size?: number }) => (
   </svg>
 );
 
-const InstallCommandModal = ({
-  skillName,
-  visible,
-  onClose,
-}: {
-  skillName: string;
-  visible: boolean;
-  onClose: () => void;
-}) => {
+const InstallCommandModal = ({ skillName, visible, onClose }: { skillName: string; visible: boolean; onClose: () => void }) => {
   const { theme } = useDesignSystemTheme();
   const command = `mlflow skills load ${skillName} --scope global`;
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(command);
-  }, [command]);
-
+  const handleCopy = useCallback(() => { navigator.clipboard.writeText(command); }, [command]);
   if (!visible) return null;
-
   return (
     <Modal
       componentId="mlflow.skills.install_modal"
@@ -88,25 +73,10 @@ const InstallCommandModal = ({
       cancelButtonProps={{ style: { display: 'none' } }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-        <Typography.Text>
-          Run this command in your terminal to install <strong>{skillName}</strong> for Claude Code:
-        </Typography.Text>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-            backgroundColor: theme.colors.backgroundSecondary,
-            borderRadius: theme.borders.borderRadiusSm,
-            padding: theme.spacing.sm,
-            fontFamily: 'monospace',
-            fontSize: theme.typography.fontSizeSm,
-          }}
-        >
+        <Typography.Text>Run this command in your terminal to install <strong>{skillName}</strong> for Claude Code:</Typography.Text>
+        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, backgroundColor: theme.colors.backgroundSecondary, borderRadius: theme.borders.borderRadiusSm, padding: theme.spacing.sm, fontFamily: 'monospace', fontSize: theme.typography.fontSizeSm }}>
           <code style={{ flex: 1, wordBreak: 'break-all' }}>{command}</code>
-          <Button componentId="mlflow.skills.install_modal.copy" type="tertiary" onClick={handleCopy}>
-            Copy
-          </Button>
+          <Button componentId="mlflow.skills.install_modal.copy" type="tertiary" onClick={handleCopy}>Copy</Button>
         </div>
         <Typography.Text style={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
           Use <code>--scope project</code> to install into the current project instead of globally.
@@ -120,31 +90,20 @@ const SkillCard = ({
   skill,
   selected,
   onToggleSelect,
-  onRefresh,
 }: {
   skill: RegisteredSkill;
   selected: boolean;
   onToggleSelect: (name: string) => void;
-  onRefresh: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const navigate = useNavigate();
   const userTags = getUserTags(skill.tags);
   const [installModalVisible, setInstallModalVisible] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const handleCardClick = useCallback(() => {
     navigate(Routes.getSkillDetailsPageRoute(skill.name));
   }, [navigate, skill.name]);
-
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (window.confirm(`Delete skill "${skill.name}" and all its versions?`)) {
-        RegisteredSkillsApi.deleteRegisteredSkill(skill.name).then(onRefresh);
-      }
-    },
-    [skill.name, onRefresh],
-  );
 
   const handleCheckbox = useCallback(
     (e: React.MouseEvent) => {
@@ -154,13 +113,10 @@ const SkillCard = ({
     [skill.name, onToggleSelect],
   );
 
-  const handleInstall = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setInstallModalVisible(true);
-    },
-    [],
-  );
+  const handleInstall = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setInstallModalVisible(true);
+  }, []);
 
   const sourceLabel = useMemo(() => {
     if (!skill.source) return null;
@@ -173,7 +129,10 @@ const SkillCard = ({
     <>
       <div
         onClick={handleCardClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         css={{
+          position: 'relative',
           border: `1px solid ${selected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.borderDecorative}`,
           borderRadius: theme.borders.borderRadiusMd,
           padding: theme.spacing.md,
@@ -183,91 +142,55 @@ const SkillCard = ({
           gap: theme.spacing.sm,
           transition: 'box-shadow 0.15s ease-in-out, border-color 0.15s ease-in-out',
           backgroundColor: theme.colors.backgroundPrimary,
-          // Show action buttons on hover
-          '& .skill-card-actions': { opacity: 0, transition: 'opacity 0.15s' },
-          '&:hover .skill-card-actions': { opacity: 1 },
-          // Checkbox space is always reserved (visibility:hidden) to avoid layout shift
-          '& .skill-card-checkbox': { visibility: 'hidden' as const },
-          '&:hover .skill-card-checkbox': { visibility: 'visible' as const },
-          '& .skill-card-checkbox-selected': { visibility: 'visible' as const },
           '&:hover': {
             borderColor: theme.colors.actionPrimaryBackgroundDefault,
             boxShadow: `0 2px 8px ${theme.colors.borderDecorative}`,
           },
         }}
       >
-        {/* Top row: checkbox + name + version + actions */}
-        <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div css={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            <div
-              className={selected ? 'skill-card-checkbox-selected' : 'skill-card-checkbox'}
-              onClick={handleCheckbox}
-              css={{ display: 'flex', alignItems: 'center', marginRight: -2 }}
+        {/* Top-right overlay: only mounted on hover or when selected — zero DOM presence otherwise */}
+        {(isHovered || selected) && (
+          <div css={{ position: 'absolute', top: theme.spacing.md, right: theme.spacing.md, display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <button
+              type="button"
+              onClick={handleInstall}
+              css={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: theme.colors.textSecondary, display: 'flex', '&:hover': { color: theme.colors.textPrimary } }}
             >
+              <CloudDownloadIcon />
+            </button>
+            <div onClick={handleCheckbox}>
               <Checkbox componentId="mlflow.skills.card.checkbox" isChecked={selected} onChange={() => {}} />
             </div>
+          </div>
+        )}
+
+        {/* Top row: name + version */}
+        <div css={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+          <span
+            css={{
+              fontWeight: 600,
+              fontSize: theme.typography.fontSizeMd,
+              color: theme.colors.textPrimary,
+              wordBreak: 'break-word',
+            }}
+          >
+            {skill.name}
+          </span>
+          {skill.latest_version != null && (
             <span
               css={{
+                backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
+                color: theme.colors.actionPrimaryTextDefault,
+                borderRadius: theme.borders.borderRadiusSm,
+                padding: `0 ${theme.spacing.xs}px`,
+                fontSize: 11,
                 fontWeight: 600,
-                fontSize: theme.typography.fontSizeMd,
-                color: theme.colors.textPrimary,
-                wordBreak: 'break-word',
+                lineHeight: '18px',
               }}
             >
-              {skill.name}
+              v{skill.latest_version}
             </span>
-            {skill.latest_version != null && (
-              <span
-                css={{
-                  backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
-                  color: theme.colors.actionPrimaryTextDefault,
-                  borderRadius: theme.borders.borderRadiusSm,
-                  padding: `0 ${theme.spacing.xs}px`,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  lineHeight: '18px',
-                }}
-              >
-                v{skill.latest_version}
-              </span>
-            )}
-          </div>
-          <div className="skill-card-actions" css={{ display: 'flex', gap: theme.spacing.xs, flexShrink: 0, marginLeft: theme.spacing.sm }}>
-            <Tooltip componentId="mlflow.skills.card.install_tooltip" content="Install skill">
-              <button
-                type="button"
-                onClick={handleInstall}
-                css={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 2,
-                  color: theme.colors.textSecondary,
-                  display: 'flex',
-                  '&:hover': { color: theme.colors.textPrimary },
-                }}
-              >
-                <CloudDownloadIcon />
-              </button>
-            </Tooltip>
-            <Tooltip componentId="mlflow.skills.card.delete_tooltip" content="Delete skill">
-              <button
-                type="button"
-                onClick={handleDelete}
-                css={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 2,
-                  color: theme.colors.textSecondary,
-                  display: 'flex',
-                  '&:hover': { color: theme.colors.textValidationDanger },
-                }}
-              >
-                <TrashIcon />
-              </button>
-            </Tooltip>
-          </div>
+          )}
         </div>
 
         {/* Description */}
@@ -354,13 +277,11 @@ const SkillsCardGrid = ({
   isLoading,
   selectedSkills,
   onToggleSelect,
-  onRefresh,
 }: {
   skills: RegisteredSkill[];
   isLoading: boolean;
   selectedSkills: Set<string>;
   onToggleSelect: (name: string) => void;
-  onRefresh: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
 
@@ -400,7 +321,6 @@ const SkillsCardGrid = ({
           skill={skill}
           selected={selectedSkills.has(skill.name)}
           onToggleSelect={onToggleSelect}
-          onRefresh={onRefresh}
         />
       ))}
     </div>
@@ -518,7 +438,6 @@ const SkillsPage = () => {
           isLoading={isLoading}
           selectedSkills={selectedSkills}
           onToggleSelect={handleToggleSelect}
-          onRefresh={refetch}
         />
       </div>
       {RegisterSkillModal}
