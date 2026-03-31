@@ -47,9 +47,9 @@ def list_cmd(filter_string, max_results):
 
 
 @commands.command("load")
-@click.argument("name")
-@click.option("--version", "-v", type=int, default=None, help="Specific version.")
-@click.option("--alias", "-a", default=None, help="Alias to resolve.")
+@click.argument("names", nargs=-1, required=True)
+@click.option("--version", "-v", type=int, default=None, help="Specific version (applies to all skills).")
+@click.option("--alias", "-a", default=None, help="Alias to resolve (applies to all skills).")
 @click.option(
     "--scope",
     type=click.Choice(["global", "project"]),
@@ -57,18 +57,23 @@ def list_cmd(filter_string, max_results):
     help="Installation scope.",
 )
 @click.option("--project-path", type=click.Path(), default=None, help="Project directory.")
-def load_cmd(name, version, alias, scope, project_path):
-    """Install a skill from the registry to the local filesystem."""
+def load_cmd(names, version, alias, scope, project_path):
+    """Install one or more skills from the registry to the local filesystem.
+
+    Omit --version to install the latest version of each skill.
+    """
     from mlflow.genai.skills import install_skill
 
-    path = install_skill(
-        name=name,
-        version=version,
-        alias=alias,
-        scope=scope,
-        project_path=Path(project_path) if project_path else None,
-    )
-    click.echo(f"Installed {name} to {path}")
+    pp = Path(project_path) if project_path else None
+    for name in names:
+        path = install_skill(
+            name=name,
+            version=version,
+            alias=alias,
+            scope=scope,
+            project_path=pp,
+        )
+        click.echo(f"Installed {name} to {path}")
 
 
 @commands.command("show")

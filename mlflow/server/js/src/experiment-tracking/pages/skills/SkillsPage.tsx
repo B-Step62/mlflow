@@ -59,24 +59,25 @@ const GitHubIcon = ({ size = 14 }: { size?: number }) => (
 );
 
 const InstallCommandModal = ({
-  skillName,
+  skillNames,
   visible,
   onClose,
 }: {
-  skillName: string;
+  skillNames: string[];
   visible: boolean;
   onClose: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const command = `mlflow skills load ${skillName} --scope global`;
+  const command = `mlflow skills load ${skillNames.join(' ')}`;
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(command);
   }, [command]);
   if (!visible) return null;
+  const label = skillNames.length === 1 ? <strong>{skillNames[0]}</strong> : `${skillNames.length} skills`;
   return (
     <Modal
       componentId="mlflow.skills.install_modal"
-      title="Install skill"
+      title={skillNames.length === 1 ? 'Install skill' : `Install ${skillNames.length} skills`}
       visible
       onCancel={onClose}
       onOk={onClose}
@@ -84,9 +85,7 @@ const InstallCommandModal = ({
       cancelButtonProps={{ style: { display: 'none' } }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-        <Typography.Text>
-          Run this command in your terminal to install <strong>{skillName}</strong> for Claude Code:
-        </Typography.Text>
+        <Typography.Text>Run this command in your terminal to install {label} for Claude Code:</Typography.Text>
         <div
           style={{
             display: 'flex',
@@ -307,7 +306,7 @@ const SkillCard = ({
         )}
       </div>
       <InstallCommandModal
-        skillName={skill.name}
+        skillNames={[skill.name]}
         visible={installModalVisible}
         onClose={() => setInstallModalVisible(false)}
       />
@@ -375,6 +374,7 @@ const SkillsPage = () => {
   const [searchFilter, setSearchFilter] = useState('');
   const [debouncedSearchFilter] = useDebounce(searchFilter, 500);
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
+  const [bulkUseModalVisible, setBulkUseModalVisible] = useState(false);
 
   const { data, error, isLoading, refetch } = useSkillsListQuery({
     searchFilter: debouncedSearchFilter || undefined,
@@ -425,13 +425,26 @@ const SkillsPage = () => {
         buttons={
           <div css={{ display: 'flex', gap: theme.spacing.sm }}>
             {selectedSkills.size > 0 && (
-              <Button componentId="mlflow.skills.list.bulk_delete" type="tertiary" onClick={handleBulkDelete} danger>
-                <FormattedMessage
-                  defaultMessage="Delete ({count})"
-                  description="Bulk delete button"
-                  values={{ count: selectedSkills.size }}
-                />
-              </Button>
+              <>
+                <Button
+                  componentId="mlflow.skills.list.bulk_use"
+                  type="tertiary"
+                  onClick={() => setBulkUseModalVisible(true)}
+                >
+                  <FormattedMessage
+                    defaultMessage="Use ({count})"
+                    description="Bulk use button"
+                    values={{ count: selectedSkills.size }}
+                  />
+                </Button>
+                <Button componentId="mlflow.skills.list.bulk_delete" type="tertiary" onClick={handleBulkDelete} danger>
+                  <FormattedMessage
+                    defaultMessage="Delete ({count})"
+                    description="Bulk delete button"
+                    values={{ count: selectedSkills.size }}
+                  />
+                </Button>
+              </>
             )}
             <Button
               componentId="mlflow.skills.list.register"
@@ -486,6 +499,11 @@ const SkillsPage = () => {
         />
       </div>
       {RegisterSkillModal}
+      <InstallCommandModal
+        skillNames={Array.from(selectedSkills)}
+        visible={bulkUseModalVisible}
+        onClose={() => setBulkUseModalVisible(false)}
+      />
     </ScrollablePageWrapper>
   );
 };
