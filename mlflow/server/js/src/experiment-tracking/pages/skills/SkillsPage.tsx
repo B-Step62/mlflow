@@ -7,6 +7,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   CloudDownloadIcon,
+  FolderIcon,
   Header,
   Input,
   LightningIcon,
@@ -381,35 +382,43 @@ const SkillsCardGrid = ({
   }
 
   return (
-    <div css={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+    <div css={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
       {[...groupedSkills.entries()].map(([repo, groupSkills]) => {
         const collapsed = collapsedGroups.has(repo);
         return (
-          <div key={repo}>
+          <div
+            key={repo}
+            css={{
+              border: `1px solid ${theme.colors.borderDecorative}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.colors.backgroundPrimary,
+              overflow: 'hidden',
+            }}
+          >
+            {/* Folder header */}
             <div
               role="button"
               onClick={() => toggleGroup(repo)}
               css={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: theme.spacing.xs,
-                marginBottom: collapsed ? 0 : theme.spacing.sm,
-                color: theme.colors.textSecondary,
-                fontSize: theme.typography.fontSizeSm,
-                fontWeight: 600,
+                gap: theme.spacing.sm,
+                padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
                 cursor: 'pointer',
                 userSelect: 'none',
-                '&:hover': { color: theme.colors.textPrimary },
+                backgroundColor: theme.colors.backgroundSecondary,
+                borderBottom: collapsed ? 'none' : `1px solid ${theme.colors.borderDecorative}`,
+                '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
               }}
             >
               {collapsed ? (
-                <ChevronRightIcon css={{ fontSize: 14 }} />
+                <ChevronRightIcon css={{ fontSize: 14, color: theme.colors.textSecondary }} />
               ) : (
-                <ChevronDownIcon css={{ fontSize: 14 }} />
+                <ChevronDownIcon css={{ fontSize: 14, color: theme.colors.textSecondary }} />
               )}
+              <FolderIcon css={{ fontSize: 16, color: theme.colors.textSecondary }} />
               {repo ? (
                 <>
-                  <GitHubIcon />
                   <a
                     href={`https://github.com/${repo}`}
                     target="_blank"
@@ -417,27 +426,46 @@ const SkillsCardGrid = ({
                     onClick={(e) => e.stopPropagation()}
                     css={{
                       fontFamily: 'monospace',
-                      color: 'inherit',
+                      fontSize: theme.typography.fontSizeSm,
+                      fontWeight: 600,
+                      color: theme.colors.textPrimary,
                       textDecoration: 'none',
-                      '&:hover': { textDecoration: 'underline' },
+                      '&:hover': { textDecoration: 'underline', color: theme.colors.actionPrimaryBackgroundDefault },
                     }}
                   >
                     {repo}
                   </a>
-                  <span css={{ fontWeight: 400 }}>
-                    · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}
-                  </span>
+                  <GitHubIcon size={12} />
                 </>
               ) : (
-                <span>Other · {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}</span>
+                <span
+                  css={{
+                    fontSize: theme.typography.fontSizeSm,
+                    fontWeight: 600,
+                    color: theme.colors.textPrimary,
+                  }}
+                >
+                  Other
+                </span>
               )}
+              <span
+                css={{
+                  fontSize: theme.typography.fontSizeSm,
+                  color: theme.colors.textSecondary,
+                  marginLeft: 'auto',
+                }}
+              >
+                {groupSkills.length} skill{groupSkills.length !== 1 ? 's' : ''}
+              </span>
             </div>
+            {/* Skill cards */}
             {!collapsed && (
               <div
                 css={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                   gap: theme.spacing.md,
+                  padding: theme.spacing.md,
                   alignContent: 'start',
                 }}
               >
