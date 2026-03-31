@@ -1,7 +1,7 @@
 """add skill registry tables
 
 Revision ID: f2a3b4c5d6e7
-Revises: e1f2a3b4c5d6
+Revises: a5b4c3d2e1f0
 Create Date: 2026-03-31 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "f2a3b4c5d6e7"
-down_revision = "76601a5f987d"
+down_revision = "a5b4c3d2e1f0"
 branch_labels = None
 depends_on = None
 
