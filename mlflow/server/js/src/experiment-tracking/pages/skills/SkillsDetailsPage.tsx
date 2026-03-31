@@ -1,96 +1,349 @@
 import { ScrollablePageWrapper } from '@mlflow/mlflow/src/common/components/ScrollablePageWrapper';
 import { useSkillDetailsQuery } from './hooks/useSkillDetailsQuery';
-import { Alert, Button, Header, Spacer, Spinner, Tag, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  Alert,
+  Button,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileCodeIcon,
+  FileDocumentIcon,
+  FileIcon,
+  FolderIcon,
+  Header,
+  LightningIcon,
+  Modal,
+  SegmentedControlButton,
+  SegmentedControlGroup,
+  Spacer,
+  Spinner,
+  Tag,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
 import { useParams } from '../../../common/utils/RoutingUtils';
 import { Link } from '../../../common/utils/RoutingUtils';
 import Routes from '../../routes';
 import { withErrorBoundary } from '../../../common/utils/withErrorBoundary';
 import ErrorUtils from '../../../common/utils/ErrorUtils';
+import { useState, useCallback, useMemo } from 'react';
 import type { RegisteredSkillVersion } from './types';
+import { CopyButton } from '@mlflow/mlflow/src/shared/building_blocks/CopyButton';
 
-const SkillVersionsTable = ({ versions }: { versions: RegisteredSkillVersion[] }) => {
+const INTERNAL_TAG_PREFIX = 'mlflow.';
+
+const getUserTags = (tags?: Record<string, string>): string[] => {
+  if (!tags) return [];
+  return Object.keys(tags).filter((key) => !key.startsWith(INTERNAL_TAG_PREFIX));
+};
+
+const formatRelativeTime = (timestamp?: number): string | null => {
+  if (!timestamp) return null;
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 30) {
+    return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return 'just now';
+};
+
+const GitHubIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+  </svg>
+);
+
+// ============================================================================
+// "Use" Modal — CLI + Python snippets
+// ============================================================================
+
+const UseSkillModal = ({
+  skillName,
+  version,
+  visible,
+  onClose,
+}: {
+  skillName: string;
+  version: number;
+  visible: boolean;
+  onClose: () => void;
+}) => {
   const { theme } = useDesignSystemTheme();
 
-  if (!versions.length) {
+  const cliSnippet = `# Install to Claude Code (global)
+mlflow skills load ${skillName} --version ${version} --scope global
+
+# Install to current project
+mlflow skills load ${skillName} --version ${version} --scope project`;
+
+  const pythonSnippet = `import mlflow.genai
+
+# Load skill metadata
+skill = mlflow.genai.load_skill("${skillName}", version=${version})
+print(skill.manifest_content)
+
+# Install to local filesystem
+path = mlflow.genai.install_skill("${skillName}", version=${version}, scope="global")
+print(f"Installed to {path}")`;
+
+  const [tab, setTab] = useState<'cli' | 'python'>('cli');
+  const activeSnippet = tab === 'cli' ? cliSnippet : pythonSnippet;
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      componentId="mlflow.skills.use_modal"
+      title={`Use "${skillName}"`}
+      visible
+      onCancel={onClose}
+      onOk={onClose}
+      okText="Done"
+      cancelButtonProps={{ style: { display: 'none' } }}
+      size="wide"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+        <SegmentedControlGroup componentId="mlflow.skills.use_modal.tabs" name="use-tab" value={tab} onChange={(e) => setTab(e.target.value as 'cli' | 'python')}>
+          <SegmentedControlButton value="cli">CLI</SegmentedControlButton>
+          <SegmentedControlButton value="python">Python</SegmentedControlButton>
+        </SegmentedControlGroup>
+        <div style={{ position: 'relative' }}>
+          <pre
+            style={{
+              backgroundColor: theme.colors.backgroundSecondary,
+              borderRadius: theme.borders.borderRadiusSm,
+              padding: theme.spacing.md,
+              fontFamily: 'monospace',
+              fontSize: theme.typography.fontSizeSm,
+              overflowX: 'auto',
+              margin: 0,
+            }}
+          >
+            {activeSnippet}
+          </pre>
+          <div style={{ position: 'absolute', top: theme.spacing.xs, right: theme.spacing.xs }}>
+            <CopyButton copyText={activeSnippet} showLabel={false} componentId="mlflow.skills.use_modal.copy" />
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+// ============================================================================
+// Versions section — collapsible, selectable
+// ============================================================================
+
+const VersionsList = ({
+  versions,
+  selectedVersion,
+  onSelectVersion,
+}: {
+  versions: RegisteredSkillVersion[];
+  selectedVersion: number;
+  onSelectVersion: (v: number) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [expanded, setExpanded] = useState(false);
+
+  const sortedVersions = useMemo(() => [...versions].sort((a, b) => b.version - a.version), [versions]);
+
+  return (
+    <div>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.xs,
+          cursor: 'pointer',
+          userSelect: 'none',
+          padding: `${theme.spacing.sm}px 0`,
+        }}
+      >
+        {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+        <Typography.Text bold>
+          Versions ({versions.length})
+        </Typography.Text>
+        <span css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
+          — viewing v{selectedVersion}
+        </span>
+      </div>
+      {expanded && (
+        <div css={{ display: 'flex', flexDirection: 'column', gap: 1, marginLeft: theme.spacing.md }}>
+          {sortedVersions.map((v) => {
+            const isSelected = v.version === selectedVersion;
+            const vUserTags = getUserTags(v.tags);
+            return (
+              <div
+                key={v.version}
+                onClick={() => onSelectVersion(v.version)}
+                css={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                  padding: theme.spacing.sm,
+                  borderRadius: theme.borders.borderRadiusSm,
+                  cursor: 'pointer',
+                  backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
+                  '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
+                }}
+              >
+                <span css={{ fontWeight: isSelected ? 600 : 400, minWidth: 36 }}>v{v.version}</span>
+                {v.creation_timestamp && (
+                  <span css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
+                    {formatRelativeTime(v.creation_timestamp)}
+                  </span>
+                )}
+                {v.aliases?.map((a) => (
+                  <Tag componentId={`mlflow.skills.details.version.alias.${a}`} key={a}>
+                    {a}
+                  </Tag>
+                ))}
+                {vUserTags.map((t) => (
+                  <Tag componentId={`mlflow.skills.details.version.tag.${t}`} key={t}>
+                    {t}
+                  </Tag>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// File Explorer — artifact-style tree
+// ============================================================================
+
+const getFileIcon = (filename: string) => {
+  if (filename === 'SKILL.md') return <FileDocumentIcon />;
+  if (filename.endsWith('.py') || filename.endsWith('.sh') || filename.endsWith('.ts')) return <FileCodeIcon />;
+  return <FileIcon />;
+};
+
+const FileExplorer = ({ content }: { content?: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const [selectedFile, setSelectedFile] = useState<string>('SKILL.md');
+
+  // Parse manifest content to extract file structure
+  // For now, we show SKILL.md as the primary file since that's what we store
+  const files = useMemo(() => {
+    const result: { name: string; content: string }[] = [];
+    if (content) {
+      result.push({ name: 'SKILL.md', content });
+    }
+    return result;
+  }, [content]);
+
+  const activeFile = files.find((f) => f.name === selectedFile);
+
+  if (!files.length) {
     return (
-      <div style={{ color: theme.colors.textSecondary, padding: theme.spacing.md }}>
-        No versions found.
+      <div css={{ color: theme.colors.textSecondary, padding: theme.spacing.md }}>
+        No files available.
       </div>
     );
   }
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead>
-        <tr style={{ borderBottom: `1px solid ${theme.colors.borderDecorative}`, textAlign: 'left' }}>
-          <th style={{ padding: theme.spacing.sm, fontWeight: 600 }}>Version</th>
-          <th style={{ padding: theme.spacing.sm, fontWeight: 600 }}>Source</th>
-          <th style={{ padding: theme.spacing.sm, fontWeight: 600 }}>Description</th>
-          <th style={{ padding: theme.spacing.sm, fontWeight: 600 }}>Aliases</th>
-          <th style={{ padding: theme.spacing.sm, fontWeight: 600 }}>Tags</th>
-        </tr>
-      </thead>
-      <tbody>
-        {versions.map((v) => (
-          <tr key={v.version} style={{ borderBottom: `1px solid ${theme.colors.borderDecorative}` }}>
-            <td style={{ padding: theme.spacing.sm }}>v{v.version}</td>
-            <td style={{ padding: theme.spacing.sm, color: theme.colors.textSecondary, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {v.source || '—'}
-            </td>
-            <td style={{ padding: theme.spacing.sm, color: theme.colors.textSecondary }}>
-              {v.description || '—'}
-            </td>
-            <td style={{ padding: theme.spacing.sm }}>
-              {v.aliases?.map((a) => (
-                <Tag componentId={`mlflow.skills.details.alias.${a}`} key={a}>
-                  {a}
-                </Tag>
-              ))}
-            </td>
-            <td style={{ padding: theme.spacing.sm }}>
-              {v.tags && Object.keys(v.tags).length > 0
-                ? Object.entries(v.tags).map(([k, val]) => (
-                    <Tag componentId={`mlflow.skills.details.tag.${k}`} key={k}>
-                      {k}={val}
-                    </Tag>
-                  ))
-                : '—'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-};
-
-const SkillContentPreview = ({ content }: { content?: string }) => {
-  const { theme } = useDesignSystemTheme();
-
-  if (!content) return null;
-
-  return (
     <div
-      style={{
-        backgroundColor: theme.colors.backgroundSecondary,
+      css={{
+        display: 'flex',
+        border: `1px solid ${theme.colors.borderDecorative}`,
         borderRadius: theme.borders.borderRadiusSm,
-        padding: theme.spacing.md,
-        fontFamily: 'monospace',
-        fontSize: theme.typography.fontSizeSm,
-        whiteSpace: 'pre-wrap',
-        maxHeight: 400,
-        overflow: 'auto',
+        overflow: 'hidden',
+        minHeight: 300,
+        maxHeight: 500,
       }}
     >
-      {content}
+      {/* File tree sidebar */}
+      <div
+        css={{
+          width: 200,
+          borderRight: `1px solid ${theme.colors.borderDecorative}`,
+          backgroundColor: theme.colors.backgroundSecondary,
+          overflow: 'auto',
+          flexShrink: 0,
+        }}
+      >
+        <div css={{ padding: `${theme.spacing.sm}px ${theme.spacing.sm}px`, display: 'flex', alignItems: 'center', gap: theme.spacing.xs, borderBottom: `1px solid ${theme.colors.borderDecorative}` }}>
+          <FolderIcon css={{ color: theme.colors.textSecondary }} />
+          <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>Files</Typography.Text>
+        </div>
+        {files.map((f) => (
+          <div
+            key={f.name}
+            onClick={() => setSelectedFile(f.name)}
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+              cursor: 'pointer',
+              fontSize: theme.typography.fontSizeSm,
+              backgroundColor: f.name === selectedFile ? theme.colors.actionTertiaryBackgroundHover : 'transparent',
+              '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
+            }}
+          >
+            {getFileIcon(f.name)}
+            {f.name}
+          </div>
+        ))}
+      </div>
+      {/* File content */}
+      <div css={{ flex: 1, overflow: 'auto' }}>
+        <pre
+          css={{
+            margin: 0,
+            padding: theme.spacing.md,
+            fontFamily: 'monospace',
+            fontSize: theme.typography.fontSizeSm,
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.5,
+          }}
+        >
+          {activeFile?.content || ''}
+        </pre>
+      </div>
     </div>
   );
 };
+
+// ============================================================================
+// Main Details Page
+// ============================================================================
 
 const SkillsDetailsPage = () => {
   const { skillName } = useParams<{ skillName: string }>();
   const { theme } = useDesignSystemTheme();
   const { skill, versions, error, isLoading } = useSkillDetailsQuery(skillName || '');
+  const [useModalVisible, setUseModalVisible] = useState(false);
+
+  // Version selection — default to latest
+  const latestVersion = useMemo(
+    () => (versions.length > 0 ? Math.max(...versions.map((v) => v.version)) : 1),
+    [versions],
+  );
+  const [selectedVersionNum, setSelectedVersionNum] = useState<number | null>(null);
+  const activeVersionNum = selectedVersionNum ?? latestVersion;
+  const activeVersion = useMemo(
+    () => versions.find((v) => v.version === activeVersionNum),
+    [versions, activeVersionNum],
+  );
+
+  const userTags = getUserTags(activeVersion?.tags);
+  const sourceLabel = activeVersion?.source?.replace(/^https?:\/\/(www\.)?github\.com\//, '');
+  const isGitHub = activeVersion?.source?.includes('github.com');
 
   if (isLoading) {
     return (
@@ -105,55 +358,143 @@ const SkillsDetailsPage = () => {
   if (error) {
     return (
       <ScrollablePageWrapper>
-        <Alert
-          type="error"
-          message={(error as Error).message}
-          componentId="mlflow.skills.details.error"
-          closable={false}
-        />
+        <Alert type="error" message={(error as Error).message} componentId="mlflow.skills.details.error" closable={false} />
       </ScrollablePageWrapper>
     );
   }
 
-  const latestVersion = versions.length > 0 ? versions[versions.length - 1] : undefined;
-
   return (
     <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
       <Spacer shrinks={false} />
+
+      {/* Breadcrumb */}
       <div css={{ marginBottom: theme.spacing.sm }}>
         <Link componentId="mlflow.skills.details.breadcrumb_link" to={Routes.skillsPageRoute}>
           <FormattedMessage defaultMessage="← Skills" description="Breadcrumb back to skills list" />
         </Link>
       </div>
+
+      {/* Header: icon + name + version + "Use" button */}
       <Header
         title={
           <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            <span
+              css={{
+                display: 'flex',
+                borderRadius: theme.borders.borderRadiusSm,
+                backgroundColor: theme.colors.backgroundSecondary,
+                padding: theme.spacing.sm,
+              }}
+            >
+              <LightningIcon />
+            </span>
             {skillName}
+            <span
+              css={{
+                backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
+                color: theme.colors.actionPrimaryTextDefault,
+                borderRadius: theme.borders.borderRadiusSm,
+                padding: `0 ${theme.spacing.xs}px`,
+                fontSize: 12,
+                fontWeight: 600,
+                lineHeight: '20px',
+              }}
+            >
+              v{activeVersionNum}
+            </span>
           </span>
         }
+        buttons={
+          <Button
+            componentId="mlflow.skills.details.use"
+            type="primary"
+            onClick={() => setUseModalVisible(true)}
+          >
+            Use
+          </Button>
+        }
       />
+
+      {/* Description */}
       {skill?.description && (
-        <Typography.Text style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.md, display: 'block' }}>
+        <Typography.Text css={{ color: theme.colors.textSecondary, display: 'block', marginBottom: theme.spacing.sm }}>
           {skill.description}
         </Typography.Text>
       )}
+
+      {/* Meta row: source, updated, tags — card-style */}
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+          fontSize: theme.typography.fontSizeSm,
+          color: theme.colors.textSecondary,
+          flexWrap: 'wrap',
+          marginBottom: theme.spacing.md,
+        }}
+      >
+        {sourceLabel && (
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: 5, lineHeight: 1 }}>
+            {isGitHub && <GitHubIcon />}
+            <span css={{ fontFamily: 'monospace', fontSize: 11 }}>{sourceLabel}</span>
+          </span>
+        )}
+        {activeVersion?.creation_timestamp && (
+          <span>Updated {formatRelativeTime(activeVersion.creation_timestamp)}</span>
+        )}
+        {userTags.map((tag) => (
+          <Tag componentId={`mlflow.skills.details.meta.tag.${tag}`} key={tag}>
+            {tag}
+          </Tag>
+        ))}
+      </div>
+
       <Spacer shrinks={false} />
+
+      {/* Main content area */}
       <div css={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: theme.spacing.lg }}>
+
+        {/* Versions — collapsible */}
+        <VersionsList
+          versions={versions}
+          selectedVersion={activeVersionNum}
+          onSelectVersion={setSelectedVersionNum}
+        />
+
+        {/* Files — artifact-style explorer */}
         <div>
           <Typography.Title level={4}>
-            <FormattedMessage defaultMessage="Versions" description="Versions section title" />
+            <FormattedMessage defaultMessage="Files" description="Files section title" />
           </Typography.Title>
-          <SkillVersionsTable versions={versions} />
+          <FileExplorer content={activeVersion?.manifest_content} />
         </div>
-        {latestVersion?.manifest_content && (
-          <div>
-            <Typography.Title level={4}>
-              <FormattedMessage defaultMessage="SKILL.md (latest)" description="SKILL.md preview title" />
-            </Typography.Title>
-            <SkillContentPreview content={latestVersion.manifest_content} />
+
+        {/* Usage — placeholder */}
+        <div>
+          <Typography.Title level={4}>
+            <FormattedMessage defaultMessage="Usage" description="Usage section title" />
+          </Typography.Title>
+          <div
+            css={{
+              border: `1px dashed ${theme.colors.borderDecorative}`,
+              borderRadius: theme.borders.borderRadiusSm,
+              padding: theme.spacing.lg,
+              textAlign: 'center',
+              color: theme.colors.textSecondary,
+            }}
+          >
+            To be constructed — skill usage analytics and trace linkage will appear here.
           </div>
-        )}
+        </div>
       </div>
+
+      <UseSkillModal
+        skillName={skillName || ''}
+        version={activeVersionNum}
+        visible={useModalVisible}
+        onClose={() => setUseModalVisible(false)}
+      />
     </ScrollablePageWrapper>
   );
 };
