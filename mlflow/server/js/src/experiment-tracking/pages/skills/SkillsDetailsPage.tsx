@@ -535,7 +535,7 @@ const SkillsDetailsPage = () => {
       >
         {sourceLabel && (
           <a
-            href={activeVersion?.source}
+            href={shortHash ? `${activeVersion?.source}/tree/${commitHash}` : activeVersion?.source}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
@@ -550,24 +550,12 @@ const SkillsDetailsPage = () => {
             }}
           >
             {isGitHub && <GitHubIcon />}
-            <span css={{ fontFamily: 'monospace', fontSize: 12 }}>{sourceLabel}</span>
-          </a>
-        )}
-        {isGitHub && shortHash && (
-          <a
-            href={`${activeVersion?.source}/commit/${commitHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            css={{
-              fontFamily: 'monospace',
-              fontSize: 12,
-              color: theme.colors.textSecondary,
-              textDecoration: 'none',
-              '&:hover': { textDecoration: 'underline', color: theme.colors.actionPrimaryBackgroundDefault },
-            }}
-          >
-            @{shortHash}
+            <span css={{ fontFamily: 'monospace', fontSize: 12 }}>
+              {sourceLabel}
+              {shortHash && (
+                <span css={{ fontSize: 10, opacity: 0.75 }}>({shortHash})</span>
+              )}
+            </span>
           </a>
         )}
         {activeVersion?.creation_timestamp && (

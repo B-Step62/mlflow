@@ -13,6 +13,7 @@ _logger = logging.getLogger(__name__)
 
 SKILL_MANIFEST_FILE = "SKILL.md"
 _FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_GH_SHA_PATTERN = re.compile(r"-([0-9a-f]{7,40})$")
 
 
 def parse_skill_manifest(skill_md_path: Path) -> dict:
@@ -53,7 +54,7 @@ def is_github_url(source: str) -> bool:
         return False
 
 
-def fetch_from_github(repo_url: str, ref: str = "main") -> Path:
+def fetch_from_github(repo_url: str, ref: str = "main") -> tuple[Path, str | None]:
     """Download a GitHub repo as tarball and extract to a temp directory.
 
     Args:
@@ -61,7 +62,7 @@ def fetch_from_github(repo_url: str, ref: str = "main") -> Path:
         ref: Git ref to download (branch, tag, or commit). Defaults to "main".
 
     Returns:
-        Path to extracted directory containing the repo contents.
+        Tuple of (path to extracted directory, commit hash or None).
     """
     import requests
 
@@ -78,6 +79,14 @@ def fetch_from_github(repo_url: str, ref: str = "main") -> Path:
     _logger.info("Downloading skills from %s (ref=%s)", repo_url, ref)
 
     response = requests.get(tarball_url, stream=True, timeout=60)
+    if response.status_code == 404:
+        raise MlflowException(
+            f"Could not access repository '{repo_url}'. "
+            "If this is a private repository, clone it locally first and register "
+            "using the local directory path instead:\n"
+            "  1. git clone <repo-url>\n"
+            "  2. Enter the local path in the source field"
+        )
     response.raise_for_status()
 
     temp_dir = Path(tempfile.mkdtemp(prefix="mlflow_skills_"))
@@ -92,8 +101,11 @@ def fetch_from_github(repo_url: str, ref: str = "main") -> Path:
     with tarfile.open(tarball_path, "r:gz") as tar:
         tar.extractall(extract_dir, filter="data")
 
-    # GitHub tarballs have a top-level directory like owner-repo-sha/
+    # GitHub tarballs have a top-level directory like owner-repo-<sha>/
+    # Extract the commit hash from that directory name.
     subdirs = list(extract_dir.iterdir())
     if len(subdirs) == 1 and subdirs[0].is_dir():
-        return subdirs[0]
-    return extract_dir
+        match = _GH_SHA_PATTERN.search(subdirs[0].name)
+        commit_hash = match.group(1) if match else None
+        return subdirs[0], commit_hash
+    return extract_dir, None
