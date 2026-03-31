@@ -24,6 +24,7 @@ import { useNavigate } from '../../../common/utils/RoutingUtils';
 import { withErrorBoundary } from '../../../common/utils/withErrorBoundary';
 import ErrorUtils from '../../../common/utils/ErrorUtils';
 import { useDebounce } from 'use-debounce';
+import { SkillUsageBreakdown } from './components/SkillUsageBreakdown';
 import type { RegisteredSkill } from './types';
 import { RegisteredSkillsApi } from './api';
 
@@ -445,7 +446,8 @@ const SkillsPage = () => {
       />
       <Spacer shrinks={false} />
       <div css={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div css={{ marginBottom: theme.spacing.md }}>
+        <SkillUsageBreakdown />
+        <div css={{ marginBottom: theme.spacing.md, marginTop: theme.spacing.md }}>
           <Input
             componentId="mlflow.skills.list.search"
             placeholder="Search skills..."
