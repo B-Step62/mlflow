@@ -120,10 +120,12 @@ const SkillCard = ({
   skill,
   selected,
   onToggleSelect,
+  onRefresh,
 }: {
   skill: RegisteredSkill;
   selected: boolean;
   onToggleSelect: (name: string) => void;
+  onRefresh: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const navigate = useNavigate();
@@ -133,6 +135,16 @@ const SkillCard = ({
   const handleCardClick = useCallback(() => {
     navigate(Routes.getSkillDetailsPageRoute(skill.name));
   }, [navigate, skill.name]);
+
+  const handleDelete = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (window.confirm(`Delete skill "${skill.name}" and all its versions?`)) {
+        RegisteredSkillsApi.deleteRegisteredSkill(skill.name).then(onRefresh);
+      }
+    },
+    [skill.name, onRefresh],
+  );
 
   const handleCheckbox = useCallback(
     (e: React.MouseEvent) => {
@@ -182,8 +194,8 @@ const SkillCard = ({
       >
         {/* Top row: checkbox + name + version + actions */}
         <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
-            <div onClick={handleCheckbox} css={{ display: 'flex', alignItems: 'center' }}>
+          <div css={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <div onClick={handleCheckbox} css={{ display: 'flex', alignItems: 'center', marginRight: -2 }}>
               <Checkbox componentId="mlflow.skills.card.checkbox" isChecked={selected} onChange={() => {}} />
             </div>
             <span
@@ -230,6 +242,23 @@ const SkillCard = ({
                 <CloudDownloadIcon />
               </button>
             </Tooltip>
+            <Tooltip componentId="mlflow.skills.card.delete_tooltip" content="Delete skill">
+              <button
+                type="button"
+                onClick={handleDelete}
+                css={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 2,
+                  color: theme.colors.textSecondary,
+                  display: 'flex',
+                  '&:hover': { color: theme.colors.textValidationDanger },
+                }}
+              >
+                <TrashIcon />
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -239,11 +268,9 @@ const SkillCard = ({
             color: theme.colors.textSecondary,
             fontSize: theme.typography.fontSizeSm,
             lineHeight: 1.4,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
-            minHeight: `calc(${theme.typography.fontSizeSm} * 1.4 * 2)`,
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
           {skill.description || 'No description'}
@@ -267,7 +294,7 @@ const SkillCard = ({
             </span>
           )}
           {sourceLabel && (
-            <span css={{ display: 'inline-flex', alignItems: 'center', gap: 3, lineHeight: 1 }}>
+            <span css={{ display: 'inline-flex', alignItems: 'center', gap: 5, lineHeight: 1 }}>
               {isGitHub && <GitHubIcon />}
               <span
                 css={{
@@ -285,7 +312,7 @@ const SkillCard = ({
             </span>
           )}
           {skill.last_updated_timestamp && (
-            <span css={{ lineHeight: 'normal' }}>updated {formatRelativeTime(skill.last_updated_timestamp)}</span>
+            <span css={{ lineHeight: 'normal' }}>Updated {formatRelativeTime(skill.last_updated_timestamp)}</span>
           )}
         </div>
 
@@ -365,6 +392,7 @@ const SkillsCardGrid = ({
           skill={skill}
           selected={selectedSkills.has(skill.name)}
           onToggleSelect={onToggleSelect}
+          onRefresh={onRefresh}
         />
       ))}
     </div>
