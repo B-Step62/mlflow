@@ -147,7 +147,6 @@ def register_skill(
         manifest = parse_skill_manifest(skill_dir / "SKILL.md")
         name = manifest["name"]
         description = manifest.get("description")
-        content = manifest["content"]
 
         if skill_names is not None and name not in skill_names:
             continue
@@ -167,7 +166,6 @@ def register_skill(
             name=name,
             source=source,
             description=description,
-            manifest_content=content,
             tags=tags,
             created_by=getpass.getuser(),
         )
