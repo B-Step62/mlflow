@@ -386,15 +386,7 @@ const SkillsCardGrid = ({
       {[...groupedSkills.entries()].map(([repo, groupSkills]) => {
         const collapsed = collapsedGroups.has(repo);
         return (
-          <div
-            key={repo}
-            css={{
-              border: `1px solid ${theme.colors.borderDecorative}`,
-              borderRadius: theme.borders.borderRadiusMd,
-              backgroundColor: theme.colors.backgroundPrimary,
-              overflow: 'hidden',
-            }}
-          >
+          <div key={repo}>
             {/* Folder header */}
             <div
               role="button"
@@ -403,12 +395,11 @@ const SkillsCardGrid = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: theme.spacing.sm,
-                padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+                padding: `${theme.spacing.sm}px 0`,
                 cursor: 'pointer',
                 userSelect: 'none',
-                backgroundColor: theme.colors.backgroundSecondary,
-                borderBottom: collapsed ? 'none' : `1px solid ${theme.colors.borderDecorative}`,
-                '&:hover': { backgroundColor: theme.colors.actionTertiaryBackgroundHover },
+                borderBottom: `1px solid ${theme.colors.borderDecorative}`,
+                '&:hover': { color: theme.colors.actionPrimaryBackgroundDefault },
               }}
             >
               {collapsed ? (
@@ -465,7 +456,7 @@ const SkillsCardGrid = ({
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                   gap: theme.spacing.md,
-                  padding: theme.spacing.md,
+                  paddingTop: theme.spacing.md,
                   alignContent: 'start',
                 }}
               >
