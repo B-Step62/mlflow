@@ -232,7 +232,7 @@ const VersionsList = ({
             }}
           >
             <TableCell>
-              <Typography.Text bold={isSelected}>v{v.version}</Typography.Text>
+              <Typography.Text bold={isSelected}>{v.version}</Typography.Text>
             </TableCell>
             <TableCell>
               <Typography.Text color="secondary">
