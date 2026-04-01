@@ -1287,13 +1287,13 @@ def _update_workspace_handler(workspace_name: str):
 
 @catch_mlflow_exception
 @_disable_if_workspaces_disabled
-def _delete_workspace_handler(workspace_name: str):
+def _delete_workspace_handler(workspace_name: str, flask_request=request):
     if workspace_name == DEFAULT_WORKSPACE_NAME:
         raise MlflowException.invalid_parameter_value(
             f"The '{DEFAULT_WORKSPACE_NAME}' workspace is reserved and cannot be deleted"
         )
     WorkspaceNameValidator.validate(workspace_name)
-    mode_str = request.args.get("mode", WorkspaceDeletionMode.RESTRICT.value)
+    mode_str = flask_request.args.get("mode", WorkspaceDeletionMode.RESTRICT.value)
     try:
         mode = WorkspaceDeletionMode(mode_str)
     except ValueError:
@@ -1310,9 +1310,9 @@ def _delete_workspace_handler(workspace_name: str):
 
 
 @catch_mlflow_exception
-def get_artifact_handler():
-    run_id = request.args.get("run_id") or request.args.get("run_uuid")
-    path = request.args["path"]
+def get_artifact_handler(flask_request=request):
+    run_id = flask_request.args.get("run_id") or flask_request.args.get("run_uuid")
+    path = flask_request.args["path"]
     path = validate_path_is_safe(path)
     run = _get_tracking_store().get_run(run_id)
 
@@ -1849,10 +1849,15 @@ def _get_metric_history():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def get_metric_history_bulk_handler():
+def get_metric_history_bulk_handler(flask_request=request):
     MAX_HISTORY_RESULTS = 25000
     MAX_RUN_IDS_PER_REQUEST = 100
-    run_ids = request.args.to_dict(flat=False).get("run_id", [])
+    # Flask's to_dict(flat=False) returns all values as lists; for RequestContext
+    # we use args_getlist to get repeated params uniformly.
+    if hasattr(flask_request.args, "to_dict"):
+        run_ids = flask_request.args.to_dict(flat=False).get("run_id", [])
+    else:
+        run_ids = flask_request.args_getlist("run_id")
     if not run_ids:
         raise MlflowException(
             message="GetMetricHistoryBulk request must specify at least one run_id.",
@@ -1867,14 +1872,14 @@ def get_metric_history_bulk_handler():
             error_code=INVALID_PARAMETER_VALUE,
         )
 
-    metric_key = request.args.get("metric_key")
+    metric_key = flask_request.args.get("metric_key")
     if metric_key is None:
         raise MlflowException(
             message="GetMetricHistoryBulk request must specify a metric_key.",
             error_code=INVALID_PARAMETER_VALUE,
         )
 
-    max_results = int(request.args.get("max_results", MAX_HISTORY_RESULTS))
+    max_results = int(flask_request.args.get("max_results", MAX_HISTORY_RESULTS))
     max_results = min(max_results, MAX_HISTORY_RESULTS)
 
     store = _get_tracking_store()
@@ -1954,8 +1959,8 @@ def get_metric_history_bulk_interval_handler():
     return make_proto_response(response_message)
 
 
-def get_metric_history_bulk_interval_impl(request_message):
-    args = request.args
+def get_metric_history_bulk_interval_impl(request_message, flask_request=request):
+    args = flask_request.args
     run_ids = request_message.run_ids
     metric_key = request_message.metric_key
     max_results = int(args.get("max_results", MAX_RESULTS_PER_RUN))
@@ -1998,9 +2003,9 @@ def _search_datasets_handler():
     return make_proto_response(response_message)
 
 
-def search_datasets_impl(request_message):
+def search_datasets_impl(request_message, flask_request=request):
     MAX_EXPERIMENT_IDS_PER_REQUEST = 20
-    _validate_content_type(request, ["application/json"])
+    _validate_content_type(flask_request, ["application/json"])
     experiment_ids = request_message.experiment_ids or []
     if not experiment_ids:
         raise MlflowException(
@@ -2050,17 +2055,20 @@ def _validate_gateway_path(method: str, gateway_path: str) -> None:
 
 
 @catch_mlflow_exception
-def gateway_proxy_handler():
+def gateway_proxy_handler(flask_request=request):
     target_uri = MLFLOW_DEPLOYMENTS_TARGET.get()
     if not target_uri:
         # Pretend an empty gateway service is running
         return {"endpoints": []}
 
-    args = request.args if request.method == "GET" else request.json
+    if flask_request.method == "GET":
+        args = dict(flask_request.args)
+    else:
+        args = _get_normalized_request_json(flask_request)
     gateway_path = args.get("gateway_path")
-    _validate_gateway_path(request.method, gateway_path)
+    _validate_gateway_path(flask_request.method, gateway_path)
     json_data = args.get("json_data", None)
-    response = requests.request(request.method, f"{target_uri}/{gateway_path}", json=json_data)
+    response = requests.request(flask_request.method, f"{target_uri}/{gateway_path}", json=json_data)
     if response.status_code == 200:
         return response.json()
     else:
@@ -2073,7 +2081,7 @@ def gateway_proxy_handler():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def create_promptlab_run_handler():
+def create_promptlab_run_handler(flask_request=request):
     def assert_arg_exists(arg_name, arg):
         if not arg:
             raise MlflowException(
@@ -2081,9 +2089,9 @@ def create_promptlab_run_handler():
                 error_code=INVALID_PARAMETER_VALUE,
             )
 
-    _validate_content_type(request, ["application/json"])
+    _validate_content_type(flask_request, ["application/json"])
 
-    args = request.json
+    args = _get_normalized_request_json(flask_request)
     experiment_id = args.get("experiment_id")
     assert_arg_exists("experiment_id", experiment_id)
     run_name = args.get("run_name", None)
@@ -2139,8 +2147,8 @@ def create_promptlab_run_handler():
 
 
 @catch_mlflow_exception
-def upload_artifact_handler():
-    args = request.args
+def upload_artifact_handler(flask_request=request):
+    args = flask_request.args
     run_uuid = args.get("run_uuid")
     if not run_uuid:
         raise MlflowException(
@@ -2155,13 +2163,14 @@ def upload_artifact_handler():
         )
     path = validate_path_is_safe(path)
 
-    if request.content_length and request.content_length > 10 * 1024 * 1024:
+    content_length = getattr(flask_request, "content_length", None)
+    if content_length and content_length > 10 * 1024 * 1024:
         raise MlflowException(
             message="Artifact size is too large. Max size is 10MB.",
             error_code=INVALID_PARAMETER_VALUE,
         )
 
-    data = request.data
+    data = flask_request.data
     if not data:
         raise MlflowException(
             message="Request must specify data.",
@@ -2731,10 +2740,10 @@ def _is_prompt(name: str) -> bool:
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def get_model_version_artifact_handler():
-    name = request.args.get("name")
-    version = request.args.get("version")
-    path = request.args["path"]
+def get_model_version_artifact_handler(flask_request=request):
+    name = flask_request.args.get("name")
+    version = flask_request.args.get("version")
+    path = flask_request.args["path"]
     path = validate_path_is_safe(path)
     artifact_uri = _get_model_registry_store().get_model_version_download_uri(name, version)
     if _is_servable_proxied_run_artifact_root(artifact_uri):
@@ -3263,7 +3272,7 @@ def _download_artifact(artifact_path):
 
 @catch_mlflow_exception
 @_disable_unless_serve_artifacts
-def _upload_artifact(artifact_path):
+def _upload_artifact(artifact_path, flask_request=request):
     """
     A request handler for `PUT /mlflow-artifacts/artifacts/<artifact_path>` to upload an artifact
     to `artifact_path` (a relative path from the root artifact directory).
@@ -3274,7 +3283,7 @@ def _upload_artifact(artifact_path):
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = os.path.join(tmp_dir, tail)
         with open(tmp_path, "wb") as f:
-            while chunk := request.stream.read(ARTIFACT_STREAM_CHUNK_SIZE):
+            while chunk := flask_request.stream.read(ARTIFACT_STREAM_CHUNK_SIZE):
                 f.write(chunk)
 
         artifact_repo = _get_artifact_repo_mlflow_artifacts()
@@ -3883,9 +3892,9 @@ def _fetch_trace_data_from_store(
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def get_trace_artifact_handler() -> Response:
-    request_id = request.args.get("request_id")
-    path = request.args.get("path")
+def get_trace_artifact_handler(flask_request=request) -> Response:
+    request_id = flask_request.args.get("request_id")
+    path = flask_request.args.get("path")
 
     if not request_id:
         raise MlflowException(
@@ -4427,8 +4436,8 @@ def _deprecated_search_traces_v2():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def get_logged_model_artifact_handler(model_id: str):
-    artifact_file_path = request.args.get("artifact_file_path")
+def get_logged_model_artifact_handler(model_id: str, flask_request=request):
+    artifact_file_path = flask_request.args.get("artifact_file_path")
     if not artifact_file_path:
         raise MlflowException(
             'Request must include the "artifact_file_path" query parameter.',
@@ -4507,8 +4516,8 @@ def _log_logged_model_params(model_id: str):
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _get_logged_model(model_id: str):
-    allow_deleted = request.args.get("allow_deleted", "false").lower() == "true"
+def _get_logged_model(model_id: str, flask_request=request):
+    allow_deleted = flask_request.args.get("allow_deleted", "false").lower() == "true"
     model = _get_tracking_store().get_logged_model(model_id, allow_deleted=allow_deleted)
     response_message = GetLoggedModel.Response(model=model.to_proto())
     return _wrap_response(response_message)
@@ -5774,9 +5783,9 @@ def _list_supported_providers():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _list_supported_models():
+def _list_supported_models(flask_request=request):
     try:
-        provider_filter = request.args.get("provider")
+        provider_filter = flask_request.args.get("provider")
         models = get_models(provider=provider_filter)
         return make_json_response({"models": models})
     except ImportError as e:
@@ -5785,9 +5794,9 @@ def _list_supported_models():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _get_provider_config():
+def _get_provider_config(flask_request=request):
     try:
-        provider = request.args.get("provider")
+        provider = flask_request.args.get("provider")
         config = get_provider_config_response(provider)
         return make_json_response(config)
     except (ImportError, ValueError) as e:
@@ -5811,15 +5820,15 @@ def _get_secrets_config():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _invoke_scorer_handler():
+def _invoke_scorer_handler(flask_request=request):
     """
     Invoke a scorer on traces asynchronously.
 
     This is a UI-only AJAX endpoint for invoking scorers from the frontend.
     """
-    _validate_content_type(request, ["application/json"])
+    _validate_content_type(flask_request, ["application/json"])
 
-    args = request.json
+    args = _get_normalized_request_json(flask_request)
     experiment_id = args.get("experiment_id")
     serialized_scorer = args.get("serialized_scorer")
     trace_ids = args.get("trace_ids", [])
@@ -5852,7 +5861,8 @@ def _invoke_scorer_handler():
 
     # Extract the authenticated username so that job subprocesses can make
     # gateway requests authorised as the original user (not the admin).
-    username = request.authorization.username if request.authorization else None
+    auth = getattr(flask_request, "authorization", None)
+    username = auth.username if auth else None
 
     jobs = []
     for batch_trace_ids in batches:
@@ -6051,7 +6061,7 @@ def _generate_demo():
     from mlflow.demo.base import DEMO_EXPERIMENT_NAME
     from mlflow.demo.registry import demo_registry
 
-    request_json = request.get_json(silent=True) or {}
+    request_json = _get_normalized_request_json()
     features = request_json.get("features")
 
     store = _get_tracking_store()
@@ -6419,7 +6429,7 @@ def get_ui_telemetry_handler():
 
 
 @catch_mlflow_exception
-def post_ui_telemetry_handler():
+def post_ui_telemetry_handler(flask_request=request):
     """
     POST handler for /telemetry endpoint.
     Accepts telemetry records and adds them to the telemetry client.
@@ -6428,7 +6438,7 @@ def post_ui_telemetry_handler():
         if is_telemetry_disabled():
             return make_json_response({"status": "disabled"})
 
-        data = request.json.get("records", [])
+        data = _get_normalized_request_json(flask_request).get("records", [])
 
         if not data:
             return make_json_response({"status": "success"})
