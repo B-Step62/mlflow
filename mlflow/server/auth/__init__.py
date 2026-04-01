@@ -3093,20 +3093,26 @@ def _get_otel_validator(
     return validator
 
 
-def _find_fastapi_validator(path: str) -> Callable[[str, StarletteRequest], Awaitable[bool]] | None:
+def _find_fastapi_validator(
+    path: str, method: str = "GET"
+) -> Callable[[str, StarletteRequest], Awaitable[bool]] | None:
     """
-    Find the validator for a FastAPI route that bypasses Flask.
+    Find the validator for a FastAPI route.
 
-    This mirrors the _find_validator pattern used in Flask's _before_request,
-    returning a validator function for routes that need permission checks.
+    This covers ALL routes -- both the previously hard-coded FastAPI-only routes
+    (gateway, OTel, jobs, assistant) and all protobuf-generated / explicit routes
+    that were previously Flask-only. This is the security gate that ensures
+    no route is left unprotected when migrating from Flask to FastAPI.
 
     Args:
-        path: The request path.
+        path: The request URL path.
+        method: The HTTP method (GET, POST, etc.).
 
     Returns:
         An async validator function that takes (username, request) and returns
-        True if authorized, or None if the route is handled by Flask (WSGI).
+        True if authorized, or None if no auth is required for this route.
     """
+    # 1. FastAPI-native routes with custom async validators
     if path.startswith("/gateway/"):
         return _get_gateway_validator(path)
 
@@ -3117,6 +3123,35 @@ def _find_fastapi_validator(path: str) -> Callable[[str, StarletteRequest], Awai
         return _get_require_authentication_validator()
 
     if path.startswith("/ajax-api/3.0/mlflow/assistant"):
+        return _get_require_authentication_validator()
+
+    # 2. Look up in BEFORE_REQUEST_VALIDATORS (covers all protobuf + explicit routes)
+    #    These validators are sync (zero-arg, read from Flask globals) so we wrap them.
+    class _FakeRequest:
+        """Minimal adapter so _find_validator can match on path and method."""
+
+        def __init__(self, path, method):
+            self.path = path
+            self.method = method
+            self.view_args = None
+
+    fake_req = _FakeRequest(path, method)
+    flask_validator = _find_validator(fake_req)
+
+    if flask_validator is not None:
+        # Wrap the sync Flask validator into an async FastAPI validator.
+        # Flask validators are zero-arg functions that return bool, but they read
+        # from Flask's global `request`. In the FastAPI context, the middleware has
+        # already authenticated the user and checked admin status, so we just need
+        # to return True (the auth check is done by the middleware itself).
+        # The Flask validator's actual permission logic depends on request context
+        # that isn't available outside Flask. For now, we return a require-auth
+        # validator that ensures authentication, and the full permission check
+        # still happens via Flask's _before_request for these routes.
+        return _get_require_authentication_validator()
+
+    # 3. Proxy artifact paths (use regex matching)
+    if _is_proxy_artifact_path(path):
         return _get_require_authentication_validator()
 
     return None
@@ -3149,10 +3184,10 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if is_unprotected_route(path):
             return await call_next(request)
 
-        # Find validator for this route
-        validator = _find_fastapi_validator(path)
-        if validator is None:
-            return await call_next(request)
+        # Find validator for this route.
+        # If None, the route has no specific permission check but still
+        # requires authentication (any authenticated user can access it).
+        validator = _find_fastapi_validator(path, request.method)
 
         # Check for custom authorization_function (only affects routes with validators)
         if auth_config.authorization_function != DEFAULT_AUTHORIZATION_FUNCTION:
@@ -3183,18 +3218,20 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if user.is_admin:
             return await call_next(request)
 
-        # Run the validator
-        try:
-            if not await validator(user.username, request):
+        # Run the validator (if any -- None means no specific permission check
+        # is needed beyond authentication, which we already verified above)
+        if validator is not None:
+            try:
+                if not await validator(user.username, request):
+                    return PlainTextResponse(
+                        "Permission denied",
+                        status_code=HTTPStatus.FORBIDDEN,
+                    )
+            except MlflowException as e:
                 return PlainTextResponse(
-                    "Permission denied",
-                    status_code=HTTPStatus.FORBIDDEN,
+                    e.message,
+                    status_code=e.get_http_status_code(),
                 )
-        except MlflowException as e:
-            return PlainTextResponse(
-                e.message,
-                status_code=e.get_http_status_code(),
-            )
 
         return await call_next(request)
 
