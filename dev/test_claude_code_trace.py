@@ -8,11 +8,9 @@ Example:
     uv run python dev/test_claude_code_trace.py ~/.claude/projects/.../transcript.jsonl
 """
 
-import json
 import sys
 
 import mlflow
-
 from mlflow.claude_code.tracing import process_transcript, read_transcript, setup_mlflow
 
 debug = "--debug" in sys.argv

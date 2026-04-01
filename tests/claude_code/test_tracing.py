@@ -395,7 +395,12 @@ DUMMY_TRANSCRIPT_WITH_SUBAGENT = [
                 "message": {
                     "role": "assistant",
                     "content": [
-                        {"type": "tool_use", "id": "sub_tool_1", "name": "Grep", "input": {"pattern": "auth"}}
+                        {
+                            "type": "tool_use",
+                            "id": "sub_tool_1",
+                            "name": "Grep",
+                            "input": {"pattern": "auth"},
+                        }
                     ],
                 },
             },
@@ -415,7 +420,11 @@ DUMMY_TRANSCRIPT_WITH_SUBAGENT = [
                 "message": {
                     "role": "user",
                     "content": [
-                        {"type": "tool_result", "tool_use_id": "sub_tool_1", "content": "auth.py:1: def auth()"}
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "sub_tool_1",
+                            "content": "auth.py:1: def auth()",
+                        }
                     ],
                 },
             },

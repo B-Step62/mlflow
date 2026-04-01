@@ -416,9 +416,7 @@ def _set_token_usage_attribute(span, usage: dict[str, Any]) -> None:
     span.set_attribute(SpanAttributeKey.CHAT_USAGE, usage_dict)
 
 
-def _get_subagent_transcript_path(
-    transcript_path: str | None, agent_id: str
-) -> Path | None:
+def _get_subagent_transcript_path(transcript_path: str | None, agent_id: str) -> Path | None:
     """Derive the sub-agent transcript file path from the main transcript path.
 
     Claude Code stores sub-agent transcripts at:
@@ -555,9 +553,11 @@ def _create_llm_and_tool_spans(
                 tool_start_ns = timestamp_ns + (idx * tool_duration_ns)
                 tool_use_id = tool_use.get("id", "")
                 tool_result_info = tool_results.get(tool_use_id, {})
-                tool_result = tool_result_info.get("content", "No result found") if isinstance(
-                    tool_result_info, dict
-                ) else tool_result_info
+                tool_result = (
+                    tool_result_info.get("content", "No result found")
+                    if isinstance(tool_result_info, dict)
+                    else tool_result_info
+                )
                 tool_name = tool_use.get("name", "unknown")
 
                 tool_span = mlflow.start_span_no_context(
@@ -573,22 +573,29 @@ def _create_llm_and_tool_spans(
                 )
 
                 # If this is a Task tool, try to read the sub-agent's separate transcript file
-                agent_id = tool_result_info.get("agent_id") if isinstance(
-                    tool_result_info, dict
-                ) else None
+                agent_id = (
+                    tool_result_info.get("agent_id") if isinstance(tool_result_info, dict) else None
+                )
                 subagent_path = _get_subagent_transcript_path(transcript_path, agent_id)
                 tool_input = tool_use.get("input", {})
 
                 if subagent_path:
                     _create_subagent_spans_from_file(
-                        tool_span, str(subagent_path), tool_start_ns, tool_duration_ns,
+                        tool_span,
+                        str(subagent_path),
+                        tool_start_ns,
+                        tool_duration_ns,
                         tool_input,
                     )
                 elif tool_use_id in subagent_groups:
                     # Fallback: use progress entries from the main transcript
                     group = subagent_groups[tool_use_id]
                     _create_subagent_spans(
-                        tool_span, group, tool_start_ns, tool_duration_ns, tool_input,
+                        tool_span,
+                        group,
+                        tool_start_ns,
+                        tool_duration_ns,
+                        tool_input,
                     )
 
                 tool_span.set_outputs({"result": tool_result})
@@ -613,7 +620,10 @@ def _create_subagent_spans(
 
     tool_input = tool_input or {}
     agent_span = _create_agent_wrapper_span(
-        parent_span, tool_input, start_ns, total_duration_ns,
+        parent_span,
+        tool_input,
+        start_ns,
+        total_duration_ns,
     )
 
     mini_transcript = inner_messages
@@ -670,7 +680,10 @@ def _create_subagent_spans_from_file(
 
         tool_input = tool_input or {}
         agent_span = _create_agent_wrapper_span(
-            parent_span, tool_input, start_ns, total_duration_ns,
+            parent_span,
+            tool_input,
+            start_ns,
+            total_duration_ns,
         )
 
         # Find the first assistant message to start creating spans
@@ -691,7 +704,7 @@ def _create_subagent_spans_from_file(
         get_logger().warning(
             "Failed to process sub-agent transcript %s: %s", subagent_transcript_path, e
         )
-       
+
 
 def _finalize_trace(
     parent_span,
