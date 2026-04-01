@@ -858,17 +858,21 @@ def _validate_param_against_schema(schema, param, value, proto_parsing_succeeded
 
 def _get_request_json(flask_request=request):
     _validate_content_type(flask_request, ["application/json"])
-    return flask_request.get_json(force=True, silent=True)
+    # Support both Flask request objects and RequestContext
+    if hasattr(flask_request, "get_json") and callable(flask_request.get_json):
+        return flask_request.get_json(force=True, silent=True)
+    # RequestContext.get_json() returns the pre-parsed body
+    return flask_request.get_json()
 
 
-def _get_normalized_request_json(flask_request: Request = request) -> dict[str, Any]:
+def _get_normalized_request_json(flask_request=request) -> dict[str, Any]:
     """
     Get request JSON with normalization for legacy clients.
 
     Handles double-encoded JSON strings from older clients and empty request bodies.
 
     Args:
-        flask_request: The Flask request object.
+        flask_request: A Flask request object or a ``RequestContext``.
 
     Returns:
         The request data as a dictionary (empty dict if no body).
@@ -918,6 +922,13 @@ def _validate_request_json_with_schema(
 
 
 def _get_request_message(request_message, flask_request=request, schema=None):
+    # Support both Flask request objects and RequestContext.
+    # Both expose .method, .args (dict-like), and args_get/args_getlist (RequestContext)
+    # or .args.get/.args.getlist (Flask).
+    from mlflow.server.request_context import RequestContext
+
+    is_ctx = isinstance(flask_request, RequestContext)
+
     if flask_request.method == "GET" and flask_request.args:
         # Convert atomic values of repeated fields to lists before calling protobuf deserialization.
         # Context: We parse the parameter string into a dictionary outside of protobuf since
@@ -937,9 +948,15 @@ def _get_request_message(request_message, flask_request=request, schema=None):
                 is_repeated = field.label == descriptor.FieldDescriptor.LABEL_REPEATED
 
             if is_repeated:
-                request_json[field.name] = flask_request.args.getlist(field.name)
+                if is_ctx:
+                    request_json[field.name] = flask_request.args_getlist(field.name)
+                else:
+                    request_json[field.name] = flask_request.args.getlist(field.name)
             else:
-                value = flask_request.args.get(field.name)
+                if is_ctx:
+                    value = flask_request.args_get(field.name)
+                else:
+                    value = flask_request.args.get(field.name)
                 if field.type == descriptor.FieldDescriptor.TYPE_BOOL and isinstance(value, str):
                     if value.lower() not in ["true", "false"]:
                         raise MlflowException.invalid_parameter_value(
@@ -962,7 +979,7 @@ def _get_request_message(request_message, flask_request=request, schema=None):
 
 
 def _get_validated_flask_request_json(
-    flask_request: Request = request,
+    flask_request=request,
     schema: dict[str, list[Callable[..., Any]]] | None = None,
 ) -> dict[str, Any]:
     """
@@ -972,7 +989,7 @@ def _get_validated_flask_request_json(
     use protobuf message definitions. Supports both GET and POST/PUT requests.
 
     Args:
-        flask_request: The Flask request object.
+        flask_request: A Flask request object or a ``RequestContext``.
         schema: Dictionary mapping parameter names to lists of validation functions.
 
     Returns:
@@ -981,13 +998,20 @@ def _get_validated_flask_request_json(
     Raises:
         MlflowException: If validation fails.
     """
+    from mlflow.server.request_context import RequestContext
+
+    is_ctx = isinstance(flask_request, RequestContext)
+
     if flask_request.method == "GET" and flask_request.args:
         # Extract query parameters for GET requests
         request_json = {}
         schema = schema or {}
         for key in flask_request.args:
             # Get all values for this key (supports repeated parameters)
-            values = flask_request.args.getlist(key)
+            if is_ctx:
+                values = flask_request.args_getlist(key)
+            else:
+                values = flask_request.args.getlist(key)
             # Check if this field is a list type by looking for _assert_array validator
             is_list_type = _assert_array in schema.get(key, [])
             # If list type, always keep as list; otherwise use scalar if only one value
