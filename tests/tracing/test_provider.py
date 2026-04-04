@@ -857,3 +857,26 @@ def test_get_tracer_does_not_fail_when_experiment_id_resolution_fails():
 
     assert tracer is not None
     mlflow.tracing.reset()
+
+
+def test_set_destination_uc_in_model_serving_also_registers_inference_table_processor(
+    mock_databricks_serving_with_tracing_env,
+):
+    """
+    When UCSchemaLocation is set as the trace destination in a Databricks model serving
+    environment, InferenceTableSpanProcessor must also be registered so that traces are
+    written to the in-memory buffer and returned in the serving endpoint API response.
+    """
+    with mock.patch("mlflow.tracing.provider._logger.warning"):
+        mlflow.tracing.set_destination(
+            destination=UCSchemaLocation(catalog_name="catalog", schema_name="schema")
+        )
+
+    tracer = _get_tracer("test")
+    processors = tracer.span_processor._span_processors
+    assert len(processors) == 2
+    assert isinstance(processors[0], DatabricksUCTableSpanProcessor)
+    assert isinstance(processors[1], InferenceTableSpanProcessor)
+    assert isinstance(processors[1].span_exporter, InferenceTableSpanExporter)
+
+    mlflow.tracing.reset()
