@@ -1,5 +1,5 @@
 import { trace, Tracer } from '@opentelemetry/api';
-import { MlflowSpanExporter, MlflowSpanProcessor } from '../exporters/mlflow';
+import { MlflowSpanProcessor } from '../exporters/mlflow';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getConfig, getAuthProvider } from './config';
 import { MlflowClient } from '../clients';
@@ -23,12 +23,11 @@ export function initializeSDK(): void {
       trackingUri: config.trackingUri,
       authProvider,
     });
-    const exporter = new MlflowSpanExporter(
+    processor = new MlflowSpanProcessor(
       client,
       authProvider.getHeadersProvider(),
       config.experimentId,
     );
-    processor = new MlflowSpanProcessor(exporter);
 
     sdk = new NodeSDK({ spanProcessors: [processor] });
     sdk.start();
