@@ -1,9 +1,8 @@
 import { TraceInfo } from '../core/entities/trace_info';
 import { Trace } from '../core/entities/trace';
+import { TraceData, SerializedTraceData } from '../core/entities/trace_data';
 import { CreateExperiment, DeleteExperiment, GetTraceInfoV3, StartTraceV3 } from './spec';
 import { makeRequest } from './utils';
-import { TraceData } from '../core/entities/trace_data';
-import { ArtifactsClient, getArtifactsClient } from './artifacts';
 import { AuthProvider, HeadersProvider } from '../auth';
 
 /**
@@ -14,30 +13,15 @@ import { AuthProvider, HeadersProvider } from '../auth';
  * - OSS MLflow: Basic auth, Bearer tokens, or no auth
  */
 export class MlflowClient {
-  /** Client implementation to upload/download trace data artifacts */
-  private artifactsClient: ArtifactsClient;
-
   /** Headers provider for authenticated requests */
   private headersProvider: HeadersProvider;
 
   /** Host URL for API requests */
   private hostUrl: string;
 
-  /**
-   * Creates a new MlflowClient.
-   *
-   * @param trackingUri - The tracking URI (e.g., "databricks", "http://localhost:5000")
-   * @param authProvider - The authentication provider to get tokens for authenticated requests
-   */
   constructor(options: { trackingUri: string; authProvider: AuthProvider }) {
     this.headersProvider = options.authProvider.getHeadersProvider();
     this.hostUrl = options.authProvider.getHost();
-
-    this.artifactsClient = getArtifactsClient({
-      trackingUri: options.trackingUri,
-      host: this.hostUrl,
-      authProvider: options.authProvider,
-    });
   }
 
   /**
@@ -75,7 +59,11 @@ export class MlflowClient {
    */
   async getTrace(traceId: string): Promise<Trace> {
     const traceInfo = await this.getTraceInfo(traceId);
-    const traceData = await this.artifactsClient.downloadTraceData(traceInfo);
+    // Read trace data from the get-trace-artifact endpoint which reads from
+    // both DB (for OTLP-exported spans) and artifact storage (legacy)
+    const url = `${this.hostUrl}/ajax-api/2.0/mlflow/get-trace-artifact?request_id=${encodeURIComponent(traceId)}`;
+    const response = await makeRequest<SerializedTraceData>('GET', url, this.headersProvider);
+    const traceData = TraceData.fromJson(response);
     return new Trace(traceInfo, traceData);
   }
 
@@ -93,13 +81,6 @@ export class MlflowClient {
     }
 
     throw new Error(`Invalid response format: missing trace_info: ${JSON.stringify(response)}`);
-  }
-
-  /**
-   * Upload trace data to the artifact store.
-   */
-  async uploadTraceData(traceInfo: TraceInfo, traceData: TraceData): Promise<void> {
-    await this.artifactsClient.uploadTraceData(traceInfo, traceData);
   }
 
   // === EXPERIMENT METHODS  ===

@@ -23,7 +23,11 @@ export function initializeSDK(): void {
       trackingUri: config.trackingUri,
       authProvider,
     });
-    const exporter = new MlflowSpanExporter(client);
+    const exporter = new MlflowSpanExporter(
+      client,
+      authProvider.getHeadersProvider(),
+      config.experimentId,
+    );
     processor = new MlflowSpanProcessor(exporter);
 
     sdk = new NodeSDK({ spanProcessors: [processor] });

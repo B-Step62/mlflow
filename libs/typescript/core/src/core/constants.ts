@@ -60,6 +60,7 @@ export const TraceMetadataKey = {
  */
 export const TraceTagKey = {
   MLFLOW_ARTIFACT_LOCATION: 'mlflow.artifactLocation',
+  SPANS_LOCATION: 'mlflow.trace.spansLocation',
 };
 
 /**

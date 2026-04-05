@@ -156,13 +156,15 @@ describe('API', () => {
 
       const trace2 = await client.getTrace(parentSpan.traceId);
       expect(trace2.data.spans.length).toBe(4);
-      expect(trace2.data.spans[0].name).toBe('parent-span');
-      expect(trace2.data.spans[1].name).toBe('child-span-1');
-      expect(trace2.data.spans[1].parentId).toBe(trace2.data.spans[0].spanId);
-      expect(trace2.data.spans[2].name).toBe('child-span-2');
-      expect(trace2.data.spans[2].parentId).toBe(trace2.data.spans[0].spanId);
-      expect(trace2.data.spans[3].name).toBe('child-span-3');
-      expect(trace2.data.spans[3].parentId).toBe(trace2.data.spans[2].spanId);
+      // Root span is always first; child ordering may vary between DB and artifact storage
+      const root = trace2.data.spans.find((s) => s.name === 'parent-span');
+      const child1 = trace2.data.spans.find((s) => s.name === 'child-span-1');
+      const child2 = trace2.data.spans.find((s) => s.name === 'child-span-2');
+      const child3 = trace2.data.spans.find((s) => s.name === 'child-span-3');
+      expect(root).toBeDefined();
+      expect(child1!.parentId).toBe(root!.spanId);
+      expect(child2!.parentId).toBe(root!.spanId);
+      expect(child3!.parentId).toBe(child2!.spanId);
     });
   });
 

@@ -1,3 +1,4 @@
+import { ReadableSpan as OTelReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { LiveSpan, Span } from './entities/span';
 import { TraceInfo } from './entities/trace_info';
 import { Trace } from './entities/trace';
@@ -15,10 +16,13 @@ import {
 class _Trace {
   info: TraceInfo;
   spanDict: Map<string, LiveSpan>;
+  /** OTel ReadableSpans collected as spans end, used for OTLP export */
+  otelSpans: OTelReadableSpan[];
 
   constructor(info: TraceInfo) {
     this.info = info;
     this.spanDict = new Map<string, LiveSpan>();
+    this.otelSpans = [];
   }
 
   /**
@@ -215,6 +219,16 @@ export class InMemoryTraceManager {
   }
 
   /**
+   * Store an OTel ReadableSpan for later OTLP export.
+   */
+  registerOtelSpan(traceId: string, otelSpan: OTelReadableSpan): void {
+    const trace = this._traces.get(traceId);
+    if (trace) {
+      trace.otelSpans.push(otelSpan);
+    }
+  }
+
+  /**
    * Store the given span in the in-memory trace data.
    * @param span The span to be stored
    */
@@ -262,7 +276,7 @@ export class InMemoryTraceManager {
    * a ready-to-publish Trace object.
    * @param otelTraceId The OpenTelemetry trace ID
    */
-  popTrace(otelTraceId: string): Trace | null {
+  popTrace(otelTraceId: string): { trace: Trace; otelSpans: OTelReadableSpan[] } | null {
     const mlflowTraceId = this._otelIdToMlflowTraceId.get(otelTraceId);
     if (!mlflowTraceId) {
       console.debug(`Tried to pop trace ${otelTraceId} but no trace found.`);
@@ -270,10 +284,10 @@ export class InMemoryTraceManager {
     }
 
     this._otelIdToMlflowTraceId.delete(otelTraceId);
-    const trace = this._traces.get(mlflowTraceId);
-    if (trace) {
+    const traceData = this._traces.get(mlflowTraceId);
+    if (traceData) {
       this._traces.delete(mlflowTraceId);
-      return trace.toMlflowTrace();
+      return { trace: traceData.toMlflowTrace(), otelSpans: traceData.otelSpans };
     }
     console.debug(`Tried to pop trace ${otelTraceId} but trace not found.`);
     return null;
