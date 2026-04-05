@@ -65,12 +65,12 @@ describe('InMemoryTraceManager', () => {
     expect(trace1?.spanDict.size).toBe(3);
 
     // Pop the trace data
-    const poppedResult = traceManager.popTrace(otelTraceId);
-    expect(poppedResult?.trace).toBeInstanceOf(Trace);
-    expect(poppedResult?.trace.info.traceId).toBe(traceId);
-    expect(poppedResult?.trace.data.spans.length).toBe(3);
+    const poppedTrace1 = traceManager.popTrace(otelTraceId);
+    expect(poppedTrace1).toBeInstanceOf(Trace);
+    expect(poppedTrace1?.info.traceId).toBe(traceId);
+    expect(poppedTrace1?.data.spans.length).toBe(3);
     expect(traceManager.getTrace(traceId)).toBeNull();
-    expect(poppedResult?.trace.data.spans[0]).toBeInstanceOf(Span);
+    expect(poppedTrace1?.data.spans[0]).toBeInstanceOf(Span);
   });
 
   it('should truncate the request/response preview if it exceeds the max length', () => {
@@ -83,8 +83,8 @@ describe('InMemoryTraceManager', () => {
     span.setInputs('a'.repeat(5000));
     traceManager.registerSpan(span);
 
-    const result = traceManager.popTrace(otelTraceId);
-    expect(result?.trace.info.requestPreview).toHaveLength(1000);
-    expect(result?.trace.info.traceMetadata[TraceMetadataKey.INPUTS]).toHaveLength(1000);
+    const trace = traceManager.popTrace(otelTraceId);
+    expect(trace?.info.requestPreview).toHaveLength(1000);
+    expect(trace?.info.traceMetadata[TraceMetadataKey.INPUTS]).toHaveLength(1000);
   });
 });

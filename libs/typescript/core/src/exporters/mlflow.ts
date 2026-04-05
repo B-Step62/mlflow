@@ -32,6 +32,7 @@ import { HeadersProvider } from '../auth';
  * @param span The span to generate the trace ID for
  */
 function generateTraceId(span: OTelSpan): string {
+  // NB: trace Id is already hex string in Typescript OpenTelemetry SDK
   return TRACE_ID_PREFIX + span.spanContext().traceId;
 }
 
@@ -66,12 +67,17 @@ function createDecodedSpan(span: OTelReadableSpan): OTelReadableSpan {
 }
 
 export class MlflowSpanProcessor implements SpanProcessor {
-  private _exporter: SpanExporter;
+  private _exporter: MlflowSpanExporter;
 
-  constructor(exporter: SpanExporter) {
+  constructor(exporter: MlflowSpanExporter) {
     this._exporter = exporter;
   }
 
+  /**
+   * Called when a {@link Span} is started, if the `span.isRecording()`
+   * returns true.
+   * @param span the Span that just started.
+   */
   onStart(span: OTelSpan, _parentContext: Context): void {
     const otelTraceId = span.spanContext().traceId;
 
@@ -79,8 +85,10 @@ export class MlflowSpanProcessor implements SpanProcessor {
     const experimentId = getConfig().experimentId;
 
     if (!span.parentSpanContext?.spanId) {
+      // This is a root span
       traceId = generateTraceId(span);
 
+      // Build trace metadata, merging context-injected values
       const traceMetadata: Record<string, string> = {
         [TraceMetadataKey.SCHEMA_VERSION]: TRACE_SCHEMA_VERSION,
       };
@@ -89,6 +97,7 @@ export class MlflowSpanProcessor implements SpanProcessor {
         Object.assign(traceMetadata, ctxMetadata);
       }
 
+      // Build trace tags, merging context-injected values
       const tags: Record<string, string> = {
         [TraceTagKey.SPANS_LOCATION]: 'TRACKING_STORE',
       };
@@ -117,40 +126,46 @@ export class MlflowSpanProcessor implements SpanProcessor {
       }
     }
 
+    // Set trace ID to the span
     span.setAttribute(SpanAttributeKey.TRACE_ID, JSON.stringify(traceId));
 
     createAndRegisterMlflowSpan(span);
     executeOnSpanStartHooks(span);
   }
 
+  /**
+   * Called when a {@link ReadableSpan} is ended, if the `span.isRecording()`
+   * returns true.
+   * @param span the Span that just ended.
+   */
   onEnd(span: OTelReadableSpan): void {
     const traceManager = InMemoryTraceManager.getInstance();
 
     executeOnSpanEndHooks(span);
 
-    // Store the OTel ReadableSpan for OTLP export (for ALL spans, not just root)
-    const traceId = traceManager.getMlflowTraceIdFromOtelId(span.spanContext().traceId);
-    if (traceId) {
-      traceManager.registerOtelSpan(traceId, span);
-    }
+    // Log each span incrementally via OTLP as it ends
+    this._exporter.logSpan(span);
 
-    // Only trigger trace export for root span completion
+    // Only trigger trace metadata export for root span completion
     if (span.parentSpanContext?.spanId) {
       return;
     }
 
+    // Update trace info
+    const traceId = traceManager.getMlflowTraceIdFromOtelId(span.spanContext().traceId);
     if (!traceId) {
       console.warn(`No trace ID found for span ${span.name}. Skipping.`);
       return;
     }
 
-    const trace = InMemoryTraceManager.getInstance().getTrace(traceId);
+    const trace = traceManager.getTrace(traceId);
     if (!trace) {
       console.warn(`No trace found for span ${span.name}. Skipping.`);
       return;
     }
 
     this.updateTraceInfo(trace.info, span);
+    // Aggregate token usage from all spans and add to trace metadata
     const allSpans = Array.from(trace.spanDict.values());
     const aggregatedUsage = aggregateUsageFromSpans(allSpans);
     if (aggregatedUsage) {
@@ -160,9 +175,18 @@ export class MlflowSpanProcessor implements SpanProcessor {
     this._exporter.export([span], (_) => {});
   }
 
+  /**
+   * Update the trace info with the span end time and status.
+   * @param trace The trace to update
+   * @param span The span to update the trace with
+   */
   updateTraceInfo(traceInfo: TraceInfo, span: OTelReadableSpan): void {
     traceInfo.executionDuration = convertHrTimeToMs(span.endTime) - traceInfo.requestTime;
 
+    // NB: In OpenTelemetry, status code remains UNSET if not explicitly set
+    // by the user. However, there is no way to set the status when using
+    // `trace` function wrapper. Therefore, we just automatically set the status
+    // to OK if it is not ERROR.
     let state = fromOtelStatus(span.status.code);
     if (state === TraceState.STATE_UNSPECIFIED) {
       state = TraceState.OK;
@@ -185,7 +209,8 @@ export class MlflowSpanExporter implements SpanExporter {
   private _headersProvider: HeadersProvider;
   private _host: string;
   private _experimentId: string;
-  private _pendingExports: Record<string, Promise<void>> = {};
+  private _pendingExports: Record<string, Promise<void>> = {}; // traceId -> export promise
+  private _pendingSpanExports: Promise<void>[] = [];
 
   constructor(client: MlflowClient, headersProvider: HeadersProvider, experimentId: string) {
     this._client = client;
@@ -194,82 +219,90 @@ export class MlflowSpanExporter implements SpanExporter {
     this._experimentId = experimentId;
   }
 
+  /**
+   * Log a single span via OTLP as it ends (incremental export).
+   * Called by MlflowSpanProcessor.onEnd for every span.
+   */
+  logSpan(span: OTelReadableSpan): void {
+    const decodedSpan = createDecodedSpan(span);
+    const body = ProtobufTraceSerializer.serializeRequest([decodedSpan]);
+    if (!body) {
+      return;
+    }
+
+    const exportPromise = this._headersProvider()
+      .then((headers) =>
+        fetch(`${this._host}/v1/traces`, {
+          method: 'POST',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/x-protobuf',
+            'x-mlflow-experiment-id': this._experimentId,
+          },
+          body,
+        }),
+      )
+      .then((response) => {
+        if (!response.ok) {
+          response
+            .text()
+            .then((text) => console.error(`OTLP span export failed: ${response.status} ${text}`))
+            .catch(() => {});
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to log span via OTLP:', error);
+      });
+
+    this._pendingSpanExports.push(exportPromise);
+  }
+
   export(spans: OTelReadableSpan[], _resultCallback: (result: ExportResult) => void): void {
     for (const span of spans) {
+      // Only export root spans
       if (span.parentSpanContext?.spanId) {
         continue;
       }
 
       const traceManager = InMemoryTraceManager.getInstance();
-      const result = traceManager.popTrace(span.spanContext().traceId);
-      if (!result) {
+      const trace = traceManager.popTrace(span.spanContext().traceId);
+      if (!trace) {
         console.warn(`No trace found for span ${span.name}. Skipping.`);
         continue;
       }
 
-      traceManager.lastActiveTraceId = result.trace.info.traceId;
+      // Set the last active trace ID
+      traceManager.lastActiveTraceId = trace.info.traceId;
 
-      const exportPromise = this.exportTraceToBackend(result.trace, result.otelSpans).catch(
-        (error) => {
-          console.error(`Failed to export trace ${result.trace.info.traceId}:`, error);
-        },
-      );
-      this._pendingExports[result.trace.info.traceId] = exportPromise;
+      // Export trace metadata to backend and track the promise
+      const exportPromise = this.exportTraceMetadata(trace).catch((error) => {
+        console.error(`Failed to export trace ${trace.info.traceId}:`, error);
+      });
+      this._pendingExports[trace.info.traceId] = exportPromise;
     }
   }
 
   /**
-   * Export a complete trace to the MLflow backend.
-   * Step 1: Log spans via OTLP protobuf (triggers server-side cost computation)
-   * Step 2: Create trace metadata via StartTraceV3 endpoint
+   * Export trace metadata (previews, session, tags) to the MLflow backend.
+   * Spans are already exported incrementally via logSpan().
    */
-  private async exportTraceToBackend(
-    trace: Trace,
-    otelSpans: OTelReadableSpan[],
-  ): Promise<void> {
+  private async exportTraceMetadata(trace: Trace): Promise<void> {
     try {
-      if (otelSpans.length > 0) {
-        await this.logSpansViaOtlp(otelSpans);
-      }
       await this._client.createTrace(trace.info);
     } catch (error) {
-      console.error(`Failed to export trace ${trace.info.traceId}:`, error);
+      console.error(`Failed to export trace metadata ${trace.info.traceId}:`, error);
       throw error;
     } finally {
+      // Remove the promise from the pending exports
       delete this._pendingExports[trace.info.traceId];
     }
   }
 
-  /**
-   * Serialize spans to OTLP protobuf and POST to /v1/traces.
-   */
-  private async logSpansViaOtlp(otelSpans: OTelReadableSpan[]): Promise<void> {
-    const decodedSpans = otelSpans.map(createDecodedSpan);
-    const body = ProtobufTraceSerializer.serializeRequest(decodedSpans);
-    if (!body) {
-      return;
-    }
-
-    const headers = await this._headersProvider();
-    const url = `${this._host}/v1/traces`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        'Content-Type': 'application/x-protobuf',
-        'x-mlflow-experiment-id': this._experimentId,
-      },
-      body,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      console.error(`OTLP export failed: ${response.status} ${text}`);
-    }
-  }
-
   async forceFlush(): Promise<void> {
+    // Wait for all pending incremental span exports
+    await Promise.all(this._pendingSpanExports);
+    this._pendingSpanExports = [];
+    // Wait for all pending trace metadata exports
     await Promise.all(Object.values(this._pendingExports));
     this._pendingExports = {};
   }
