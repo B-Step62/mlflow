@@ -210,7 +210,8 @@ export class MlflowSpanExporter implements SpanExporter {
   private _host: string;
   private _experimentId: string;
   private _pendingExports: Record<string, Promise<void>> = {}; // traceId -> export promise
-  private _pendingSpanExports: Promise<void>[] = [];
+  private _spanBuffer: OTelReadableSpan[] = [];
+  private _pendingSpanFlush: Promise<void> | null = null;
 
   constructor(client: MlflowClient, headersProvider: HeadersProvider, experimentId: string) {
     this._client = client;
@@ -220,41 +221,45 @@ export class MlflowSpanExporter implements SpanExporter {
   }
 
   /**
-   * Log a single span via OTLP as it ends (incremental export).
+   * Buffer a span for batched OTLP export.
    * Called by MlflowSpanProcessor.onEnd for every span.
    */
   logSpan(span: OTelReadableSpan): void {
-    const decodedSpan = createDecodedSpan(span);
-    const body = ProtobufTraceSerializer.serializeRequest([decodedSpan]);
+    this._spanBuffer.push(span);
+  }
+
+  /**
+   * Flush all buffered spans to the OTLP endpoint in a single request.
+   */
+  private async flushSpanBuffer(): Promise<void> {
+    if (this._spanBuffer.length === 0) {
+      return;
+    }
+
+    const spans = this._spanBuffer;
+    this._spanBuffer = [];
+
+    const decodedSpans = spans.map(createDecodedSpan);
+    const body = ProtobufTraceSerializer.serializeRequest(decodedSpans);
     if (!body) {
       return;
     }
 
-    const exportPromise = this._headersProvider()
-      .then((headers) =>
-        fetch(`${this._host}/v1/traces`, {
-          method: 'POST',
-          headers: {
-            ...headers,
-            'Content-Type': 'application/x-protobuf',
-            'x-mlflow-experiment-id': this._experimentId,
-          },
-          body,
-        }),
-      )
-      .then((response) => {
-        if (!response.ok) {
-          response
-            .text()
-            .then((text) => console.error(`OTLP span export failed: ${response.status} ${text}`))
-            .catch(() => {});
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to log span via OTLP:', error);
-      });
+    const headers = await this._headersProvider();
+    const response = await fetch(`${this._host}/v1/traces`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-protobuf',
+        'x-mlflow-experiment-id': this._experimentId,
+      },
+      body,
+    });
 
-    this._pendingSpanExports.push(exportPromise);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      console.error(`OTLP span export failed: ${response.status} ${text}`);
+    }
   }
 
   export(spans: OTelReadableSpan[], _resultCallback: (result: ExportResult) => void): void {
@@ -274,34 +279,23 @@ export class MlflowSpanExporter implements SpanExporter {
       // Set the last active trace ID
       traceManager.lastActiveTraceId = trace.info.traceId;
 
-      // Export trace metadata to backend and track the promise
-      const exportPromise = this.exportTraceMetadata(trace).catch((error) => {
-        console.error(`Failed to export trace ${trace.info.traceId}:`, error);
-      });
+      // Flush buffered spans then export trace metadata
+      const exportPromise = this.flushSpanBuffer()
+        .then(async () => { await this._client.createTrace(trace.info); })
+        .catch((error) => {
+          console.error(`Failed to export trace ${trace.info.traceId}:`, error);
+        })
+        .finally(() => {
+          // Remove the promise from the pending exports
+          delete this._pendingExports[trace.info.traceId];
+        });
       this._pendingExports[trace.info.traceId] = exportPromise;
     }
   }
 
-  /**
-   * Export trace metadata (previews, session, tags) to the MLflow backend.
-   * Spans are already exported incrementally via logSpan().
-   */
-  private async exportTraceMetadata(trace: Trace): Promise<void> {
-    try {
-      await this._client.createTrace(trace.info);
-    } catch (error) {
-      console.error(`Failed to export trace metadata ${trace.info.traceId}:`, error);
-      throw error;
-    } finally {
-      // Remove the promise from the pending exports
-      delete this._pendingExports[trace.info.traceId];
-    }
-  }
-
   async forceFlush(): Promise<void> {
-    // Wait for all pending incremental span exports
-    await Promise.all(this._pendingSpanExports);
-    this._pendingSpanExports = [];
+    // Flush any remaining buffered spans
+    await this.flushSpanBuffer();
     // Wait for all pending trace metadata exports
     await Promise.all(Object.values(this._pendingExports));
     this._pendingExports = {};
