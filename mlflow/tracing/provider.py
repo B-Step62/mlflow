@@ -696,7 +696,10 @@ def _get_span_processors(disabled: bool = False) -> list[SpanProcessor]:
             # In Databricks model serving, also register InferenceTableSpanProcessor so that
             # traces are written to the in-memory buffer and returned in the API response.
             # Without this, endpoints return `trace: null` even though traces are logged to UC.
-            if is_in_databricks_model_serving_environment() and is_mlflow_tracing_enabled_in_model_serving():
+            if (
+                is_in_databricks_model_serving_environment()
+                and is_mlflow_tracing_enabled_in_model_serving()
+            ):
                 from mlflow.tracing.export.inference_table import InferenceTableSpanExporter
                 from mlflow.tracing.processor.inference_table import InferenceTableSpanProcessor
 
