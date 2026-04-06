@@ -230,18 +230,24 @@ def test_set_destination_from_env_var_databricks_uc(monkeypatch):
     assert get_active_spans_table_name() == "catalog.schema.mlflow_experiment_trace_otel_spans"
 
 
+@pytest.mark.parametrize("knob", ["api", "env"])
 def test_set_destination_in_model_serving(
+    knob,
     mock_databricks_serving_with_tracing_env,
+    monkeypatch,
 ):
     """
     When UCSchemaLocation is set as the trace destination in a Databricks model serving
     environment, InferenceTableSpanProcessor must also be registered so that traces are
     written to the in-memory buffer and returned in the serving endpoint API response.
     """
-    with mock.patch("mlflow.tracing.provider._logger.warning"):
+    if knob == "api":
         mlflow.tracing.set_destination(
             destination=UCSchemaLocation(catalog_name="catalog", schema_name="schema")
         )
+    else:
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", "databricks")
+        monkeypatch.setenv("MLFLOW_TRACING_DESTINATION", "catalog.schema")
 
     tracer = _get_tracer("test")
     processors = tracer.span_processor._span_processors
@@ -249,8 +255,6 @@ def test_set_destination_in_model_serving(
     assert isinstance(processors[0], DatabricksUCTableSpanProcessor)
     assert isinstance(processors[1], InferenceTableSpanProcessor)
     assert isinstance(processors[1].span_exporter, InferenceTableSpanExporter)
-
-    mlflow.tracing.reset()
 
 
 def test_set_destination_deprecated_classes():
