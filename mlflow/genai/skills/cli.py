@@ -361,15 +361,10 @@ def _install_from_source(source, agent, scope, project_path, pin, no_register, c
         # Non-interactive (piped/CI) — install all
         selected = [p["name"] for p in previews]
 
-    # Ask about MLflow registration (unless --no-register)
-    should_register = False
-    if not no_register:
-        should_register = click.confirm(
-            "Register these skills in MLflow Skill Registry?",
-            default=True,
-        )
-        if should_register:
-            _ensure_tracking_uri()
+    # Register by default unless --no-register
+    should_register = not no_register
+    if should_register:
+        _ensure_tracking_uri()
 
     paths = install_skill_from_source(
         source=source,
