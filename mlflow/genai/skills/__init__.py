@@ -185,9 +185,8 @@ def _register_skill_via_rest(
     skill_names: list[str] | None = None,
 ) -> list[SkillVersion]:
     """Register skills by calling the MLflow server's /register REST endpoint."""
-    from mlflow.rest_utils import http_request
     from mlflow.tracking._tracking_service.utils import _get_default_host_creds
-    from mlflow.utils.rest_utils import verify_rest_response
+    from mlflow.utils.rest_utils import http_request, verify_rest_response
 
     endpoint = "/ajax-api/3.0/mlflow/skills/register"
     body = {
