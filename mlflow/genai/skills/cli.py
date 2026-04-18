@@ -144,7 +144,22 @@ def _interactive_checkbox(
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
 
+    def _restore_terminal():
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        _write(_SHOW_CURSOR)
+
+    # Install SIGINT handler so Ctrl+C restores terminal even if os.read blocks
+    import signal
+
+    original_sigint = signal.getsignal(signal.SIGINT)
+
+    def _sigint_handler(signum, frame):
+        _restore_terminal()
+        cleanup("Aborted.")
+        raise SystemExit(130)
+
     try:
+        signal.signal(signal.SIGINT, _sigint_handler)
         tty.setraw(fd)
         _write(_HIDE_CURSOR)
 
@@ -159,7 +174,6 @@ def _interactive_checkbox(
                     cursor = (cursor + 1) % total
                 case "space":
                     if cursor == total - 1:
-                        # Toggle "all skills"
                         new_state = not selected[-1]
                         selected = [new_state] * total
                     else:
@@ -180,8 +194,8 @@ def _interactive_checkbox(
                     cleanup("Aborted.")
                     return None
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        _write(_SHOW_CURSOR)
+        _restore_terminal()
+        signal.signal(signal.SIGINT, original_sigint)
 
 
 def _parse_skill_ref(ref: str) -> tuple[str, int | None, str | None]:
