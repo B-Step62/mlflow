@@ -133,24 +133,22 @@ def is_tracing_enabled() -> bool:
 # ============================================================================
 
 
-def _load_skill_metadata(skill_name: str) -> dict[str, Any] | None:
-    """Load .mlflow_skill_info sidecar for an installed skill.
+def _load_skill_metadata(skill_name: str) -> dict[str, str] | None:
+    """Read MLflow metadata from an installed skill's SKILL.md frontmatter.
 
     Searches global (~/.claude/skills/) and project (.claude/skills/) locations.
-    Returns the parsed JSON metadata dict, or None if not found.
+    Returns metadata dict with mlflow-* keys, or None if not found.
     """
-    from mlflow.genai.skills.constants import SKILL_METADATA_FILENAME
+    from mlflow.genai.skills.skill_parser import read_skill_metadata
 
     search_paths = [
-        Path.home() / ".claude" / "skills" / skill_name / SKILL_METADATA_FILENAME,
-        Path(os.getcwd()) / ".claude" / "skills" / skill_name / SKILL_METADATA_FILENAME,
+        Path.home() / ".claude" / "skills" / skill_name / "SKILL.md",
+        Path(os.getcwd()) / ".claude" / "skills" / skill_name / "SKILL.md",
     ]
     for path in search_paths:
-        try:
-            if path.exists():
-                return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        metadata = read_skill_metadata(path)
+        if metadata.get("mlflow-version"):
+            return metadata
     return None
 
 
@@ -511,9 +509,9 @@ def _create_llm_and_tool_spans(
                         skill_meta = _load_skill_metadata(skill_name)
                         if skill_meta:
                             attributes[SpanAttributeKey.SKILL_VERSION] = str(
-                                skill_meta.get("version", "")
+                                skill_meta.get("mlflow-version", "")
                             )
-                            attributes["skill_source"] = skill_meta.get("source")
+                            attributes["skill_source"] = skill_meta.get("mlflow-source")
 
                 tool_span = mlflow.start_span_no_context(
                     name=span_name,

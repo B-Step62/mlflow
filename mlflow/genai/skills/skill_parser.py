@@ -17,7 +17,7 @@ _GH_SHA_PATTERN = re.compile(r"-([0-9a-f]{7,40})$")
 
 
 def parse_skill_manifest(skill_md_path: Path) -> dict:
-    """Parse SKILL.md YAML front matter and return {name, description, content}."""
+    """Parse SKILL.md YAML front matter and return {name, description, metadata, content}."""
     content = skill_md_path.read_text(encoding="utf-8")
 
     match = _FRONTMATTER_PATTERN.match(content)
@@ -36,8 +36,57 @@ def parse_skill_manifest(skill_md_path: Path) -> dict:
     return {
         "name": front_matter["name"],
         "description": front_matter.get("description"),
+        "metadata": front_matter.get("metadata", {}),
         "content": content,
     }
+
+
+def read_skill_metadata(skill_md_path: Path) -> dict[str, str]:
+    """Read the metadata field from a SKILL.md frontmatter.
+
+    Returns an empty dict if the file doesn't exist or has no metadata.
+    """
+    try:
+        if not skill_md_path.exists():
+            return {}
+        content = skill_md_path.read_text(encoding="utf-8")
+        match = _FRONTMATTER_PATTERN.match(content)
+        if not match:
+            return {}
+        front_matter = yaml.safe_load(match.group(1))
+        if not isinstance(front_matter, dict):
+            return {}
+        return front_matter.get("metadata") or {}
+    except Exception:
+        return {}
+
+
+def update_skill_metadata(skill_md_path: Path, metadata_updates: dict[str, str]) -> None:
+    """Update the metadata field in a SKILL.md frontmatter, preserving all other content.
+
+    Merges metadata_updates into the existing metadata dict. Creates the metadata
+    field if it doesn't exist. Preserves the markdown body after the frontmatter.
+    """
+    content = skill_md_path.read_text(encoding="utf-8")
+
+    match = _FRONTMATTER_PATTERN.match(content)
+    if not match:
+        raise MlflowException(
+            f"SKILL.md at {skill_md_path} does not contain valid YAML front matter."
+        )
+
+    front_matter = yaml.safe_load(match.group(1))
+    if not isinstance(front_matter, dict):
+        raise MlflowException(f"SKILL.md at {skill_md_path} has invalid front matter.")
+
+    existing_metadata = front_matter.get("metadata") or {}
+    existing_metadata.update(metadata_updates)
+    front_matter["metadata"] = existing_metadata
+
+    # Rebuild the file: new frontmatter + original body
+    body = content[match.end():]
+    new_frontmatter = yaml.dump(front_matter, default_flow_style=False, allow_unicode=True)
+    skill_md_path.write_text(f"---\n{new_frontmatter}---\n{body}", encoding="utf-8")
 
 
 def find_skill_directories(path: Path) -> list[Path]:
