@@ -275,14 +275,21 @@ def commands():
 )
 @click.option("--pin", default=None, help="Pin to a git ref — branch, tag, or SHA (GitHub only).")
 @click.option("--no-register", is_flag=True, help="Skip MLflow registry registration.")
+@click.option("--copy", is_flag=True, help="Copy files directly instead of symlinking (project scope only).")
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing skills without prompting.")
 @click.option("--tag", "-t", multiple=True, help="Tag in key=value format (for registration).")
-def install_cmd(sources, scope, project_path, agent, pin, no_register, force, tag):
+def install_cmd(sources, scope, project_path, agent, pin, no_register, copy, force, tag):
     """Install skills from GitHub, local directories, or the MLflow registry.
+
+    \b
+    Skills are stored in ~/.agents/skills/ (canonical) and symlinked into
+    the agent's skill directory. Use --copy with --scope project to copy
+    files directly instead.
 
     \b
     Each SOURCE can be:
       GitHub URL          install from repository
+      owner/repo          GitHub shorthand
       local path          install from directory
       name                install latest version from registry
       name/3              install version 3 from registry
@@ -290,16 +297,14 @@ def install_cmd(sources, scope, project_path, agent, pin, no_register, force, ta
 
     \b
     Examples:
+      mlflow skills install anthropics/skills
       mlflow skills install https://github.com/my-org/agent-skills
       mlflow skills install ./my-skills/pr-review
-      mlflow skills install pr-review
       mlflow skills install pr-review/3
       mlflow skills install pr-review@champion
-      mlflow skills install https://github.com/my-org/skills --pin v1.0.0
-      mlflow skills install https://github.com/my-org/skills --no-register
+      mlflow skills install anthropics/skills --scope project --copy
     """
     from mlflow.genai.skills import install_skill_from_registry, install_skill_from_source
-    from mlflow.genai.skills.skill_parser import parse_skill_manifest
 
     tags = {}
     for t in tag:
@@ -314,7 +319,7 @@ def install_cmd(sources, scope, project_path, agent, pin, no_register, force, ta
         resolved = _resolve_install_source(source)
         if resolved["type"] == "source":
             _install_from_source(
-                resolved["source"], agent, scope, pp, pin, no_register, force, tags or None
+                resolved["source"], agent, scope, pp, pin, no_register, copy, force, tags or None
             )
         else:
             dest = install_skill_from_registry(
@@ -324,11 +329,12 @@ def install_cmd(sources, scope, project_path, agent, pin, no_register, force, ta
                 agent=agent,
                 scope=scope,
                 project_path=pp,
+                copy=copy,
             )
             click.echo(f"Installed {resolved['name']} → {dest}")
 
 
-def _install_from_source(source, agent, scope, project_path, pin, no_register, force, tags):
+def _install_from_source(source, agent, scope, project_path, pin, no_register, copy, force, tags):
     """Handle installation from a GitHub URL or local directory."""
     from mlflow.genai.skills import install_skill_from_source, preview_skills
 
@@ -374,6 +380,7 @@ def _install_from_source(source, agent, scope, project_path, pin, no_register, f
         skill_names=selected,
         register=should_register,
         tags=tags,
+        copy=copy,
     )
 
     for path in paths:

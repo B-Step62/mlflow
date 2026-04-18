@@ -333,25 +333,29 @@ def delete_skill_version(name: str, version: int) -> None:
     mlflow.MlflowClient().delete_skill_version(name, version)
 
 
-def _get_install_dest(
+def _get_agent_skill_dir(
     name: str,
     agent: str,
     scope: Literal["global", "project"],
     project_path: Path | None = None,
 ) -> Path:
-    """Resolve the installation directory for a skill given agent and scope."""
+    """Resolve the agent-specific skill directory (where the symlink or copy goes)."""
     from mlflow.genai.skills.constants import AGENT_SKILL_DIRS, SUPPORTED_AGENTS
 
     if agent not in AGENT_SKILL_DIRS:
         raise MlflowException.invalid_parameter_value(
             f"Unsupported agent '{agent}'. Supported agents: {', '.join(SUPPORTED_AGENTS)}"
         )
-    dirs = AGENT_SKILL_DIRS[agent]
-    if scope == "global":
-        return Path(dirs["global"]) / name
-    if project_path is None:
-        project_path = Path.cwd()
-    return project_path / dirs["project"] / name
+    rel = AGENT_SKILL_DIRS[agent][scope if scope == "project" else "global"]
+    base = Path.home() if scope == "global" else (project_path or Path.cwd())
+    return base / rel / name
+
+
+def _get_canonical_dir(name: str) -> Path:
+    """Resolve the canonical skill directory (~/.agents/skills/<name>)."""
+    from mlflow.genai.skills.constants import CANONICAL_SKILLS_DIR
+
+    return CANONICAL_SKILLS_DIR / name
 
 
 def _write_install_metadata(
@@ -378,13 +382,62 @@ def _write_install_metadata(
         update_skill_metadata(skill_md_path, metadata)
 
 
-def _copy_skill_dir(src: Path, dest: Path) -> None:
-    """Copy a skill directory to the destination, overwriting existing files."""
+def _copy_dir(src: Path, dest: Path) -> None:
+    """Copy a directory to the destination, overwriting existing files."""
     import shutil
 
-    if dest.exists():
-        shutil.rmtree(dest)
+    if dest.exists() or dest.is_symlink():
+        if dest.is_symlink():
+            dest.unlink()
+        else:
+            shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dest)
+
+
+def _create_symlink(canonical: Path, agent_dest: Path) -> None:
+    """Create a symlink from the agent skill directory to the canonical location."""
+    agent_dest.parent.mkdir(parents=True, exist_ok=True)
+    if agent_dest.exists() or agent_dest.is_symlink():
+        if agent_dest.is_symlink():
+            agent_dest.unlink()
+        else:
+            import shutil
+
+            shutil.rmtree(agent_dest)
+    agent_dest.symlink_to(canonical)
+
+
+def _install_skill_files(
+    name: str,
+    src: Path,
+    agent: str,
+    scope: Literal["global", "project"],
+    project_path: Path | None = None,
+    copy: bool = False,
+) -> Path:
+    """Install skill files using the three-mode strategy.
+
+    Returns the path where the agent will find the skill (symlink or copy).
+
+    Modes:
+        1. Global (scope="global"): copy to ~/.agents/skills/<name>, symlink from agent dir
+        2. Project with symlink (scope="project", copy=False): copy to ~/.agents/skills/<name>,
+           symlink from project agent dir
+        3. Project with copy (scope="project", copy=True): copy directly to project agent dir
+    """
+    agent_dest = _get_agent_skill_dir(name, agent, scope, project_path)
+
+    if scope == "project" and copy:
+        # Mode 3: direct copy, no canonical
+        _copy_dir(src, agent_dest)
+        return agent_dest
+
+    # Mode 1 & 2: copy to canonical, symlink from agent dir
+    canonical = _get_canonical_dir(name)
+    _copy_dir(src, canonical)
+    _create_symlink(canonical, agent_dest)
+    return agent_dest
 
 
 def install_skill_from_registry(
@@ -394,6 +447,7 @@ def install_skill_from_registry(
     agent: str = "claude-code",
     scope: Literal["global", "project"] = "global",
     project_path: Path | None = None,
+    copy: bool = False,
 ) -> Path:
     """Download skill artifacts from the registry and install to an agent runtime directory.
 
@@ -404,10 +458,13 @@ def install_skill_from_registry(
         agent: Target agent runtime.
         scope: "global" or "project".
         project_path: Project directory (for scope="project").
+        copy: If True and scope="project", copy files directly instead of symlinking.
 
     Returns:
         Path to the installed skill directory.
     """
+    import tempfile
+
     sv = load_skill(name, version=version, alias=alias)
 
     artifact_location = sv.artifact_location
@@ -416,15 +473,20 @@ def install_skill_from_registry(
     if not artifact_location:
         raise MlflowException(f"Skill '{name}' v{sv.version} has no stored artifacts.")
 
-    dest = _get_install_dest(name, agent, scope, project_path)
-
+    # Download artifacts to a temp directory first, then install via three-mode strategy
     from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
 
-    dest.mkdir(parents=True, exist_ok=True)
-    repo = get_artifact_repository(artifact_location)
-    repo.download_artifacts("", dst_path=str(dest))
+    with tempfile.TemporaryDirectory(prefix="mlflow_skill_") as tmp:
+        tmp_dest = Path(tmp) / name
+        tmp_dest.mkdir()
+        repo = get_artifact_repository(artifact_location)
+        repo.download_artifacts("", dst_path=str(tmp_dest))
 
-    skill_md = dest / "SKILL.md"
+        agent_dest = _install_skill_files(name, tmp_dest, agent, scope, project_path, copy)
+
+    # Write metadata to the canonical or agent copy's SKILL.md
+    # For symlink modes, the canonical SKILL.md is the real file
+    skill_md = _get_canonical_dir(name) / "SKILL.md" if not (scope == "project" and copy) else agent_dest / "SKILL.md"
     if skill_md.exists():
         _write_install_metadata(
             skill_md,
@@ -434,8 +496,8 @@ def install_skill_from_registry(
             tracking_uri=mlflow.get_tracking_uri(),
         )
 
-    _logger.info("Installed skill '%s' v%d to %s", name, sv.version, dest)
-    return dest
+    _logger.info("Installed skill '%s' v%d to %s", name, sv.version, agent_dest)
+    return agent_dest
 
 
 def install_skill_from_source(
@@ -447,6 +509,7 @@ def install_skill_from_source(
     skill_names: list[str] | None = None,
     register: bool = False,
     tags: dict[str, str] | None = None,
+    copy: bool = False,
 ) -> list[Path]:
     """Install skills directly from a GitHub URL or local directory.
 
@@ -462,6 +525,7 @@ def install_skill_from_source(
         skill_names: If provided, only install skills whose name matches.
         register: If True, also register skills in the MLflow registry.
         tags: Optional tags to apply when registering.
+        copy: If True and scope="project", copy directly instead of symlinking.
 
     Returns:
         List of paths where skills were installed.
@@ -493,8 +557,7 @@ def install_skill_from_source(
             continue
         selected_dirs.append((name, skill_dir))
 
-    # Register in MLflow if requested (done in bulk via register_skill,
-    # which handles both local stores and remote REST servers correctly)
+    # Register in MLflow if requested
     version_map: dict[str, int] = {}
     if register and selected_dirs:
         selected_names = [n for n, _ in selected_dirs]
@@ -502,14 +565,14 @@ def install_skill_from_source(
         for sv in registered:
             version_map[sv.name] = sv.version
 
-    # Install each skill to the agent runtime directory
+    # Install each skill using the three-mode strategy
     installed_paths = []
     for name, skill_dir in selected_dirs:
-        dest = _get_install_dest(name, agent, scope, project_path)
-        _copy_skill_dir(skill_dir, dest)
+        agent_dest = _install_skill_files(name, skill_dir, agent, scope, project_path, copy)
 
-        # Write installation metadata into SKILL.md frontmatter
-        skill_md = dest / "SKILL.md"
+        # Write metadata to the real SKILL.md (canonical for symlink modes, agent dir for copy)
+        is_copy_mode = scope == "project" and copy
+        skill_md = (agent_dest if is_copy_mode else _get_canonical_dir(name)) / "SKILL.md"
         if skill_md.exists():
             _write_install_metadata(
                 skill_md,
@@ -519,7 +582,7 @@ def install_skill_from_source(
                 tracking_uri=mlflow.get_tracking_uri() if register else None,
             )
 
-        installed_paths.append(dest)
-        _logger.info("Installed skill '%s' to %s", name, dest)
+        installed_paths.append(agent_dest)
+        _logger.info("Installed skill '%s' to %s", name, agent_dest)
 
     return installed_paths

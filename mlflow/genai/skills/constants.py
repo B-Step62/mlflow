@@ -3,27 +3,30 @@ from pathlib import Path
 
 SKILL_NAME_RULE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
-# Agent runtime → skill installation directories.
-# Each entry maps scope to a path (or a callable that takes project_path).
-AGENT_SKILL_DIRS: dict[str, dict[str, Path | str]] = {
+# Canonical skill storage — single source of truth for installed skills.
+# Both global and project-scoped symlink installs store real files here.
+CANONICAL_SKILLS_DIR = Path.home() / ".agents" / "skills"
+
+# Agent runtime → skill directory relative paths (from home or project root).
+AGENT_SKILL_DIRS: dict[str, dict[str, str]] = {
     "claude-code": {
-        "global": Path.home() / ".claude" / "skills",
+        "global": ".claude/skills",
         "project": ".claude/skills",
     },
     "cursor": {
-        "global": Path.home() / ".cursor" / "skills",
+        "global": ".cursor/skills",
         "project": ".cursor/skills",
     },
     "copilot": {
-        "global": Path.home() / ".github" / "skills",
+        "global": ".github/skills",
         "project": ".github/skills",
     },
     "gemini": {
-        "global": Path.home() / ".gemini" / "skills",
+        "global": ".gemini/skills",
         "project": ".gemini/skills",
     },
     "codex": {
-        "global": Path.home() / ".codex" / "skills",
+        "global": ".codex/skills",
         "project": ".codex/skills",
     },
 }

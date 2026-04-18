@@ -109,3 +109,106 @@ class TestResolveInstallSource:
         result = _resolve_install_source(str(skill_dir))
         assert result["type"] == "source"
         assert result["source"] == str(skill_dir)
+
+
+# ── Install modes (symlink / copy) ───────────────────────────────────────
+
+
+class TestInstallSkillFiles:
+    """Test the three installation modes: global symlink, project symlink, project copy."""
+
+    @pytest.fixture
+    def skill_src(self, tmp_path):
+        """Create a minimal skill source directory."""
+        src = tmp_path / "src" / "my-skill"
+        src.mkdir(parents=True)
+        (src / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: test\n---\n\n# My Skill\n",
+            encoding="utf-8",
+        )
+        (src / "scripts").mkdir()
+        (src / "scripts" / "run.sh").write_text("#!/bin/bash\necho hi\n", encoding="utf-8")
+        return src
+
+    def test_global_creates_canonical_and_symlink(self, skill_src, tmp_path, monkeypatch):
+        from mlflow.genai.skills import _install_skill_files
+        from mlflow.genai.skills import constants
+
+        # Override canonical dir and agent dir to use tmp_path
+        canonical_base = tmp_path / "canonical"
+        agent_home = tmp_path / "home"
+        monkeypatch.setattr(constants, "CANONICAL_SKILLS_DIR", canonical_base)
+        monkeypatch.setattr(
+            constants,
+            "AGENT_SKILL_DIRS",
+            {"claude-code": {"global": ".claude/skills", "project": ".claude/skills"}},
+        )
+        monkeypatch.setattr("pathlib.Path.home", lambda: agent_home)
+
+        result = _install_skill_files("my-skill", skill_src, "claude-code", "global")
+
+        # Canonical dir has real files
+        assert (canonical_base / "my-skill" / "SKILL.md").is_file()
+        assert (canonical_base / "my-skill" / "scripts" / "run.sh").is_file()
+
+        # Agent dir is a symlink
+        agent_skill = agent_home / ".claude" / "skills" / "my-skill"
+        assert agent_skill.is_symlink()
+        assert agent_skill.resolve() == (canonical_base / "my-skill").resolve()
+
+        # Reading through the symlink works
+        assert (agent_skill / "SKILL.md").read_text(encoding="utf-8").startswith("---")
+
+    def test_project_symlink_creates_canonical_and_symlink(self, skill_src, tmp_path, monkeypatch):
+        from mlflow.genai.skills import _install_skill_files
+        from mlflow.genai.skills import constants
+
+        canonical_base = tmp_path / "canonical"
+        project = tmp_path / "project"
+        project.mkdir()
+        monkeypatch.setattr(constants, "CANONICAL_SKILLS_DIR", canonical_base)
+
+        result = _install_skill_files(
+            "my-skill", skill_src, "claude-code", "project", project_path=project
+        )
+
+        # Canonical has real files
+        assert (canonical_base / "my-skill" / "SKILL.md").is_file()
+
+        # Project agent dir is a symlink
+        agent_skill = project / ".claude" / "skills" / "my-skill"
+        assert agent_skill.is_symlink()
+
+    def test_project_copy_creates_direct_copy(self, skill_src, tmp_path):
+        from mlflow.genai.skills import _install_skill_files
+
+        project = tmp_path / "project"
+        project.mkdir()
+
+        result = _install_skill_files(
+            "my-skill", skill_src, "claude-code", "project", project_path=project, copy=True
+        )
+
+        # Agent dir has real files (not a symlink)
+        agent_skill = project / ".claude" / "skills" / "my-skill"
+        assert agent_skill.is_dir()
+        assert not agent_skill.is_symlink()
+        assert (agent_skill / "SKILL.md").is_file()
+        assert (agent_skill / "scripts" / "run.sh").is_file()
+
+    def test_reinstall_replaces_symlink(self, skill_src, tmp_path, monkeypatch):
+        from mlflow.genai.skills import _install_skill_files
+        from mlflow.genai.skills import constants
+
+        canonical_base = tmp_path / "canonical"
+        agent_home = tmp_path / "home"
+        monkeypatch.setattr(constants, "CANONICAL_SKILLS_DIR", canonical_base)
+        monkeypatch.setattr("pathlib.Path.home", lambda: agent_home)
+
+        # Install twice — second should cleanly replace
+        _install_skill_files("my-skill", skill_src, "claude-code", "global")
+        _install_skill_files("my-skill", skill_src, "claude-code", "global")
+
+        agent_skill = agent_home / ".claude" / "skills" / "my-skill"
+        assert agent_skill.is_symlink()
+        assert (agent_skill / "SKILL.md").is_file()
