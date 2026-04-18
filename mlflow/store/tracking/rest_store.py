@@ -2192,3 +2192,197 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
             MlflowException: If spans belong to different traces or the OTel API call fails.
         """
         return self.log_spans(location, spans)
+
+    # ========================================================================
+    # Skill Registry (REST → /ajax-api/3.0/mlflow/skills/)
+    # ========================================================================
+
+    _SKILLS_API = "/ajax-api/3.0/mlflow/skills"
+
+    def _skill_from_json(self, data: dict) -> "Skill":
+        from mlflow.entities.skill import Skill, SkillAlias
+
+        aliases = [
+            SkillAlias(name=data["name"], alias=a["alias"], version=a["version"])
+            for a in data.get("aliases", [])
+        ]
+        return Skill(
+            name=data["name"],
+            description=data.get("description"),
+            creation_timestamp=data.get("creation_timestamp"),
+            last_updated_timestamp=data.get("last_updated_timestamp"),
+            latest_version=data.get("latest_version"),
+            aliases=aliases,
+        )
+
+    def _skill_version_from_json(self, data: dict) -> "SkillVersion":
+        from mlflow.entities.skill_version import SkillVersion
+
+        return SkillVersion(
+            name=data["name"],
+            version=data["version"],
+            source=data.get("source"),
+            description=data.get("description"),
+            manifest_content=data.get("manifest_content"),
+            artifact_location=data.get("artifact_location"),
+            creation_timestamp=data.get("creation_timestamp"),
+            tags=data.get("tags", {}),
+            aliases=data.get("aliases", []),
+            created_by=data.get("created_by"),
+        )
+
+    def create_skill(self, name, description=None):
+        endpoint = f"{self._SKILLS_API}/register"
+        # The register endpoint takes a source, but for create_skill we just need
+        # to ensure the skill exists. We use the get endpoint first, then register
+        # only creates through the register flow. Since the REST API register endpoint
+        # expects a source, we call the server-side create_skill directly.
+        # However, the FastAPI skill endpoints don't expose a bare "create skill" endpoint —
+        # registration happens through /register which takes a source.
+        # Instead, we call get to check existence, and let create_skill_version handle creation.
+        try:
+            return self.get_skill(name)
+        except Exception:
+            # Skill doesn't exist yet — it will be created when the first version is registered.
+            # Return a minimal Skill entity as a placeholder.
+            from mlflow.entities.skill import Skill
+
+            return Skill(name=name, description=description)
+
+    def get_skill(self, name):
+        endpoint = f"{self._SKILLS_API}/{name}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="GET",
+        )
+        verify_rest_response(response, endpoint)
+        data = response.json()
+        return self._skill_from_json(data["skill"])
+
+    def search_skills(self, filter_string=None, max_results=100, page_token=None):
+        from mlflow.store.entities import PagedList
+
+        endpoint = self._SKILLS_API + "/"
+        params = {"max_results": max_results}
+        if filter_string:
+            params["filter"] = filter_string
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="GET",
+            params=params,
+        )
+        verify_rest_response(response, endpoint)
+        skills = [self._skill_from_json(s) for s in response.json()]
+        return PagedList(skills, token=None)
+
+    def delete_skill(self, name):
+        endpoint = f"{self._SKILLS_API}/{name}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="DELETE",
+        )
+        verify_rest_response(response, endpoint)
+
+    def create_skill_version(
+        self, name, source=None, description=None, manifest_content=None,
+        artifact_location=None, tags=None, created_by=None,
+    ):
+        endpoint = f"{self._SKILLS_API}/register"
+        body = {
+            "source": source or "",
+            "skill_names": [name],
+            "tags": tags,
+        }
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="POST",
+            json=body,
+        )
+        verify_rest_response(response, endpoint)
+        versions = response.json()
+        # The register endpoint returns a list; find the one matching our skill name
+        for v in versions:
+            if v["name"] == name:
+                return self._skill_version_from_json(v)
+        # If register didn't return our skill, fall back to getting latest
+        return self.get_latest_skill_version(name)
+
+    def get_skill_version(self, name, version):
+        endpoint = f"{self._SKILLS_API}/{name}/versions/{version}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="GET",
+        )
+        verify_rest_response(response, endpoint)
+        return self._skill_version_from_json(response.json())
+
+    def get_skill_version_by_alias(self, name, alias):
+        # The server doesn't have a direct alias resolution endpoint.
+        # Get the skill, find the alias, then get that version.
+        skill = self.get_skill(name)
+        for a in skill.aliases:
+            if a.alias == alias:
+                return self.get_skill_version(name, a.version)
+        from mlflow.exceptions import MlflowException
+
+        raise MlflowException(f"Alias '{alias}' not found for skill '{name}'.")
+
+    def get_latest_skill_version(self, name):
+        skill = self.get_skill(name)
+        if skill.latest_version is None:
+            from mlflow.exceptions import MlflowException
+
+            raise MlflowException(f"Skill '{name}' has no versions.")
+        return self.get_skill_version(name, skill.latest_version)
+
+    def delete_skill_version(self, name, version):
+        endpoint = f"{self._SKILLS_API}/{name}/versions/{version}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="DELETE",
+        )
+        verify_rest_response(response, endpoint)
+
+    def set_skill_version_tag(self, name, version, key, value):
+        endpoint = f"{self._SKILLS_API}/{name}/versions/{version}/tags"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="POST",
+            json={"key": key, "value": value},
+        )
+        verify_rest_response(response, endpoint)
+
+    def delete_skill_version_tag(self, name, version, key):
+        endpoint = f"{self._SKILLS_API}/{name}/versions/{version}/tags/{key}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="DELETE",
+        )
+        verify_rest_response(response, endpoint)
+
+    def set_skill_alias(self, name, alias, version):
+        endpoint = f"{self._SKILLS_API}/{name}/aliases"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="POST",
+            json={"alias": alias, "version": version},
+        )
+        verify_rest_response(response, endpoint)
+
+    def delete_skill_alias(self, name, alias):
+        endpoint = f"{self._SKILLS_API}/{name}/aliases/{alias}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="DELETE",
+        )
+        verify_rest_response(response, endpoint)

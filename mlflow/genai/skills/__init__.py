@@ -156,6 +156,10 @@ def register_skill(
     Finds all SKILL.md files in the source, registers each as a versioned skill.
     If the skill already exists, creates a new version.
 
+    When the tracking URI points to an HTTP server, the registration is delegated
+    to the server's /register endpoint so the server handles downloading and storage.
+    When using a local store (e.g. SQLite), the client handles it directly.
+
     Args:
         source: GitHub repository URL or local directory path.
         tags: Optional tags to apply to each skill version.
@@ -165,12 +169,68 @@ def register_skill(
     Returns:
         List of created SkillVersion objects.
     """
+    tracking_uri = mlflow.get_tracking_uri()
+
+    # Remote server — delegate registration to the server's REST endpoint
+    if tracking_uri.startswith(("http://", "https://")):
+        return _register_skill_via_rest(source, tags, skill_names)
+
+    # Local store — handle directly
+    return _register_skill_local(source, tags, skill_names)
+
+
+def _register_skill_via_rest(
+    source: str,
+    tags: dict[str, str] | None = None,
+    skill_names: list[str] | None = None,
+) -> list[SkillVersion]:
+    """Register skills by calling the MLflow server's /register REST endpoint."""
+    from mlflow.rest_utils import http_request
+    from mlflow.tracking._tracking_service.utils import _get_default_host_creds
+    from mlflow.utils.rest_utils import verify_rest_response
+
+    endpoint = "/ajax-api/3.0/mlflow/skills/register"
+    body = {
+        "source": source,
+        "tags": tags,
+        "skill_names": skill_names,
+    }
+    response = http_request(
+        host_creds=_get_default_host_creds(),
+        endpoint=endpoint,
+        method="POST",
+        json=body,
+    )
+    verify_rest_response(response, endpoint)
+
+    versions = []
+    for v in response.json():
+        versions.append(SkillVersion(
+            name=v["name"],
+            version=v["version"],
+            source=v.get("source"),
+            description=v.get("description"),
+            manifest_content=v.get("manifest_content"),
+            artifact_location=v.get("artifact_location"),
+            creation_timestamp=v.get("creation_timestamp"),
+            tags=v.get("tags", {}),
+            aliases=v.get("aliases", []),
+            created_by=v.get("created_by"),
+        ))
+    return versions
+
+
+def _register_skill_local(
+    source: str,
+    tags: dict[str, str] | None = None,
+    skill_names: list[str] | None = None,
+) -> list[SkillVersion]:
+    """Register skills directly against the local store (SQLite / file)."""
     _, skill_dirs, commit_hash = _resolve_source(source)
 
     client = mlflow.MlflowClient()
     versions = []
 
-    # Merge commit hash into internal tags without mutating the caller's dict
     version_tags = dict(tags or {})
     if commit_hash:
         version_tags["mlflow.skill.commit_hash"] = commit_hash
@@ -185,15 +245,11 @@ def register_skill(
 
         _validate_skill_name(name)
 
-        # Create or get the registered skill
         try:
             client.create_skill(name=name, description=description)
         except MlflowException:
             pass
 
-        # Store bundle files and get artifact_location
-        # We need the version number first, but it's auto-incremented by the store.
-        # Create the version first, then store artifacts and update location.
         sv = client.create_skill_version(
             name=name,
             source=source,
@@ -203,10 +259,9 @@ def register_skill(
         )
 
         artifact_location = _store_skill_bundle(name, sv.version, skill_dir)
-        # Update the artifact_location on the version
-        # For now we set it via a tag since we just created the version
-        # TODO: add a dedicated update method
-        client.set_skill_version_tag(name, sv.version, "mlflow.skill.artifact_location", artifact_location)
+        client.set_skill_version_tag(
+            name, sv.version, "mlflow.skill.artifact_location", artifact_location
+        )
 
         versions.append(sv)
         _logger.info("Registered skill '%s' version %d", name, sv.version)
@@ -428,50 +483,29 @@ def install_skill_from_source(
                 "Each skill must contain a SKILL.md manifest."
             )
 
-    installed_paths = []
-    registered_versions = []
-
+    # Collect matching skill names and directories
+    selected_dirs: list[tuple[str, Path]] = []
     for skill_dir in skill_dirs:
         manifest = parse_skill_manifest(skill_dir / "SKILL.md")
         name = manifest["name"]
-
         if skill_names is not None and name not in skill_names:
             continue
+        selected_dirs.append((name, skill_dir))
 
-        # Install to agent runtime directory
+    # Register in MLflow if requested (done in bulk via register_skill,
+    # which handles both local stores and remote REST servers correctly)
+    version_map: dict[str, int] = {}
+    if register and selected_dirs:
+        selected_names = [n for n, _ in selected_dirs]
+        registered = register_skill(source=source, tags=tags, skill_names=selected_names)
+        for sv in registered:
+            version_map[sv.name] = sv.version
+
+    # Install each skill to the agent runtime directory
+    installed_paths = []
+    for name, skill_dir in selected_dirs:
         dest = _get_install_dest(name, agent, scope, project_path)
         _copy_skill_dir(skill_dir, dest)
-
-        # Register in MLflow if requested
-        version = None
-        if register:
-            _validate_skill_name(name)
-            description = manifest.get("description")
-
-            client = mlflow.MlflowClient()
-            try:
-                client.create_skill(name=name, description=description)
-            except MlflowException:
-                pass
-
-            version_tags = dict(tags or {})
-            if commit_hash:
-                version_tags["mlflow.skill.commit_hash"] = commit_hash
-
-            sv = client.create_skill_version(
-                name=name,
-                source=source,
-                description=description,
-                tags=version_tags,
-                created_by=getpass.getuser(),
-            )
-            artifact_location = _store_skill_bundle(name, sv.version, skill_dir)
-            client.set_skill_version_tag(
-                name, sv.version, "mlflow.skill.artifact_location", artifact_location
-            )
-            version = sv.version
-            registered_versions.append(sv)
-            _logger.info("Registered skill '%s' version %d", name, sv.version)
 
         # Write installation metadata into SKILL.md frontmatter
         skill_md = dest / "SKILL.md"
@@ -480,7 +514,7 @@ def install_skill_from_source(
                 skill_md,
                 source=source,
                 commit_hash=commit_hash,
-                version=version,
+                version=version_map.get(name),
                 tracking_uri=mlflow.get_tracking_uri() if register else None,
             )
 

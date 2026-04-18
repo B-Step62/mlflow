@@ -1666,15 +1666,12 @@ class AbstractStore(GatewayStoreMixin):
     # Skill Registry
     # ============================================================================
 
-    @requires_sql_backend
     def create_skill(self, name: str, description: str | None = None) -> "Skill":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def get_skill(self, name: str) -> "Skill":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def search_skills(
         self,
         filter_string: str | None = None,
@@ -1683,11 +1680,9 @@ class AbstractStore(GatewayStoreMixin):
     ) -> "PagedList":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def delete_skill(self, name: str) -> None:
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def create_skill_version(
         self,
         name: str,
@@ -1696,37 +1691,30 @@ class AbstractStore(GatewayStoreMixin):
         manifest_content: str | None = None,
         artifact_location: str | None = None,
         tags: dict[str, str] | None = None,
+        created_by: str | None = None,
     ) -> "SkillVersion":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def get_skill_version(self, name: str, version: int) -> "SkillVersion":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def get_skill_version_by_alias(self, name: str, alias: str) -> "SkillVersion":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def get_latest_skill_version(self, name: str) -> "SkillVersion":
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def delete_skill_version(self, name: str, version: int) -> None:
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def set_skill_version_tag(self, name: str, version: int, key: str, value: str) -> None:
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def delete_skill_version_tag(self, name: str, version: int, key: str) -> None:
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def set_skill_alias(self, name: str, alias: str, version: int) -> None:
         raise NotImplementedError(self.__class__.__name__)
 
-    @requires_sql_backend
     def delete_skill_alias(self, name: str, alias: str) -> None:
         raise NotImplementedError(self.__class__.__name__)
