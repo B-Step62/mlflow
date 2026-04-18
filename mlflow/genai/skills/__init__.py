@@ -364,7 +364,6 @@ def _write_install_metadata(
     source: str | None = None,
     commit_hash: str | None = None,
     version: int | None = None,
-    tracking_uri: str | None = None,
 ) -> None:
     """Write installation metadata into the SKILL.md frontmatter metadata field."""
     metadata: dict[str, str] = {}
@@ -374,8 +373,6 @@ def _write_install_metadata(
         metadata["mlflow-commit-sha"] = commit_hash
     if version is not None:
         metadata["mlflow-version"] = str(version)
-    if tracking_uri:
-        metadata["mlflow-tracking-uri"] = tracking_uri
     metadata["mlflow-installed-at"] = datetime.now(tz=timezone.utc).isoformat()
 
     if metadata:
@@ -493,7 +490,6 @@ def install_skill_from_registry(
             source=sv.source,
             commit_hash=sv.tags.get("mlflow.skill.commit_hash"),
             version=sv.version,
-            tracking_uri=mlflow.get_tracking_uri(),
         )
 
     _logger.info("Installed skill '%s' v%d to %s", name, sv.version, agent_dest)
@@ -579,7 +575,6 @@ def install_skill_from_source(
                 source=source,
                 commit_hash=commit_hash,
                 version=version_map.get(name),
-                tracking_uri=mlflow.get_tracking_uri() if register else None,
             )
 
         installed_paths.append(agent_dest)
