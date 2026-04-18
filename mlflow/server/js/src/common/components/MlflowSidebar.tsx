@@ -194,24 +194,15 @@ export function MlflowSidebar({
               icon: <TextBoxIcon />,
               linkProps: {
                 to: ExperimentTrackingRoutes.promptsPageRoute,
-                isActive: isPromptsActive,
-                children: <FormattedMessage defaultMessage="Prompts" description="Sidebar link for prompts tab" />,
+                isActive: (location: Location) => isPromptsActive(location) || isSkillsActive(location),
+                children: (
+                  <FormattedMessage
+                    defaultMessage="Prompts & Skills"
+                    description="Sidebar link for prompts and skills tab"
+                  />
+                ),
               },
               componentId: 'mlflow.sidebar.prompts_tab_link',
-            },
-          ]
-        : []),
-      ...(shouldShowGenAIFeatures(enableWorkflowBasedNavigation, workflowType) && !showNestedExperimentItems
-        ? [
-            {
-              key: 'skills',
-              icon: <LightningIcon />,
-              linkProps: {
-                to: ExperimentTrackingRoutes.skillsPageRoute,
-                isActive: isSkillsActive,
-                children: <FormattedMessage defaultMessage="Skills" description="Sidebar link for skills tab" />,
-              },
-              componentId: 'mlflow.sidebar.skills_tab_link',
             },
           ]
         : []),

@@ -51,6 +51,10 @@
     "defaultMessage": "Use these code examples to call your endpoint. Choose between unified APIs for seamless model switching or passthrough APIs for provider-specific features.",
     "description": "Endpoint usage modal description"
   },
+  "+JPIZ7": {
+    "defaultMessage": "Failed to load usage data.",
+    "description": "Error message when skill usage data fails to load"
+  },
   "+LLlvi": {
     "defaultMessage": "Source Run",
     "description": "Label name for source run metadata in model version page"
@@ -363,6 +367,10 @@
     "defaultMessage": "Delete logged model",
     "description": "A header of the modal used for deleting logged models"
   },
+  "0JHgSC": {
+    "defaultMessage": "Prompts",
+    "description": "Tab label for prompts"
+  },
   "0LfePE": {
     "defaultMessage": "Automatically evaluate new traces using this scorer",
     "description": "Hint text for automatic evaluation toggle"
@@ -402,6 +410,10 @@
   "0gIYIc": {
     "defaultMessage": "Make the line between points \"smoother\" based on Exponential Moving Average. Smoothing can be useful for displaying the overall trend when the logging frequency is high.",
     "description": "Helpful tooltip message to help with line smoothness for the metrics plot"
+  },
+  "0i8+ru": {
+    "defaultMessage": "Skill Performance Summary",
+    "description": "Title for the skill performance summary section"
   },
   "0iR7OV": {
     "defaultMessage": "Total Cost",
@@ -574,6 +586,10 @@
   "1l/c+M": {
     "defaultMessage": "User frustration",
     "description": "LLM template option"
+  },
+  "1pZG+L": {
+    "defaultMessage": "invocations",
+    "description": "Label for total skill invocations in breakdown"
   },
   "1uyr/n": {
     "defaultMessage": "View {count} {count, plural, one {issue} other {issues}}",
@@ -1558,6 +1574,10 @@
     "defaultMessage": "The provided value is not valid JSON",
     "description": "Error message for invalid JSON in an assessment edit form"
   },
+  "8T/Vil": {
+    "defaultMessage": "invocations in the last 30 days",
+    "description": "Subtitle for skill usage count"
+  },
   "8Uwpjw": {
     "defaultMessage": "Create run",
     "description": "Experiment page > new run modal > \"Create run\" confirm button label"
@@ -1597,6 +1617,10 @@
   "8flziy": {
     "defaultMessage": "Time (Wall)",
     "description": "Radio button option to choose the time wall control option for the X-axis for metric graph on the experiment runs"
+  },
+  "8gjVYv": {
+    "defaultMessage": "Skills",
+    "description": "Tab label for skills"
   },
   "8hpS0b": {
     "defaultMessage": "Pin group",
@@ -3654,10 +3678,6 @@
     "defaultMessage": "Actions ({count})",
     "description": "Actions dropdown button label with count of selected sessions"
   },
-  "MaEPS2": {
-    "defaultMessage": "Versions",
-    "description": "Versions section title"
-  },
   "MatV9u": {
     "defaultMessage": "Create",
     "description": "Create button text for creating model in the model registry"
@@ -4042,6 +4062,10 @@
     "defaultMessage": "Add expectation",
     "description": "Label for the button to add a new expectation"
   },
+  "OrM5Yc": {
+    "defaultMessage": "Prompts & Skills",
+    "description": "Sidebar link for prompts and skills tab"
+  },
   "OxQK9l": {
     "defaultMessage": "Key name is required",
     "description": "Error message when key name is empty"
@@ -4233,10 +4257,6 @@
     "defaultMessage": "Hide finished runs",
     "description": "Menu option for hiding all finished runs in the evaluation runs table"
   },
-  "QBYbF3": {
-    "defaultMessage": "Prompts",
-    "description": "Sidebar link for prompts tab"
-  },
   "QC5Vjq": {
     "defaultMessage": "Y-axis:",
     "description": "Label where the users can choose the metric of the experiment run to be plotted on the Y-axis"
@@ -4425,6 +4445,10 @@
     "defaultMessage": "Do retrieved documents contain all necessary information?",
     "description": "Hint for RetrievalSufficiency template"
   },
+  "ReaHg4": {
+    "defaultMessage": "No skill usage recorded yet.",
+    "description": "Empty state for skill usage breakdown"
+  },
   "RgVN+O": {
     "defaultMessage": "View all",
     "description": "Home page news section view more link"
@@ -4561,6 +4585,10 @@
     "defaultMessage": "Save Changes",
     "description": "Save changes button text"
   },
+  "SNQMUd": {
+    "defaultMessage": "Skill",
+    "description": "Column header for skill name"
+  },
   "SNvZyR": {
     "defaultMessage": "Time",
     "description": "Label for the time axis on the runs compare chart"
@@ -4692,10 +4720,6 @@
   "TCAbKZ": {
     "defaultMessage": "Save",
     "description": "Save webhook button"
-  },
-  "TE0p6h": {
-    "defaultMessage": "SKILL.md (latest)",
-    "description": "SKILL.md preview title"
   },
   "TKtJIK": {
     "defaultMessage": "Page not found",
@@ -4967,6 +4991,10 @@
   "Uzii0L": {
     "defaultMessage": "AI Gateway",
     "description": "Sidebar link for gateway"
+  },
+  "V++oZH": {
+    "defaultMessage": "No skills selected",
+    "description": "Label for skill selector when no skills are selected"
   },
   "V+4GZQ": {
     "defaultMessage": "View logs for this period",
@@ -5384,6 +5412,10 @@
     "defaultMessage": "Loading model definitions...",
     "description": "Loading message for model definitions"
   },
+  "XUTyWp": {
+    "defaultMessage": "No usage data yet. Traces will appear here once this skill is invoked.",
+    "description": "Empty state message for skill usage tab"
+  },
   "XX8+x1": {
     "defaultMessage": "View prompt template",
     "description": "Experiment page > artifact compare view > run column header prompt metadata > \"view prompt template\" button label"
@@ -5711,6 +5743,10 @@
     "defaultMessage": "(unknown)",
     "description": "Filler text when run's time information is unavailable"
   },
+  "Zez6Sa": {
+    "defaultMessage": "Skill Usage Over Time",
+    "description": "Title for the skill usage chart"
+  },
   "ZfsnMj": {
     "defaultMessage": "Not grounded",
     "description": "Evaluation results > grounded assessment > negative value label. Displayed if evaluation result is considered as not grounded."
@@ -5839,13 +5875,13 @@
     "defaultMessage": "Usage breakdown",
     "description": "Header for token usage breakdown"
   },
+  "aI1A7M": {
+    "defaultMessage": "Prompts & Skills",
+    "description": "Header title for the prompts and skills page"
+  },
   "aIP7Kb": {
     "defaultMessage": "Cancel",
     "description": "Cancel button text for confirmation pop-up to delete a tag from\n                     table in MLflow"
-  },
-  "aLRRam": {
-    "defaultMessage": "Prompts",
-    "description": "Header title for the registered prompts page"
   },
   "aMOq4p": {
     "defaultMessage": "See {mlflowLink} for more details.",
@@ -6427,6 +6463,10 @@
     "defaultMessage": "No results match this search.",
     "description": "No results message in datasets drawer table"
   },
+  "dlMaNQ": {
+    "defaultMessage": "Skill Usage",
+    "description": "Title for the skill usage over time chart on skills list page"
+  },
   "dq8MJd": {
     "defaultMessage": "Contour Plot",
     "description": "Tab text for contour plot on the model comparison page"
@@ -6783,10 +6823,6 @@
     "defaultMessage": "Name",
     "description": "Column title for model name in the registered model page"
   },
-  "g1u6Vu": {
-    "defaultMessage": "Delete ({count})",
-    "description": "Bulk delete button"
-  },
   "g2tInh": {
     "defaultMessage": "Source type: {typeLabel}",
     "description": "Experiment dataset drawer > source type > label"
@@ -7130,10 +7166,6 @@
   "i7hyJK": {
     "defaultMessage": "API Keys",
     "description": "Sidebar link for API keys"
-  },
-  "i82Hjx": {
-    "defaultMessage": "Skills",
-    "description": "Sidebar link for skills tab"
   },
   "i9OADf": {
     "defaultMessage": "Params",
@@ -8947,6 +8979,10 @@
     "defaultMessage": "Set description",
     "description": "Label for set description button in workspaces table"
   },
+  "tLEMnZ": {
+    "defaultMessage": "Usage Over Time",
+    "description": "Title for the skill usage over time chart"
+  },
   "tLb7+M": {
     "defaultMessage": "{timeSince, plural, =1 {1 day} other {# days}} ago",
     "description": "Text for time in days since given date for MLflow views"
@@ -9763,9 +9799,6 @@
     "defaultMessage": "Next",
     "description": "Next button in skill modal"
   },
-  "z3jAVQ": {
-    "defaultMessage": "Failed to delete webhook"
-  },
   "z42Rsj": {
     "defaultMessage": "Source run",
     "description": "Label for the column indicating a run being the source of the logged model's metric (i.e. source run). Displayed in the logged model details metrics table."
@@ -9897,6 +9930,10 @@
   "ziIhFQ": {
     "defaultMessage": "Loaded {allRuns} {allRuns, plural, =1 {run} other {runs}}, including {childRuns} child {childRuns, plural, =1 {run} other {runs}}",
     "description": "Experiment page > loaded more runs notification > loaded both parent and child runs"
+  },
+  "zj+msS": {
+    "defaultMessage": "All skills",
+    "description": "Label for skill selector when all skills are selected"
   },
   "zjXq2X": {
     "defaultMessage": "The model will be registered as a new version of {selectedModel}.",

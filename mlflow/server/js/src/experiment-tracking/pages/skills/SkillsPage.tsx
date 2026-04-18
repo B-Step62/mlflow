@@ -479,7 +479,11 @@ const SkillsCardGrid = ({
   );
 };
 
-const SkillsPage = () => {
+/**
+ * Skills content without page chrome (header, ScrollablePageWrapper).
+ * Used both standalone in SkillsPage and embedded as a tab in PromptsPage.
+ */
+export const SkillsContent = () => {
   const { theme } = useDesignSystemTheme();
   const [searchFilter, setSearchFilter] = useState('');
   const [debouncedSearchFilter] = useDebounce(searchFilter, 500);
@@ -536,25 +540,17 @@ const SkillsPage = () => {
 
   return (
     <>
-    <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
-      <Spacer shrinks={false} />
-      <Header
-        title={
-          <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-            <span
-              css={{
-                display: 'flex',
-                borderRadius: theme.borders.borderRadiusSm,
-                backgroundColor: theme.colors.backgroundSecondary,
-                padding: theme.spacing.sm,
-              }}
-            >
-              <LightningIcon />
-            </span>
-            <FormattedMessage defaultMessage="Skills" description="Header title for the skills page" />
-          </span>
-        }
-        buttons={
+      <div css={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
+          <div css={{ flex: 1 }}>
+            <Input
+              componentId="mlflow.skills.list.search"
+              placeholder="Search skills..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              allowClear
+            />
+          </div>
           <Button
             componentId="mlflow.skills.list.register"
             data-testid="register-skill-button"
@@ -563,24 +559,13 @@ const SkillsPage = () => {
           >
             <FormattedMessage defaultMessage="+ New Skill" description="Register skill button" />
           </Button>
-        }
-      />
-      <Spacer shrinks={false} />
-      <div css={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <SkillUsageBreakdown />
-        <div css={{ marginBottom: theme.spacing.md, marginTop: theme.spacing.md }}>
-          <Input
-            componentId="mlflow.skills.list.search"
-            placeholder="Search skills..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            allowClear
-          />
         </div>
+        <SkillUsageBreakdown />
         {!isLoading && data.length > 0 && (
           <div
             css={{
               marginBottom: theme.spacing.sm,
+              marginTop: theme.spacing.md,
               color: theme.colors.textSecondary,
               fontSize: theme.typography.fontSizeSm,
             }}
@@ -612,50 +597,81 @@ const SkillsPage = () => {
         visible={bulkUseModalVisible}
         onClose={() => setBulkUseModalVisible(false)}
       />
-    </ScrollablePageWrapper>
-    {/* Floating action bar — rendered outside ScrollablePageWrapper to avoid overflow clipping */}
-    {selectedSkills.size > 0 && (
-      <div
-        css={{
-          position: 'fixed',
-          bottom: theme.spacing.lg,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          backgroundColor: theme.colors.backgroundPrimary,
-          border: `1px solid ${theme.colors.borderDecorative}`,
-          borderRadius: theme.borders.borderRadiusMd,
-          padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-          zIndex: 1000,
-        }}
-      >
-        <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>
-          {selectedSkills.size} selected
-        </Typography.Text>
-        <Button
-          componentId="mlflow.skills.list.bulk_use"
-          type="primary"
-          icon={<PlayIcon />}
-          onClick={() => setBulkUseModalVisible(true)}
+      {/* Floating action bar */}
+      {selectedSkills.size > 0 && (
+        <div
+          css={{
+            position: 'fixed',
+            bottom: theme.spacing.lg,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            backgroundColor: theme.colors.backgroundPrimary,
+            border: `1px solid ${theme.colors.borderDecorative}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+            zIndex: 1000,
+          }}
         >
-          Use
-        </Button>
-        <Button
-          componentId="mlflow.skills.list.bulk_delete"
-          type="tertiary"
-          icon={<TrashIcon />}
-          onClick={handleBulkDelete}
-          danger
-          css={{ color: `${theme.colors.actionDangerDefaultTextDefault} !important`, '& *': { color: `${theme.colors.actionDangerDefaultTextDefault} !important` } }}
-        >
-          Delete
-        </Button>
-      </div>
-    )}
+          <Typography.Text bold css={{ fontSize: theme.typography.fontSizeSm }}>
+            {selectedSkills.size} selected
+          </Typography.Text>
+          <Button
+            componentId="mlflow.skills.list.bulk_use"
+            type="primary"
+            icon={<PlayIcon />}
+            onClick={() => setBulkUseModalVisible(true)}
+          >
+            Use
+          </Button>
+          <Button
+            componentId="mlflow.skills.list.bulk_delete"
+            type="tertiary"
+            icon={<TrashIcon />}
+            onClick={handleBulkDelete}
+            danger
+            css={{
+              color: `${theme.colors.actionDangerDefaultTextDefault} !important`,
+              '& *': { color: `${theme.colors.actionDangerDefaultTextDefault} !important` },
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
     </>
+  );
+};
+
+const SkillsPage = () => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <ScrollablePageWrapper css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <Spacer shrinks={false} />
+      <Header
+        title={
+          <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            <span
+              css={{
+                display: 'flex',
+                borderRadius: theme.borders.borderRadiusSm,
+                backgroundColor: theme.colors.backgroundSecondary,
+                padding: theme.spacing.sm,
+              }}
+            >
+              <LightningIcon />
+            </span>
+            <FormattedMessage defaultMessage="Skills" description="Header title for the skills page" />
+          </span>
+        }
+      />
+      <Spacer shrinks={false} />
+      <SkillsContent />
+    </ScrollablePageWrapper>
   );
 };
 
