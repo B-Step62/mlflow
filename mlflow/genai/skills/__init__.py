@@ -212,7 +212,6 @@ def _register_skill_via_rest(
             version=v["version"],
             source=v.get("source"),
             description=v.get("description"),
-            manifest_content=v.get("manifest_content"),
             artifact_location=v.get("artifact_location"),
             creation_timestamp=v.get("creation_timestamp"),
             tags=v.get("tags", {}),

@@ -6735,15 +6735,13 @@ class MlflowClient:
         name: str,
         source: str | None = None,
         description: str | None = None,
-        manifest_content: str | None = None,
         artifact_location: str | None = None,
         tags: dict[str, str] | None = None,
         created_by: str | None = None,
     ):
         return self._tracking_client.create_skill_version(
             name=name, source=source, description=description,
-            manifest_content=manifest_content, artifact_location=artifact_location,
-            tags=tags, created_by=created_by,
+            artifact_location=artifact_location, tags=tags, created_by=created_by,
         )
 
     def get_skill_version(self, name: str, version: int):

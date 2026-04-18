@@ -15,7 +15,6 @@ export interface RegisteredSkillVersion {
   version: number;
   source?: string;
   description?: string;
-  manifest_content?: string;
   artifact_location?: string;
   creation_timestamp?: number;
   tags?: Record<string, string>;

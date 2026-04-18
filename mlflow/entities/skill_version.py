@@ -11,9 +11,6 @@ class SkillVersion:
             or local directory path. Recorded for provenance.
         description: Version-specific description. Typically parsed from the
             SKILL.md frontmatter at registration time.
-        manifest_content: The full text content of SKILL.md at registration time.
-            Stored so the skill instructions can be retrieved without fetching
-            from the original source.
         artifact_location: URI pointing to the stored skill bundle in MLflow's
             artifact store (e.g. ``mlflow-artifacts:/skills/my-skill/3``).
             Used by ``install_skill_from_registry`` to download the bundle.
@@ -32,7 +29,6 @@ class SkillVersion:
         version: int,
         source: str | None = None,
         description: str | None = None,
-        manifest_content: str | None = None,
         artifact_location: str | None = None,
         creation_timestamp: int | None = None,
         tags: dict[str, str] | None = None,
@@ -43,7 +39,6 @@ class SkillVersion:
         self._version = version
         self._source = source
         self._description = description
-        self._manifest_content = manifest_content
         self._artifact_location = artifact_location
         self._creation_timestamp = creation_timestamp
         self._tags = tags or {}
@@ -65,10 +60,6 @@ class SkillVersion:
     @property
     def description(self) -> str | None:
         return self._description
-
-    @property
-    def manifest_content(self) -> str | None:
-        return self._manifest_content
 
     @property
     def artifact_location(self) -> str | None:

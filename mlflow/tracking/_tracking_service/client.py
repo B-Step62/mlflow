@@ -1148,13 +1148,12 @@ class TrackingServiceClient:
         return self.store.delete_skill(name)
 
     def create_skill_version(
-        self, name, source=None, description=None, manifest_content=None,
+        self, name, source=None, description=None,
         artifact_location=None, tags=None, created_by=None,
     ):
         return self.store.create_skill_version(
             name=name, source=source, description=description,
-            manifest_content=manifest_content, artifact_location=artifact_location,
-            tags=tags, created_by=created_by,
+            artifact_location=artifact_location, tags=tags, created_by=created_by,
         )
 
     def get_skill_version(self, name, version):

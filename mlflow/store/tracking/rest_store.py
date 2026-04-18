@@ -2224,7 +2224,6 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
             version=data["version"],
             source=data.get("source"),
             description=data.get("description"),
-            manifest_content=data.get("manifest_content"),
             artifact_location=data.get("artifact_location"),
             creation_timestamp=data.get("creation_timestamp"),
             tags=data.get("tags", {}),
@@ -2288,7 +2287,7 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
         verify_rest_response(response, endpoint)
 
     def create_skill_version(
-        self, name, source=None, description=None, manifest_content=None,
+        self, name, source=None, description=None,
         artifact_location=None, tags=None, created_by=None,
     ):
         endpoint = f"{self._SKILLS_API}/register"

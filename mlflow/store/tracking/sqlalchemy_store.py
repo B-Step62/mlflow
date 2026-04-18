@@ -6429,7 +6429,7 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
             session.delete(sql_skill)
 
     def create_skill_version(
-        self, name, source=None, description=None, manifest_content=None,
+        self, name, source=None, description=None,
         artifact_location=None, tags=None, created_by=None,
     ):
         with self.ManagedSessionMaker() as session:
@@ -6452,7 +6452,6 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
                 version=new_version,
                 source=source,
                 description=description,
-                manifest_content=manifest_content,
                 artifact_location=artifact_location,
                 creation_timestamp=now,
                 created_by=created_by,

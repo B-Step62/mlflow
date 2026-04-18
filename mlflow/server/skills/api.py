@@ -54,7 +54,6 @@ class SkillVersionResponse(BaseModel):
     version: int
     source: str | None = None
     description: str | None = None
-    manifest_content: str | None = None
     artifact_location: str | None = None
     creation_timestamp: int | None = None
     tags: dict[str, str] = {}
@@ -109,7 +108,6 @@ def _version_to_response(sv) -> SkillVersionResponse:
         version=sv.version,
         source=sv.source,
         description=sv.description,
-        manifest_content=sv.manifest_content,
         artifact_location=sv.artifact_location,
         creation_timestamp=sv.creation_timestamp,
         tags=sv.tags,

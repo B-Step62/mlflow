@@ -3089,7 +3089,6 @@ class SqlSkillVersion(Base):
             version=self.version,
             source=self.source,
             description=self.description,
-            manifest_content=self.manifest_content,
             artifact_location=self.artifact_location,
             creation_timestamp=self.creation_timestamp,
             tags=tags_dict,

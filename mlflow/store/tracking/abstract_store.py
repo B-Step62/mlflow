@@ -1688,7 +1688,6 @@ class AbstractStore(GatewayStoreMixin):
         name: str,
         source: str | None = None,
         description: str | None = None,
-        manifest_content: str | None = None,
         artifact_location: str | None = None,
         tags: dict[str, str] | None = None,
         created_by: str | None = None,
