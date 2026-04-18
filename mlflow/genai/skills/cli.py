@@ -400,6 +400,41 @@ def _install_from_source(source, agent, scope, project_path, pin, no_register, c
             click.echo(f"Installed: {name} → {path}")
 
 
+@commands.command("uninstall")
+@click.argument("names", nargs=-1, required=True)
+@click.option(
+    "--scope",
+    type=click.Choice(["global", "project"]),
+    default="global",
+    help="Installation scope.",
+)
+@click.option("--project-path", type=click.Path(), default=None, help="Project directory.")
+@click.option(
+    "--agent",
+    type=click.Choice(SUPPORTED_AGENTS),
+    default=DEFAULT_AGENT,
+    help="Target agent runtime.",
+)
+def uninstall_cmd(names, scope, project_path, agent):
+    """Uninstall one or more skills.
+
+    Removes the agent symlink/copy and the canonical copy in ~/.agents/skills/
+    (if no other agents reference it).
+
+    \b
+    Examples:
+      mlflow skills uninstall pr-review
+      mlflow skills uninstall pr-review analyze-ci
+      mlflow skills uninstall pr-review --scope project
+    """
+    from mlflow.genai.skills import uninstall_skill
+
+    pp = Path(project_path) if project_path else None
+    for name in names:
+        uninstall_skill(name=name, agent=agent, scope=scope, project_path=pp)
+        click.echo(f"Uninstalled: {name}")
+
+
 @commands.command("register")
 @click.argument("source")
 @click.option("--tag", "-t", multiple=True, help="Tag in key=value format.")

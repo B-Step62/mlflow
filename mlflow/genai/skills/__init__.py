@@ -35,6 +35,7 @@ __all__ = [
     "delete_skill_version",
     "install_skill_from_registry",
     "install_skill_from_source",
+    "uninstall_skill",
 ]
 
 
@@ -586,3 +587,52 @@ def install_skill_from_source(
         _logger.info("Installed skill '%s' to %s", name, agent_dest)
 
     return installed_paths
+
+
+def uninstall_skill(
+    name: str,
+    agent: str = "claude-code",
+    scope: Literal["global", "project"] = "global",
+    project_path: Path | None = None,
+) -> None:
+    """Uninstall a skill by removing the agent symlink/copy and the canonical copy.
+
+    Args:
+        name: Skill name.
+        agent: Target agent runtime.
+        scope: "global" or "project".
+        project_path: Project directory (for scope="project").
+    """
+    import shutil
+
+    agent_dest = _get_agent_skill_dir(name, agent, scope, project_path)
+    canonical = _get_canonical_dir(name)
+
+    # Remove agent symlink or copy
+    if agent_dest.is_symlink():
+        agent_dest.unlink()
+        _logger.info("Removed symlink %s", agent_dest)
+    elif agent_dest.exists():
+        shutil.rmtree(agent_dest)
+        _logger.info("Removed %s", agent_dest)
+
+    # Remove canonical copy if no other symlinks point to it
+    if canonical.exists():
+        # Check if any other symlinks reference this canonical dir
+        from mlflow.genai.skills.constants import AGENT_SKILL_DIRS
+
+        has_other_refs = False
+        for agent_key in AGENT_SKILL_DIRS:
+            if agent_key == agent:
+                continue
+            for s in ("global", "project"):
+                other = _get_agent_skill_dir(name, agent_key, s, project_path)
+                if other.is_symlink() and other.resolve() == canonical.resolve():
+                    has_other_refs = True
+                    break
+            if has_other_refs:
+                break
+
+        if not has_other_refs:
+            shutil.rmtree(canonical)
+            _logger.info("Removed canonical %s", canonical)

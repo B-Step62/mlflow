@@ -212,3 +212,75 @@ class TestInstallSkillFiles:
         agent_skill = agent_home / ".claude" / "skills" / "my-skill"
         assert agent_skill.is_symlink()
         assert (agent_skill / "SKILL.md").is_file()
+
+    def test_uninstall_removes_symlink_and_canonical(self, skill_src, tmp_path, monkeypatch):
+        from mlflow.genai.skills import _install_skill_files, uninstall_skill
+        from mlflow.genai.skills import constants
+
+        canonical_base = tmp_path / "canonical"
+        agent_home = tmp_path / "home"
+        monkeypatch.setattr(constants, "CANONICAL_SKILLS_DIR", canonical_base)
+        monkeypatch.setattr(
+            constants,
+            "AGENT_SKILL_DIRS",
+            {"claude-code": {"global": ".claude/skills", "project": ".claude/skills"}},
+        )
+        monkeypatch.setattr("pathlib.Path.home", lambda: agent_home)
+
+        _install_skill_files("my-skill", skill_src, "claude-code", "global")
+        assert (agent_home / ".claude" / "skills" / "my-skill").is_symlink()
+        assert (canonical_base / "my-skill").is_dir()
+
+        uninstall_skill("my-skill", agent="claude-code", scope="global")
+
+        assert not (agent_home / ".claude" / "skills" / "my-skill").exists()
+        assert not (canonical_base / "my-skill").exists()
+
+    def test_uninstall_keeps_canonical_if_other_agents_reference(self, skill_src, tmp_path, monkeypatch):
+        from mlflow.genai.skills import _install_skill_files, uninstall_skill, _create_symlink, _get_canonical_dir
+        from mlflow.genai.skills import constants
+
+        canonical_base = tmp_path / "canonical"
+        agent_home = tmp_path / "home"
+        monkeypatch.setattr(constants, "CANONICAL_SKILLS_DIR", canonical_base)
+        monkeypatch.setattr(
+            constants,
+            "AGENT_SKILL_DIRS",
+            {
+                "claude-code": {"global": ".claude/skills", "project": ".claude/skills"},
+                "cursor": {"global": ".cursor/skills", "project": ".cursor/skills"},
+            },
+        )
+        monkeypatch.setattr("pathlib.Path.home", lambda: agent_home)
+
+        # Install for claude-code
+        _install_skill_files("my-skill", skill_src, "claude-code", "global")
+        # Also symlink for cursor
+        cursor_dest = agent_home / ".cursor" / "skills" / "my-skill"
+        _create_symlink(canonical_base / "my-skill", cursor_dest)
+
+        # Uninstall from claude-code only
+        uninstall_skill("my-skill", agent="claude-code", scope="global")
+
+        # Claude symlink removed
+        assert not (agent_home / ".claude" / "skills" / "my-skill").exists()
+        # Canonical kept because cursor still references it
+        assert (canonical_base / "my-skill").is_dir()
+        # Cursor symlink still works
+        assert cursor_dest.is_symlink()
+        assert (cursor_dest / "SKILL.md").is_file()
+
+    def test_uninstall_copy_removes_directory(self, skill_src, tmp_path):
+        from mlflow.genai.skills import _install_skill_files, uninstall_skill
+
+        project = tmp_path / "project"
+        project.mkdir()
+        _install_skill_files("my-skill", skill_src, "claude-code", "project", project, copy=True)
+
+        agent_skill = project / ".claude" / "skills" / "my-skill"
+        assert agent_skill.is_dir()
+        assert not agent_skill.is_symlink()
+
+        uninstall_skill("my-skill", agent="claude-code", scope="project", project_path=project)
+
+        assert not agent_skill.exists()
