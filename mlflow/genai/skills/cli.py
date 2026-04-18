@@ -211,7 +211,7 @@ def _is_github_shorthand(source: str) -> bool:
     owner/repo: both parts are non-numeric strings (e.g. "anthropics/skills")
     name/version: second part is all digits (e.g. "pr-review/3")
     """
-    if "/" not in source or source.startswith((".", "/", "~")):
+    if "/" not in source or source.startswith((".", "/", "~")) or "://" in source:
         return False
     parts = source.split("/", 1)
     # name/version: second part is a digit → registry reference, not GitHub
