@@ -1,5 +1,24 @@
 class Skill:
-    """Represents a registered skill in the MLflow Skill Registry."""
+    """Represents a registered skill in the MLflow Skill Registry.
+
+    A skill is a named, versionable unit of procedural knowledge — instructions,
+    scripts, and reference materials that teach AI agents how to perform tasks.
+    Skills follow the `Agent Skills <https://agentskills.io>`_ open standard.
+
+    Args:
+        name: Unique skill name. Must match ``[a-zA-Z0-9_.-]+``.
+        description: Human-readable description of what the skill does and when to use it.
+            Parsed from the SKILL.md frontmatter at registration time.
+        creation_timestamp: Milliseconds since epoch when the skill was first registered.
+        last_updated_timestamp: Milliseconds since epoch when the skill was last modified
+            (new version registered, tag changed, etc.).
+        latest_version: The highest version number among all versions of this skill.
+        aliases: Named pointers to specific versions (e.g. "champion" → v3).
+            Aliases allow stable references that can be re-pointed without changing
+            downstream install commands.
+        tags: Key-value metadata on the skill itself (not on individual versions).
+            Use for categorization — e.g. ``team=platform``, ``domain=code-review``.
+    """
 
     def __init__(
         self,
@@ -57,7 +76,13 @@ class Skill:
 
 
 class SkillAlias:
-    """Represents an alias pointing to a specific skill version."""
+    """A named pointer from an alias string to a specific skill version number.
+
+    Args:
+        name: The skill name this alias belongs to.
+        alias: The alias string (e.g. "champion", "staging").
+        version: The version number this alias points to.
+    """
 
     def __init__(self, name: str, alias: str, version: int):
         self._name = name

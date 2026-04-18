@@ -1,5 +1,30 @@
 class SkillVersion:
-    """Represents a specific version of a skill in the MLflow Skill Registry."""
+    """Represents a specific version of a skill in the MLflow Skill Registry.
+
+    Each time a skill is registered (or re-registered), a new immutable version
+    is created. Versions are auto-incremented integers starting from 1.
+
+    Args:
+        name: The skill name this version belongs to.
+        version: Auto-incremented version number (1, 2, 3, ...).
+        source: The source from which this version was registered — a GitHub URL
+            or local directory path. Recorded for provenance.
+        description: Version-specific description. Typically parsed from the
+            SKILL.md frontmatter at registration time.
+        manifest_content: The full text content of SKILL.md at registration time.
+            Stored so the skill instructions can be retrieved without fetching
+            from the original source.
+        artifact_location: URI pointing to the stored skill bundle in MLflow's
+            artifact store (e.g. ``mlflow-artifacts:/skills/my-skill/3``).
+            Used by ``install_skill_from_registry`` to download the bundle.
+        creation_timestamp: Milliseconds since epoch when this version was created.
+        tags: Key-value metadata on this specific version. Includes both user-set
+            tags and system tags (prefixed with ``mlflow.skill.``), such as
+            ``mlflow.skill.commit_hash`` and ``mlflow.skill.artifact_location``.
+        aliases: List of alias names currently pointing to this version
+            (e.g. ``["champion"]``).
+        created_by: Username of the person who registered this version.
+    """
 
     def __init__(
         self,
