@@ -3022,6 +3022,9 @@ class SqlRegisteredSkill(Base):
     aliases = relationship(
         "SqlSkillAlias", back_populates="skill", cascade="all, delete-orphan", lazy="selectin"
     )
+    tags = relationship(
+        "SqlSkillTag", back_populates="skill", cascade="all, delete-orphan", lazy="selectin"
+    )
 
     __table_args__ = (
         PrimaryKeyConstraint("name", name="registered_skills_pk"),
@@ -3031,6 +3034,7 @@ class SqlRegisteredSkill(Base):
         latest_version = None
         if self.versions:
             latest_version = max(v.version for v in self.versions)
+        tags_dict = {t.key: t.value for t in self.tags} if self.tags else {}
         return Skill(
             name=self.name,
             description=self.description,
@@ -3038,6 +3042,7 @@ class SqlRegisteredSkill(Base):
             last_updated_timestamp=self.last_updated_timestamp,
             latest_version=latest_version,
             aliases=[a.to_mlflow_entity() for a in self.aliases],
+            tags=tags_dict,
         )
 
     def __repr__(self):
@@ -3116,6 +3121,29 @@ class SqlSkillVersionTag(Base):
 
     def __repr__(self):
         return f"<SqlSkillVersionTag ({self.name} v{self.version}: {self.key})>"
+
+
+class SqlSkillTag(Base):
+    __tablename__ = "skill_tags"
+
+    name = Column(String(255), nullable=False)
+    key = Column(String(255), nullable=False)
+    value = Column(String(5000), nullable=True)
+
+    skill = relationship("SqlRegisteredSkill", back_populates="tags")
+
+    __table_args__ = (
+        PrimaryKeyConstraint("name", "key", name="skill_tags_pk"),
+        ForeignKeyConstraint(
+            ["name"],
+            ["registered_skills.name"],
+            name="fk_skill_tags_name",
+            ondelete="CASCADE",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<SqlSkillTag ({self.name}: {self.key})>"
 
 
 class SqlSkillAlias(Base):

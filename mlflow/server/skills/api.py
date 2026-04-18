@@ -85,10 +85,9 @@ class SetAliasRequest(BaseModel):
 
 
 def _skill_to_response(skill, latest_version_entity=None) -> SkillResponse:
-    tags = {}
+    tags = skill.tags or {}
     source = None
     if latest_version_entity:
-        tags = latest_version_entity.tags or {}
         source = latest_version_entity.source
     return SkillResponse(
         name=skill.name,
@@ -342,6 +341,28 @@ async def delete_skill_alias(name: str, alias: str) -> dict:
 
     try:
         MlflowClient().delete_skill_alias(name, alias)
+        return {"status": "deleted"}
+    except MlflowException as e:
+        _handle_mlflow_exception(e)
+
+
+@skills_router.post("/{name}/tags")
+async def set_skill_tag(name: str, request: SetTagRequest) -> dict:
+    from mlflow.tracking.client import MlflowClient
+
+    try:
+        MlflowClient().set_skill_tag(name, request.key, request.value)
+        return {"status": "ok"}
+    except MlflowException as e:
+        _handle_mlflow_exception(e)
+
+
+@skills_router.delete("/{name}/tags/{key}")
+async def delete_skill_tag(name: str, key: str) -> dict:
+    from mlflow.tracking.client import MlflowClient
+
+    try:
+        MlflowClient().delete_skill_tag(name, key)
         return {"status": "deleted"}
     except MlflowException as e:
         _handle_mlflow_exception(e)

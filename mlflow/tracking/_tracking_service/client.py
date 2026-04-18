@@ -1180,3 +1180,9 @@ class TrackingServiceClient:
 
     def delete_skill_alias(self, name, alias):
         return self.store.delete_skill_alias(name, alias)
+
+    def set_skill_tag(self, name, key, value):
+        return self.store.set_skill_tag(name, key, value)
+
+    def delete_skill_tag(self, name, key):
+        return self.store.delete_skill_tag(name, key)

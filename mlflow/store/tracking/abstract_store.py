@@ -1718,3 +1718,9 @@ class AbstractStore(GatewayStoreMixin):
 
     def delete_skill_alias(self, name: str, alias: str) -> None:
         raise NotImplementedError(self.__class__.__name__)
+
+    def set_skill_tag(self, name: str, key: str, value: str) -> None:
+        raise NotImplementedError(self.__class__.__name__)
+
+    def delete_skill_tag(self, name: str, key: str) -> None:
+        raise NotImplementedError(self.__class__.__name__)

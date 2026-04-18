@@ -310,12 +310,12 @@ def search_skills(
     )
 
 
-def set_skill_tag(name: str, version: int, key: str, value: str) -> None:
-    mlflow.MlflowClient().set_skill_version_tag(name, version, key, value)
+def set_skill_tag(name: str, key: str, value: str) -> None:
+    mlflow.MlflowClient().set_skill_tag(name, key, value)
 
 
-def delete_skill_tag(name: str, version: int, key: str) -> None:
-    mlflow.MlflowClient().delete_skill_version_tag(name, version, key)
+def delete_skill_tag(name: str, key: str) -> None:
+    mlflow.MlflowClient().delete_skill_tag(name, key)
 
 
 def set_skill_alias(name: str, alias: str, version: int) -> None:

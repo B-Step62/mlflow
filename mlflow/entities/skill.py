@@ -9,6 +9,7 @@ class Skill:
         last_updated_timestamp: int | None = None,
         latest_version: int | None = None,
         aliases: list["SkillAlias"] | None = None,
+        tags: dict[str, str] | None = None,
     ):
         self._name = name
         self._description = description
@@ -16,6 +17,7 @@ class Skill:
         self._last_updated_timestamp = last_updated_timestamp
         self._latest_version = latest_version
         self._aliases = aliases or []
+        self._tags = tags or {}
 
     @property
     def name(self) -> str:
@@ -40,6 +42,10 @@ class Skill:
     @property
     def aliases(self) -> list["SkillAlias"]:
         return list(self._aliases)
+
+    @property
+    def tags(self) -> dict[str, str]:
+        return self._tags.copy()
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Skill):

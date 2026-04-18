@@ -2213,6 +2213,7 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
             last_updated_timestamp=data.get("last_updated_timestamp"),
             latest_version=data.get("latest_version"),
             aliases=aliases,
+            tags=data.get("tags", {}),
         )
 
     def _skill_version_from_json(self, data: dict) -> "SkillVersion":
@@ -2380,6 +2381,25 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
 
     def delete_skill_alias(self, name, alias):
         endpoint = f"{self._SKILLS_API}/{name}/aliases/{alias}"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="DELETE",
+        )
+        verify_rest_response(response, endpoint)
+
+    def set_skill_tag(self, name, key, value):
+        endpoint = f"{self._SKILLS_API}/{name}/tags"
+        response = http_request(
+            host_creds=self.get_host_creds(),
+            endpoint=endpoint,
+            method="POST",
+            json={"key": key, "value": value},
+        )
+        verify_rest_response(response, endpoint)
+
+    def delete_skill_tag(self, name, key):
+        endpoint = f"{self._SKILLS_API}/{name}/tags/{key}"
         response = http_request(
             host_creds=self.get_host_creds(),
             endpoint=endpoint,

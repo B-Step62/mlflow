@@ -150,6 +150,7 @@ from mlflow.store.tracking.dbmodels.models import (
     SqlScorer,
     SqlScorerVersion,
     SqlSkillAlias,
+    SqlSkillTag,
     SqlSkillVersion,
     SqlSkillVersionTag,
     SqlSpan,
@@ -6599,6 +6600,30 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
                     RESOURCE_DOES_NOT_EXIST,
                 )
             session.delete(sql_alias)
+
+    def set_skill_tag(self, name, key, value):
+        with self.ManagedSessionMaker() as session:
+            skill = session.query(SqlRegisteredSkill).filter_by(name=name).first()
+            if skill is None:
+                raise MlflowException(
+                    f"Skill '{name}' not found.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            existing = session.query(SqlSkillTag).filter_by(name=name, key=key).first()
+            if existing:
+                existing.value = value
+            else:
+                session.add(SqlSkillTag(name=name, key=key, value=value))
+
+    def delete_skill_tag(self, name, key):
+        with self.ManagedSessionMaker() as session:
+            tag = session.query(SqlSkillTag).filter_by(name=name, key=key).first()
+            if tag is None:
+                raise MlflowException(
+                    f"Tag '{key}' not found on skill '{name}'.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            session.delete(tag)
 
 
 def _get_sqlalchemy_filter_clauses(parsed, session, dialect):

@@ -6769,3 +6769,9 @@ class MlflowClient:
 
     def delete_skill_alias(self, name: str, alias: str) -> None:
         self._tracking_client.delete_skill_alias(name, alias)
+
+    def set_skill_tag(self, name: str, key: str, value: str) -> None:
+        self._tracking_client.set_skill_tag(name, key, value)
+
+    def delete_skill_tag(self, name: str, key: str) -> None:
+        self._tracking_client.delete_skill_tag(name, key)
