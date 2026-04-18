@@ -125,7 +125,6 @@ def fetch_from_github(repo_url: str, ref: str = "main") -> tuple[Path, str | Non
     owner, repo = path_parts[0], path_parts[1]
 
     tarball_url = f"https://api.github.com/repos/{owner}/{repo}/tarball/{ref}"
-    _logger.info("Downloading skills from %s (ref=%s)", repo_url, ref)
 
     response = requests.get(tarball_url, stream=True, timeout=60)
     if response.status_code == 404:
