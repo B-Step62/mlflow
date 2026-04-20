@@ -120,8 +120,10 @@ async def from_fastapi_request(fastapi_request) -> RequestContext:
     # 1. FastAPI's request.stream() is async-only (no sync .read())
     # 2. Handlers that use flask_request.data need bytes
     # 3. Handlers that use flask_request.stream.read() will use .data instead
+    # Read for any method that can carry a body; MLflow's DELETE endpoints often
+    # do (e.g. DELETE /traces/{id}/tags sends {"key": "..."}).
     body_bytes = b""
-    if fastapi_request.method in ("POST", "PUT", "PATCH"):
+    if fastapi_request.method != "GET":
         body_bytes = await fastapi_request.body()
 
     # Parse JSON body

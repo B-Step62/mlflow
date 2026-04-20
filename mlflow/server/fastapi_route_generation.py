@@ -14,7 +14,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from mlflow.protos import databricks_pb2
 from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR, get_handler
@@ -107,11 +107,26 @@ def _convert_flask_response(result) -> Response:
     from flask import Response as FlaskResponse
 
     if isinstance(result, FlaskResponse):
+        headers = {k: v for k, v in result.headers.items() if k.lower() != "content-length"}
+        media_type = result.content_type or "application/json"
+        # Direct passthrough mode: response body is a generator (send_file /
+        # current_app.response_class(generator)). Can't call get_data() -- stream it.
+        if getattr(result, "direct_passthrough", False):
+            # Materialize the iterable now so we don't leak the Flask request
+            # context after this function returns. Artifact payloads are typically
+            # small enough; for very large files this is a future optimization.
+            body = b"".join(result.iter_encoded())
+            return Response(
+                content=body,
+                status_code=result.status_code,
+                media_type=media_type,
+                headers=headers,
+            )
         return Response(
             content=result.get_data(),
             status_code=result.status_code,
-            media_type=result.content_type or "application/json",
-            headers={k: v for k, v in result.headers.items() if k.lower() != "content-length"},
+            media_type=media_type,
+            headers=headers,
         )
 
     # Fallback
