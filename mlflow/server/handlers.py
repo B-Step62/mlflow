@@ -6056,18 +6056,19 @@ def get_demo_endpoints():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _generate_demo():
+def _generate_demo(flask_request=request):
     """Generate demo data for registered demo generators.
 
     Accepts an optional JSON body with a ``features`` list to generate only specific
     features (e.g. ``{"features": ["traces", "prompts"]}``). When omitted, all features
-    are generated.
+    are generated -- Content-Type is not required since the body is optional.
     """
     from mlflow.demo import generate_all_demos
     from mlflow.demo.base import DEMO_EXPERIMENT_NAME
     from mlflow.demo.registry import demo_registry
 
-    request_json = _get_normalized_request_json()
+    # Tolerate missing/empty body without Content-Type (UI sends empty POSTs).
+    request_json = flask_request.get_json(silent=True) or {}
     features = request_json.get("features")
 
     store = _get_tracking_store()

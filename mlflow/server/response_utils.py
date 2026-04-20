@@ -8,7 +8,9 @@ instead of constructing Flask Response objects directly.
 
 from __future__ import annotations
 
-from flask import Response, jsonify
+import json
+
+from flask import Response
 
 from mlflow.utils.proto_json_utils import message_to_json
 
@@ -26,9 +28,14 @@ def make_proto_response(proto_message) -> Response:
 def make_json_response(data: dict) -> Response:
     """Create a JSON response from a dictionary.
 
-    Wraps Flask's jsonify(). Used for non-protobuf JSON responses (~19 usages).
+    Uses ``json.dumps`` directly instead of Flask's ``jsonify`` because the
+    latter requires a Flask app context (``current_app``), which is not set
+    up when handlers are dispatched via FastAPI.
     """
-    return jsonify(data)
+    return Response(
+        response=json.dumps(data),
+        mimetype="application/json",
+    )
 
 
 def make_empty_response(status: int = 204) -> Response:

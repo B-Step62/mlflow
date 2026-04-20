@@ -64,8 +64,12 @@ class RequestContext:
             return value
         return [value]
 
-    def get_json(self) -> dict[str, Any] | str | None:
-        """Return the parsed JSON body."""
+    def get_json(self, **kwargs) -> dict[str, Any] | str | None:
+        """Return the parsed JSON body.
+
+        Accepts and ignores Flask-style kwargs (``force``, ``silent``, ``cache``)
+        so call sites can pass a RequestContext where a Flask request is expected.
+        """
         return self.json_body
 
 
