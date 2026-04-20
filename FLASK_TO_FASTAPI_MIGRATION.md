@@ -1,6 +1,23 @@
 # Flask-to-FastAPI Migration -- Master TODO
 
-**Overall difficulty:** HIGH | **Estimated effort:** 20-30 weeks (2-3 engineers)
+**Overall difficulty:** MEDIUM | **Estimated effort:** 1-2 weeks (focused work with AI assistance)
+
+## Revised Strategy (based on actual velocity)
+
+The migration is mostly mechanical refactoring. With abstractions already in place (M0), each remaining milestone is hours-to-days, not weeks. Revised estimate accounts for:
+- Uniform shape of handlers (protobuf-driven, already use RequestContext abstraction)
+- Test infrastructure is mostly .data→.content, .json→.json() mechanical changes
+- FastAPI equivalents for security/middleware already exist
+
+## Plugin Compatibility Decision
+
+**Keep legacy `mlflow.app` Flask plugins working forever** via lazy Flask import + WSGIMiddleware wrap. Flask is **removed from MLflow's required deps** but becomes a transitive dep of any plugin package that uses it (e.g., `mlflow-oidc-auth`).
+
+**What this achieves:**
+- `pip install mlflow` → zero Flask installed
+- `pip install mlflow mlflow-oidc-auth` → Flask arrives via oidc-auth's own deps
+- Third-party Flask plugins (oidc-auth, etc.) work unchanged after migration
+- ~50 LOC compat shim only activates when `--app-name <flask-plugin>` is used
 
 ---
 

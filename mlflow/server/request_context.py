@@ -44,6 +44,12 @@ class RequestContext:
     content_length: int | None = None
     """Content-Length header as integer, if present."""
 
+    data: bytes = b""
+    """Raw request body bytes (materialized, not streamed)."""
+
+    authorization: Any = None
+    """Parsed Authorization header (Basic Auth credentials). None if not present."""
+
     def args_get(self, key: str, default: str | None = None) -> str | None:
         """Get a single query parameter value (first value if repeated)."""
         value = self.args.get(key, default)
@@ -89,6 +95,8 @@ def from_flask_request(flask_request) -> RequestContext:
         path=flask_request.path,
         stream=flask_request.stream,
         content_length=flask_request.content_length,
+        data=flask_request.get_data() if hasattr(flask_request, "get_data") else b"",
+        authorization=flask_request.authorization,
     )
 
 
@@ -104,18 +112,27 @@ async def from_fastapi_request(fastapi_request) -> RequestContext:
         values = fastapi_request.query_params.getlist(key)
         args[key] = values if len(values) > 1 else values[0]
 
+    # Read full body bytes once. This is required because:
+    # 1. FastAPI's request.stream() is async-only (no sync .read())
+    # 2. Handlers that use flask_request.data need bytes
+    # 3. Handlers that use flask_request.stream.read() will use .data instead
+    body_bytes = b""
+    if fastapi_request.method in ("POST", "PUT", "PATCH"):
+        body_bytes = await fastapi_request.body()
+
     # Parse JSON body
     json_body = None
     content_type = fastapi_request.headers.get("content-type", "")
-    if "application/json" in content_type or fastapi_request.method in ("POST", "PUT", "PATCH"):
+    if body_bytes and "application/json" in content_type:
         try:
-            body_bytes = await fastapi_request.body()
-            if body_bytes:
-                json_body = json.loads(body_bytes)
+            json_body = json.loads(body_bytes)
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
 
     headers = dict(fastapi_request.headers)
+
+    # Parse Authorization header (Basic Auth) to match Flask's request.authorization
+    authorization = _parse_basic_auth(headers.get("authorization"))
 
     return RequestContext(
         method=fastapi_request.method,
@@ -124,6 +141,30 @@ async def from_fastapi_request(fastapi_request) -> RequestContext:
         headers=headers,
         content_type=content_type or None,
         path=fastapi_request.url.path,
-        stream=None,  # FastAPI stream access is async; handled separately
+        stream=None,  # Handlers should use .data instead
         content_length=int(fastapi_request.headers.get("content-length", 0)) or None,
+        data=body_bytes,
+        authorization=authorization,
     )
+
+
+def _parse_basic_auth(auth_header: str | None):
+    """Parse a Basic Auth header into a Flask-compatible Authorization object."""
+    if not auth_header or not auth_header.lower().startswith("basic "):
+        return None
+    try:
+        import base64
+
+        encoded = auth_header.split(" ", 1)[1]
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        username, _, password = decoded.partition(":")
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+    class _BasicAuth:
+        def __init__(self, u, p):
+            self.username = u
+            self.password = p
+            self.type = "basic"
+
+    return _BasicAuth(username, password)

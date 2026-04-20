@@ -3283,8 +3283,14 @@ def _upload_artifact(artifact_path, flask_request=request):
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = os.path.join(tmp_dir, tail)
         with open(tmp_path, "wb") as f:
-            while chunk := flask_request.stream.read(ARTIFACT_STREAM_CHUNK_SIZE):
-                f.write(chunk)
+            # Stream when a sync .stream is available (Flask); otherwise fall back
+            # to the materialized body in .data (FastAPI via RequestContext).
+            stream = getattr(flask_request, "stream", None)
+            if stream is not None and hasattr(stream, "read"):
+                while chunk := stream.read(ARTIFACT_STREAM_CHUNK_SIZE):
+                    f.write(chunk)
+            else:
+                f.write(flask_request.data)
 
         artifact_repo = _get_artifact_repo_mlflow_artifacts()
         artifact_repo.log_artifact(tmp_path, artifact_path=head or None)

@@ -17,8 +17,10 @@ from flask import Flask
 from mlflow.exceptions import MlflowException
 from mlflow.gateway.constants import MLFLOW_GATEWAY_DURATION_HEADER, MLFLOW_GATEWAY_OVERHEAD_HEADER
 from mlflow.gateway.providers.utils import provider_call_duration_ms
-from mlflow.server import app as flask_app
+from mlflow.server import REL_STATIC_DIR, app as flask_app
 from mlflow.server.assistant.api import assistant_router
+from mlflow.server.explicit_routes import create_explicit_routes_router
+from mlflow.server.fastapi_route_generation import create_protobuf_api_router
 from mlflow.server.fastapi_security import init_fastapi_security
 from mlflow.server.gateway_api import gateway_router
 from mlflow.server.job_api import job_api_router
@@ -136,9 +138,18 @@ def create_fastapi_app(flask_app: Flask = flask_app):
     # This provides /ajax-api/3.0/mlflow/assistant/* endpoints (localhost only)
     fastapi_app.include_router(assistant_router)
 
-    # Mount the entire Flask application at the root path
-    # This ensures compatibility with existing APIs
-    # NOTE: This must come AFTER include_router to avoid Flask catching all requests
+    # Include explicit routes (health, version, artifacts, metrics, telemetry, static files)
+    import pathlib
+
+    static_folder = str(pathlib.Path(__file__).parent / REL_STATIC_DIR)
+    fastapi_app.include_router(create_explicit_routes_router(static_folder))
+
+    # Include protobuf-generated API routes (MlflowService, ModelRegistryService, etc.)
+    fastapi_app.include_router(create_protobuf_api_router())
+
+    # Mount the entire Flask application at the root path as a fallback for any
+    # route not matched above (legacy mlflow.app plugins still rely on Flask).
+    # NOTE: This must come AFTER include_router so FastAPI routes win.
     fastapi_app.mount("/", WSGIMiddleware(flask_app))
 
     return fastapi_app
