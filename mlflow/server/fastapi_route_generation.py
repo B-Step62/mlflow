@@ -51,14 +51,14 @@ def _get_paths(base_path: str, version: int = 2) -> list[str]:
 def _make_fastapi_handler(flask_handler):
     """Adapt a Flask-style handler for FastAPI.
 
-    Most handlers either (a) accept ``flask_request=`` (M0c parameterized explicit
-    handlers) or (b) read from Flask's global ``request`` via ``_get_request_message``.
-    For (b), we set up a Flask test request context so the global works.
+    We ALWAYS set up a Flask ``test_request_context`` that mirrors the incoming
+    FastAPI request. This makes Flask globals (``flask.request``, ``current_app``,
+    ``send_file``, ``jsonify``) available inside the handler -- necessary because
+    handlers still call Flask-dependent helpers internally.
 
     Note: no ``@wraps(flask_handler)`` -- that would propagate the handler's
     signature to the wrapper and break FastAPI's dependency injection.
     """
-    # Determine whether the handler accepts flask_request= kwarg
     import inspect
 
     try:
@@ -70,22 +70,19 @@ def _make_fastapi_handler(flask_handler):
     async def wrapper(request: Request):
         ctx = await from_fastapi_request(request)
         path_params = dict(request.path_params)
-        if accepts_flask_request:
-            # Direct RequestContext pass-through (M0c-parameterized handlers)
-            result = flask_handler(flask_request=ctx, **path_params)
-        else:
-            # Legacy protobuf handler reads from Flask global request.
-            # Set up a Flask request context that replays the FastAPI request.
-            from mlflow.server import app as _flask_app
+        from mlflow.server import app as _flask_app
 
-            with _flask_app.test_request_context(
-                path=request.url.path,
-                method=request.method,
-                query_string=request.url.query or "",
-                content_type=request.headers.get("content-type"),
-                data=ctx.data,
-                headers=dict(request.headers),
-            ):
+        with _flask_app.test_request_context(
+            path=request.url.path,
+            method=request.method,
+            query_string=request.url.query or "",
+            content_type=request.headers.get("content-type"),
+            data=ctx.data,
+            headers=dict(request.headers),
+        ):
+            if accepts_flask_request:
+                result = flask_handler(flask_request=ctx, **path_params)
+            else:
                 result = flask_handler(**path_params)
         return _convert_flask_response(result)
 
@@ -147,8 +144,24 @@ def get_fastapi_service_endpoints(service, get_handler_fn=get_handler):
     return ret
 
 
+def _route_specificity_key(path: str) -> tuple:
+    """Sort key that makes literal path segments beat ``{param}`` segments.
+
+    FastAPI matches routes in registration order. Without this sort, a
+    parameterized route like ``/traces/{trace_id}`` registered before a literal
+    ``/traces/get`` will swallow requests to the literal path. We sort so that
+    per segment, literal segments rank ahead of parameterized ones.
+    """
+    return tuple(1 if seg.startswith("{") else 0 for seg in path.split("/"))
+
+
 def register_endpoints_on_router(router: APIRouter, endpoints):
-    """Register (path, handler, methods) tuples on a FastAPI router."""
+    """Register (path, handler, methods) tuples on a FastAPI router.
+
+    Routes are sorted so that literal path segments are registered before
+    parameterized ones, preventing ``{param}`` routes from swallowing literal ones.
+    """
+    endpoints = sorted(endpoints, key=lambda e: _route_specificity_key(e[0]))
     for path, handler, methods in endpoints:
         for method in methods:
             register_fn = getattr(router, _METHOD_MAP.get(method, "get"))
