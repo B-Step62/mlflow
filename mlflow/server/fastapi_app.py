@@ -10,6 +10,7 @@ import inspect
 import json
 import logging
 import os
+import pathlib
 import shutil
 import time
 import typing
@@ -28,10 +29,12 @@ from mlflow.environment_variables import MLFLOW_ENABLE_REMOTE_ASSISTANT
 from mlflow.exceptions import MlflowException
 from mlflow.gateway.constants import MLFLOW_GATEWAY_DURATION_HEADER, MLFLOW_GATEWAY_OVERHEAD_HEADER
 from mlflow.gateway.providers.utils import provider_call_duration_ms
-from mlflow.server import app as flask_app
+from mlflow.server import REL_STATIC_DIR, app as flask_app
 from mlflow.server.artifact_router import artifact_router
 from mlflow.server.asgi_utils import get_routed_asgi_path
 from mlflow.server.assistant.api import assistant_router
+from mlflow.server.explicit_routes import create_explicit_routes_router
+from mlflow.server.fastapi_route_generation import create_protobuf_api_router
 from mlflow.server.fastapi_security import init_fastapi_security
 from mlflow.server.gateway_api import gateway_router
 from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR, _add_static_prefix
@@ -296,8 +299,16 @@ def create_fastapi_app(flask_app: Flask = flask_app):
     for route_prefix in get_mcp_server_api_route_prefixes():
         fastapi_app.include_router(mcp_server_router, prefix=route_prefix)
 
-    # Mount the entire Flask application at the root path.
-    # Must come AFTER include_router so native FastAPI routes take precedence.
+    # Include explicit routes (health, version, artifacts, metrics, telemetry, static files)
+    static_folder = str(pathlib.Path(__file__).parent / REL_STATIC_DIR)
+    fastapi_app.include_router(create_explicit_routes_router(static_folder))
+
+    # Include protobuf-generated API routes (MlflowService, ModelRegistryService, etc.)
+    fastapi_app.include_router(create_protobuf_api_router())
+
+    # Mount the entire Flask application at the root path as a fallback for any
+    # route not matched above (legacy mlflow.app plugins still rely on Flask).
+    # NOTE: This must come AFTER include_router so FastAPI routes win.
     fastapi_app.mount("/", _EfficientWSGIMiddleware(flask_app))
 
     return fastapi_app

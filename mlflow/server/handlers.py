@@ -3714,17 +3714,21 @@ def _upload_artifact(artifact_path, flask_request=request):
     artifact_path = _get_workspace_scoped_repo_path_if_enabled(artifact_path)
     head, tail = posixpath.split(artifact_path)
     artifact_repo = _get_artifact_repo_mlflow_artifacts()
+    stream = getattr(flask_request, "stream", None)
 
-    if isinstance(artifact_repo, StreamUploadMixin):
+    if isinstance(artifact_repo, StreamUploadMixin) and stream is not None:
         artifact_repo.log_artifact_from_stream(
-            flask_request.stream, tail, artifact_path=head or None
+            stream, tail, artifact_path=head or None
         )
     else:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = os.path.join(tmp_dir, tail)
             with open(tmp_path, "wb") as f:
-                while chunk := flask_request.stream.read(ARTIFACT_STREAM_CHUNK_SIZE):
-                    f.write(chunk)
+                if stream is not None:
+                    while chunk := stream.read(ARTIFACT_STREAM_CHUNK_SIZE):
+                        f.write(chunk)
+                else:
+                    f.write(flask_request.data)
             artifact_repo.log_artifact(tmp_path, artifact_path=head or None)
 
     return _wrap_response(UploadArtifact.Response())

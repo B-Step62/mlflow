@@ -5570,6 +5570,9 @@ def _find_fastapi_validator(
         # still happens via Flask's _before_request for these routes.
         return _get_require_authentication_validator()
 
+    if _is_proxy_artifact_path(path):
+        return _get_fastapi_proxy_artifact_validator(path, method)
+
     return None
 
 
