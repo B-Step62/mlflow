@@ -75,13 +75,23 @@ is_running_as_server = (
     or os.environ.get(SERVE_ARTIFACTS_ENV_VAR)
 )
 
-if is_running_as_server:
+# Under uvicorn the outer ASGI app is FastAPI, which applies its own security
+# middleware and workspace context middleware (see fastapi_app.py and
+# fastapi_security.py). The Flask app is only reached via the WSGIMiddleware
+# fallback for legacy ``mlflow.app`` plugins; the FastAPI middleware has already
+# run at that point, so re-running the Flask equivalents would be duplicate work.
+# Under gunicorn/waitress the Flask app IS the outer server and needs its own
+# middleware.
+_is_uvicorn = _MLFLOW_SGI_NAME.get() == "uvicorn" or "uvicorn" in sys.modules
+
+if is_running_as_server and not _is_uvicorn:
     from mlflow.server import security
 
     security.init_security_middleware(app)
 
-app.before_request(workspace_before_request_handler)
-app.teardown_request(workspace_teardown_request_handler)
+if not _is_uvicorn:
+    app.before_request(workspace_before_request_handler)
+    app.teardown_request(workspace_teardown_request_handler)
 
 for http_path, handler, methods in handlers.get_endpoints():
     app.add_url_rule(http_path, handler.__name__, handler, methods=methods)
