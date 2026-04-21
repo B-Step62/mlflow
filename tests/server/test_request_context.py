@@ -1,6 +1,6 @@
 """Tests for the framework-agnostic RequestContext abstraction."""
 
-import json
+from dataclasses import FrozenInstanceError
 from io import BytesIO
 from unittest.mock import MagicMock
 
@@ -84,7 +84,7 @@ class TestRequestContext:
             headers={},
             content_type=None,
         )
-        with pytest.raises(AttributeError):
+        with pytest.raises(FrozenInstanceError, match="cannot assign to field 'method'"):
             ctx.method = "POST"
 
 

@@ -29,7 +29,8 @@ from mlflow.environment_variables import MLFLOW_ENABLE_REMOTE_ASSISTANT
 from mlflow.exceptions import MlflowException
 from mlflow.gateway.constants import MLFLOW_GATEWAY_DURATION_HEADER, MLFLOW_GATEWAY_OVERHEAD_HEADER
 from mlflow.gateway.providers.utils import provider_call_duration_ms
-from mlflow.server import REL_STATIC_DIR, app as flask_app
+from mlflow.server import REL_STATIC_DIR
+from mlflow.server import app as flask_app
 from mlflow.server.artifact_router import artifact_router
 from mlflow.server.asgi_utils import get_routed_asgi_path
 from mlflow.server.assistant.api import assistant_router

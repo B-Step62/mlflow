@@ -11,10 +11,9 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response
 
 from mlflow.protos import databricks_pb2
 from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR, get_handler
@@ -154,8 +153,10 @@ def get_fastapi_service_endpoints(service, get_handler_fn=get_handler):
         for endpoint in endpoints:
             handler = get_handler_fn(service().GetRequestClass(service_method))
             wrapped = _make_fastapi_handler(handler)
-            for http_path in _get_paths(endpoint.path, version=endpoint.since.major):
-                ret.append((http_path, wrapped, [endpoint.method]))
+            ret.extend(
+                (http_path, wrapped, [endpoint.method])
+                for http_path in _get_paths(endpoint.path, version=endpoint.since.major)
+            )
     return ret
 
 

@@ -19,7 +19,7 @@ from zlib import adler32
 
 import requests
 from cachetools import TTLCache
-from flask import Request, Response, current_app, g, request, send_file
+from flask import Response, current_app, g, request, send_file
 from google.protobuf import descriptor
 from google.protobuf.json_format import ParseError
 from werkzeug.exceptions import RequestedRangeNotSatisfiable
@@ -1165,10 +1165,7 @@ def _get_validated_flask_request_json(
         schema = schema or {}
         for key in flask_request.args:
             # Get all values for this key (supports repeated parameters)
-            if is_ctx:
-                values = flask_request.args_getlist(key)
-            else:
-                values = flask_request.args.getlist(key)
+            values = flask_request.args_getlist(key) if is_ctx else flask_request.args.getlist(key)
             # Check if this field is a list type by looking for _assert_array validator
             is_list_type = _assert_array in schema.get(key, [])
             # If list type, always keep as list; otherwise use scalar if only one value
@@ -2464,7 +2461,9 @@ def gateway_proxy_handler(flask_request=request):
     gateway_path = args.get("gateway_path")
     _validate_gateway_path(flask_request.method, gateway_path)
     json_data = args.get("json_data", None)
-    response = requests.request(flask_request.method, f"{target_uri}/{gateway_path}", json=json_data)
+    response = requests.request(
+        flask_request.method, f"{target_uri}/{gateway_path}", json=json_data
+    )
     if response.status_code == 200:
         return response.json()
     else:
@@ -3717,9 +3716,7 @@ def _upload_artifact(artifact_path, flask_request=request):
     stream = getattr(flask_request, "stream", None)
 
     if isinstance(artifact_repo, StreamUploadMixin) and stream is not None:
-        artifact_repo.log_artifact_from_stream(
-            stream, tail, artifact_path=head or None
-        )
+        artifact_repo.log_artifact_from_stream(stream, tail, artifact_path=head or None)
     else:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = os.path.join(tmp_dir, tail)
@@ -7063,15 +7060,10 @@ def _get_provider_config(flask_request=request):
 @_disable_if_artifacts_only
 @_disable_if_gateway_disabled
 def _get_secrets_config():
-    if not _PROVIDER_BACKEND_AVAILABLE:
-        return make_json_response({
-            "secrets_available": False,
-            "using_default_passphrase": False,
-        })
-    kek_manager = KEKManager()
+    using_default_passphrase = not os.environ.get(CRYPTO_KEK_PASSPHRASE_ENV_VAR)
     return make_json_response({
         "secrets_available": True,
-        "using_default_passphrase": kek_manager.using_default_passphrase,
+        "using_default_passphrase": using_default_passphrase,
     })
 
 

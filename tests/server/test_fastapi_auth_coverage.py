@@ -11,12 +11,7 @@ The middleware has two layers of protection:
    Routes without a specific validator still require authentication.
 """
 
-import re
-
-import pytest
-
 from mlflow.server.auth import _find_fastapi_validator, is_unprotected_route
-from mlflow.server.handlers import get_endpoints
 
 
 class TestAuthCoverage:
@@ -55,9 +50,8 @@ class TestAuthCoverage:
             if validator is None:
                 uncovered.append((path, method))
 
-        assert uncovered == [], (
-            f"Explicit routes without FastAPI auth coverage:\n"
-            + "\n".join(f"  {method} {path}" for path, method in uncovered)
+        assert uncovered == [], "Explicit routes without FastAPI auth coverage:\n" + "\n".join(
+            f"  {method} {path}" for path, method in uncovered
         )
 
     def test_protobuf_routes_with_exact_match_validators(self):
@@ -74,9 +68,7 @@ class TestAuthCoverage:
         ]
         for path, method in routes:
             validator = _find_fastapi_validator(path, method)
-            assert validator is not None, (
-                f"No validator for protobuf route: {method} {path}"
-            )
+            assert validator is not None, f"No validator for protobuf route: {method} {path}"
 
     def test_unprotected_routes_skipped(self):
         """Health, static, and favicon routes should not require auth."""
