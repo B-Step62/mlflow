@@ -25,7 +25,9 @@ function printUsage(): void {
   console.error('');
   console.error(`              ${dim('Flags:')}`);
   console.error(
-    dim('                --project, -p          Write to ./.qwen/ instead of ~/.qwen/'),
+    dim(
+      '                --project, -p          Write to ./.qwen/ (skip the interactive scope prompt)',
+    ),
   );
   console.error(
     dim('                --non-interactive, -y  Skip prompts; use flag values or defaults'),

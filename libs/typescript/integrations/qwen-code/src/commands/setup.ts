@@ -3,12 +3,16 @@
  * user's Qwen Code settings and write an MLflow tracing config alongside it.
  *
  * Writes:
- *   - `~/.qwen/settings.json` — registers the `mlflow-qwen-code stop-hook`
- *     entry under `hooks.Stop`; leaves unrelated fields untouched.
- *   - `~/.qwen/mlflow-tracing.json` — persists the tracking URI and
- *     experiment ID so the hook can run without shell exports.
+ *   - `settings.json` — registers the `mlflow-qwen-code stop-hook` entry
+ *     under `hooks.Stop`; leaves unrelated fields untouched.
+ *   - `mlflow-tracing.json` — persists the tracking URI and experiment ID
+ *     so the hook can run without shell exports.
  *
- * `--project` (or `-p`) writes to `./.qwen/` instead of `~/.qwen/`.
+ * Scope selection:
+ *   - Interactive runs prompt for project-local (`./.qwen/`) vs user-level
+ *     (`~/.qwen/`), defaulting to project-local.
+ *   - `--project` / `-p` forces project-local and skips the prompt.
+ *   - `--non-interactive` without `--project` falls back to user-level.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -17,6 +21,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { FAIL, OK, WARN, bold, cyan, dim } from '../ui.js';
+import { selectPrompt } from '../ui-select.js';
 
 const HOOK_COMMAND = 'mlflow-qwen-code stop-hook';
 const DEFAULT_TRACKING_URI = 'http://localhost:5000';
@@ -120,9 +125,15 @@ function hasMlflowHook(groups: QwenHookGroup[]): boolean {
  *   --non-interactive / -y
  *   --tracking-uri <url>
  *   --experiment-id <id>
+ *
+ * `projectLocal` is left undefined when `--project` is not passed so the
+ * interactive flow can prompt for it (and non-interactive can fall back to
+ * user-level).
  */
-export function parseSetupArgs(args: string[]): SetupOptions & { projectLocal: boolean } {
-  const out: SetupOptions & { projectLocal: boolean } = { projectLocal: false };
+export function parseSetupArgs(
+  args: string[],
+): SetupOptions & { projectLocal: boolean | undefined } {
+  const out: SetupOptions & { projectLocal: boolean | undefined } = { projectLocal: undefined };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--project' || arg === '-p') {
@@ -166,41 +177,42 @@ function askOn(
 const validateTrackingUri = (value: string): string | null =>
   isValidTrackingUri(value) ? null : 'Must be an absolute http:// or https:// URL.';
 
-async function resolveTracingValues(
-  options: SetupOptions,
-): Promise<{ trackingUri: string; experimentId: string }> {
-  if (options.nonInteractive) {
-    return {
-      trackingUri: options.trackingUri ?? DEFAULT_TRACKING_URI,
-      experimentId: options.experimentId ?? DEFAULT_EXPERIMENT_ID,
-    };
-  }
-  if (options.trackingUri && options.experimentId) {
-    return { trackingUri: options.trackingUri, experimentId: options.experimentId };
-  }
-  console.error(`\n${bold('Configure MLflow tracing for Qwen Code')}`);
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const trackingUri =
-      options.trackingUri ??
-      (await askOn(rl, 'MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri));
-    const experimentId =
-      options.experimentId ?? (await askOn(rl, 'MLflow experiment ID', DEFAULT_EXPERIMENT_ID));
-    return { trackingUri, experimentId };
-  } finally {
-    rl.close();
-  }
+function promptScope(): Promise<boolean> {
+  return selectPrompt<boolean>({
+    question: 'Where should MLflow tracing be installed?',
+    options: [
+      { value: true, label: 'Project', hint: './.qwen/' },
+      { value: false, label: 'User', hint: '~/.qwen/' },
+    ],
+    defaultIndex: 0,
+  });
 }
 
 export async function runSetup(args: string[], options: SetupOptions = {}): Promise<void> {
   const parsed = parseSetupArgs(args);
-  const merged: SetupOptions & { projectLocal: boolean } = {
+  const merged: SetupOptions & { projectLocal: boolean | undefined } = {
     ...parsed,
     ...options,
     projectLocal: parsed.projectLocal,
   };
-  const settingsPath = resolveSettingsPath(merged.projectLocal, merged);
-  const tracingConfigPath = resolveTracingConfigPath(merged.projectLocal, merged);
+
+  const interactive = !merged.nonInteractive;
+  const needsBanner =
+    interactive &&
+    (merged.projectLocal === undefined || !merged.trackingUri || !merged.experimentId);
+  if (needsBanner) {
+    console.error(`\n${bold('Configure MLflow tracing for Qwen Code')}`);
+  }
+
+  const projectLocal =
+    merged.projectLocal !== undefined
+      ? merged.projectLocal
+      : interactive
+        ? await promptScope()
+        : false;
+
+  const settingsPath = resolveSettingsPath(projectLocal, merged);
+  const tracingConfigPath = resolveTracingConfigPath(projectLocal, merged);
 
   const settings = readSettings(settingsPath);
   if (settings == null) {
@@ -219,26 +231,43 @@ export async function runSetup(args: string[], options: SetupOptions = {}): Prom
     writeSettings(settingsPath, settings);
     console.error(`${OK} Registered Stop hook in ${cyan(settingsPath)}`);
   }
+  console.error('');
 
-  const { trackingUri, experimentId } = await resolveTracingValues(merged);
-  if (!isValidTrackingUri(trackingUri)) {
+  const needsTextPrompt = interactive && (!merged.trackingUri || !merged.experimentId);
+  const rl = needsTextPrompt
+    ? createInterface({ input: process.stdin, output: process.stdout })
+    : null;
+  try {
+    const trackingUri =
+      merged.trackingUri ??
+      (rl
+        ? await askOn(rl, 'MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri)
+        : DEFAULT_TRACKING_URI);
+    const experimentId =
+      merged.experimentId ??
+      (rl ? await askOn(rl, 'MLflow experiment ID', DEFAULT_EXPERIMENT_ID) : DEFAULT_EXPERIMENT_ID);
+
+    if (!isValidTrackingUri(trackingUri)) {
+      console.error(
+        `${FAIL} Invalid tracking URI: ${bold(trackingUri)} — must be an absolute http:// or https:// URL.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    writeTracingConfig(tracingConfigPath, { trackingUri, experimentId });
+    console.error(`\n${OK} Wrote tracing config to ${cyan(tracingConfigPath)}`);
+
+    const port = new URL(trackingUri).port || '5000';
+    console.error(`\n${bold('Next steps')}`);
+    console.error('  1. Start the MLflow tracking server in a separate terminal:');
+    console.error(`       ${cyan(`mlflow server --port ${port}`)}`);
     console.error(
-      `${FAIL} Invalid tracking URI: ${bold(trackingUri)} — must be an absolute http:// or https:// URL.`,
+      `  2. Launch ${cyan('qwen')} — traces appear at ${bold(trackingUri)} after each turn.`,
     );
-    process.exitCode = 1;
-    return;
+    console.error(
+      `\n${dim('Override per-shell with $MLFLOW_TRACKING_URI / $MLFLOW_EXPERIMENT_ID.')}`,
+    );
+  } finally {
+    rl?.close();
   }
-  writeTracingConfig(tracingConfigPath, { trackingUri, experimentId });
-  console.error(`\n${OK} Wrote tracing config to ${cyan(tracingConfigPath)}`);
-
-  const port = new URL(trackingUri).port || '5000';
-  console.error(`\n${bold('Next steps')}`);
-  console.error('  1. Start the MLflow tracking server in a separate terminal:');
-  console.error(`       ${cyan(`mlflow server --port ${port}`)}`);
-  console.error(
-    `  2. Launch ${cyan('qwen')} — traces appear at ${bold(trackingUri)} after each turn.`,
-  );
-  console.error(
-    `\n${dim('Override per-shell with $MLFLOW_TRACKING_URI / $MLFLOW_EXPERIMENT_ID.')}`,
-  );
 }

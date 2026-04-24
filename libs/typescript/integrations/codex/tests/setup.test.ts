@@ -4,6 +4,36 @@ import { join } from 'node:path';
 
 import { runSetup } from '../src/commands/setup';
 
+jest.mock('node:readline', () => ({ createInterface: jest.fn() }));
+jest.mock('../src/ui-select', () => ({ selectPrompt: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createInterface } = require('node:readline') as {
+  createInterface: jest.Mock;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { selectPrompt } = require('../src/ui-select') as {
+  selectPrompt: jest.Mock;
+};
+
+function mockTextPrompts(answers: string[]): void {
+  const queue = [...answers];
+  createInterface.mockImplementation(() => ({
+    question: (_prompt: string, cb: (answer: string) => void) => {
+      const next = queue.shift();
+      if (next === undefined) {
+        throw new Error('mockTextPrompts: ran out of answers');
+      }
+      cb(next);
+    },
+    close: () => {},
+  }));
+}
+
+beforeEach(() => {
+  selectPrompt.mockReset();
+  createInterface.mockReset();
+});
+
 const HOOK_LINE = 'notify = ["mlflow-codex", "notify-hook"]';
 const NON_INTERACTIVE = ['--non-interactive'];
 
@@ -136,6 +166,64 @@ describe('runSetup', () => {
       expect(existsSync(join(cwd, '.codex', 'mlflow-tracing.json'))).toBe(true);
       expect(existsSync(join(tmpHome, '.codex', 'config.toml'))).toBe(false);
       expect(existsSync(join(tmpHome, '.codex', 'mlflow-tracing.json'))).toBe(false);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('interactive scope prompt picks project-local when the user selects Project', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'codex-interactive-project-'));
+    try {
+      selectPrompt.mockResolvedValueOnce(true);
+      mockTextPrompts(['', '']);
+      await runSetup([], { home: tmpHome, cwd });
+
+      expect(selectPrompt).toHaveBeenCalledTimes(1);
+      expect(existsSync(join(cwd, '.codex', 'config.toml'))).toBe(true);
+      expect(existsSync(join(cwd, '.codex', 'mlflow-tracing.json'))).toBe(true);
+      expect(existsSync(join(tmpHome, '.codex', 'config.toml'))).toBe(false);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('interactive scope prompt writes user-level when the user selects User', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'codex-interactive-user-'));
+    try {
+      selectPrompt.mockResolvedValueOnce(false);
+      mockTextPrompts(['', '']);
+      await runSetup([], { home: tmpHome, cwd });
+
+      expect(existsSync(join(tmpHome, '.codex', 'config.toml'))).toBe(true);
+      expect(existsSync(join(tmpHome, '.codex', 'mlflow-tracing.json'))).toBe(true);
+      expect(existsSync(join(cwd, '.codex', 'config.toml'))).toBe(false);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('skips the scope prompt when --project is explicitly passed', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'codex-interactive-flag-'));
+    try {
+      mockTextPrompts(['', '']);
+      await runSetup(['--project'], { home: tmpHome, cwd });
+
+      expect(selectPrompt).not.toHaveBeenCalled();
+      expect(existsSync(join(cwd, '.codex', 'config.toml'))).toBe(true);
+      expect(existsSync(join(tmpHome, '.codex', 'config.toml'))).toBe(false);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('skips the scope prompt in --non-interactive mode and defaults to user-level', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'codex-non-interactive-scope-'));
+    try {
+      await runSetup(NON_INTERACTIVE, { home: tmpHome, cwd });
+
+      expect(selectPrompt).not.toHaveBeenCalled();
+      expect(existsSync(join(tmpHome, '.codex', 'config.toml'))).toBe(true);
+      expect(existsSync(join(cwd, '.codex', 'config.toml'))).toBe(false);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

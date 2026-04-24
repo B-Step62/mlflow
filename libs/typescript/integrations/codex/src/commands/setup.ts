@@ -3,13 +3,17 @@
  * Codex config and write an MLflow tracing config alongside it.
  *
  * Writes:
- *   - `~/.codex/config.toml` — prepends `notify = ["mlflow-codex", "notify-hook"]`
+ *   - `config.toml` — prepends `notify = ["mlflow-codex", "notify-hook"]`
  *     ahead of any `[section]` headers. Refuses to modify a pre-existing
  *     `notify = ...` entry to avoid mangling the user's config.
- *   - `~/.codex/mlflow-tracing.json` — persists the tracking URI and
- *     experiment ID so the hook can run without shell exports.
+ *   - `mlflow-tracing.json` — persists the tracking URI and experiment ID
+ *     so the hook can run without shell exports.
  *
- * `--project` (or `-p`) writes to `./.codex/` instead of `~/.codex/`.
+ * Scope selection:
+ *   - Interactive runs prompt for project-local (`./.codex/`) vs user-level
+ *     (`~/.codex/`), defaulting to project-local.
+ *   - `--project` / `-p` forces project-local and skips the prompt.
+ *   - `--non-interactive` without `--project` falls back to user-level.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -18,6 +22,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { FAIL, OK, WARN, bold, cyan, dim } from '../ui.js';
+import { selectPrompt } from '../ui-select.js';
 
 const HOOK_LINE = 'notify = ["mlflow-codex", "notify-hook"]';
 const NOTIFY_LINE_RE = /^\s*notify\s*=.*$/m;
@@ -86,9 +91,15 @@ function writeTracingConfig(
  *   --non-interactive / -y
  *   --tracking-uri <url>
  *   --experiment-id <id>
+ *
+ * `projectLocal` is left undefined when `--project` is not passed so the
+ * interactive flow can prompt for it (and non-interactive can fall back to
+ * user-level).
  */
-export function parseSetupArgs(args: string[]): SetupOptions & { projectLocal: boolean } {
-  const out: SetupOptions & { projectLocal: boolean } = { projectLocal: false };
+export function parseSetupArgs(
+  args: string[],
+): SetupOptions & { projectLocal: boolean | undefined } {
+  const out: SetupOptions & { projectLocal: boolean | undefined } = { projectLocal: undefined };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--project' || arg === '-p') {
@@ -132,41 +143,42 @@ function askOn(
 const validateTrackingUri = (value: string): string | null =>
   isValidTrackingUri(value) ? null : 'Must be an absolute http:// or https:// URL.';
 
-async function resolveTracingValues(
-  options: SetupOptions,
-): Promise<{ trackingUri: string; experimentId: string }> {
-  if (options.nonInteractive) {
-    return {
-      trackingUri: options.trackingUri ?? DEFAULT_TRACKING_URI,
-      experimentId: options.experimentId ?? DEFAULT_EXPERIMENT_ID,
-    };
-  }
-  if (options.trackingUri && options.experimentId) {
-    return { trackingUri: options.trackingUri, experimentId: options.experimentId };
-  }
-  console.error(`\n${bold('Configure MLflow tracing for Codex CLI')}`);
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const trackingUri =
-      options.trackingUri ??
-      (await askOn(rl, 'MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri));
-    const experimentId =
-      options.experimentId ?? (await askOn(rl, 'MLflow experiment ID', DEFAULT_EXPERIMENT_ID));
-    return { trackingUri, experimentId };
-  } finally {
-    rl.close();
-  }
+function promptScope(): Promise<boolean> {
+  return selectPrompt<boolean>({
+    question: 'Where should MLflow tracing be installed?',
+    options: [
+      { value: true, label: 'Project', hint: './.codex/' },
+      { value: false, label: 'User', hint: '~/.codex/' },
+    ],
+    defaultIndex: 0,
+  });
 }
 
 export async function runSetup(args: string[], options: SetupOptions = {}): Promise<void> {
   const parsed = parseSetupArgs(args);
-  const merged: SetupOptions & { projectLocal: boolean } = {
+  const merged: SetupOptions & { projectLocal: boolean | undefined } = {
     ...parsed,
     ...options,
     projectLocal: parsed.projectLocal,
   };
-  const configPath = resolveConfigPath(merged.projectLocal, merged);
-  const tracingConfigPath = resolveTracingConfigPath(merged.projectLocal, merged);
+
+  const interactive = !merged.nonInteractive;
+  const needsBanner =
+    interactive &&
+    (merged.projectLocal === undefined || !merged.trackingUri || !merged.experimentId);
+  if (needsBanner) {
+    console.error(`\n${bold('Configure MLflow tracing for Codex CLI')}`);
+  }
+
+  const projectLocal =
+    merged.projectLocal !== undefined
+      ? merged.projectLocal
+      : interactive
+        ? await promptScope()
+        : false;
+
+  const configPath = resolveConfigPath(projectLocal, merged);
+  const tracingConfigPath = resolveTracingConfigPath(projectLocal, merged);
 
   let hookRegistered = false;
   if (!existsSync(configPath)) {
@@ -195,8 +207,33 @@ export async function runSetup(args: string[], options: SetupOptions = {}): Prom
   if (!hookRegistered) {
     return;
   }
+  console.error('');
 
-  const { trackingUri, experimentId } = await resolveTracingValues(merged);
+  const needsTextPrompt = interactive && (!merged.trackingUri || !merged.experimentId);
+  const rl = needsTextPrompt
+    ? createInterface({ input: process.stdin, output: process.stdout })
+    : null;
+  try {
+    const trackingUri =
+      merged.trackingUri ??
+      (rl
+        ? await askOn(rl, 'MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri)
+        : DEFAULT_TRACKING_URI);
+    const experimentId =
+      merged.experimentId ??
+      (rl ? await askOn(rl, 'MLflow experiment ID', DEFAULT_EXPERIMENT_ID) : DEFAULT_EXPERIMENT_ID);
+
+    writeTracingConfigIfValid(tracingConfigPath, trackingUri, experimentId);
+  } finally {
+    rl?.close();
+  }
+}
+
+function writeTracingConfigIfValid(
+  tracingConfigPath: string,
+  trackingUri: string,
+  experimentId: string,
+): void {
   if (!isValidTrackingUri(trackingUri)) {
     console.error(
       `${FAIL} Invalid tracking URI: ${bold(trackingUri)} — must be an absolute http:// or https:// URL.`,
