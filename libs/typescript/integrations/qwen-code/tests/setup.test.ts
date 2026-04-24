@@ -4,6 +4,9 @@ import { join } from 'node:path';
 
 import { runSetup } from '../src/commands/setup';
 
+const HOOK_COMMAND = 'mlflow-qwen-code stop-hook';
+const NON_INTERACTIVE = ['--non-interactive'];
+
 describe('runSetup', () => {
   let tmpHome: string;
 
@@ -19,19 +22,37 @@ describe('runSetup', () => {
     return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
   }
 
-  it('creates ~/.qwen/settings.json when it does not exist', () => {
-    runSetup([], { home: tmpHome });
+  it('creates settings.json and mlflow-tracing.json with defaults when absent', async () => {
+    await runSetup(NON_INTERACTIVE, { home: tmpHome });
 
     const settingsPath = join(tmpHome, '.qwen', 'settings.json');
+    const tracingPath = join(tmpHome, '.qwen', 'mlflow-tracing.json');
     expect(existsSync(settingsPath)).toBe(true);
+    expect(existsSync(tracingPath)).toBe(true);
     expect(read(settingsPath)).toEqual({
       hooks: {
-        Stop: [{ hooks: [{ type: 'command', command: 'mlflow-qwen-code' }] }],
+        Stop: [{ hooks: [{ type: 'command', command: HOOK_COMMAND }] }],
       },
+    });
+    expect(read(tracingPath)).toEqual({
+      trackingUri: 'http://localhost:5000',
+      experimentId: '0',
     });
   });
 
-  it('preserves unrelated fields when merging into an existing file', () => {
+  it('writes the supplied --tracking-uri and --experiment-id to mlflow-tracing.json', async () => {
+    await runSetup(
+      ['--non-interactive', '--tracking-uri', 'http://mlflow.example/', '--experiment-id', '42'],
+      { home: tmpHome },
+    );
+
+    expect(read(join(tmpHome, '.qwen', 'mlflow-tracing.json'))).toEqual({
+      trackingUri: 'http://mlflow.example/',
+      experimentId: '42',
+    });
+  });
+
+  it('preserves unrelated fields when merging into an existing settings.json', async () => {
     const settingsPath = join(tmpHome, '.qwen', 'settings.json');
     mkdirSync(join(tmpHome, '.qwen'), { recursive: true });
     writeFileSync(
@@ -40,28 +61,28 @@ describe('runSetup', () => {
       'utf-8',
     );
 
-    runSetup([], { home: tmpHome });
+    await runSetup(NON_INTERACTIVE, { home: tmpHome });
 
     const settings = read(settingsPath);
     expect(settings.theme).toBe('dark');
     expect(settings.security).toEqual({ auth: { selectedType: 'openai' } });
     expect((settings.hooks as { Stop: unknown }).Stop).toEqual([
-      { hooks: [{ type: 'command', command: 'mlflow-qwen-code' }] },
+      { hooks: [{ type: 'command', command: HOOK_COMMAND }] },
     ]);
   });
 
-  it('is idempotent when the hook is already registered', () => {
-    runSetup([], { home: tmpHome });
+  it('is idempotent when the hook is already registered', async () => {
+    await runSetup(NON_INTERACTIVE, { home: tmpHome });
     const settingsPath = join(tmpHome, '.qwen', 'settings.json');
-    const first = readFileSync(settingsPath, 'utf-8');
+    const firstSettings = readFileSync(settingsPath, 'utf-8');
 
-    runSetup([], { home: tmpHome });
-    const second = readFileSync(settingsPath, 'utf-8');
+    await runSetup(NON_INTERACTIVE, { home: tmpHome });
+    const secondSettings = readFileSync(settingsPath, 'utf-8');
 
-    expect(second).toBe(first);
+    expect(secondSettings).toBe(firstSettings);
   });
 
-  it('appends alongside other Stop hooks without overwriting them', () => {
+  it('appends alongside other Stop hooks without overwriting them', async () => {
     const settingsPath = join(tmpHome, '.qwen', 'settings.json');
     mkdirSync(join(tmpHome, '.qwen'), { recursive: true });
     writeFileSync(
@@ -72,34 +93,32 @@ describe('runSetup', () => {
       'utf-8',
     );
 
-    runSetup([], { home: tmpHome });
+    await runSetup(NON_INTERACTIVE, { home: tmpHome });
 
     const settings = read(settingsPath) as { hooks: { Stop: unknown[] } };
     expect(settings.hooks.Stop).toHaveLength(2);
     expect(settings.hooks.Stop).toEqual([
       { hooks: [{ type: 'command', command: 'some-other-hook' }] },
-      { hooks: [{ type: 'command', command: 'mlflow-qwen-code' }] },
+      { hooks: [{ type: 'command', command: HOOK_COMMAND }] },
     ]);
   });
 
-  it('writes to ./.qwen/settings.json when --project is passed', () => {
+  it('writes to ./.qwen/ when --project is passed', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'qwen-project-test-'));
     try {
-      runSetup(['--project'], { home: tmpHome, cwd });
+      await runSetup([...NON_INTERACTIVE, '--project'], { home: tmpHome, cwd });
       const projectPath = join(cwd, '.qwen', 'settings.json');
+      const projectTracingPath = join(cwd, '.qwen', 'mlflow-tracing.json');
       expect(existsSync(projectPath)).toBe(true);
-      expect(read(projectPath)).toEqual({
-        hooks: {
-          Stop: [{ hooks: [{ type: 'command', command: 'mlflow-qwen-code' }] }],
-        },
-      });
+      expect(existsSync(projectTracingPath)).toBe(true);
       expect(existsSync(join(tmpHome, '.qwen', 'settings.json'))).toBe(false);
+      expect(existsSync(join(tmpHome, '.qwen', 'mlflow-tracing.json'))).toBe(false);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
   });
 
-  it('reports a friendly error and exits 1 when settings.json is malformed', () => {
+  it('reports a friendly error and exits 1 when settings.json is malformed', async () => {
     const settingsPath = join(tmpHome, '.qwen', 'settings.json');
     mkdirSync(join(tmpHome, '.qwen'), { recursive: true });
     writeFileSync(settingsPath, '{ not valid json', 'utf-8');
@@ -107,10 +126,11 @@ describe('runSetup', () => {
     process.exitCode = undefined;
 
     try {
-      runSetup([], { home: tmpHome });
+      await runSetup(NON_INTERACTIVE, { home: tmpHome });
       expect(process.exitCode).toBe(1);
-      // The malformed file must be left untouched so the user can fix it by hand.
       expect(readFileSync(settingsPath, 'utf-8')).toBe('{ not valid json');
+      // mlflow-tracing.json must not have been written when setup bails early.
+      expect(existsSync(join(tmpHome, '.qwen', 'mlflow-tracing.json'))).toBe(false);
     } finally {
       process.exitCode = originalExitCode;
     }
