@@ -16,9 +16,26 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
+import { FAIL, OK, WARN, bold, cyan, dim } from '../ui.js';
+
 const HOOK_COMMAND = 'mlflow-qwen-code stop-hook';
 const DEFAULT_TRACKING_URI = 'http://localhost:5000';
 const DEFAULT_EXPERIMENT_ID = '0';
+
+/**
+ * Returns true only when `raw` parses as a URL with an http(s) scheme.
+ * Rejects scheme-less inputs like `localhost:5000` (which `new URL` otherwise
+ * interprets as a custom scheme with an empty port).
+ */
+export function isValidTrackingUri(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+}
 
 interface QwenHookEntry {
   type: string;
@@ -74,8 +91,8 @@ function readSettings(path: string): QwenSettings | null {
     return JSON.parse(content) as QwenSettings;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[mlflow] Failed to parse ${path}: ${msg}`);
-    console.error('[mlflow] Fix the file manually and rerun `mlflow-qwen-code setup`.');
+    console.error(`${FAIL} Failed to parse ${cyan(path)}: ${msg}`);
+    console.error(`  Fix the file manually and rerun ${cyan('mlflow-qwen-code setup')}.`);
     return null;
   }
 }
@@ -121,15 +138,33 @@ export function parseSetupArgs(args: string[]): SetupOptions & { projectLocal: b
   return out;
 }
 
-function prompt(label: string, defaultValue: string): Promise<string> {
+type Readline = ReturnType<typeof createInterface>;
+
+function askOn(
+  rl: Readline,
+  label: string,
+  defaultValue: string,
+  validate?: (value: string) => string | null,
+): Promise<string> {
   return new Promise((resolvePromise) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${label} [${defaultValue}]: `, (answer) => {
-      rl.close();
-      resolvePromise(answer.trim() || defaultValue);
-    });
+    const ask = (): void => {
+      rl.question(`  ${label} ${dim(`[${defaultValue}]`)} `, (answer) => {
+        const value = answer.trim() || defaultValue;
+        const err = validate?.(value);
+        if (err) {
+          console.error(`  ${FAIL} ${err}`);
+          ask();
+          return;
+        }
+        resolvePromise(value);
+      });
+    };
+    ask();
   });
 }
+
+const validateTrackingUri = (value: string): string | null =>
+  isValidTrackingUri(value) ? null : 'Must be an absolute http:// or https:// URL.';
 
 async function resolveTracingValues(
   options: SetupOptions,
@@ -143,12 +178,18 @@ async function resolveTracingValues(
   if (options.trackingUri && options.experimentId) {
     return { trackingUri: options.trackingUri, experimentId: options.experimentId };
   }
-  console.error('[mlflow] Configuring MLflow tracing for Qwen Code.');
-  const trackingUri =
-    options.trackingUri ?? (await prompt('MLflow tracking URI', DEFAULT_TRACKING_URI));
-  const experimentId =
-    options.experimentId ?? (await prompt('MLflow experiment ID', DEFAULT_EXPERIMENT_ID));
-  return { trackingUri, experimentId };
+  console.error(`\n${bold('Configure MLflow tracing for Qwen Code')}`);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const trackingUri =
+      options.trackingUri ??
+      (await askOn(rl, 'MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri));
+    const experimentId =
+      options.experimentId ?? (await askOn(rl, 'MLflow experiment ID', DEFAULT_EXPERIMENT_ID));
+    return { trackingUri, experimentId };
+  } finally {
+    rl.close();
+  }
 }
 
 export async function runSetup(args: string[], options: SetupOptions = {}): Promise<void> {
@@ -170,27 +211,34 @@ export async function runSetup(args: string[], options: SetupOptions = {}): Prom
   settings.hooks.Stop ??= [];
 
   if (hasMlflowHook(settings.hooks.Stop)) {
-    console.error(`[mlflow] Stop hook already registered in ${settingsPath}`);
+    console.error(`${WARN} Stop hook already registered in ${cyan(settingsPath)}`);
   } else {
     settings.hooks.Stop.push({
       hooks: [{ type: 'command', command: HOOK_COMMAND }],
     });
     writeSettings(settingsPath, settings);
-    console.error(`[mlflow] Registered Stop hook in ${settingsPath}`);
+    console.error(`${OK} Registered Stop hook in ${cyan(settingsPath)}`);
   }
 
   const { trackingUri, experimentId } = await resolveTracingValues(merged);
+  if (!isValidTrackingUri(trackingUri)) {
+    console.error(
+      `${FAIL} Invalid tracking URI: ${bold(trackingUri)} — must be an absolute http:// or https:// URL.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   writeTracingConfig(tracingConfigPath, { trackingUri, experimentId });
-  console.error(`[mlflow] Wrote tracing config to ${tracingConfigPath}`);
+  console.error(`\n${OK} Wrote tracing config to ${cyan(tracingConfigPath)}`);
 
-  console.error('\nNext steps:');
+  const port = new URL(trackingUri).port || '5000';
+  console.error(`\n${bold('Next steps')}`);
   console.error('  1. Start the MLflow tracking server in a separate terminal:');
+  console.error(`       ${cyan(`mlflow server --port ${port}`)}`);
   console.error(
-    `       mlflow server --host 0.0.0.0 --port ${new URL(trackingUri).port || '5000'}`,
+    `  2. Launch ${cyan('qwen')} — traces appear at ${bold(trackingUri)} after each turn.`,
   );
-  console.error(`  2. Launch \`qwen\` — traces appear at ${trackingUri} after each turn.`);
   console.error(
-    '\nThe tracking URI and experiment ID can be overridden per-shell with',
-    '$MLFLOW_TRACKING_URI / $MLFLOW_EXPERIMENT_ID.',
+    `\n${dim('Override per-shell with $MLFLOW_TRACKING_URI / $MLFLOW_EXPERIMENT_ID.')}`,
   );
 }

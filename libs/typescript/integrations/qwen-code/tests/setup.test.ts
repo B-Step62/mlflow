@@ -103,6 +103,25 @@ describe('runSetup', () => {
     ]);
   });
 
+  it('rejects a tracking URI that is missing an http(s) scheme and exits 1', async () => {
+    const originalExitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    try {
+      await runSetup(
+        ['--non-interactive', '--tracking-uri', 'localhost:5678', '--experiment-id', '48'],
+        { home: tmpHome },
+      );
+      expect(process.exitCode).toBe(1);
+      // The Stop hook is still registered (that step happens before URI
+      // validation and is idempotent), but the tracing config must not be
+      // written with an invalid URI.
+      expect(existsSync(join(tmpHome, '.qwen', 'mlflow-tracing.json'))).toBe(false);
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+  });
+
   it('writes to ./.qwen/ when --project is passed', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'qwen-project-test-'));
     try {

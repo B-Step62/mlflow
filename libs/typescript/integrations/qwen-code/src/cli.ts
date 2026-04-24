@@ -11,22 +11,35 @@
 
 import { runStopHook } from './hooks/stop.js';
 import { runSetup } from './commands/setup.js';
+import { FAIL, bold, dim } from './ui.js';
 
 function printUsage(): void {
-  console.error('Usage: mlflow-qwen-code <command> [options]');
+  console.error(`${bold('Usage:')} mlflow-qwen-code <command> [options]`);
   console.error('');
-  console.error('Commands:');
-  console.error('  setup       Register the Stop hook in Qwen settings.json and configure');
+  console.error(bold('Commands:'));
+  console.error(
+    `  ${bold('setup')}       Register the Stop hook in Qwen settings.json and configure`,
+  );
   console.error('              the MLflow tracking URI / experiment ID. Runs interactively');
   console.error('              by default.');
   console.error('');
-  console.error('              Flags:');
-  console.error('                --project, -p          Write to ./.qwen/ instead of ~/.qwen/');
-  console.error('                --non-interactive, -y  Skip prompts; use flag values or defaults');
-  console.error('                --tracking-uri <url>   Bypass the prompt for the tracking URI');
-  console.error('                --experiment-id <id>   Bypass the prompt for the experiment ID');
+  console.error(`              ${dim('Flags:')}`);
+  console.error(
+    dim('                --project, -p          Write to ./.qwen/ instead of ~/.qwen/'),
+  );
+  console.error(
+    dim('                --non-interactive, -y  Skip prompts; use flag values or defaults'),
+  );
+  console.error(
+    dim('                --tracking-uri <url>   Bypass the prompt for the tracking URI'),
+  );
+  console.error(
+    dim('                --experiment-id <id>   Bypass the prompt for the experiment ID'),
+  );
   console.error('');
-  console.error('  stop-hook   Run the Qwen Code Stop hook. Reads the hook payload from stdin');
+  console.error(
+    `  ${bold('stop-hook')}   Run the Qwen Code Stop hook. Reads the hook payload from stdin`,
+  );
   console.error('              — this is the form Qwen itself invokes via settings.json.');
 }
 
@@ -51,7 +64,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.error(`[mlflow] Unknown command: ${command}`);
+  console.error(`${FAIL} Unknown command: ${bold(command)}\n`);
   printUsage();
   process.exitCode = 1;
 }

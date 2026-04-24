@@ -115,6 +115,19 @@ describe('runSetup', () => {
     expect(content).not.toContain(HOOK_LINE);
   });
 
+  it('rejects a tracking URI that is missing an http(s) scheme and exits 1', async () => {
+    await runSetup(
+      ['--non-interactive', '--tracking-uri', 'localhost:5678', '--experiment-id', '48'],
+      { home: tmpHome },
+    );
+
+    expect(process.exitCode).toBe(1);
+    // The notify hook is still registered (that step happens before URI
+    // validation and is idempotent), but the tracing config must not be
+    // written with an invalid URI.
+    expect(existsSync(join(tmpHome, '.codex', 'mlflow-tracing.json'))).toBe(false);
+  });
+
   it('writes to ./.codex/ when --project is passed', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'codex-project-test-'));
     try {

@@ -13,24 +13,35 @@
 
 import { runNotifyHook } from './hooks/stop.js';
 import { runSetup } from './commands/setup.js';
+import { FAIL, bold, dim } from './ui.js';
 
 function printUsage(): void {
-  console.error('Usage: mlflow-codex <command> [options]');
+  console.error(`${bold('Usage:')} mlflow-codex <command> [options]`);
   console.error('');
-  console.error('Commands:');
-  console.error('  setup        Register the notify hook in ~/.codex/config.toml and configure');
+  console.error(bold('Commands:'));
+  console.error(
+    `  ${bold('setup')}        Register the notify hook in ~/.codex/config.toml and configure`,
+  );
   console.error('               the MLflow tracking URI / experiment ID. Runs interactively');
   console.error('               by default.');
   console.error('');
-  console.error('               Flags:');
-  console.error('                 --project, -p          Write to ./.codex/ instead of ~/.codex/');
+  console.error(`               ${dim('Flags:')}`);
   console.error(
-    '                 --non-interactive, -y  Skip prompts; use flag values or defaults',
+    dim('                 --project, -p          Write to ./.codex/ instead of ~/.codex/'),
   );
-  console.error('                 --tracking-uri <url>   Bypass the prompt for the tracking URI');
-  console.error('                 --experiment-id <id>   Bypass the prompt for the experiment ID');
+  console.error(
+    dim('                 --non-interactive, -y  Skip prompts; use flag values or defaults'),
+  );
+  console.error(
+    dim('                 --tracking-uri <url>   Bypass the prompt for the tracking URI'),
+  );
+  console.error(
+    dim('                 --experiment-id <id>   Bypass the prompt for the experiment ID'),
+  );
   console.error('');
-  console.error('  notify-hook  Run the Codex notify handler. Codex appends the turn JSON as');
+  console.error(
+    `  ${bold('notify-hook')}  Run the Codex notify handler. Codex appends the turn JSON as`,
+  );
   console.error('               the final argument — this is the form Codex itself uses via');
   console.error('               config.toml.');
 }
@@ -54,7 +65,7 @@ async function main(): Promise<void> {
   if (command === 'notify-hook') {
     const payload = rest[0];
     if (payload === undefined) {
-      console.error('[mlflow] notify-hook expects a JSON payload as the first argument');
+      console.error(`${FAIL} notify-hook expects a JSON payload as the first argument`);
       process.exitCode = 1;
       return;
     }
@@ -62,7 +73,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.error(`[mlflow] Unknown command: ${command}`);
+  console.error(`${FAIL} Unknown command: ${bold(command)}\n`);
   printUsage();
   process.exitCode = 1;
 }
