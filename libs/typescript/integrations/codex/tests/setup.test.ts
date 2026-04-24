@@ -71,4 +71,24 @@ describe('runSetup', () => {
     expect(content).toBe('notify = ["some-other-tool"]\n');
     expect(process.exitCode).toBe(1);
   });
+
+  it('does not treat a comment mentioning "mlflow-codex" as an existing registration', () => {
+    const configPath = join(tmpHome, '.codex', 'config.toml');
+    mkdirSync(join(tmpHome, '.codex'), { recursive: true });
+    // The mlflow-codex string appears in a comment, not in the notify
+    // assignment. The user's actual notify hook is some-other-tool, so the
+    // setup command must error out rather than silently claim success.
+    writeFileSync(
+      configPath,
+      '# TODO: switch to mlflow-codex\nnotify = ["some-other-tool"]\n',
+      'utf-8',
+    );
+
+    runSetup([], { home: tmpHome });
+
+    expect(process.exitCode).toBe(1);
+    const content = readConfig(configPath);
+    expect(content).toContain('notify = ["some-other-tool"]');
+    expect(content).not.toContain('notify = ["mlflow-codex"]');
+  });
 });

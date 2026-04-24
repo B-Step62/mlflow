@@ -12,7 +12,8 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 
 const HOOK_LINE = 'notify = ["mlflow-codex"]';
-const NOTIFY_LINE_RE = /^\s*notify\s*=/m;
+const NOTIFY_LINE_RE = /^\s*notify\s*=.*$/m;
+const NOTIFY_HAS_MLFLOW_RE = /^\s*notify\s*=.*["']mlflow-codex["']/m;
 
 export interface SetupOptions {
   /** Override the user home directory. Defaults to `os.homedir()`. */
@@ -39,7 +40,7 @@ export function runSetup(_args: string[], options: SetupOptions = {}): void {
   } else {
     const content = readFileSync(configPath, 'utf-8');
     if (NOTIFY_LINE_RE.test(content)) {
-      if (content.includes('mlflow-codex')) {
+      if (NOTIFY_HAS_MLFLOW_RE.test(content)) {
         console.error(`[mlflow] Hook already registered in ${configPath}`);
       } else {
         console.error(`[mlflow] ${configPath} already has a \`notify = ...\` entry.`);

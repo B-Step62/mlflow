@@ -14,9 +14,9 @@ function printUsage(): void {
   console.error('Usage: mlflow-qwen-code [command]');
   console.error('');
   console.error('Commands:');
-  console.error('  setup [--project]   Register the Stop hook in Qwen settings.json');
+  console.error('  setup [--project|-p]   Register the Stop hook in Qwen settings.json');
   console.error(
-    '                      (user-level by default; --project writes to ./.qwen/settings.json)',
+    '                         (user-level by default; --project or -p writes to ./.qwen/settings.json)',
   );
   console.error('');
   console.error('When invoked with no command, reads a Stop hook payload from stdin.');

@@ -98,4 +98,21 @@ describe('runSetup', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   });
+
+  it('reports a friendly error and exits 1 when settings.json is malformed', () => {
+    const settingsPath = join(tmpHome, '.qwen', 'settings.json');
+    mkdirSync(join(tmpHome, '.qwen'), { recursive: true });
+    writeFileSync(settingsPath, '{ not valid json', 'utf-8');
+    const originalExitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    try {
+      runSetup([], { home: tmpHome });
+      expect(process.exitCode).toBe(1);
+      // The malformed file must be left untouched so the user can fix it by hand.
+      expect(readFileSync(settingsPath, 'utf-8')).toBe('{ not valid json');
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+  });
 });

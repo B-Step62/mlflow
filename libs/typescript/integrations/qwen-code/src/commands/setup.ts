@@ -43,7 +43,7 @@ export function resolveSettingsPath(projectLocal: boolean, options: SetupOptions
     : resolve(options.home ?? homedir(), '.qwen', 'settings.json');
 }
 
-function readSettings(path: string): QwenSettings {
+function readSettings(path: string): QwenSettings | null {
   if (!existsSync(path)) {
     return {};
   }
@@ -51,7 +51,14 @@ function readSettings(path: string): QwenSettings {
   if (!content) {
     return {};
   }
-  return JSON.parse(content) as QwenSettings;
+  try {
+    return JSON.parse(content) as QwenSettings;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[mlflow] Failed to parse ${path}: ${msg}`);
+    console.error('[mlflow] Fix the file manually and rerun `mlflow-qwen-code setup`.');
+    return null;
+  }
 }
 
 function writeSettings(path: string, settings: QwenSettings): void {
@@ -68,6 +75,10 @@ export function runSetup(args: string[], options: SetupOptions = {}): void {
   const settingsPath = resolveSettingsPath(projectLocal, options);
 
   const settings = readSettings(settingsPath);
+  if (settings == null) {
+    process.exitCode = 1;
+    return;
+  }
   settings.hooks ??= {};
   settings.hooks.Stop ??= [];
 
