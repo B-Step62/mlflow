@@ -461,6 +461,36 @@ def build(package_type: PackageType) -> None:
 
         write_file_if_changed(out_path, formatted_full_content)
         subprocess.check_call(["uv", "lock"])
+        _sanitize_uv_lock_indexes(Path("uv.lock"))
+
+
+# Indexes that are allowed to appear in uv.lock. Any other registry URL (e.g. a
+# contributor's private uv mirror that leaked in via UV_DEFAULT_INDEX) is
+# rewritten back to public PyPI before the lockfile is committed. See
+# https://github.com/astral-sh/uv/issues/6349.
+_PUBLIC_PYPI_INDEX = "https://pypi.org/simple"
+_ALLOWED_LOCK_INDEXES = frozenset(
+    {
+        _PUBLIC_PYPI_INDEX,
+        "https://download.pytorch.org/whl/cpu",
+    }
+)
+_REGISTRY_RE = re.compile(r'registry = "(https?://[^"]+)"')
+
+
+def _sanitize_uv_lock_indexes(lock_path: Path) -> None:
+    content = lock_path.read_text()
+
+    def replace(match: re.Match[str]) -> str:
+        url = match.group(1)
+        if url in _ALLOWED_LOCK_INDEXES:
+            return match.group(0)
+        return f'registry = "{_PUBLIC_PYPI_INDEX}"'
+
+    new_content = _REGISTRY_RE.sub(replace, content)
+    if new_content != content:
+        print(f"Rewrote non-public registry URLs in {lock_path} to {_PUBLIC_PYPI_INDEX}")
+        lock_path.write_text(new_content)
 
 
 def _get_package_data(package_type: PackageType) -> dict[str, list[str]] | None:
