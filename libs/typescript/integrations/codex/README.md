@@ -12,7 +12,7 @@ Seamlessly integrate [MLflow Tracing](https://github.com/mlflow/mlflow/tree/main
 npm install -g @mlflow/codex
 ```
 
-This installs the `mlflow-codex` CLI globally. If you'd rather not install globally, you can invoke it via `npx @mlflow/codex` — every command below works the same way.
+This installs the `mlflow-codex` CLI globally. If you'd rather not install globally, you can invoke it via `npx @mlflow/codex` (every command below works the same way).
 
 ## Quickstart
 
@@ -20,7 +20,7 @@ Start MLflow Tracking Server if you don't have one already:
 
 ```bash
 pip install mlflow
-mlflow server --backend-store-uri sqlite:///mlruns.db --port 5000
+mlflow server --port 5000
 ```
 
 Self-hosting MLflow server requires Python 3.10 or higher. If you don't have one, you can also use [managed MLflow service](https://mlflow.org/#get-started) for free to get started quickly.
@@ -33,8 +33,8 @@ mlflow-codex setup
 
 The setup command prompts you to choose between a project-local install (`./.codex/`) or a user-level install (`~/.codex/`), then writes:
 
-- `config.toml` — adds `notify = ["mlflow-codex", "notify-hook"]` so Codex invokes the hook after every turn.
-- `mlflow-tracing.json` — persists your MLflow tracking URI and experiment ID.
+- `config.toml`: adds `notify = ["mlflow-codex", "notify-hook"]` so Codex invokes the hook after every turn.
+- `mlflow-tracing.json`: persists your MLflow tracking URI and experiment ID.
 
 Pass `--non-interactive` / `-y` to skip prompts and use defaults, or override values with `--tracking-uri` and `--experiment-id`:
 
@@ -48,7 +48,7 @@ Use Codex normally:
 codex "help me refactor this function"
 ```
 
-A trace is created in MLflow after each conversation turn — no need to wait for the session to end.
+A trace is created in MLflow after each conversation turn. You don't need to wait for the session to end.
 
 ## Configuration
 
@@ -58,7 +58,7 @@ The `mlflow-codex` hook resolves configuration in this order (first match wins):
 2. `./.codex/mlflow-tracing.json` (project-local)
 3. `~/.codex/mlflow-tracing.json` (user-level)
 
-Environment variables are convenient for one-off overrides — e.g. switching between a local server and a Databricks workspace:
+Environment variables are convenient for one-off overrides, e.g. switching between a local server and a Databricks workspace:
 
 ```bash
 MLFLOW_TRACKING_URI=databricks MLFLOW_EXPERIMENT_ID=123456789 codex "..."

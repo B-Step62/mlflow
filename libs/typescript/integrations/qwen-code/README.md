@@ -12,7 +12,7 @@ Seamlessly integrate [MLflow Tracing](https://github.com/mlflow/mlflow/tree/main
 npm install -g @mlflow/qwen-code
 ```
 
-This installs the `mlflow-qwen-code` CLI globally. If you'd rather not install globally, you can invoke it via `npx @mlflow/qwen-code` — every command below works the same way.
+This installs the `mlflow-qwen-code` CLI globally. If you'd rather not install globally, you can invoke it via `npx @mlflow/qwen-code` (every command below works the same way).
 
 ## Quickstart
 
@@ -20,7 +20,7 @@ Start MLflow Tracking Server if you don't have one already:
 
 ```bash
 pip install mlflow
-mlflow server --backend-store-uri sqlite:///mlruns.db --port 5000
+mlflow server --port 5000
 ```
 
 Self-hosting MLflow server requires Python 3.10 or higher. If you don't have one, you can also use [managed MLflow service](https://mlflow.org/#get-started) for free to get started quickly.
@@ -33,8 +33,8 @@ mlflow-qwen-code setup
 
 The setup command prompts you to choose between a project-local install (`./.qwen/`) or a user-level install (`~/.qwen/`), then writes:
 
-- `settings.json` — adds a `Stop` hook entry so Qwen Code invokes `mlflow-qwen-code stop-hook` at the end of each session turn.
-- `mlflow-tracing.json` — persists your MLflow tracking URI and experiment ID.
+- `settings.json`: adds a `Stop` hook entry so Qwen Code invokes `mlflow-qwen-code stop-hook` at the end of each session turn.
+- `mlflow-tracing.json`: persists your MLflow tracking URI and experiment ID.
 
 Pass `--non-interactive` / `-y` to skip prompts and use defaults, or override values with `--tracking-uri` and `--experiment-id`:
 
@@ -48,7 +48,7 @@ Use Qwen Code normally:
 qwen "help me refactor this function"
 ```
 
-A trace is created in MLflow when a turn completes — including the full message history, tool calls and results, and token usage.
+A trace is created in MLflow when a turn completes, capturing the full message history, tool calls and results, and token usage.
 
 ## Configuration
 
@@ -58,7 +58,7 @@ The `mlflow-qwen-code` hook resolves configuration in this order (first match wi
 2. `./.qwen/mlflow-tracing.json` (project-local)
 3. `~/.qwen/mlflow-tracing.json` (user-level)
 
-Environment variables are convenient for one-off overrides — e.g. switching between a local server and a Databricks workspace:
+Environment variables are convenient for one-off overrides, e.g. switching between a local server and a Databricks workspace:
 
 ```bash
 MLFLOW_TRACKING_URI=databricks MLFLOW_EXPERIMENT_ID=123456789 qwen "..."
