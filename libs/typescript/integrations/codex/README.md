@@ -2,9 +2,9 @@
 
 Seamlessly integrate [MLflow Tracing](https://github.com/mlflow/mlflow/tree/main/libs/typescript) with [Codex CLI](https://github.com/openai/codex) to automatically trace your Codex coding-agent conversations, including user prompts, assistant responses, tool usage, and token consumption.
 
-| Package             | NPM                                                                                                                             | Description                                              |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [@mlflow/codex](./) | [![npm package](https://img.shields.io/npm/v/%40mlflow%2Fcodex?style=flat-square)](https://www.npmjs.com/package/@mlflow/codex) | Auto-instrumentation integration for OpenAI Codex CLI.   |
+| Package             | NPM                                                                                                                             | Description                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| [@mlflow/codex](./) | [![npm package](https://img.shields.io/npm/v/%40mlflow%2Fcodex?style=flat-square)](https://www.npmjs.com/package/@mlflow/codex) | Auto-instrumentation integration for OpenAI Codex CLI. |
 
 ## Installation
 
@@ -48,7 +48,7 @@ Use Codex normally:
 codex "help me refactor this function"
 ```
 
-A trace is created in MLflow after each conversation turn. You don't need to wait for the session to end.
+After each conversation turn, MLflow records a trace with the message history, tool calls and results, and token usage. You don't need to wait for the session to end.
 
 ## Configuration
 

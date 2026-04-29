@@ -2,9 +2,9 @@
 
 Seamlessly integrate [MLflow Tracing](https://github.com/mlflow/mlflow/tree/main/libs/typescript) with [Qwen Code](https://github.com/QwenLM/qwen-code) to automatically trace your Qwen Code coding-agent conversations, including user prompts, assistant responses, tool usage, and token consumption.
 
-| Package                  | NPM                                                                                                                                       | Description                                       |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| [@mlflow/qwen-code](./)  | [![npm package](https://img.shields.io/npm/v/%40mlflow%2Fqwen-code?style=flat-square)](https://www.npmjs.com/package/@mlflow/qwen-code)   | Auto-instrumentation integration for Qwen Code.   |
+| Package                 | NPM                                                                                                                                     | Description                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| [@mlflow/qwen-code](./) | [![npm package](https://img.shields.io/npm/v/%40mlflow%2Fqwen-code?style=flat-square)](https://www.npmjs.com/package/@mlflow/qwen-code) | Auto-instrumentation integration for Qwen Code. |
 
 ## Installation
 
@@ -48,7 +48,7 @@ Use Qwen Code normally:
 qwen "help me refactor this function"
 ```
 
-A trace is created in MLflow when a turn completes, capturing the full message history, tool calls and results, and token usage.
+After each conversation turn, MLflow records a trace with the message history, tool calls and results, and token usage. You don't need to wait for the session to end.
 
 ## Configuration
 
@@ -66,7 +66,7 @@ MLFLOW_TRACKING_URI=databricks MLFLOW_EXPERIMENT_ID=123456789 qwen "..."
 
 ## Documentation 📘
 
-Official documentation for MLflow Typescript SDK can be found [here](https://mlflow.org/docs/latest/genai/tracing/quickstart).
+Official documentation for MLflow Typescript SDK can be found [here](https://mlflow.org/docs/latest/genai/tracing/quickstart). For the full Qwen Code tracing guide including troubleshooting, see the [Qwen Code integration page](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/qwen_code).
 
 ## License
 
