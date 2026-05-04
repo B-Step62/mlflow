@@ -85,11 +85,15 @@ def create_playground_api_router(
             normalized_messages.append({"role": role, "content": content})
 
         agent_url = _normalize_agent_url(request.get("agent_url") or runtime.agent_url)
+        request_id = request.get("request_id")
+        if request_id is not None and not isinstance(request_id, str):
+            raise HTTPException(status_code=400, detail="`request_id` must be a string.")
         await asyncio.to_thread(_ensure_agent_running, runtime, agent_url)
         response_json, protocol = await _invoke_agent(
             agent_url=agent_url,
             messages=normalized_messages,
             timeout_seconds=runtime.request_timeout_seconds,
+            request_id=request_id,
         )
         runtime.agent_url = agent_url
 

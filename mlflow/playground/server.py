@@ -416,14 +416,21 @@ async def _invoke_agent(
     agent_url: str,
     messages: list[dict[str, str]],
     timeout_seconds: float,
+    request_id: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     protocol = await _detect_protocol(agent_url, timeout_seconds)
     payload = _build_agent_payload(messages, protocol)
 
+    headers = {"x-mlflow-return-trace-id": "true"}
+    if request_id:
+        headers["x-mlflow-trace-tags"] = json.dumps(
+            {"playground.request_id": request_id}
+        )
+
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         response = await client.post(
             f"{agent_url}/invocations",
-            headers={"x-mlflow-return-trace-id": "true"},
+            headers=headers,
             json=payload,
         )
 
@@ -558,11 +565,15 @@ def create_app(
             normalized_messages.append({"role": role, "content": content})
 
         agent_url = _normalize_agent_url(request.get("agent_url") or runtime.agent_url)
+        request_id = request.get("request_id")
+        if request_id is not None and not isinstance(request_id, str):
+            raise HTTPException(status_code=400, detail="`request_id` must be a string.")
         await asyncio.to_thread(_ensure_agent_running, runtime, agent_url)
         response_json, protocol = await _invoke_agent(
             agent_url=agent_url,
             messages=normalized_messages,
             timeout_seconds=runtime.request_timeout_seconds,
+            request_id=request_id,
         )
         runtime.agent_url = agent_url
 
@@ -604,8 +615,31 @@ def pick_free_port(host: str) -> int:
         return sock.getsockname()[1]
 
 
-def build_url(host: str, port: int) -> str:
-    return f"http://{host}:{port}/#/playground"
+def build_url(host: str, port: int, experiment_id: str | None) -> str:
+    base = f"http://{host}:{port}"
+    if experiment_id:
+        return f"{base}/#/experiments/{experiment_id}/playground"
+    # No experiment yet — drop the user on the experiments list so they can pick one.
+    return f"{base}/#/experiments"
+
+
+def _ensure_experiment_id(tracking_uri: str, experiment_name: str) -> str | None:
+    """Resolve `experiment_name` to its id against `tracking_uri`, creating it if missing.
+
+    Returns None if the lookup/creation fails (e.g. the URI isn't reachable yet).
+    """
+    if not tracking_uri or not experiment_name:
+        return None
+    try:
+        from mlflow.tracking.client import MlflowClient
+
+        client = MlflowClient(tracking_uri=tracking_uri)
+        existing = client.get_experiment_by_name(experiment_name)
+        if existing is not None:
+            return existing.experiment_id
+        return client.create_experiment(experiment_name)
+    except Exception:
+        return None
 
 
 def _open_browser_after_delay(url: str, delay: float = 0.5) -> None:
@@ -631,7 +665,8 @@ def serve(
 
     _ensure_mlflow_ui_assets()
 
-    url = build_url(host, port)
+    experiment_id = _ensure_experiment_id(backend_store_uri, experiment_name)
+    url = build_url(host, port, experiment_id)
     if open_browser:
         threading.Thread(target=_open_browser_after_delay, args=(url,), daemon=True).start()
 

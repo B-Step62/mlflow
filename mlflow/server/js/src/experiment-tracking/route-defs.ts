@@ -260,6 +260,23 @@ export const getRouteDefs = () => [
     pageId: PageId.settingsPage,
     handle: { getPageTitle: () => 'Settings' } satisfies RouteHandle,
   },
+  // Playground lives at /experiments/:experimentId/playground but is registered as a
+  // top-level route (NOT a child of `experimentPage`) so it doesn't inherit the
+  // experiment side-nav / tab chrome. The URL still scopes the playground to a
+  // specific experiment — `PlaygroundPage` reads `experimentId` from `useParams`.
+  {
+    path: RoutePaths.experimentPageTabPlayground,
+    element: createLazyRouteElement(() => import('../playground/PlaygroundPage')),
+    pageId: PageId.experimentPageTabPlayground,
+    handle: {
+      getPageTitle: (params) => `Playground - Experiment ${params['experimentId']}`,
+      getAssistantPrompts: () => [
+        'Open the latest trace from this conversation.',
+        'How do I leave feedback on an assistant response?',
+        'Which tool calls happened in this thread?',
+      ],
+    } satisfies RouteHandle,
+  },
   ...getExperimentPageRouteDefs(),
   {
     path: RoutePaths.experimentLoggedModelDetailsPageTab,

@@ -69,8 +69,15 @@ def test_pick_free_port_returns_int():
     assert port == 43123
 
 
-def test_build_url_format():
-    assert build_url("127.0.0.1", 8765) == "http://127.0.0.1:8765/#/playground"
+def test_build_url_with_experiment():
+    assert (
+        build_url("127.0.0.1", 8765, "1")
+        == "http://127.0.0.1:8765/#/experiments/1/playground"
+    )
+
+
+def test_build_url_without_experiment_falls_back_to_list():
+    assert build_url("127.0.0.1", 8765, None) == "http://127.0.0.1:8765/#/experiments"
 
 
 def test_cli_playground_invokes_serve(monkeypatch):

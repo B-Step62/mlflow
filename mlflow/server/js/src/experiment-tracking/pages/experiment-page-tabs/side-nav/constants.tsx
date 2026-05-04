@@ -13,6 +13,7 @@ import {
   TextBoxIcon,
   UserGroupIcon,
 } from '@databricks/design-system';
+import { AssistantSparkleIcon } from '../../../../assistant/AssistantIconButton';
 import { FormattedMessage } from 'react-intl';
 import { enableScorersUI, shouldEnableExperimentOverviewTab } from '@mlflow/mlflow/src/common/utils/FeatureUtils';
 
@@ -34,6 +35,17 @@ export type ExperimentPageSideNavSectionKey = 'top-level' | 'observability' | 'e
 
 const ExperimentPageSideNavGenAIConfig = {
   observability: [
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Playground"
+          description="Label for the playground tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <AssistantSparkleIcon isHovered={false} iconSize={16} />,
+      tabName: ExperimentPageTabName.Playground,
+      componentId: 'mlflow.experiment-side-nav.genai.playground',
+    },
     {
       label: (
         <FormattedMessage
