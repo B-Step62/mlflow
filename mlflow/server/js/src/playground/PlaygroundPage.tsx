@@ -1,4 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+// Deep-imports of the trace-explorer subcomponents — the public barrel
+// (`@databricks/web-shared/model-trace-explorer`) only exposes the full
+// `<ModelTraceExplorer>` which forces a horizontal split and renders header
+// chrome we don't want here. We reach into the source tree to compose a
+// vertical playground-shaped layout (pills → tree → I/O) using the same
+// primitives the regular trace view uses.
+import {
+  ModelTraceExplorerViewStateProvider,
+  useModelTraceExplorerViewState,
+} from '../shared/web-shared/model-trace-explorer/ModelTraceExplorerViewStateContext';
+import { TimelineTree } from '../shared/web-shared/model-trace-explorer/timeline-tree/TimelineTree';
+import { ModelTraceExplorerContentTab } from '../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerContentTab';
+import { ModelTraceHeaderStatusTag } from '../shared/web-shared/model-trace-explorer/ModelTraceHeaderStatusTag';
+import {
+  ModelTraceExplorerCostHoverCard,
+  isTraceCostType,
+  type TraceCost,
+} from '../shared/web-shared/model-trace-explorer/ModelTraceExplorerCostHoverCard';
+import {
+  ModelTraceExplorerTokenUsageHoverCard,
+  isTokenUsageType,
+  type TokenUsage,
+} from '../shared/web-shared/model-trace-explorer/ModelTraceExplorerTokenUsageHoverCard';
+import { ModelTraceHeaderMetricSection } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorerMetricSection';
+import {
+  getTraceCost,
+  getTraceTokenUsage,
+  isV3ModelTraceInfo as _isV3,
+} from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.utils';
+import { truncateToFirstLineWithMaxLength } from '../shared/web-shared/model-trace-explorer/TagUtils';
+import {
+  spanTimeFormatter,
+  useTimelineTreeExpandedNodes,
+} from '../shared/web-shared/model-trace-explorer/timeline-tree/TimelineTree.utils';
+import { useModelTraceSearch } from '../shared/web-shared/model-trace-explorer/hooks/useModelTraceSearch';
+import { ClockIcon } from '@databricks/design-system';
+import type { ModelTraceState } from '../shared/web-shared/model-trace-explorer/ModelTrace.types';
+import { FormattedMessage } from 'react-intl';
+
 import ErrorUtils from '../common/utils/ErrorUtils';
 import { withErrorBoundary } from '../common/utils/withErrorBoundary';
 import {
@@ -186,126 +226,183 @@ const parseSseChunk = (
   }
 };
 
-const stringifyToolValue = (value: unknown) => {
-  if (value === undefined || value === null) {
-    return 'None';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  return JSON.stringify(value, null, 2);
-};
-
 /**
- * Pull a span's I/O attributes by id. MLflow stores `mlflow.spanInputs` /
- * `mlflow.spanOutputs` as JSON-encoded strings on each span's attribute map;
- * we parse them defensively because some entries land double-quoted (the value
- * is itself a JSON string).
+ * Compact header strip for the inline trace pane. Renders ONLY the pills the
+ * playground needs (status / tokens / cost / latency) by re-using the same
+ * components `ModelTraceHeaderDetails` uses, so the styling stays
+ * pixel-identical to the regular trace view. Trace-id, tags, and user/session
+ * pills are intentionally omitted; full detail is available via "Open full trace".
  */
-const findSpanIO = (
-  trace: ModelTrace | null,
-  spanId: string | undefined,
-): { inputs: unknown; outputs: unknown; name: string } | null => {
-  if (!trace || !spanId) return null;
-  const spans = (trace.data?.spans ?? []) as {
-    span_id?: string;
-    name?: string;
-    attributes?: Record<string, unknown>;
-  }[];
-  const span = spans.find((s) => s.span_id === spanId);
-  if (!span) return null;
-  const parse = (raw: unknown): unknown => {
-    if (raw === undefined || raw === null) return undefined;
-    if (typeof raw !== 'string') return raw;
-    try {
-      const once = JSON.parse(raw);
-      // Some values are double-encoded (e.g. `"\"UNKNOWN\""`). Try a second pass.
-      if (typeof once === 'string') {
-        try {
-          return JSON.parse(once);
-        } catch {
-          return once;
-        }
-      }
-      return once;
-    } catch {
-      return raw;
-    }
-  };
-  return {
-    inputs: parse(span.attributes?.['mlflow.spanInputs']),
-    outputs: parse(span.attributes?.['mlflow.spanOutputs']),
-    name: span.name ?? '',
-  };
-};
-
-const SpanIOPanel = ({
-  trace,
-  selectedSpanId,
-}: {
-  trace: ModelTrace | null;
-  selectedSpanId: string | undefined;
-}) => {
+const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info'] }) => {
   const { theme } = useDesignSystemTheme();
-  const io = useMemo(() => findSpanIO(trace, selectedSpanId), [trace, selectedSpanId]);
-  if (!io) {
-    return (
-      <div css={{ padding: theme.spacing.md }}>
-        <Typography.Text color="secondary">Select a span to inspect its inputs and outputs.</Typography.Text>
-      </div>
-    );
-  }
+  const { rootNode } = useModelTraceExplorerViewState();
+  const tokenUsage = useMemo<Partial<TokenUsage> | undefined>(
+    () => getTraceTokenUsage(traceInfo as ModelTraceInfoV3) as Partial<TokenUsage> | undefined,
+    [traceInfo],
+  );
+  const cost = useMemo<Partial<TraceCost> | undefined>(
+    () => getTraceCost(traceInfo as ModelTraceInfoV3) as Partial<TraceCost> | undefined,
+    [traceInfo],
+  );
+  const statusState: ModelTraceState | undefined = useMemo(
+    () => (_isV3(traceInfo) ? (traceInfo as ModelTraceInfoV3).state : undefined),
+    [traceInfo],
+  );
+  const latency = useMemo(
+    () => (rootNode ? spanTimeFormatter(rootNode.end - rootNode.start) : undefined),
+    [rootNode],
+  );
+  const getTruncatedLabel = useCallback(
+    (label: string) => truncateToFirstLineWithMaxLength(label, 40),
+    [],
+  );
   return (
     <div
       css={{
         display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.sm,
-        padding: theme.spacing.md,
-        overflowY: 'auto',
-        minHeight: 0,
+        flexDirection: 'row',
+        gap: theme.spacing.md,
+        rowGap: theme.spacing.sm,
+        flexWrap: 'wrap',
+        paddingLeft: theme.spacing.md,
+        paddingTop: theme.spacing.sm,
+        paddingBottom: theme.spacing.sm,
+        borderBottom: `1px solid ${theme.colors.border}`,
       }}
     >
-      <Typography.Text css={{ fontWeight: 700 }}>{io.name || 'Span I/O'}</Typography.Text>
-      {(['inputs', 'outputs'] as const).map((kind) => (
-        <div
-          key={kind}
-          css={{
-            borderRadius: theme.borders.borderRadiusMd,
-            border: `1px solid ${theme.colors.border}`,
-            backgroundColor: 'rgba(249,250,251,0.95)',
-          }}
-        >
-          <Typography.Text
-            color="secondary"
-            size="sm"
-            css={{
-              display: 'block',
-              padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-              borderBottom: `1px solid ${theme.colors.border}`,
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            {kind}
-          </Typography.Text>
-          <pre
-            css={{
-              margin: 0,
-              padding: theme.spacing.sm,
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              maxHeight: 220,
-              overflowY: 'auto',
-            }}
-          >
-            {stringifyToolValue(io[kind])}
-          </pre>
-        </div>
-      ))}
+      {statusState && (
+        <ModelTraceHeaderStatusTag statusState={statusState} getTruncatedLabel={getTruncatedLabel} />
+      )}
+      {isTokenUsageType(tokenUsage) && (
+        <ModelTraceExplorerTokenUsageHoverCard tokenUsage={tokenUsage} />
+      )}
+      {isTraceCostType(cost) && <ModelTraceExplorerCostHoverCard cost={cost} />}
+      {latency && (
+        <ModelTraceHeaderMetricSection
+          label={
+            <FormattedMessage defaultMessage="Latency" description="Label for the latency section" />
+          }
+          icon={<ClockIcon css={{ fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }} />}
+          value={latency}
+          getTruncatedLabel={getTruncatedLabel}
+          onCopy={() => undefined}
+        />
+      )}
     </div>
+  );
+};
+
+/**
+ * Inner body of `PlaygroundTracePane`. Lives inside `ModelTraceExplorerViewStateProvider`
+ * so it can share `selectedNode` / `expandedKeys` / etc. with the same view-state
+ * that the regular trace explorer uses. Layout:
+ *
+ *   ┌───────────────────────────────┐
+ *   │ status / tokens / cost / lat  │  ← PlaygroundTraceHeaderPills
+ *   ├───────────────────────────────┤    (re-uses MLflow's pill components)
+ *   │  TimelineTree                  │  ← deep-imported tree
+ *   │   ├─ root                      │
+ *   │   │   └─ ...                   │
+ *   ├───────────────────────────────┤
+ *   │  ModelTraceExplorerContentTab │  ← deep-imported I/O renderer
+ *   │  (selected span's I/O)        │     same component as the regular right-pane
+ *   └───────────────────────────────┘    "Inputs / Outputs" tab
+ */
+const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
+  const { theme } = useDesignSystemTheme();
+  const { selectedNode, setSelectedNode, setActiveTab, rootNode, topLevelNodes } =
+    useModelTraceExplorerViewState();
+
+  // expandedKeys / spanFilterState aren't part of the view-state context —
+  // they're owned per-mount by the regular DetailView via these hooks.
+  // We do the same.
+  const { expandedKeys, setExpandedKeys } = useTimelineTreeExpandedNodes({
+    rootNodes: topLevelNodes,
+  });
+  const { spanFilterState, setSpanFilterState, filteredTreeNodes, matchData } =
+    useModelTraceSearch({
+      treeNodes: topLevelNodes,
+      selectedNode,
+      setSelectedNode,
+      setActiveTab,
+      setExpandedKeys,
+      modelTraceInfo: trace.info,
+    });
+
+  const { traceStartTime, traceEndTime } = useMemo(() => {
+    if (!rootNode) return { traceStartTime: 0, traceEndTime: 0 };
+    return { traceStartTime: rootNode.start, traceEndTime: rootNode.end };
+  }, [rootNode]);
+
+  return (
+    <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <PlaygroundTraceHeaderPills traceInfo={trace.info} />
+      <div
+        css={{
+          flex: '1 1 55%',
+          minHeight: 0,
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <TimelineTree
+          rootNodes={filteredTreeNodes}
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
+          traceStartTime={traceStartTime}
+          traceEndTime={traceEndTime}
+          expandedKeys={expandedKeys}
+          setExpandedKeys={setExpandedKeys}
+          spanFilterState={spanFilterState}
+          setSpanFilterState={setSpanFilterState}
+        />
+      </div>
+      <div
+        css={{
+          flex: '1 1 45%',
+          minHeight: 0,
+          borderTop: `1px solid ${theme.colors.border}`,
+          backgroundColor: 'rgba(255,255,255,0.96)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <ModelTraceExplorerContentTab
+          activeSpan={selectedNode}
+          searchFilter=""
+          activeMatch={matchData.match}
+        />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Public component for the playground's right-pane trace view. Provides the
+ * required preference / context / view-state / update providers — same shape
+ * as the public `<ModelTraceExplorer>` — and renders the compact stacked body.
+ */
+const PlaygroundTracePane = ({ trace }: { trace: ModelTrace }) => {
+  const traceInfo = useMemo(
+    () => (_isV3(trace.info) ? (trace.info as ModelTraceInfoV3) : undefined),
+    [trace.info],
+  );
+  return (
+    <ModelTraceExplorerPreferencesProvider>
+      <ModelTraceExplorerContextProvider>
+        <ModelTraceExplorerUpdateTraceContextProvider modelTraceInfo={traceInfo}>
+          <ModelTraceExplorerViewStateProvider
+            modelTrace={trace}
+            initialActiveView="detail"
+            assessmentsPaneEnabled={false}
+            initialAssessmentsPaneCollapsed
+          >
+            <PlaygroundTracePaneBody trace={trace} />
+          </ModelTraceExplorerViewStateProvider>
+        </ModelTraceExplorerUpdateTraceContextProvider>
+      </ModelTraceExplorerContextProvider>
+    </ModelTraceExplorerPreferencesProvider>
   );
 };
 
@@ -372,7 +469,6 @@ const PlaygroundPageImpl = () => {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<ModelTrace | null>(null);
-  const [selectedSpanId, setSelectedSpanId] = useState<string | undefined>(undefined);
   const [isFullTraceOpen, setIsFullTraceOpen] = useState(false);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const traceLookupAbortersRef = useRef<Set<AbortController>>(new Set());
@@ -418,26 +514,6 @@ const PlaygroundPageImpl = () => {
     [messages],
   );
   const latestTraceId = latestTraceMessage?.traceId;
-
-  // Default the selected span to the root once a trace has spans, so the I/O
-  // panel below the tree shows something useful without forcing the user to
-  // click. If the user picks another span, leave it alone.
-  useEffect(() => {
-    if (!selectedTrace) {
-      return;
-    }
-    const spans = (selectedTrace.data?.spans ?? []) as { span_id?: string; parent_span_id?: string | null }[];
-    if (spans.length === 0) {
-      return;
-    }
-    setSelectedSpanId((current) => {
-      if (current && spans.some((s) => s.span_id === current)) {
-        return current;
-      }
-      const root = spans.find((s) => !s.parent_span_id);
-      return root?.span_id ?? spans[0]?.span_id;
-    });
-  }, [selectedTrace]);
 
   // Live-poll the latest trace's span tree so the inline panel grows as the
   // agent runs. Polls until the trace's `state` finalizes (OK / ERROR) or until
@@ -533,7 +609,6 @@ const PlaygroundPageImpl = () => {
     // until the new turn's first span lands. Without this, the previous turn's
     // span tree lingers visibly while the new turn is in flight.
     setSelectedTrace(null);
-    setSelectedSpanId(undefined);
     // Cancel any in-flight tag-lookup polling from a prior turn (a stale
     // resolver could still race in and set traceId on an old user message).
     traceLookupAbortersRef.current.forEach((controller) => controller.abort());
@@ -940,60 +1015,7 @@ const PlaygroundPageImpl = () => {
           </div>
 
           {selectedTrace ? (
-            <TraceContextProviders traceInfo={selectedTraceInfo}>
-              <div
-                css={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  // Compact inline view: drop the trace-id / tags header strip,
-                  // the tab switcher, the search box, and the right-side
-                  // attribute/assessment pane. The selected span's inputs and
-                  // outputs are rendered in a stacked panel below the tree so
-                  // narrow column widths still work. Power users get the full
-                  // experience via "Open full trace".
-                  '& > div:first-of-type': {
-                    display: 'none', // trace header (trace_id / status / time)
-                  },
-                  '& [role="tablist"]': {
-                    display: 'none', // Summary / Details / Linked prompts switcher
-                  },
-                  '& [role="tabpanel"] > div > div:first-of-type:has([data-component-id="shared.model-trace-explorer.search-input"])':
-                    {
-                      display: 'none', // search box row at the top of DetailView
-                    },
-                  // Hide the right-side pane (attributes/assessments tabs).
-                  '& [data-component-id="shared.model-trace-explorer.right-pane-tabs"]':
-                    {
-                      display: 'none',
-                    },
-                }}
-              >
-                <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                  <ModelTraceExplorer
-                    modelTrace={selectedTrace}
-                    initialActiveView="detail"
-                    collapseAssessmentPane
-                    selectedSpanId={selectedSpanId}
-                    onSelectSpan={setSelectedSpanId}
-                  />
-                </div>
-                <div
-                  css={{
-                    borderTop: `1px solid ${theme.colors.border}`,
-                    backgroundColor: 'rgba(255,255,255,0.96)',
-                    flexShrink: 0,
-                    maxHeight: '45%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minHeight: 0,
-                  }}
-                >
-                  <SpanIOPanel trace={selectedTrace} selectedSpanId={selectedSpanId} />
-                </div>
-              </div>
-            </TraceContextProviders>
+            <PlaygroundTracePane trace={selectedTrace} />
           ) : (
             <div
               css={{
