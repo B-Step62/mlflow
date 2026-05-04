@@ -7538,39 +7538,20 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
         source_run_id: str | None = None,
         categories: list[str] | None = None,
         created_by: str | None = None,
+        priority: int | None = None,
+        source_feedback_id: str | None = None,
+        source_trace_id: str | None = None,
+        source_conversation_id: str | None = None,
+        labels: list[str] | None = None,
     ) -> Issue:
-        """
-        Create a new issue in the database.
-
-        Args:
-            experiment_id: The experiment ID.
-            name: Short descriptive name for the issue.
-            description: Detailed description of the issue.
-            status: Issue status. Defaults to IssueStatus.PENDING.
-            severity: Optional severity level indicator.
-            root_causes: Optional list of root cause analyses.
-            source_run_id: Optional run ID that discovered this issue.
-            categories: Optional list of categories for the issue.
-            created_by: Optional identifier for who created this issue.
-
-        Returns:
-            The created Issue entity.
-        """
+        """Create a new issue in the database. See AbstractStore.create_issue."""
         with self.ManagedSessionMaker(read_only=False) as session:
             # Verify experiment exists
             self._get_experiment(session, experiment_id, ViewType.ACTIVE_ONLY)
 
-            # Generate issue ID
             issue_id = f"iss-{uuid.uuid4().hex}"
-
-            # Get current timestamp
             current_time = get_current_time_millis()
 
-            # Serialize root_causes and categories to JSON
-            root_causes_json = json.dumps(root_causes) if root_causes else None
-            categories_json = json.dumps(categories) if categories else None
-
-            # Create SqlIssue record
             sql_issue = SqlIssue(
                 issue_id=issue_id,
                 experiment_id=int(experiment_id),
@@ -7578,17 +7559,20 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
                 description=description,
                 status=status.value,
                 severity=severity.value if severity else None,
-                root_causes=root_causes_json,
+                root_causes=json.dumps(root_causes) if root_causes else None,
                 source_run_id=source_run_id,
-                categories=categories_json,
+                categories=json.dumps(categories) if categories else None,
                 created_timestamp=current_time,
                 last_updated_timestamp=current_time,
                 created_by=created_by,
+                priority=priority,
+                source_feedback_id=source_feedback_id,
+                source_trace_id=source_trace_id,
+                source_conversation_id=source_conversation_id,
+                labels=json.dumps(labels) if labels else None,
             )
 
             session.add(sql_issue)
-
-            # Return Issue entity
             return sql_issue.to_mlflow_entity()
 
     def get_issue(self, issue_id: str) -> Issue:
