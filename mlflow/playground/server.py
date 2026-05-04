@@ -27,7 +27,6 @@ from mlflow.claude_code.playground_setup import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_CONFIG_PATH,
     DEFAULT_EXPERIMENT_NAME,
-    MLflowConfig,
     PlaygroundUserConfig,
     _default_tracking_uri,
     load_user_config,
@@ -55,15 +54,16 @@ class PlaygroundRuntime:
     process_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
-def _is_remote_tracking_uri(tracking_uri: str) -> bool:
-    scheme = urlsplit(tracking_uri).scheme
-    return scheme in {"http", "https", "databricks"}
-
-
 def _default_artifact_root() -> str:
     artifact_dir = (DEFAULT_CONFIG_DIR / "artifacts").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     return artifact_dir.as_uri()
+
+
+def _is_local_tracking_uri(uri: str) -> bool:
+    # Schemes the embedded MLflow tracking server can use as a backend store.
+    # An empty scheme means a relative file path.
+    return urlsplit(uri).scheme in {"", "file", "sqlite", "mysql", "postgresql", "mssql"}
 
 
 def _ensure_local_playground_config(
@@ -71,12 +71,16 @@ def _ensure_local_playground_config(
     config_path: Path,
     repo_dir: Path | None,
 ) -> PlaygroundUserConfig:
-    config = load_user_config(config_path) or PlaygroundUserConfig(
-        mlflow=MLflowConfig(tracking_uri=_default_tracking_uri())
-    )
+    """Resolve the playground config for this launch.
 
-    if not config.mlflow.tracking_uri or _is_remote_tracking_uri(config.mlflow.tracking_uri):
-        config.mlflow.tracking_uri = _default_tracking_uri()
+    The tracking URI is *never* persisted to the global config — it's derived
+    fresh on every launch so that running ``mlflow agent playground`` from
+    project A and then project B writes to two different sqlite files instead
+    of merging into one global DB. ``MLFLOW_TRACKING_URI`` from the env wins,
+    but only if it points at a local backend (sqlite / file / etc.) — the
+    embedded MLflow server can't use a remote URI as its backend store.
+    """
+    config = load_user_config(config_path) or PlaygroundUserConfig()
 
     if not config.mlflow.experiment:
         config.mlflow.experiment = DEFAULT_EXPERIMENT_NAME
@@ -84,7 +88,18 @@ def _ensure_local_playground_config(
     if repo_dir is not None:
         config.playground.repo_dir = str(repo_dir.resolve())
 
+    # Persist with a blank tracking_uri so the next run also derives from cwd.
+    config.mlflow.tracking_uri = ""
     save_user_config(config, config_path)
+
+    env_uri = os.environ.get("MLFLOW_TRACKING_URI", "").strip()
+    if env_uri and not _is_local_tracking_uri(env_uri):
+        click.echo(
+            f"Ignoring MLFLOW_TRACKING_URI={env_uri!r} — the playground needs a "
+            "local backend (sqlite / file). Falling back to the per-repo default."
+        )
+        env_uri = ""
+    config.mlflow.tracking_uri = env_uri or _default_tracking_uri(repo_dir)
     return config
 
 

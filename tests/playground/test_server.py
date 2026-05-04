@@ -187,7 +187,8 @@ def test_ensure_agent_running_skips_remote_urls(tmp_path):
     launch.assert_not_called()
 
 
-def test_ensure_local_playground_config_forces_local_tracking_uri(tmp_path):
+def test_ensure_local_playground_config_uses_repo_local_tracking_uri(tmp_path, monkeypatch):
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
     config_path = tmp_path / "config.yaml"
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
@@ -207,14 +208,57 @@ def test_ensure_local_playground_config_forces_local_tracking_uri(tmp_path):
 
     config = _ensure_local_playground_config(config_path=config_path, repo_dir=repo_dir)
 
-    assert config.mlflow.tracking_uri.startswith("sqlite:///")
+    expected_db = repo_dir.resolve() / "mlflow.db"
+    assert config.mlflow.tracking_uri == f"sqlite:///{expected_db}"
     assert config.mlflow.experiment == "agent-playground"
     assert config.playground.repo_dir == str(repo_dir.resolve())
 
     persisted = load_user_config(config_path)
     assert persisted is not None
-    assert persisted.mlflow.tracking_uri == config.mlflow.tracking_uri
+    # tracking_uri is never persisted — derived fresh from cwd on every launch.
+    assert persisted.mlflow.tracking_uri == ""
     assert persisted.playground.repo_dir == str(repo_dir.resolve())
+
+
+def test_ensure_local_playground_config_isolates_two_repos(tmp_path, monkeypatch):
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+    config_path = tmp_path / "config.yaml"
+    repo_a = tmp_path / "repo-a"
+    repo_b = tmp_path / "repo-b"
+    repo_a.mkdir()
+    repo_b.mkdir()
+
+    config_a = _ensure_local_playground_config(config_path=config_path, repo_dir=repo_a)
+    config_b = _ensure_local_playground_config(config_path=config_path, repo_dir=repo_b)
+
+    assert config_a.mlflow.tracking_uri != config_b.mlflow.tracking_uri
+    assert str(repo_a.resolve()) in config_a.mlflow.tracking_uri
+    assert str(repo_b.resolve()) in config_b.mlflow.tracking_uri
+
+
+def test_ensure_local_playground_config_honors_env_override(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "sqlite:///custom.db")
+
+    config = _ensure_local_playground_config(config_path=config_path, repo_dir=repo_dir)
+
+    assert config.mlflow.tracking_uri == "sqlite:///custom.db"
+
+
+def test_ensure_local_playground_config_ignores_non_local_env(tmp_path, monkeypatch):
+    """The embedded MLflow server only supports local backends, so a remote
+    MLFLOW_TRACKING_URI must fall through to the per-repo sqlite default."""
+    config_path = tmp_path / "config.yaml"
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://remote-server:5000")
+
+    config = _ensure_local_playground_config(config_path=config_path, repo_dir=repo_dir)
+
+    expected_db = repo_dir.resolve() / "mlflow.db"
+    assert config.mlflow.tracking_uri == f"sqlite:///{expected_db}"
 
 
 def test_serve_runs_mlflow_server_with_local_env(monkeypatch, tmp_path):
