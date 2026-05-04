@@ -133,7 +133,7 @@ def discover_agent(repo_dir: Path) -> tuple[Path, str | None]:
             return candidate, _detect_agent_type(candidate)
     raise SystemExit(
         "Could not find a usable @invoke() entrypoint under "
-        f"{repo_dir}. Run `mlflow claude setup` in the agent repo first."
+        f"{repo_dir}. Run `mlflow agent setup` in the agent repo first."
     )
 
 

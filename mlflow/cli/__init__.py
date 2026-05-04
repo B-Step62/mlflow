@@ -1367,7 +1367,6 @@ try:
     import mlflow.claude_code.cli
 
     cli.add_command(mlflow.claude_code.cli.commands)
-    cli.add_command(mlflow.claude_code.cli.claude_top_commands)
 except ImportError:
     pass
 
