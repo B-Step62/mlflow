@@ -81,14 +81,7 @@ def _load_test_row(experiment_id: str, issue_id: str, test_case_id: str | None) 
         )
 
     df = dataset.to_df()
-    if df.empty:
-        raise click.ClickException(
-            f"Regression dataset {regression_dataset_name(experiment_id)!r} is empty — "
-            "no test case has been generated for this experiment yet "
-            "(see mlflow agent issue create)."
-        )
-
-    rows = df.to_dict(orient="records")
+    rows = df.to_dict(orient="records") if not df.empty else []
     match: dict[str, Any] | None = None
 
     if test_case_id:
