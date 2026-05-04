@@ -196,6 +196,119 @@ const stringifyToolValue = (value: unknown) => {
   return JSON.stringify(value, null, 2);
 };
 
+/**
+ * Pull a span's I/O attributes by id. MLflow stores `mlflow.spanInputs` /
+ * `mlflow.spanOutputs` as JSON-encoded strings on each span's attribute map;
+ * we parse them defensively because some entries land double-quoted (the value
+ * is itself a JSON string).
+ */
+const findSpanIO = (
+  trace: ModelTrace | null,
+  spanId: string | undefined,
+): { inputs: unknown; outputs: unknown; name: string } | null => {
+  if (!trace || !spanId) return null;
+  const spans = (trace.data?.spans ?? []) as {
+    span_id?: string;
+    name?: string;
+    attributes?: Record<string, unknown>;
+  }[];
+  const span = spans.find((s) => s.span_id === spanId);
+  if (!span) return null;
+  const parse = (raw: unknown): unknown => {
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== 'string') return raw;
+    try {
+      const once = JSON.parse(raw);
+      // Some values are double-encoded (e.g. `"\"UNKNOWN\""`). Try a second pass.
+      if (typeof once === 'string') {
+        try {
+          return JSON.parse(once);
+        } catch {
+          return once;
+        }
+      }
+      return once;
+    } catch {
+      return raw;
+    }
+  };
+  return {
+    inputs: parse(span.attributes?.['mlflow.spanInputs']),
+    outputs: parse(span.attributes?.['mlflow.spanOutputs']),
+    name: span.name ?? '',
+  };
+};
+
+const SpanIOPanel = ({
+  trace,
+  selectedSpanId,
+}: {
+  trace: ModelTrace | null;
+  selectedSpanId: string | undefined;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const io = useMemo(() => findSpanIO(trace, selectedSpanId), [trace, selectedSpanId]);
+  if (!io) {
+    return (
+      <div css={{ padding: theme.spacing.md }}>
+        <Typography.Text color="secondary">Select a span to inspect its inputs and outputs.</Typography.Text>
+      </div>
+    );
+  }
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+        padding: theme.spacing.md,
+        overflowY: 'auto',
+        minHeight: 0,
+      }}
+    >
+      <Typography.Text css={{ fontWeight: 700 }}>{io.name || 'Span I/O'}</Typography.Text>
+      {(['inputs', 'outputs'] as const).map((kind) => (
+        <div
+          key={kind}
+          css={{
+            borderRadius: theme.borders.borderRadiusMd,
+            border: `1px solid ${theme.colors.border}`,
+            backgroundColor: 'rgba(249,250,251,0.95)',
+          }}
+        >
+          <Typography.Text
+            color="secondary"
+            size="sm"
+            css={{
+              display: 'block',
+              padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+              borderBottom: `1px solid ${theme.colors.border}`,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}
+          >
+            {kind}
+          </Typography.Text>
+          <pre
+            css={{
+              margin: 0,
+              padding: theme.spacing.sm,
+              fontSize: 12,
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxHeight: 220,
+              overflowY: 'auto',
+            }}
+          >
+            {stringifyToolValue(io[kind])}
+          </pre>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const TraceContextProviders = ({
   children,
   traceInfo,
@@ -259,6 +372,7 @@ const PlaygroundPageImpl = () => {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<ModelTrace | null>(null);
+  const [selectedSpanId, setSelectedSpanId] = useState<string | undefined>(undefined);
   const [isFullTraceOpen, setIsFullTraceOpen] = useState(false);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const traceLookupAbortersRef = useRef<Set<AbortController>>(new Set());
@@ -304,6 +418,26 @@ const PlaygroundPageImpl = () => {
     [messages],
   );
   const latestTraceId = latestTraceMessage?.traceId;
+
+  // Default the selected span to the root once a trace has spans, so the I/O
+  // panel below the tree shows something useful without forcing the user to
+  // click. If the user picks another span, leave it alone.
+  useEffect(() => {
+    if (!selectedTrace) {
+      return;
+    }
+    const spans = (selectedTrace.data?.spans ?? []) as { span_id?: string; parent_span_id?: string | null }[];
+    if (spans.length === 0) {
+      return;
+    }
+    setSelectedSpanId((current) => {
+      if (current && spans.some((s) => s.span_id === current)) {
+        return current;
+      }
+      const root = spans.find((s) => !s.parent_span_id);
+      return root?.span_id ?? spans[0]?.span_id;
+    });
+  }, [selectedTrace]);
 
   // Live-poll the latest trace's span tree so the inline panel grows as the
   // agent runs. Polls until the trace's `state` finalizes (OK / ERROR) or until
@@ -399,6 +533,7 @@ const PlaygroundPageImpl = () => {
     // until the new turn's first span lands. Without this, the previous turn's
     // span tree lingers visibly while the new turn is in flight.
     setSelectedTrace(null);
+    setSelectedSpanId(undefined);
     // Cancel any in-flight tag-lookup polling from a prior turn (a stale
     // resolver could still race in and set traceId on an old user message).
     traceLookupAbortersRef.current.forEach((controller) => controller.abort());
@@ -812,20 +947,51 @@ const PlaygroundPageImpl = () => {
                   minHeight: 0,
                   display: 'flex',
                   flexDirection: 'column',
-                  // Hide the inner Tabs.List (Summary / Detail / Linked prompts).
-                  // The compact view defaults to Detail (span tree + I/O) and the
-                  // assessments pane is collapsed — power users hit "Open full
-                  // trace" for the full explorer.
-                  '& > div > div:first-of-type:has([role="tablist"])': {
-                    display: 'none',
+                  // Compact inline view: drop the trace-id / tags header strip,
+                  // the tab switcher, the search box, and the right-side
+                  // attribute/assessment pane. The selected span's inputs and
+                  // outputs are rendered in a stacked panel below the tree so
+                  // narrow column widths still work. Power users get the full
+                  // experience via "Open full trace".
+                  '& > div:first-of-type': {
+                    display: 'none', // trace header (trace_id / status / time)
                   },
+                  '& [role="tablist"]': {
+                    display: 'none', // Summary / Details / Linked prompts switcher
+                  },
+                  '& [role="tabpanel"] > div > div:first-of-type:has([data-component-id="shared.model-trace-explorer.search-input"])':
+                    {
+                      display: 'none', // search box row at the top of DetailView
+                    },
+                  // Hide the right-side pane (attributes/assessments tabs).
+                  '& [data-component-id="shared.model-trace-explorer.right-pane-tabs"]':
+                    {
+                      display: 'none',
+                    },
                 }}
               >
-                <ModelTraceExplorer
-                  modelTrace={selectedTrace}
-                  initialActiveView="detail"
-                  collapseAssessmentPane
-                />
+                <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  <ModelTraceExplorer
+                    modelTrace={selectedTrace}
+                    initialActiveView="detail"
+                    collapseAssessmentPane
+                    selectedSpanId={selectedSpanId}
+                    onSelectSpan={setSelectedSpanId}
+                  />
+                </div>
+                <div
+                  css={{
+                    borderTop: `1px solid ${theme.colors.border}`,
+                    backgroundColor: 'rgba(255,255,255,0.96)',
+                    flexShrink: 0,
+                    maxHeight: '45%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: 0,
+                  }}
+                >
+                  <SpanIOPanel trace={selectedTrace} selectedSpanId={selectedSpanId} />
+                </div>
               </div>
             </TraceContextProviders>
           ) : (
