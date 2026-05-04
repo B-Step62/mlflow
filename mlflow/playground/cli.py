@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from mlflow.playground.issue_cli import issue_commands
+from mlflow.playground.test_run_cli import test_commands
 
 
 @click.group("agent")
@@ -13,6 +14,7 @@ def agent_commands() -> None:
 
 
 agent_commands.add_command(issue_commands)
+agent_commands.add_command(test_commands)
 
 
 @agent_commands.command("setup")
