@@ -54,8 +54,8 @@ def test_run_setup_wizard_writes_config_non_interactive(tmp_path: Path):
     raw = yaml.safe_load(config_path.read_text())
     assert raw["schema_version"] == SCHEMA_VERSION
     assert raw["mlflow"]["experiment"] == DEFAULT_EXPERIMENT_NAME
-    assert raw["mlflow"]["tracking_uri"].startswith("sqlite:///")
-    assert raw["mlflow"]["tracking_uri"].endswith("mlruns.db")
+    # tracking_uri is no longer persisted — it's derived from cwd at launch.
+    assert raw["mlflow"]["tracking_uri"] == ""
     assert raw["worker"]["kind"] == "claude-code"
     assert config.playground.enable_tracing is True
     assert raw["playground"]["repo_dir"] == str(repo_dir.resolve())
@@ -98,12 +98,12 @@ def test_cli_setup_interactive_accept_all_defaults(tmp_path: Path):
     repo_dir = tmp_path / "agent-repo"
     repo_dir.mkdir()
     runner = CliRunner()
-    # 4 prompts in order: tracking_uri, experiment, enable_tracing,
+    # 3 prompts in order: experiment, enable_tracing,
     # then (after summary) start_now.
     result = runner.invoke(
         claude_top_commands,
         ["setup", "--config-path", str(config_path), "--repo-dir", str(repo_dir)],
-        input="\n" * 4,
+        input="\n" * 3,
     )
     assert result.exit_code == 0, result.output
     config = load_user_config(config_path)
@@ -116,15 +116,16 @@ def test_cli_setup_start_playground_prompt_appears_after_summary(tmp_path: Path)
     repo_dir = tmp_path / "agent-repo"
     repo_dir.mkdir()
     runner = CliRunner()
+    # 3 prompts: experiment, enable_tracing, start_now.
     result = runner.invoke(
         claude_top_commands,
         ["setup", "--config-path", str(config_path), "--repo-dir", str(repo_dir)],
-        input="\n" * 4,
+        input="\n" * 3,
     )
     assert result.exit_code == 0, result.output
     output = result.output
     summary_idx = output.find(str(config_path))
-    start_idx = output.find("Start the playground server now?")
+    start_idx = output.find("Start the local MLflow playground now?")
     assert summary_idx != -1
     assert start_idx != -1
     assert summary_idx < start_idx, (
@@ -161,11 +162,11 @@ def test_cli_setup_user_says_no_to_tracing_skips_instrumentation(
     repo_dir = tmp_path / "agent-repo"
     repo_dir.mkdir()
     runner = CliRunner()
-    # 4 prompts: tracking_uri, experiment, enable_tracing (answer NO), start_now
+    # 3 prompts: experiment, enable_tracing (answer NO), start_now
     result = runner.invoke(
         claude_top_commands,
         ["setup", "--config-path", str(config_path), "--repo-dir", str(repo_dir)],
-        input="\n\nn\n\n",
+        input="\nn\n\n",
     )
     assert result.exit_code == 0, result.output
     _no_real_instrument.assert_not_called()

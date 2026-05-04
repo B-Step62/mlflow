@@ -50,8 +50,16 @@ class PlaygroundUserConfig:
     playground: PlaygroundConfig = field(default_factory=PlaygroundConfig)
 
 
-def _default_tracking_uri() -> str:
-    return f"sqlite:///{DEFAULT_CONFIG_DIR / 'mlruns.db'}"
+def _default_tracking_uri(repo_dir: Path | None = None) -> str:
+    """Return a sqlite tracking URI at the launch directory's ``mlflow.db``.
+
+    Matches the conventional layout that ``mlflow server`` / ``mlflow ui``
+    already use, so two different agent projects get two different stores
+    (one ``mlflow.db`` per repo) instead of merging into a global DB under
+    ``$HOME``. Falls back to ``Path.cwd()`` when no repo dir is supplied.
+    """
+    base = (repo_dir if repo_dir is not None else Path.cwd()).resolve()
+    return f"sqlite:///{base / 'mlflow.db'}"
 
 
 def _filter_known(cls: type, raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -157,9 +165,7 @@ def run_setup_wizard(
             fg="bright_black",
         )
 
-    base = existing or PlaygroundUserConfig(
-        mlflow=MLflowConfig(tracking_uri=_default_tracking_uri())
-    )
+    base = existing or PlaygroundUserConfig()
 
     config = base if non_interactive else _prompt_for_values(base)
     if repo_dir is not None:
@@ -301,10 +307,6 @@ def _instrument(repo_dir: Path) -> None:
 
 def _prompt_for_values(base: PlaygroundUserConfig) -> PlaygroundUserConfig:
     _section("MLflow connection")
-    tracking_uri = click.prompt(
-        click.style("  Tracking URI", fg="cyan"),
-        default=base.mlflow.tracking_uri or _default_tracking_uri(),
-    )
     experiment = click.prompt(
         click.style("  Experiment name", fg="cyan"),
         default=base.mlflow.experiment,
@@ -313,7 +315,7 @@ def _prompt_for_values(base: PlaygroundUserConfig) -> PlaygroundUserConfig:
     return PlaygroundUserConfig(
         schema_version=SCHEMA_VERSION,
         mlflow=MLflowConfig(
-            tracking_uri=tracking_uri,
+            tracking_uri="",
             experiment=experiment,
             token_env=base.mlflow.token_env,
         ),
@@ -329,7 +331,7 @@ def _prompt_for_values(base: PlaygroundUserConfig) -> PlaygroundUserConfig:
 def _show_summary(config: PlaygroundUserConfig, config_path: Path, was_existing: bool) -> None:
     verb = "Updated" if was_existing else "Created"
     _section(f"{verb} {config_path}")
-    _kv("tracking_uri", config.mlflow.tracking_uri)
+    _kv("tracking_uri", config.mlflow.tracking_uri or "(repo-local sqlite, derived at launch)")
     _kv("experiment", config.mlflow.experiment)
     _kv("tracing", "enabled" if config.playground.enable_tracing else "disabled")
     _kv("worker", config.worker.kind)
