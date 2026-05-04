@@ -49,6 +49,33 @@ message Issue {
 
   // Number of traces impacted by this issue. Only populated when explicitly requested.
   optional int32 trace_count = 13;
+
+  // Playground priority (1..4, Symphony-compatible). Unset for legacy detection rows.
+  optional int32 priority = 14;
+
+  // Feedback assessment ID that spawned this issue (playground dispatch flow).
+  optional string source_feedback_id = 15;
+
+  // Trace ID this issue is anchored to.
+  optional string source_trace_id = 16;
+
+  // Conversation ID for replaying the failing exchange against drafts.
+  optional string source_conversation_id = 17;
+
+  // Auto-generated regression-suite test case ID.
+  optional string test_case_id = 18;
+
+  // Current candidate draft AgentVersion ID.
+  optional string agent_version_id = 19;
+
+  // Base prompt ID for prompt-related fixes.
+  optional string base_prompt_id = 20;
+
+  // Worker session ID while the issue is in_progress; unset otherwise.
+  optional string assignee = 21;
+
+  // Free-form labels.
+  repeated string labels = 22;
 }
 
 // Request to create a new issue.

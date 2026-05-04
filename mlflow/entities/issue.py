@@ -10,11 +10,30 @@ from mlflow.protos.issues_pb2 import Issue as ProtoIssue
 
 
 class IssueStatus(str, Enum):
-    """Enum for status of an :py:class:`mlflow.entities.Issue`."""
+    """Enum for status of an :py:class:`mlflow.entities.Issue`.
 
+    Two value families coexist here:
+
+    * Legacy issue-detection statuses: ``pending``, ``rejected``, ``resolved``.
+    * Playground state-machine statuses (design.md §5.1): ``todo``,
+      ``in_progress``, ``review``, ``done``, ``rejected``.
+
+    ``rejected`` is shared. New playground rows should use the playground
+    family; existing detection rows keep their legacy values unchanged.
+    """
+
+    # Legacy issue-detection statuses.
     PENDING = "pending"
-    REJECTED = "rejected"
     RESOLVED = "resolved"
+
+    # Playground state-machine statuses.
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
+    DONE = "done"
+
+    # Shared terminal status.
+    REJECTED = "rejected"
 
     def __str__(self):
         return self.value
@@ -102,6 +121,33 @@ class Issue(_MlflowObject):
     trace_count: int | None = None
     """Number of traces impacted by this issue. Only populated when explicitly requested."""
 
+    priority: int | None = None
+    """Playground priority (1..4, Symphony-compatible). None for legacy detection rows."""
+
+    source_feedback_id: str | None = None
+    """Feedback assessment ID that spawned this issue (playground dispatch flow)."""
+
+    source_trace_id: str | None = None
+    """Trace ID this issue is anchored to."""
+
+    source_conversation_id: str | None = None
+    """Conversation ID so the playground can replay the failing exchange."""
+
+    test_case_id: str | None = None
+    """Auto-generated regression-suite test case ID."""
+
+    agent_version_id: str | None = None
+    """Current candidate draft AgentVersion ID."""
+
+    base_prompt_id: str | None = None
+    """Base prompt ID for prompt-related fixes."""
+
+    assignee: str | None = None
+    """Worker session ID while the issue is in_progress; None otherwise."""
+
+    labels: list[str] | None = None
+    """Free-form labels."""
+
     def to_dictionary(self) -> dict[str, Any]:
         """Convert Issue to dictionary representation."""
         return {
@@ -118,6 +164,15 @@ class Issue(_MlflowObject):
             "last_updated_timestamp": self.last_updated_timestamp,
             "created_by": self.created_by,
             "trace_count": self.trace_count,
+            "priority": self.priority,
+            "source_feedback_id": self.source_feedback_id,
+            "source_trace_id": self.source_trace_id,
+            "source_conversation_id": self.source_conversation_id,
+            "test_case_id": self.test_case_id,
+            "agent_version_id": self.agent_version_id,
+            "base_prompt_id": self.base_prompt_id,
+            "assignee": self.assignee,
+            "labels": self.labels,
         }
 
     @classmethod
@@ -139,6 +194,15 @@ class Issue(_MlflowObject):
             categories=issue_dict.get("categories"),
             created_by=issue_dict.get("created_by"),
             trace_count=issue_dict.get("trace_count"),
+            priority=issue_dict.get("priority"),
+            source_feedback_id=issue_dict.get("source_feedback_id"),
+            source_trace_id=issue_dict.get("source_trace_id"),
+            source_conversation_id=issue_dict.get("source_conversation_id"),
+            test_case_id=issue_dict.get("test_case_id"),
+            agent_version_id=issue_dict.get("agent_version_id"),
+            base_prompt_id=issue_dict.get("base_prompt_id"),
+            assignee=issue_dict.get("assignee"),
+            labels=issue_dict.get("labels"),
         )
 
     def to_proto(self) -> ProtoIssue:

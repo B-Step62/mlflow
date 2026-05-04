@@ -1281,6 +1281,15 @@ class SqlIssue(Base):
             last_updated_timestamp=self.last_updated_timestamp,
             created_by=self.created_by,
             trace_count=trace_count,
+            priority=self.priority,
+            source_feedback_id=self.source_feedback_id,
+            source_trace_id=self.source_trace_id,
+            source_conversation_id=self.source_conversation_id,
+            test_case_id=self.test_case_id,
+            agent_version_id=self.agent_version_id,
+            base_prompt_id=self.base_prompt_id,
+            assignee=self.assignee,
+            labels=json.loads(self.labels) if self.labels else None,
         )
 
 
