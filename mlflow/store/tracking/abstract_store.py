@@ -613,6 +613,11 @@ class AbstractStore(GatewayStoreMixin):
         source_run_id: str | None = None,
         categories: list[str] | None = None,
         created_by: str | None = None,
+        priority: int | None = None,
+        source_feedback_id: str | None = None,
+        source_trace_id: str | None = None,
+        source_conversation_id: str | None = None,
+        labels: list[str] | None = None,
     ) -> Issue:
         """
         Create a new issue.
@@ -627,6 +632,13 @@ class AbstractStore(GatewayStoreMixin):
             source_run_id: Optional MLflow run ID that discovered this issue.
             categories: Optional list of categories for the issue.
             created_by: Optional identifier for who created this issue.
+            priority: Optional playground priority (1..4, Symphony-compatible).
+            source_feedback_id: Optional Feedback assessment ID that spawned this
+                issue (playground dispatch flow).
+            source_trace_id: Optional trace ID this issue is anchored to.
+            source_conversation_id: Optional conversation ID for replaying the
+                failing exchange.
+            labels: Optional free-form label list.
 
         Returns:
             The created Issue entity.
