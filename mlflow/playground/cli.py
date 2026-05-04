@@ -1,11 +1,58 @@
 """CLI commands under the `mlflow agent` namespace."""
 
+from pathlib import Path
+
 import click
 
 
 @click.group("agent")
 def agent_commands() -> None:
     """MLflow Agent Playground commands."""
+
+
+@agent_commands.command("setup")
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Skip prompts and accept defaults (or existing config values).",
+)
+@click.option(
+    "--config-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Override the config file location (default: ~/.mlflow/playground/config.yaml).",
+)
+@click.option(
+    "--repo-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "The agent repository to instrument with MLflow tracing "
+        "(default: current working directory). Answer 'no' to the tracing prompt "
+        "to skip instrumentation."
+    ),
+)
+def setup(
+    non_interactive: bool,
+    config_path: Path | None,
+    repo_dir: Path | None,
+) -> None:
+    """Interactive wizard for the MLflow Agent Playground.
+
+    Detects installed coding agents (claude, codex, gemini, opencode) and lets
+    you pick one as the playground's primary worker. Only Claude Code is fully
+    supported today; other selections are saved but instrumentation is skipped.
+    """
+    from mlflow.claude_code.playground_setup import (
+        DEFAULT_CONFIG_PATH,
+        run_setup_wizard,
+    )
+
+    run_setup_wizard(
+        config_path=config_path or DEFAULT_CONFIG_PATH,
+        non_interactive=non_interactive,
+        repo_dir=repo_dir if repo_dir is not None else Path.cwd(),
+    )
 
 
 @agent_commands.command("playground")

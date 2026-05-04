@@ -5,13 +5,29 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from mlflow.claude_code.cli import claude_top_commands
 from mlflow.claude_code.playground_setup import (
     DEFAULT_EXPERIMENT_NAME,
     SCHEMA_VERSION,
+    SUPPORTED_CODING_AGENTS,
+    CodingAgent,
     load_user_config,
     run_setup_wizard,
 )
+from mlflow.playground.cli import agent_commands
+
+
+def _agent(binary: str) -> CodingAgent:
+    return next(a for a in SUPPORTED_CODING_AGENTS if a.binary == binary)
+
+
+@pytest.fixture(autouse=True)
+def _only_claude_detected():
+    """Default to a single detected agent (claude) so prompt counts are stable."""
+    with patch(
+        "mlflow.claude_code.playground_setup.detect_installed_agents",
+        return_value=[_agent("claude")],
+    ) as m:
+        yield m
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +95,7 @@ def test_cli_setup_non_interactive_writes_to_custom_path(tmp_path: Path):
     repo_dir.mkdir()
     runner = CliRunner()
     result = runner.invoke(
-        claude_top_commands,
+        agent_commands,
         [
             "setup",
             "--non-interactive",
@@ -101,7 +117,7 @@ def test_cli_setup_interactive_accept_all_defaults(tmp_path: Path):
     # 3 prompts in order: experiment, enable_tracing,
     # then (after summary) start_now.
     result = runner.invoke(
-        claude_top_commands,
+        agent_commands,
         ["setup", "--config-path", str(config_path), "--repo-dir", str(repo_dir)],
         input="\n" * 3,
     )
@@ -118,7 +134,7 @@ def test_cli_setup_start_playground_prompt_appears_after_summary(tmp_path: Path)
     runner = CliRunner()
     # 3 prompts: experiment, enable_tracing, start_now.
     result = runner.invoke(
-        claude_top_commands,
+        agent_commands,
         ["setup", "--config-path", str(config_path), "--repo-dir", str(repo_dir)],
         input="\n" * 3,
     )
@@ -141,7 +157,7 @@ def test_cli_setup_invokes_claude_instrumentation(tmp_path: Path, _no_real_instr
     repo_dir.mkdir()
     runner = CliRunner()
     result = runner.invoke(
-        claude_top_commands,
+        agent_commands,
         [
             "setup",
             "--non-interactive",
@@ -164,7 +180,7 @@ def test_cli_setup_user_says_no_to_tracing_skips_instrumentation(
     runner = CliRunner()
     # 3 prompts: experiment, enable_tracing (answer NO), start_now
     result = runner.invoke(
-        claude_top_commands,
+        agent_commands,
         ["setup", "--config-path", str(config_path), "--repo-dir", str(repo_dir)],
         input="\nn\n\n",
     )
@@ -199,8 +215,15 @@ def test_install_skills_always_runs(tmp_path: Path, _no_real_skill_install):
     config_path = tmp_path / "config.yaml"
     runner = CliRunner()
     result = runner.invoke(
-        claude_top_commands,
-        ["setup", "--non-interactive", "--config-path", str(config_path), "--repo-dir", str(tmp_path / "agent-repo")],
+        agent_commands,
+        [
+            "setup",
+            "--non-interactive",
+            "--config-path",
+            str(config_path),
+            "--repo-dir",
+            str(tmp_path / "agent-repo"),
+        ],
     )
     assert result.exit_code == 0, result.output
     _no_real_skill_install.assert_called_once()
@@ -222,7 +245,7 @@ def test_install_skills_retries_after_dev_submodule_init(tmp_path: Path, _no_rea
         return_value=True,
     ) as mock_init:
         result = runner.invoke(
-            claude_top_commands,
+            agent_commands,
             [
                 "setup",
                 "--non-interactive",
@@ -247,7 +270,7 @@ def test_install_skills_pypi_path_no_init_attempt(tmp_path: Path, _no_real_skill
         "mlflow.claude_code.playground_setup._init_skills_submodule_if_dev",
     ) as mock_init:
         result = runner.invoke(
-            claude_top_commands,
+            agent_commands,
             [
                 "setup",
                 "--non-interactive",
@@ -259,3 +282,96 @@ def test_install_skills_pypi_path_no_init_attempt(tmp_path: Path, _no_real_skill
         )
     assert result.exit_code == 0, result.output
     mock_init.assert_not_called()
+
+
+def test_setup_no_agent_detected_falls_back_to_claude(tmp_path: Path, _only_claude_detected):
+    _only_claude_detected.return_value = []
+    config_path = tmp_path / "config.yaml"
+    runner = CliRunner()
+    result = runner.invoke(
+        agent_commands,
+        [
+            "setup",
+            "--non-interactive",
+            "--config-path",
+            str(config_path),
+            "--repo-dir",
+            str(tmp_path / "agent-repo"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "No supported coding agent found on PATH" in result.output
+    config = load_user_config(config_path)
+    assert config is not None
+    assert config.worker.kind == "claude-code"
+
+
+def test_setup_multiple_agents_prompts_user(tmp_path: Path, _only_claude_detected):
+    _only_claude_detected.return_value = [_agent("claude"), _agent("codex")]
+    config_path = tmp_path / "config.yaml"
+    runner = CliRunner()
+    # Prompts: agent-choice, experiment, enable_tracing, start_now.
+    # Selecting "2" picks codex; instrumentation is skipped (codex isn't claude-code).
+    result = runner.invoke(
+        agent_commands,
+        ["setup", "--config-path", str(config_path), "--repo-dir", str(tmp_path / "agent-repo")],
+        input="2\n\n\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "Multiple coding agents detected" in result.output
+    config = load_user_config(config_path)
+    assert config is not None
+    assert config.worker.kind == "codex"
+
+
+def test_setup_multiple_agents_non_interactive_uses_existing_kind(
+    tmp_path: Path, _only_claude_detected
+):
+    _only_claude_detected.return_value = [_agent("claude"), _agent("codex")]
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump({
+            "schema_version": SCHEMA_VERSION,
+            "mlflow": {"tracking_uri": "", "experiment": "exp"},
+            "worker": {"kind": "codex"},
+            "git": {"use_existing_credentials": True},
+            "playground": {"enable_tracing": True, "repo_dir": ""},
+        })
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        agent_commands,
+        [
+            "setup",
+            "--non-interactive",
+            "--config-path",
+            str(config_path),
+            "--repo-dir",
+            str(tmp_path / "agent-repo"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    config = load_user_config(config_path)
+    assert config is not None
+    assert config.worker.kind == "codex"
+
+
+def test_setup_non_claude_agent_skips_instrumentation(
+    tmp_path: Path, _only_claude_detected, _no_real_instrument
+):
+    _only_claude_detected.return_value = [_agent("codex")]
+    config_path = tmp_path / "config.yaml"
+    runner = CliRunner()
+    result = runner.invoke(
+        agent_commands,
+        [
+            "setup",
+            "--non-interactive",
+            "--config-path",
+            str(config_path),
+            "--repo-dir",
+            str(tmp_path / "agent-repo"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _no_real_instrument.assert_not_called()

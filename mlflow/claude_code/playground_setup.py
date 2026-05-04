@@ -1,5 +1,6 @@
 """Interactive setup wizard for the MLflow Agent Playground."""
 
+import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,31 @@ DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.yaml"
 SCHEMA_VERSION = 1
 DEFAULT_EXPERIMENT_NAME = "agent-playground"
 DEFAULT_MAX_TOKENS_PER_ISSUE = 50_000
+
+
+@dataclass(frozen=True)
+class CodingAgent:
+    binary: str
+    display_name: str
+    worker_kind: str
+    install_url: str
+
+
+SUPPORTED_CODING_AGENTS: tuple[CodingAgent, ...] = (
+    CodingAgent("claude", "Claude Code", "claude-code", "https://claude.ai/code"),
+    CodingAgent("codex", "OpenAI Codex CLI", "codex", "https://github.com/openai/codex"),
+    CodingAgent("gemini", "Gemini CLI", "gemini", "https://github.com/google-gemini/gemini-cli"),
+    CodingAgent("opencode", "opencode", "opencode", "https://opencode.ai"),
+)
+
+# The only worker kind with a working implementation today. Other detected agents
+# can be selected, but instrumentation/skill install is currently a no-op for them.
+FUNCTIONAL_WORKER_KINDS = frozenset({"claude-code"})
+
+
+def detect_installed_agents() -> list[CodingAgent]:
+    """Return the subset of SUPPORTED_CODING_AGENTS whose binaries are on PATH."""
+    return [agent for agent in SUPPORTED_CODING_AGENTS if shutil.which(agent.binary)]
 
 
 @dataclass
@@ -149,7 +175,7 @@ def run_setup_wizard(
     repo_dir: Path | None = None,
 ) -> PlaygroundUserConfig:
     existing = load_user_config(config_path)
-    _banner("MLflow Claude Code · Setup")
+    _banner("MLflow Agent Playground · Setup")
     if existing is not None:
         click.secho(
             f"  Found existing config at {config_path}.",
@@ -167,11 +193,15 @@ def run_setup_wizard(
 
     base = existing or PlaygroundUserConfig()
 
+    selected_agent = _select_coding_agent(base.worker.kind, non_interactive=non_interactive)
+
     config = base if non_interactive else _prompt_for_values(base)
+    config.worker.kind = selected_agent.worker_kind
     if repo_dir is not None:
         config.playground.repo_dir = str(repo_dir.resolve())
 
-    _install_mlflow_skills_step()
+    if selected_agent.worker_kind == "claude-code":
+        _install_mlflow_skills_step()
 
     _run_tracing_step(config, repo_dir, non_interactive=non_interactive)
 
@@ -182,6 +212,60 @@ def run_setup_wizard(
         _maybe_start_playground()
 
     return config
+
+
+def _select_coding_agent(current_kind: str, *, non_interactive: bool) -> CodingAgent:
+    """Detect installed coding agents and pick one as the playground worker.
+
+    - 0 detected: warn and fall back to Claude Code (still the only functional worker).
+    - 1 detected: use it without prompting.
+    - 2+ detected: in interactive mode, prompt the user; in non-interactive mode,
+      keep the existing `worker.kind` if it matches a detected agent, otherwise
+      default to the first detected agent.
+    """
+    _section("Detect coding agent")
+    detected = detect_installed_agents()
+
+    if not detected:
+        _warn("No supported coding agent found on PATH.")
+        for agent in SUPPORTED_CODING_AGENTS:
+            _hint(f"· {agent.display_name}: {agent.install_url}")
+        fallback = SUPPORTED_CODING_AGENTS[0]
+        _info(f"Defaulting to {fallback.display_name}; install it before running the playground.")
+        return fallback
+
+    for agent in detected:
+        _success(f"Found {agent.display_name} ({agent.binary}) on PATH")
+
+    if len(detected) == 1:
+        only = detected[0]
+        _info(f"Using {only.display_name} as the playground worker.")
+        if only.worker_kind not in FUNCTIONAL_WORKER_KINDS:
+            _warn(f"{only.display_name} support is not implemented yet; only Claude Code works.")
+        return only
+
+    current = next((a for a in detected if a.worker_kind == current_kind), None)
+    default_agent = current or detected[0]
+
+    if non_interactive:
+        _info(f"Using {default_agent.display_name} (non-interactive default).")
+        return default_agent
+
+    click.echo("")
+    click.secho("  Multiple coding agents detected. Pick one as the primary worker:", fg="cyan")
+    for idx, agent in enumerate(detected, start=1):
+        suffix = "" if agent.worker_kind in FUNCTIONAL_WORKER_KINDS else "  (preview)"
+        click.echo(f"    {idx}) {agent.display_name}{suffix}")
+    default_idx = detected.index(default_agent) + 1
+    choice = click.prompt(
+        click.style(f"  Choice [1-{len(detected)}]", fg="cyan"),
+        type=click.IntRange(1, len(detected)),
+        default=default_idx,
+    )
+    chosen = detected[choice - 1]
+    if chosen.worker_kind not in FUNCTIONAL_WORKER_KINDS:
+        _warn(f"{chosen.display_name} support is not implemented yet; only Claude Code works.")
+    return chosen
 
 
 def _install_mlflow_skills_step() -> None:
@@ -266,15 +350,22 @@ def _run_tracing_step(
     Mutates `config.playground.enable_tracing` based on the user's answer
     (or the existing value, in non-interactive mode). When the answer is
     yes and `repo_dir` is provided, hands off to Claude to write the
-    autolog / `@mlflow.trace` calls into the agent code.
+    autolog / `@mlflow.trace` calls into the agent code. Only Claude Code
+    can drive instrumentation today; other workers skip this step.
     """
+    can_instrument = config.worker.kind == "claude-code"
+
     if non_interactive:
-        if config.playground.enable_tracing and repo_dir is not None:
+        if config.playground.enable_tracing and repo_dir is not None and can_instrument:
             _section("Tracing")
             _instrument(repo_dir)
         return
 
     _section("Tracing")
+    if not can_instrument:
+        _warn("Auto-instrumentation requires Claude Code; skipping for the selected worker.")
+        return
+
     prompt = (
         "  Enable MLflow tracing in this repo? "
         "(adds autolog + @mlflow.trace to your agent)"
