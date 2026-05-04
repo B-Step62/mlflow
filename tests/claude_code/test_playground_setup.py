@@ -46,7 +46,9 @@ def _no_real_instrument():
 
 def test_run_setup_wizard_writes_config_non_interactive(tmp_path: Path):
     config_path = tmp_path / "config.yaml"
-    config = run_setup_wizard(config_path=config_path, non_interactive=True)
+    repo_dir = tmp_path / "agent-repo"
+    repo_dir.mkdir()
+    config = run_setup_wizard(config_path=config_path, non_interactive=True, repo_dir=repo_dir)
 
     assert config_path.exists()
     raw = yaml.safe_load(config_path.read_text())
@@ -56,6 +58,7 @@ def test_run_setup_wizard_writes_config_non_interactive(tmp_path: Path):
     assert raw["mlflow"]["tracking_uri"].endswith("mlruns.db")
     assert raw["worker"]["kind"] == "claude-code"
     assert config.playground.enable_tracing is True
+    assert raw["playground"]["repo_dir"] == str(repo_dir.resolve())
 
 
 def test_run_setup_wizard_idempotent_preserves_user_edits(tmp_path: Path):
@@ -176,6 +179,7 @@ def test_load_user_config_ignores_stale_keys(tmp_path: Path):
             "mlflow": {"tracking_uri": "sqlite:///x.db", "experiment": "exp"},
             "playground": {
                 "enable_tracing": True,
+                "repo_dir": str(tmp_path),
                 "install_claude_skills": True,  # removed field
             },
             "worker": {"kind": "claude-code"},
@@ -185,6 +189,7 @@ def test_load_user_config_ignores_stale_keys(tmp_path: Path):
     config = load_user_config(config_path)
     assert config is not None
     assert config.playground.enable_tracing is True
+    assert config.playground.repo_dir == str(tmp_path)
     assert not hasattr(config.playground, "install_claude_skills")
 
 

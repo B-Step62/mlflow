@@ -38,6 +38,7 @@ class GitConfig:
 @dataclass
 class PlaygroundConfig:
     enable_tracing: bool = True
+    repo_dir: str = ""
 
 
 @dataclass
@@ -161,6 +162,8 @@ def run_setup_wizard(
     )
 
     config = base if non_interactive else _prompt_for_values(base)
+    if repo_dir is not None:
+        config.playground.repo_dir = str(repo_dir.resolve())
 
     _install_mlflow_skills_step()
 
@@ -316,7 +319,10 @@ def _prompt_for_values(base: PlaygroundUserConfig) -> PlaygroundUserConfig:
         ),
         worker=base.worker,
         git=base.git,
-        playground=PlaygroundConfig(enable_tracing=base.playground.enable_tracing),
+        playground=PlaygroundConfig(
+            enable_tracing=base.playground.enable_tracing,
+            repo_dir=base.playground.repo_dir,
+        ),
     )
 
 
@@ -327,17 +333,19 @@ def _show_summary(config: PlaygroundUserConfig, config_path: Path, was_existing:
     _kv("experiment", config.mlflow.experiment)
     _kv("tracing", "enabled" if config.playground.enable_tracing else "disabled")
     _kv("worker", config.worker.kind)
+    if config.playground.repo_dir:
+        _kv("repo_dir", config.playground.repo_dir)
 
 
 def _maybe_start_playground() -> None:
     _section("Next steps")
     if click.confirm(
-        click.style("  Start the playground server now?", fg="cyan"),
+        click.style("  Start the local MLflow playground now?", fg="cyan"),
         default=False,
     ):
         click.secho("  Run: ", fg="bright_black", nl=False)
         click.secho("mlflow agent playground", fg="green", bold=True)
-        _hint("(blocks the terminal; opens your browser)")
+        _hint("(starts a local MLflow server and opens the playground UI)")
     else:
         click.secho("  When you're ready, run: ", fg="bright_black", nl=False)
         click.secho("mlflow agent playground", fg="green", bold=True)
