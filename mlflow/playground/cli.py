@@ -10,15 +10,20 @@ def agent_commands() -> None:
 
 @agent_commands.command("playground")
 @click.option("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1).")
-@click.option("--port", type=int, default=0, help="Port to bind (default: pick a free one).")
+@click.option("--port", type=int, default=5000, help="Port to bind (default: 5000).")
 @click.option("--no-browser", is_flag=True, help="Don't open the browser automatically.")
 @click.option(
     "--reload",
     is_flag=True,
-    help="Auto-reload the server on code changes (development only).",
+    help="Auto-reload the MLflow server on code changes (development only).",
 )
-def playground(host: str, port: int, no_browser: bool, reload: bool) -> None:
-    """Start the Agent Playground cockpit and open the browser."""
+@click.option(
+    "--agent-url",
+    default=None,
+    help="Base URL for the agent server /invocations endpoint (default: http://127.0.0.1:8000).",
+)
+def playground(host: str, port: int, no_browser: bool, reload: bool, agent_url: str | None) -> None:
+    """Start the local MLflow playground flow and open the browser."""
     from mlflow.playground.server import serve
 
-    serve(host=host, port=port, open_browser=not no_browser, reload=reload)
+    serve(host=host, port=port, open_browser=not no_browser, reload=reload, agent_url=agent_url)

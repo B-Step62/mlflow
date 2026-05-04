@@ -53,6 +53,9 @@ const isExperimentsActive = (location: Location) =>
 const isModelsActive = (location: Location) => Boolean(matchPath('/models/*', location.pathname));
 const isPromptsActive = (location: Location) => Boolean(matchPath('/prompts/*', location.pathname));
 const isGatewayActive = (location: Location) => Boolean(matchPath('/gateway/*', location.pathname));
+const isPlaygroundActive = (location: Location) =>
+  Boolean(matchPath({ path: '/playground', end: true }, location.pathname)) ||
+  Boolean(matchPath('/playground/*', location.pathname));
 const isSettingsActive = (location: Location) =>
   Boolean(
     matchPath({ path: '/settings', end: true }, location.pathname) ||
@@ -193,6 +196,16 @@ export function MlflowSidebar({
         : []),
       ...(shouldShowGenAIFeatures(enableWorkflowBasedNavigation, workflowType) && !showNestedExperimentItems
         ? [
+            {
+              key: 'playground',
+              icon: <AssistantSparkleIcon isHovered={false} iconSize={16} />,
+              linkProps: {
+                to: ExperimentTrackingRoutes.playgroundPageRoute,
+                isActive: isPlaygroundActive,
+                children: <FormattedMessage defaultMessage="Playground" description="Sidebar link for playground" />,
+              },
+              componentId: 'mlflow.sidebar.playground_tab_link',
+            },
             {
               key: 'prompts',
               icon: <TextBoxIcon />,

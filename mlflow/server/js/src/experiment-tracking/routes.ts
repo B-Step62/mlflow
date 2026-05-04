@@ -12,6 +12,7 @@ export enum PageId {
   settingsPage = 'mlflow.settings',
   promptsPage = 'mlflow.prompts',
   promptDetailsPage = 'mlflow.prompts.details',
+  playgroundPage = 'mlflow.playground',
   experimentPageTabbed = 'mlflow.experiment.details.tab',
   experimentLoggedModelDetailsPageTab = 'mlflow.logged-model.details.tab',
   experimentLoggedModelDetailsPage = 'mlflow.logged-model.details',
@@ -150,6 +151,9 @@ export class RoutePaths {
   static get settingsSectionPage() {
     return createMLflowRoutePath('/settings/:section');
   }
+  static get playgroundPage() {
+    return createMLflowRoutePath('/playground');
+  }
 }
 
 // Concrete routes and functions for generating parametrized paths
@@ -173,6 +177,10 @@ class Routes {
 
   static get settingsPageRoute() {
     return RoutePaths.settingsPage;
+  }
+
+  static get playgroundPageRoute() {
+    return RoutePaths.playgroundPage;
   }
 
   static getSettingsSectionRoute(section: string) {

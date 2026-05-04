@@ -23,6 +23,7 @@ from mlflow.server.fastapi_security import init_fastapi_security
 from mlflow.server.gateway_api import gateway_router
 from mlflow.server.job_api import job_api_router
 from mlflow.server.otel_api import otel_router
+from mlflow.server.playground_api import create_playground_api_router
 from mlflow.server.workspace_helpers import (
     WORKSPACE_HEADER_NAME,
     resolve_workspace_for_request_if_enabled,
@@ -135,6 +136,9 @@ def create_fastapi_app(flask_app: Flask = flask_app):
     # Include Assistant API router for AI-powered trace analysis
     # This provides /ajax-api/3.0/mlflow/assistant/* endpoints (localhost only)
     fastapi_app.include_router(assistant_router)
+
+    # Include playground API router for the MLflow UI-based agent playground.
+    fastapi_app.include_router(create_playground_api_router())
 
     # Mount the entire Flask application at the root path
     # This ensures compatibility with existing APIs
