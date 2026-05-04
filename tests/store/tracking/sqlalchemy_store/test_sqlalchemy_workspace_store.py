@@ -2242,6 +2242,84 @@ def test_search_issues_is_workspace_scoped(workspace_tracking_store):
         assert results[0].issue_id == issue_b.issue_id
 
 
+def test_transition_issue_is_workspace_scoped(workspace_tracking_store):
+    with WorkspaceContext("team-a"):
+        exp_id_a = workspace_tracking_store.create_experiment("issue-exp-transition-a")
+        issue_a = workspace_tracking_store.create_issue(
+            experiment_id=exp_id_a,
+            name="Issue A",
+            description="todo issue in team-a",
+            status=IssueStatus.TODO,
+        )
+        moved = workspace_tracking_store.transition_issue(
+            issue_a.issue_id,
+            IssueStatus.IN_PROGRESS,
+            assignee="worker:team-a:1",
+        )
+        assert moved.status == IssueStatus.IN_PROGRESS
+        assert moved.assignee == "worker:team-a:1"
+
+    # team-b cannot see or move team-a's issue
+    with WorkspaceContext("team-b"):
+        with pytest.raises(
+            MlflowException, match=f"Issue with ID '{issue_a.issue_id}' not found"
+        ) as excinfo:
+            workspace_tracking_store.transition_issue(
+                issue_a.issue_id,
+                IssueStatus.REVIEW,
+            )
+        assert excinfo.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test_transition_issue_rejects_illegal_state_transitions(workspace_tracking_store):
+    with WorkspaceContext("team-a"):
+        exp_id = workspace_tracking_store.create_experiment("issue-exp-illegal")
+        issue = workspace_tracking_store.create_issue(
+            experiment_id=exp_id,
+            name="Illegal transition test",
+            description="ensure 400 path is workspace-aware too",
+            status=IssueStatus.TODO,
+        )
+        # todo -> review is a skip-ahead, must raise
+        with pytest.raises(MlflowException, match="Illegal issue transition"):
+            workspace_tracking_store.transition_issue(
+                issue.issue_id,
+                IssueStatus.REVIEW,
+            )
+        # And the row must not have moved
+        assert workspace_tracking_store.get_issue(issue.issue_id).status == IssueStatus.TODO
+
+
+def test_batch_get_issues_is_workspace_scoped(workspace_tracking_store):
+    created: dict[str, list[str]] = {"team-a": [], "team-b": []}
+    for ws in ("team-a", "team-b"):
+        with WorkspaceContext(ws):
+            exp_id = workspace_tracking_store.create_experiment(f"issue-exp-batch-{ws}")
+            for i in range(2):
+                issue = workspace_tracking_store.create_issue(
+                    experiment_id=exp_id,
+                    name=f"{ws} issue {i}",
+                    description="batch test",
+                    status=IssueStatus.TODO,
+                )
+                created[ws].append(issue.issue_id)
+
+    # Asking for a mix of own + cross-workspace IDs in team-a should only
+    # return team-a's IDs, in input order.
+    with WorkspaceContext("team-a"):
+        mixed = created["team-a"] + created["team-b"]
+        got = workspace_tracking_store.batch_get_issues(mixed)
+        got_ids = [i.issue_id for i in got]
+        assert got_ids == created["team-a"], (got_ids, created)
+
+    # And vice-versa.
+    with WorkspaceContext("team-b"):
+        mixed = created["team-b"] + created["team-a"]
+        got = workspace_tracking_store.batch_get_issues(mixed)
+        got_ids = [i.issue_id for i in got]
+        assert got_ids == created["team-b"]
+
+
 def _create_scorer_in_workspace(store, workspace_name):
     suffix = uuid.uuid4().hex[:8]
     secret = store.create_gateway_secret(
