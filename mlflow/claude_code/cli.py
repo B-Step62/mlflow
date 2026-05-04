@@ -201,13 +201,13 @@ def claude_top_commands():
     default=None,
     help=(
         "Inspect this directory for agent entrypoints and scaffold @invoke() / autolog() "
-        "calls (default: skip inspection)."
+        "calls (default: current working directory)."
     ),
 )
 @click.option(
     "--skip-inspect",
     is_flag=True,
-    help="Skip the repo-inspection step even if --repo-dir is set.",
+    help="Skip the repo-inspection step.",
 )
 def setup(
     non_interactive: bool,
@@ -221,8 +221,13 @@ def setup(
         run_setup_wizard,
     )
 
+    if skip_inspect:
+        inspect_target = None
+    else:
+        inspect_target = repo_dir if repo_dir is not None else Path.cwd()
+
     run_setup_wizard(
         config_path=config_path or DEFAULT_CONFIG_PATH,
         non_interactive=non_interactive,
-        repo_dir=None if skip_inspect else repo_dir,
+        repo_dir=inspect_target,
     )

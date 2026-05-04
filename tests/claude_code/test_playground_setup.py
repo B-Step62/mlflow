@@ -20,7 +20,8 @@ def test_run_setup_wizard_writes_config_non_interactive(tmp_path: Path):
     raw = yaml.safe_load(config_path.read_text())
     assert raw["schema_version"] == SCHEMA_VERSION
     assert raw["mlflow"]["experiment"] == DEFAULT_EXPERIMENT_NAME
-    assert raw["mlflow"]["tracking_uri"].startswith("file://")
+    assert raw["mlflow"]["tracking_uri"].startswith("sqlite:///")
+    assert raw["mlflow"]["tracking_uri"].endswith("mlruns.db")
     assert raw["worker"]["kind"] == "claude-code"
     assert config.playground.enable_tracing is True
 
@@ -42,7 +43,13 @@ def test_cli_setup_non_interactive_writes_to_custom_path(tmp_path: Path):
     runner = CliRunner()
     result = runner.invoke(
         claude_top_commands,
-        ["setup", "--non-interactive", "--config-path", str(config_path)],
+        [
+            "setup",
+            "--non-interactive",
+            "--config-path",
+            str(config_path),
+            "--skip-inspect",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert config_path.exists()
@@ -54,7 +61,7 @@ def test_cli_setup_interactive_accept_all_defaults(tmp_path: Path):
     # 5 prompts: tracking_uri, experiment, enable_tracing, install_claude_skills, start_now
     result = runner.invoke(
         claude_top_commands,
-        ["setup", "--config-path", str(config_path)],
+        ["setup", "--config-path", str(config_path), "--skip-inspect"],
         input="\n" * 5,
     )
     assert result.exit_code == 0, result.output

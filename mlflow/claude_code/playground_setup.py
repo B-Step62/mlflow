@@ -1,5 +1,6 @@
 """Interactive setup wizard for the MLflow Agent Playground."""
 
+import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -8,8 +9,12 @@ import click
 import yaml
 
 from mlflow.claude_code.repo_inspect import (
+    ClaudeDetection,
     FileInspection,
     FunctionCandidate,
+    detect_with_claude,
+    find_function_def_line,
+    inspect_file,
     inspect_repo,
     scaffold_autolog,
     scaffold_decorator,
@@ -57,7 +62,7 @@ class PlaygroundUserConfig:
 
 
 def _default_tracking_uri() -> str:
-    return f"file://{Path.home() / 'mlruns'}"
+    return f"sqlite:///{DEFAULT_CONFIG_DIR / 'mlruns.db'}"
 
 
 def _from_dict(raw: dict[str, Any]) -> PlaygroundUserConfig:
@@ -70,7 +75,9 @@ def _from_dict(raw: dict[str, Any]) -> PlaygroundUserConfig:
     )
 
 
-def load_user_config(config_path: Path = DEFAULT_CONFIG_PATH) -> PlaygroundUserConfig | None:
+def load_user_config(
+    config_path: Path = DEFAULT_CONFIG_PATH,
+) -> PlaygroundUserConfig | None:
     if not config_path.exists():
         return None
     raw = yaml.safe_load(config_path.read_text())
@@ -79,7 +86,9 @@ def load_user_config(config_path: Path = DEFAULT_CONFIG_PATH) -> PlaygroundUserC
     return _from_dict(raw)
 
 
-def save_user_config(config: PlaygroundUserConfig, config_path: Path = DEFAULT_CONFIG_PATH) -> None:
+def save_user_config(
+    config: PlaygroundUserConfig, config_path: Path = DEFAULT_CONFIG_PATH
+) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.safe_dump(asdict(config), sort_keys=False))
 
@@ -114,19 +123,32 @@ def run_setup_wizard(
 
 def _run_repo_inspection_step(repo_dir: Path, non_interactive: bool) -> None:
     click.echo("")
-    click.echo(f"Inspecting {repo_dir} for agent entrypoints...")
+
+    if shutil.which("claude"):
+        click.echo(f"Inspecting {repo_dir} with Claude...")
+        detection = detect_with_claude(repo_dir)
+        if detection is not None:
+            _apply_claude_detection(detection, repo_dir, non_interactive)
+            return
+        click.echo("Claude detection didn't yield a result; falling back to heuristic.")
+
+    click.echo(f"Inspecting {repo_dir} for agent entrypoints (heuristic)...")
     inspection = inspect_repo(repo_dir)
 
     decorator_candidates = inspection.decorator_candidates
     autolog_targets = inspection.autolog_targets()
 
     if not decorator_candidates and not autolog_targets:
-        click.echo("Nothing to scaffold — repo already has @invoke decorators / autolog calls.")
+        click.echo(
+            "Nothing to scaffold — repo already has @invoke decorators / autolog calls."
+        )
         return
 
     if decorator_candidates:
         click.echo("")
-        click.echo(f"Found {len(decorator_candidates)} candidate function(s) for @invoke:")
+        click.echo(
+            f"Found {len(decorator_candidates)} candidate function(s) for @invoke:"
+        )
         for c in decorator_candidates:
             rel = c.file.relative_to(repo_dir)
             click.echo(f"  - {rel}:{c.line_no}  def {c.function_name}(...)")
@@ -142,9 +164,58 @@ def _run_repo_inspection_step(repo_dir: Path, non_interactive: bool) -> None:
         for finsp, fw in autolog_targets:
             rel = finsp.file.relative_to(repo_dir)
             click.echo(f"  - {rel}: mlflow.{fw}.autolog()")
-        if non_interactive or click.confirm("Add autolog() calls to all of these?", default=True):
+        if non_interactive or click.confirm(
+            "Add autolog() calls to all of these?", default=True
+        ):
             for finsp, fw in autolog_targets:
                 _patch_autolog(finsp, fw, repo_dir)
+
+
+def _apply_claude_detection(
+    detection: ClaudeDetection, repo_dir: Path, non_interactive: bool
+) -> None:
+    rel = detection.entrypoint_file.relative_to(repo_dir)
+    file_inspection = inspect_file(detection.entrypoint_file)
+    if file_inspection is None:
+        click.echo(f"Could not parse {rel}; skipping scaffold.")
+        return
+
+    if file_inspection.has_invoke_decorator:
+        click.echo(
+            f"Detected entrypoint: {rel} def {detection.entrypoint_function}(...) "
+            "— already has @invoke."
+        )
+    else:
+        line_no = find_function_def_line(
+            detection.entrypoint_file, detection.entrypoint_function
+        )
+        if line_no is None:
+            click.echo(
+                f"Claude pointed at {rel}:{detection.entrypoint_function} "
+                "but no such function exists; skipping."
+            )
+            return
+        candidate = FunctionCandidate(
+            file=detection.entrypoint_file,
+            function_name=detection.entrypoint_function,
+            line_no=line_no,
+        )
+        click.echo(
+            f"Detected entrypoint: {rel}:{candidate.line_no}  def {candidate.function_name}(...)"
+        )
+        if non_interactive or click.confirm(
+            f"Add @invoke() above {candidate.function_name}? (with .bak backup)",
+            default=True,
+        ):
+            _patch_decorator(candidate, repo_dir)
+
+    framework = detection.framework
+    if framework and framework not in file_inspection.autologged_frameworks:
+        click.echo(f"Detected framework: {framework}")
+        if non_interactive or click.confirm(
+            f"Add mlflow.{framework}.autolog() to {rel}?", default=True
+        ):
+            _patch_autolog(file_inspection, framework, repo_dir)
 
 
 def _patch_decorator(candidate: FunctionCandidate, repo_dir: Path) -> None:
@@ -155,7 +226,9 @@ def _patch_decorator(candidate: FunctionCandidate, repo_dir: Path) -> None:
         click.echo(f"  · skipped {rel}: already has @invoke")
 
 
-def _patch_autolog(file_inspection: FileInspection, framework: str, repo_dir: Path) -> None:
+def _patch_autolog(
+    file_inspection: FileInspection, framework: str, repo_dir: Path
+) -> None:
     rel = file_inspection.file.relative_to(repo_dir)
     if scaffold_autolog(file_inspection, framework):
         click.echo(f"  + patched {rel}: added mlflow.{framework}.autolog()")
@@ -199,14 +272,18 @@ def _prompt_for_values(base: PlaygroundUserConfig) -> PlaygroundUserConfig:
     )
 
 
-def _show_summary(config: PlaygroundUserConfig, config_path: Path, was_existing: bool) -> None:
+def _show_summary(
+    config: PlaygroundUserConfig, config_path: Path, was_existing: bool
+) -> None:
     verb = "Updated" if was_existing else "Created"
     click.echo("")
     click.echo("=" * 50)
     click.echo(f"{verb} {config_path}")
     click.echo(f"  tracking_uri: {config.mlflow.tracking_uri}")
     click.echo(f"  experiment:   {config.mlflow.experiment}")
-    click.echo(f"  tracing:      {'enabled' if config.playground.enable_tracing else 'disabled'}")
+    click.echo(
+        f"  tracing:      {'enabled' if config.playground.enable_tracing else 'disabled'}"
+    )
     click.echo("=" * 50)
     click.echo("")
     click.echo("Next: `mlflow agent playground` to open the cockpit (lands in YUK-8).")

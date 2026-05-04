@@ -1,6 +1,11 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from mlflow.claude_code.repo_inspect import (
+    _gather_repo_files,
+    _parse_claude_response,
+    detect_with_claude,
+    find_function_def_line,
     inspect_file,
     inspect_repo,
     scaffold_autolog,
@@ -24,7 +29,9 @@ def test_detect_candidate_by_name(tmp_path: Path):
 
 
 def test_detect_candidate_by_param(tmp_path: Path):
-    f = _write(tmp_path / "agent.py", "def respond_to(messages):\n    return messages[-1]\n")
+    f = _write(
+        tmp_path / "agent.py", "def respond_to(messages):\n    return messages[-1]\n"
+    )
     result = inspect_file(f)
     assert len(result.candidates) == 1
     assert result.candidates[0].function_name == "respond_to"
@@ -150,3 +157,105 @@ def test_inspect_repo_invariants_for_inspection_view(tmp_path: Path):
     targets = inspection.autolog_targets()
     target_files = sorted(t[0].file.name for t in targets)
     assert target_files == ["c.py"]
+
+
+def test_find_function_def_line(tmp_path: Path):
+    f = _write(tmp_path / "agent.py", "import os\n\n\ndef chat(req):\n    return req\n")
+    assert find_function_def_line(f, "chat") == 4
+    assert find_function_def_line(f, "missing") is None
+
+
+def test_parse_claude_response_valid(tmp_path: Path):
+    _write(tmp_path / "agent.py", "def chat(messages): pass\n")
+    result = _parse_claude_response(
+        '{"file": "agent.py", "function": "chat", "framework": "openai"}', tmp_path
+    )
+    assert result is not None
+    assert result.entrypoint_function == "chat"
+    assert result.framework == "openai"
+    assert result.entrypoint_file == (tmp_path / "agent.py").resolve()
+
+
+def test_parse_claude_response_extracts_json_from_prose(tmp_path: Path):
+    _write(tmp_path / "agent.py", "def chat(messages): pass\n")
+    result = _parse_claude_response(
+        'Here is the answer:\n{"file": "agent.py", "function": "chat", "framework": null}\nDone.',
+        tmp_path,
+    )
+    assert result is not None and result.framework is None
+
+
+def test_parse_claude_response_error_sentinel_returns_none(tmp_path: Path):
+    assert _parse_claude_response('{"error": "no clear entrypoint"}', tmp_path) is None
+
+
+def test_parse_claude_response_unknown_framework_nulled(tmp_path: Path):
+    _write(tmp_path / "agent.py", "def chat(messages): pass\n")
+    result = _parse_claude_response(
+        '{"file": "agent.py", "function": "chat", "framework": "made-up-framework"}',
+        tmp_path,
+    )
+    assert result is not None and result.framework is None
+
+
+def test_parse_claude_response_missing_file_returns_none(tmp_path: Path):
+    result = _parse_claude_response(
+        '{"file": "nope.py", "function": "chat", "framework": "openai"}', tmp_path
+    )
+    assert result is None
+
+
+def test_gather_repo_files_skips_skip_dirs(tmp_path: Path):
+    _write(tmp_path / "agent.py", "x = 1\n")
+    _write(tmp_path / ".venv" / "lib" / "fake.py", "x = 2\n")
+    _write(tmp_path / "node_modules" / "deep.py", "x = 3\n")
+    files = _gather_repo_files(tmp_path, max_bytes=10_000)
+    rels = [str(rel) for rel, _ in files]
+    assert rels == ["agent.py"]
+
+
+def test_detect_with_claude_returns_none_when_claude_missing(tmp_path: Path):
+    _write(tmp_path / "agent.py", "def chat(messages): pass\n")
+    with patch("mlflow.claude_code.repo_inspect.shutil.which", return_value=None):
+        assert detect_with_claude(tmp_path) is None
+
+
+def test_detect_with_claude_end_to_end_with_mocked_subprocess(tmp_path: Path):
+    _write(tmp_path / "agent.py", "def chat(messages): pass\n")
+
+    class FakeResult:
+        returncode = 0
+        stdout = '{"file": "agent.py", "function": "chat", "framework": "openai"}'
+        stderr = ""
+
+    with (
+        patch(
+            "mlflow.claude_code.repo_inspect.shutil.which",
+            return_value="/usr/bin/claude",
+        ),
+        patch(
+            "mlflow.claude_code.repo_inspect.subprocess.run", return_value=FakeResult()
+        ) as mock_run,
+    ):
+        result = detect_with_claude(tmp_path)
+    assert result is not None
+    assert result.entrypoint_function == "chat"
+    assert result.framework == "openai"
+    mock_run.assert_called_once()
+
+
+def test_detect_with_claude_returns_none_on_subprocess_error(tmp_path: Path):
+    import subprocess as sp
+
+    _write(tmp_path / "agent.py", "def chat(messages): pass\n")
+    with (
+        patch(
+            "mlflow.claude_code.repo_inspect.shutil.which",
+            return_value="/usr/bin/claude",
+        ),
+        patch(
+            "mlflow.claude_code.repo_inspect.subprocess.run",
+            side_effect=sp.TimeoutExpired(cmd="claude", timeout=90),
+        ),
+    ):
+        assert detect_with_claude(tmp_path) is None
