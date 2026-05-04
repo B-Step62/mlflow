@@ -324,3 +324,53 @@ def _show_setup_status(
 def stop_hook() -> None:
     """Legacy hook shim kept for older Python-hook installations."""
     stop_hook_handler()
+
+
+@click.group("claude")
+def claude_top_commands():
+    """Set up the MLflow Agent Playground with Claude as the worker."""
+
+
+@claude_top_commands.command("setup")
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Skip prompts and accept defaults (or existing config values).",
+)
+@click.option(
+    "--config-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Override the config file location (default: ~/.mlflow/playground/config.yaml).",
+)
+@click.option(
+    "--repo-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "Inspect this directory for agent entrypoints and scaffold @invoke() / autolog() "
+        "calls (default: skip inspection)."
+    ),
+)
+@click.option(
+    "--skip-inspect",
+    is_flag=True,
+    help="Skip the repo-inspection step even if --repo-dir is set.",
+)
+def setup(
+    non_interactive: bool,
+    config_path: Path | None,
+    repo_dir: Path | None,
+    skip_inspect: bool,
+) -> None:
+    """Interactive wizard for the MLflow Agent Playground."""
+    from mlflow.claude_code.playground_setup import (
+        DEFAULT_CONFIG_PATH,
+        run_setup_wizard,
+    )
+
+    run_setup_wizard(
+        config_path=config_path or DEFAULT_CONFIG_PATH,
+        non_interactive=non_interactive,
+        repo_dir=None if skip_inspect else repo_dir,
+    )
