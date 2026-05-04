@@ -27,7 +27,6 @@ import { getGatewayRouteDefs } from './gateway/route-defs';
 import { getAccountRouteDefs } from './account/route-defs';
 import { getAdminRouteDefs } from './admin/route-defs';
 import { DEV_USER_SWITCHER_ENABLED } from './admin/DevUserSwitcher';
-import { getPlaygroundRouteDefs } from './playground/route-defs';
 import { useInitializeExperimentRunColors } from './experiment-tracking/components/experiment-page/hooks/useExperimentRunColor';
 import { MlflowSidebar } from './common/components/MlflowSidebar';
 import { AssistantProvider, AssistantRouteContextProvider } from './assistant';
@@ -229,7 +228,6 @@ export const MlflowRouter = () => {
       ...getGatewayRouteDefs(),
       ...getAccountRouteDefs(),
       ...getAdminRouteDefs(),
-      ...getPlaygroundRouteDefs(),
       ...getCommonRouteDefs(),
     ],
     [],

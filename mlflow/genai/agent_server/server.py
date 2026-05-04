@@ -21,6 +21,51 @@ from mlflow.tracing.constant import SpanAttributeKey
 logger = logging.getLogger(__name__)
 STREAM_KEY = "stream"
 RETURN_TRACE_HEADER = "x-mlflow-return-trace-id"
+# JSON-encoded {key: value} dict applied to the active trace as tags. Lets the
+# caller correlate later via search_traces (e.g. tags.playground.request_id).
+TRACE_TAGS_HEADER = "x-mlflow-trace-tags"
+
+
+def _extract_trace_tags_from_headers() -> dict[str, str]:
+    raw = get_request_headers().get(TRACE_TAGS_HEADER)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Ignoring malformed %s header: %r", TRACE_TAGS_HEADER, raw)
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items() if v is not None}
+
+
+def _persist_trace_in_progress(trace_id: str, tags: dict[str, str]) -> None:
+    """Force-persist the in-progress trace to the tracking backend with `tags`.
+
+    `mlflow.update_current_trace(tags=...)` only mutates the in-memory trace and
+    flushes at trace-end (`mlflow/tracing/fluent.py:1473–1474`). For the
+    playground's incremental polling-by-tag flow we need the row in the DB the
+    moment the agent receives the request, so the frontend can discover the
+    trace before the agent finishes. We do this by reading the in-memory
+    TraceInfo, applying the requested tags, and calling `start_trace()` on the
+    tracking client — same code path SQLAlchemyStore uses lazily from
+    `log_spans`, just earlier.
+    """
+    if not tags:
+        return
+    try:
+        from mlflow.tracing.client import TracingClient
+        from mlflow.tracing.trace_manager import InMemoryTraceManager
+
+        manager = InMemoryTraceManager.get_instance()
+        with manager.get_trace(trace_id) as trace:
+            if trace is None or trace.info is None:
+                return
+            trace.info.tags.update(tags)
+            TracingClient().start_trace(trace.info)
+    except Exception as e:
+        logger.debug("Could not persist in-progress trace for tag discovery: %s", e)
 
 AgentType = Literal["ResponsesAgent"]
 
@@ -315,6 +360,10 @@ class AgentServer:
 
         try:
             with mlflow.start_span(name=f"{func_name}") as span:
+                trace_tags = _extract_trace_tags_from_headers()
+                if trace_tags:
+                    mlflow.update_current_trace(tags=trace_tags)
+                    _persist_trace_in_progress(span.trace_id, trace_tags)
                 span.set_inputs(request)
                 if inspect.iscoroutinefunction(func):
                     result = await func(request)
@@ -356,6 +405,10 @@ class AgentServer:
         all_chunks: list[dict[str, Any]] = []
         try:
             with mlflow.start_span(name=f"{func_name}") as span:
+                trace_tags = _extract_trace_tags_from_headers()
+                if trace_tags:
+                    mlflow.update_current_trace(tags=trace_tags)
+                    _persist_trace_in_progress(span.trace_id, trace_tags)
                 span.set_inputs(request)
                 if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
                     async for chunk in func(request):
