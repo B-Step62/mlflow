@@ -4,10 +4,15 @@ from pathlib import Path
 
 import click
 
+from mlflow.playground.issue_cli import issue_commands
+
 
 @click.group("agent")
 def agent_commands() -> None:
     """MLflow Agent Playground commands."""
+
+
+agent_commands.add_command(issue_commands)
 
 
 @agent_commands.command("setup")
