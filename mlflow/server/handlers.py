@@ -4418,6 +4418,91 @@ def _search_issues():
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
+def _list_issues():
+    """
+    Handler for ``GET /mlflow/issues`` — list issues with optional filters
+    on ``experiment_id`` / ``status``. Lighter-weight cousin of
+    ``POST /mlflow/issues/search`` for the cockpit's sidebar.
+    """
+    request_json = _get_validated_flask_request_json(
+        schema={
+            "experiment_id": [_assert_string],
+            "status": [_assert_string],
+            "max_results": [_assert_intlike],
+            "page_token": [_assert_string],
+        },
+    )
+
+    experiment_id = request_json.get("experiment_id") or None
+    status = request_json.get("status") or None
+    max_results = request_json.get("max_results")
+
+    filter_string = None
+    if status:
+        # Reuse the existing search filter parser so we don't duplicate it.
+        filter_string = f"status = '{status}'"
+
+    issues = _get_tracking_store().search_issues(
+        experiment_id=experiment_id,
+        filter_string=filter_string,
+        max_results=int(max_results) if max_results is not None else None,
+        page_token=request_json.get("page_token") or None,
+    )
+    return jsonify({
+        "issues": [i.to_dictionary() for i in issues],
+        "next_page_token": issues.token or "",
+    })
+
+
+@catch_mlflow_exception
+@_disable_if_artifacts_only
+def _batch_get_issues_handler():
+    """
+    Handler for ``GET /mlflow/issues/batch?issue_id=a&issue_id=b`` — fetch
+    multiple issues by ID in a single round-trip. Unknown IDs are silently
+    skipped; the response order matches the request order for IDs that exist.
+    """
+    request_json = _get_validated_flask_request_json(
+        schema={"issue_id": [_assert_required, _assert_array]},
+    )
+    issue_ids = request_json["issue_id"]
+    if not isinstance(issue_ids, list):
+        issue_ids = [issue_ids]
+    issues = _get_tracking_store().batch_get_issues(issue_ids)
+    return jsonify({"issues": [i.to_dictionary() for i in issues]})
+
+
+@catch_mlflow_exception
+@_disable_if_artifacts_only
+def _transition_issue(issue_id):
+    """
+    Handler for ``POST /mlflow/issues/{issue_id}/transition`` — apply a
+    playground state-machine transition. Body: ``{"target_status": "...",
+    "assignee": "..."}``. Illegal transitions surface as
+    ``MlflowException(INVALID_PARAMETER_VALUE)`` — Flask renders 400.
+    """
+    from mlflow.entities.issue import IssueStatus
+
+    request_json = _get_validated_flask_request_json(
+        schema={
+            "target_status": [_assert_required, _assert_string],
+            "assignee": [_assert_string],
+        },
+    )
+    target_status = IssueStatus(request_json["target_status"])
+    # We let "" pass through so callers can clear assignee; "not provided"
+    # (None) means "leave unchanged" at the store layer.
+    assignee = request_json.get("assignee") if "assignee" in request_json else None
+    issue = _get_tracking_store().transition_issue(
+        issue_id=issue_id,
+        target_status=target_status,
+        assignee=assignee,
+    )
+    return jsonify({"issue": issue.to_dictionary()})
+
+
+@catch_mlflow_exception
+@_disable_if_artifacts_only
 def _invoke_issue_detection_handler():
     """
     Invoke issue detection on traces asynchronously.
@@ -6214,6 +6299,7 @@ def get_endpoints(get_handler=get_handler):
         + get_gateway_endpoints()
         + get_demo_endpoints()
         + get_issues_detection_endpoints()
+        + get_agent_playground_endpoints()
         + get_job_endpoints()
     )
 
@@ -6257,6 +6343,26 @@ def get_issues_detection_endpoints():
             ["POST"],
         ),
     ]
+
+
+def get_agent_playground_endpoints():
+    """Endpoint tuples for the agent-playground Issue REST surface (YUK-13).
+
+    These complement the existing CRUD handlers (CreateIssue, GetIssue,
+    UpdateIssue, SearchIssues — registered through the proto service map)
+    with the playground-specific batch + transition + list shortcuts that
+    the cockpit uses on its hot paths.
+    """
+    endpoints = []
+    for spec in (
+        ("/mlflow/issues", _list_issues, ["GET"]),
+        ("/mlflow/issues/batch", _batch_get_issues_handler, ["GET"]),
+        ("/mlflow/issues/<issue_id>/transition", _transition_issue, ["POST"]),
+    ):
+        base, handler, methods = spec
+        for path in _get_paths(base, version=3):
+            endpoints.append((path, handler, methods))
+    return endpoints
 
 
 def get_job_endpoints():
