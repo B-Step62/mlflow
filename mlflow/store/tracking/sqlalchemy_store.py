@@ -7663,6 +7663,48 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
 
             return sql_issue.to_mlflow_entity()
 
+    def transition_issue(
+        self,
+        issue_id: str,
+        target_status: IssueStatus,
+        assignee: str | None = None,
+    ) -> Issue:
+        """Apply a playground state-machine transition to an issue."""
+        from mlflow.entities.issue import validate_transition
+
+        with self.ManagedSessionMaker() as session:
+            sql_issue = (
+                self._get_query(session, SqlIssue).filter(SqlIssue.issue_id == issue_id).first()
+            )
+            if not sql_issue:
+                raise MlflowException(
+                    f"Issue with ID '{issue_id}' not found",
+                    error_code=RESOURCE_DOES_NOT_EXIST,
+                )
+
+            validate_transition(IssueStatus(sql_issue.status), target_status)
+
+            sql_issue.status = target_status.value
+            if assignee is not None:
+                sql_issue.assignee = assignee or None
+            sql_issue.last_updated_timestamp = get_current_time_millis()
+
+            session.flush()
+            return sql_issue.to_mlflow_entity()
+
+    def batch_get_issues(self, issue_ids: list[str]) -> list[Issue]:
+        """Fetch multiple issues by ID in a single round-trip."""
+        if not issue_ids:
+            return []
+        with self.ManagedSessionMaker() as session:
+            rows = (
+                self._get_query(session, SqlIssue)
+                .filter(SqlIssue.issue_id.in_(issue_ids))
+                .all()
+            )
+            by_id = {row.issue_id: row.to_mlflow_entity() for row in rows}
+            return [by_id[i] for i in issue_ids if i in by_id]
+
     def search_issues(
         self,
         experiment_id: str | None = None,

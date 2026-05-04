@@ -757,6 +757,49 @@ class AbstractStore(GatewayStoreMixin):
         """
         raise MlflowNotImplementedException()
 
+    def transition_issue(
+        self,
+        issue_id: str,
+        target_status: IssueStatus,
+        assignee: str | None = None,
+    ) -> Issue:
+        """
+        Apply a playground state-machine transition to an issue.
+
+        Validates the transition with
+        :func:`mlflow.entities.issue.validate_transition` before persisting,
+        so illegal edges (e.g. ``done -> todo``) raise
+        ``MlflowException(INVALID_PARAMETER_VALUE)`` and the row is
+        unchanged. Updates ``status``, optionally ``assignee``, and
+        ``last_updated_timestamp`` atomically.
+
+        Args:
+            issue_id: The ID of the issue to transition.
+            target_status: The new status. Must be a playground state
+                (todo / in_progress / review / done / rejected).
+            assignee: Optional new assignee. Pass the empty string to
+                clear; pass ``None`` to leave unchanged.
+
+        Returns:
+            The updated Issue entity.
+        """
+        raise MlflowNotImplementedException()
+
+    def batch_get_issues(self, issue_ids: list[str]) -> list[Issue]:
+        """
+        Fetch multiple issues by ID in a single round-trip.
+
+        Args:
+            issue_ids: A list of issue IDs to fetch. Empty list returns ``[]``.
+                Unknown IDs are silently skipped (the result list may be
+                shorter than the input list).
+
+        Returns:
+            A list of Issue entities, in the same order as the input IDs
+            for the IDs that were found.
+        """
+        raise MlflowNotImplementedException()
+
     def log_spans(self, location: str, spans: list[Span], tracking_uri=None) -> list[Span]:
         """
         Log multiple span entities to the tracking store.
