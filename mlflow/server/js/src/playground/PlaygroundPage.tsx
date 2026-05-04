@@ -59,7 +59,7 @@ import {
   ModelTraceExplorerUpdateTraceContextProvider,
 } from '@databricks/web-shared/model-trace-explorer';
 import type { ModelTrace } from '@databricks/web-shared/model-trace-explorer';
-import { getExperimentTraceV3 } from '@databricks/web-shared/model-trace-explorer';
+import { TracesServiceV3 } from '@databricks/web-shared/model-trace-explorer';
 import {
   getAjaxUrl,
   getDefaultHeaders,
@@ -127,24 +127,20 @@ const fetchTraceSpansV3 = async (
   traceId: string,
   signal?: AbortSignal,
 ): Promise<ModelTrace | null> => {
-  const traceResp = (await getExperimentTraceV3({ traceId })) as
-    | {
-        trace?: {
-          trace_info?: ModelTrace['info'];
-          data?: ModelTrace['data'];
-          spans?: ModelTrace['data']['spans'];
-        };
-      }
-    | undefined;
-  if (signal?.aborted) {
+  // Use the same fetcher the Experiment Traces tab uses — `TracesServiceV3.getTraceV3`
+  // combines `/api/3.0/mlflow/traces/{traceId}` (info) and
+  // `/api/3.0/mlflow/get-trace-artifact?request_id=...` (spans). The artifact
+  // endpoint returns spans with a flat attribute dict (JSON-encoded values),
+  // which is what the explorer's parser expects. The other route —
+  // `getExperimentTraceV3({ traceId })` — returns OTel-protobuf-shaped
+  // attributes (`{kvlist_value: ...}`) which renderers downstream don't handle,
+  // producing the literal string "kvlist_value" in the inline I/O pane.
+  const trace = (await TracesServiceV3.getTraceV3(traceId)) as ModelTrace | undefined;
+  if (signal?.aborted || !trace) {
     return null;
   }
-  const info = traceResp?.trace?.trace_info;
-  const data: ModelTrace['data'] | undefined =
-    traceResp?.trace?.data ??
-    (traceResp?.trace?.spans ? { spans: traceResp.trace.spans } : undefined);
-  if (info && data) {
-    return { info, data };
+  if (trace.info && trace.data) {
+    return trace;
   }
   return null;
 };
