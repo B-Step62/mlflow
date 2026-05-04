@@ -348,20 +348,15 @@ def claude_top_commands():
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
     default=None,
     help=(
-        "Inspect this directory for agent entrypoints and scaffold @invoke() / autolog() "
-        "calls (default: current working directory)."
+        "The agent repository to instrument with MLflow tracing "
+        "(default: current working directory). Answer 'no' to the tracing prompt "
+        "to skip instrumentation."
     ),
-)
-@click.option(
-    "--skip-inspect",
-    is_flag=True,
-    help="Skip the repo-inspection step.",
 )
 def setup(
     non_interactive: bool,
     config_path: Path | None,
     repo_dir: Path | None,
-    skip_inspect: bool,
 ) -> None:
     """Interactive wizard for the MLflow Agent Playground."""
     from mlflow.claude_code.playground_setup import (
@@ -369,13 +364,8 @@ def setup(
         run_setup_wizard,
     )
 
-    if skip_inspect:
-        inspect_target = None
-    else:
-        inspect_target = repo_dir if repo_dir is not None else Path.cwd()
-
     run_setup_wizard(
         config_path=config_path or DEFAULT_CONFIG_PATH,
         non_interactive=non_interactive,
-        repo_dir=inspect_target,
+        repo_dir=repo_dir if repo_dir is not None else Path.cwd(),
     )
