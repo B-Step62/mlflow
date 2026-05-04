@@ -11,6 +11,7 @@ from mlflow.claude_code.playground_setup import DEFAULT_CONFIG_PATH
 from mlflow.playground.server import (
     PlaygroundRuntime,
     _demo_stream_response,
+    _dispatch_feedback,
     _ensure_agent_running,
     _extract_assistant_text,
     _extract_tool_calls,
@@ -119,5 +120,45 @@ def create_playground_api_router(
             ),
             media_type="text/event-stream",
         )
+
+    @router.post("/issues/dispatch")
+    async def dispatch_issue(request: dict[str, Any]) -> dict[str, Any]:
+        rationale = request.get("rationale")
+        failing = request.get("failing_assistant_message")
+        prefix = request.get("conversation_prefix")
+
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise HTTPException(
+                status_code=400, detail="`rationale` must be a non-empty string."
+            )
+        if not isinstance(failing, str) or not failing.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="`failing_assistant_message` must be a non-empty string.",
+            )
+        if not isinstance(prefix, list):
+            raise HTTPException(
+                status_code=400, detail="`conversation_prefix` must be a list."
+            )
+
+        try:
+            return await asyncio.to_thread(
+                _dispatch_feedback,
+                runtime.config_path,
+                rationale=rationale,
+                failing_assistant_message=failing,
+                conversation_prefix=prefix,
+                expected_response=request.get("expected_response"),
+                aspect=request.get("aspect"),
+                experiment_id=request.get("experiment_id"),
+                source_trace_id=request.get("source_trace_id"),
+                source_feedback_id=request.get("source_feedback_id"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500, detail=f"Dispatch failed: {exc}"
+            ) from exc
 
     return router

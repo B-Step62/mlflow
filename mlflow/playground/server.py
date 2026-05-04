@@ -475,6 +475,83 @@ def _fetch_trace(config_path: Path, trace_id: str) -> dict[str, Any]:
     return _trace_payload(trace)
 
 
+def _dispatch_feedback(
+    config_path: Path,
+    *,
+    rationale: str,
+    failing_assistant_message: str,
+    conversation_prefix: list[dict[str, Any]],
+    expected_response: str | None = None,
+    aspect: str | None = None,
+    experiment_id: str | None = None,
+    source_trace_id: str | None = None,
+    source_feedback_id: str | None = None,
+) -> dict[str, Any]:
+    """Dispatch a piece of cockpit feedback into the playground (design.md §6.2).
+
+    Generates a runnable test case (YUK-14), creates the Issue with playground
+    lineage (YUK-13), and appends the test row to the regression dataset
+    (YUK-15). Returns the new ids and the dataset name. Raises ``ValueError``
+    if the experiment cannot be resolved; lets generator / store / dataset
+    errors propagate so the caller can map them to HTTP status codes.
+    """
+    from mlflow.entities.issue import IssueStatus
+    from mlflow.playground.regression_suite import (
+        append_test_case,
+        regression_dataset_name,
+    )
+    from mlflow.playground.test_case_generator import (
+        FeedbackInput,
+        TestCaseGenerator,
+    )
+    from mlflow.tracking._tracking_service.utils import _get_store
+
+    config = _load_playground_config(config_path)
+    if experiment_id is None:
+        experiment_id = _ensure_experiment_id(
+            config["tracking_uri"], config["experiment"]
+        )
+    if experiment_id is None:
+        raise ValueError(
+            "experiment_id was not provided and could not be resolved from the "
+            "playground config — start `mlflow agent playground` first or pass "
+            "`experiment_id` explicitly."
+        )
+
+    feedback = FeedbackInput(
+        rationale=rationale,
+        failing_assistant_message=failing_assistant_message,
+        conversation_prefix=conversation_prefix,
+        expected_response=expected_response,
+        aspect=aspect,
+    )
+    test_case = TestCaseGenerator().generate(feedback)
+
+    store = _get_store()
+    title = (rationale.strip().splitlines() or ["Untitled"])[0][:60] or "Untitled"
+    issue = store.create_issue(
+        experiment_id=experiment_id,
+        name=title,
+        description=rationale,
+        status=IssueStatus.TODO,
+        source_trace_id=source_trace_id,
+        source_feedback_id=source_feedback_id,
+    )
+
+    append_test_case(
+        experiment_id,
+        test_case,
+        issue_id=issue.issue_id,
+        source_trace_id=source_trace_id,
+    )
+
+    return {
+        "issue_id": issue.issue_id,
+        "test_case_id": test_case.test_case_id,
+        "dataset_name": regression_dataset_name(experiment_id),
+    }
+
+
 def _chunk_text(text: str) -> list[str]:
     if not text:
         return [""]

@@ -52,3 +52,84 @@ def test_playground_chat_endpoint_requires_messages():
 
     assert response.status_code == 400
     assert "non-empty list" in response.json()["detail"]
+
+
+_DISPATCH_PATH = "/ajax-api/3.0/mlflow/playground/issues/dispatch"
+
+
+def _valid_dispatch_payload(**overrides):
+    base = {
+        "rationale": "must mention §4.2 of the refund policy",
+        "failing_assistant_message": "I'd be happy to help process your refund.",
+        "conversation_prefix": [{"role": "user", "content": "How long do refunds take?"}],
+        "experiment_id": "0",
+        "source_trace_id": "tr-abc",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_dispatch_returns_ids_on_success():
+    client = create_test_client()
+    expected = {
+        "issue_id": "iss-1",
+        "test_case_id": "tc-1",
+        "dataset_name": "regression_suite_0",
+    }
+    with mock.patch(
+        "mlflow.server.playground_api._dispatch_feedback",
+        return_value=expected,
+    ) as mock_dispatch:
+        response = client.post(_DISPATCH_PATH, json=_valid_dispatch_payload())
+
+    assert response.status_code == 200
+    assert response.json() == expected
+    mock_dispatch.assert_called_once()
+    kwargs = mock_dispatch.call_args.kwargs
+    assert kwargs["rationale"].startswith("must mention")
+    assert kwargs["experiment_id"] == "0"
+    assert kwargs["source_trace_id"] == "tr-abc"
+
+
+def test_dispatch_rejects_blank_rationale():
+    client = create_test_client()
+
+    response = client.post(_DISPATCH_PATH, json=_valid_dispatch_payload(rationale="  "))
+
+    assert response.status_code == 400
+    assert "rationale" in response.json()["detail"]
+
+
+def test_dispatch_rejects_non_list_conversation_prefix():
+    client = create_test_client()
+
+    response = client.post(
+        _DISPATCH_PATH, json=_valid_dispatch_payload(conversation_prefix="hi")
+    )
+
+    assert response.status_code == 400
+    assert "conversation_prefix" in response.json()["detail"]
+
+
+def test_dispatch_translates_value_error_to_400():
+    client = create_test_client()
+    with mock.patch(
+        "mlflow.server.playground_api._dispatch_feedback",
+        side_effect=ValueError("experiment_id missing"),
+    ):
+        response = client.post(_DISPATCH_PATH, json=_valid_dispatch_payload(experiment_id=None))
+
+    assert response.status_code == 400
+    assert "experiment_id missing" in response.json()["detail"]
+
+
+def test_dispatch_translates_unexpected_error_to_500():
+    client = create_test_client()
+    with mock.patch(
+        "mlflow.server.playground_api._dispatch_feedback",
+        side_effect=RuntimeError("LLM down"),
+    ):
+        response = client.post(_DISPATCH_PATH, json=_valid_dispatch_payload())
+
+    assert response.status_code == 500
+    assert "LLM down" in response.json()["detail"]
