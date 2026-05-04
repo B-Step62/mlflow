@@ -6,6 +6,8 @@ from functools import cached_property
 from typing import Any
 
 from mlflow.entities._mlflow_object import _MlflowObject
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 from mlflow.protos.issues_pb2 import Issue as ProtoIssue
 
 
@@ -37,6 +39,73 @@ class IssueStatus(str, Enum):
 
     def __str__(self):
         return self.value
+
+
+# Playground state-machine transitions (design.md §5.1 + §6.5).
+# done / rejected are terminal — no key entry, no outgoing edges.
+_PLAYGROUND_TRANSITIONS: dict[IssueStatus, frozenset[IssueStatus]] = {}
+
+
+def _build_transitions() -> None:
+    # Defined as a function so the module is still importable if IssueStatus
+    # is partially constructed (e.g. during test collection with `from x import *`).
+    _PLAYGROUND_TRANSITIONS.update(
+        {
+            IssueStatus.TODO: frozenset({IssueStatus.IN_PROGRESS, IssueStatus.REJECTED}),
+            IssueStatus.IN_PROGRESS: frozenset({IssueStatus.REVIEW, IssueStatus.REJECTED}),
+            IssueStatus.REVIEW: frozenset(
+                {IssueStatus.DONE, IssueStatus.IN_PROGRESS, IssueStatus.REJECTED}
+            ),
+        }
+    )
+
+
+_build_transitions()
+
+_PLAYGROUND_STATES: frozenset[IssueStatus] = frozenset(
+    {
+        IssueStatus.TODO,
+        IssueStatus.IN_PROGRESS,
+        IssueStatus.REVIEW,
+        IssueStatus.DONE,
+        IssueStatus.REJECTED,
+    }
+)
+
+
+def is_playground_state(status: IssueStatus) -> bool:
+    """True iff ``status`` is one of the playground state-machine values
+    (todo / in_progress / review / done / rejected)."""
+    return status in _PLAYGROUND_STATES
+
+
+def validate_transition(from_status: IssueStatus, to_status: IssueStatus) -> None:
+    """Validate a playground state-machine transition.
+
+    Raises ``MlflowException`` (INVALID_PARAMETER_VALUE) if the transition
+    is illegal, including:
+
+    * either side is a legacy detection state (``pending`` / ``resolved``) —
+      use ``update_issue`` directly for those, the state machine doesn't
+      govern them;
+    * ``from_status`` is terminal (``done`` / ``rejected``);
+    * the edge ``from_status -> to_status`` isn't in the allow-list.
+    """
+    if not is_playground_state(from_status) or not is_playground_state(to_status):
+        raise MlflowException(
+            "transition_issue only applies to playground states (todo, "
+            "in_progress, review, done, rejected). Got "
+            f"from={from_status.value!r}, to={to_status.value!r}.",
+            error_code=INVALID_PARAMETER_VALUE,
+        )
+    allowed = _PLAYGROUND_TRANSITIONS.get(from_status, frozenset())
+    if to_status not in allowed:
+        legal = sorted(s.value for s in allowed) or "[]  (terminal state)"
+        raise MlflowException(
+            f"Illegal issue transition {from_status.value!r} -> {to_status.value!r}. "
+            f"Legal next states from {from_status.value!r}: {legal}.",
+            error_code=INVALID_PARAMETER_VALUE,
+        )
 
 
 class IssueSeverity(str, Enum):
