@@ -1201,6 +1201,47 @@ class SqlIssue(Base):
     Creator identifier: `String` (limit 255 characters). Optional.
     """
 
+    priority = Column(Integer, nullable=True)
+    """
+    Playground priority: `Integer` 1..4 (Symphony-compatible). Nullable for legacy
+    issue-detection rows.
+    """
+    source_feedback_id = Column(String(50), nullable=True)
+    """
+    Feedback assessment ID that spawned this issue (playground dispatch flow).
+    Nullable for legacy detection rows.
+    """
+    source_trace_id = Column(String(50), nullable=True)
+    """
+    Trace ID this issue was anchored to (the failing trace the user annotated).
+    """
+    source_conversation_id = Column(String(64), nullable=True)
+    """
+    Conversation ID so the playground can replay the failing exchange against
+    candidate fixes.
+    """
+    test_case_id = Column(String(36), nullable=True)
+    """
+    Auto-generated regression-suite test case ID (populated when the
+    test-case generator runs).
+    """
+    agent_version_id = Column(String(36), nullable=True)
+    """
+    Current candidate draft AgentVersion ID (None for issues without a draft yet).
+    """
+    base_prompt_id = Column(String(36), nullable=True)
+    """
+    Base prompt ID for prompt-related fixes.
+    """
+    assignee = Column(String(255), nullable=True)
+    """
+    Worker session ID while the issue is in_progress; NULL otherwise.
+    """
+    labels = Column(Text, nullable=True)
+    """
+    Free-form labels stored as JSON array: `Text`.
+    """
+
     run = relationship("SqlRun", foreign_keys=[source_run_id], backref=backref("issues"))
     """
     SQLAlchemy relationship (many:one) with
@@ -1213,6 +1254,10 @@ class SqlIssue(Base):
         Index(f"index_{__tablename__}_source_run_id", "source_run_id"),
         Index(f"index_{__tablename__}_status", "status"),
         Index(f"index_{__tablename__}_created_by", "created_by"),
+        Index(f"index_{__tablename__}_experiment_id_status", "experiment_id", "status"),
+        Index(f"index_{__tablename__}_source_feedback_id", "source_feedback_id"),
+        Index(f"index_{__tablename__}_source_trace_id", "source_trace_id"),
+        Index(f"index_{__tablename__}_assignee", "assignee"),
     )
 
     def __repr__(self):
