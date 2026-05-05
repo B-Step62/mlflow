@@ -551,6 +551,180 @@ export const feedbacksFromTraceAssessments = (
   return out;
 };
 
+// --- Dispatch flow ----------------------------------------------------------
+
+export type DispatchPayload = {
+  rationale: string;
+  failing_assistant_message: string;
+  conversation_prefix: Array<{ role: string; content: string }>;
+  expected_response?: string;
+  aspect?: string;
+  experiment_id?: string;
+  source_trace_id?: string;
+  source_feedback_id?: string;
+};
+
+export type DispatchResult = {
+  issue_id: string;
+  test_case_id?: string;
+  dataset_name?: string;
+};
+
+export const dispatchFeedback = async (payload: DispatchPayload): Promise<DispatchResult> => {
+  const response = await fetch(getAjaxUrl('ajax-api/3.0/mlflow/playground/issues/dispatch'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getDefaultHeaders(document.cookie),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Dispatch failed (${response.status}): ${text || response.statusText}`);
+  }
+  return (await response.json()) as DispatchResult;
+};
+
+/**
+ * Annotate the feedback's persisted assessment with the new issue_id so the
+ * dispatched card retains the link across reloads. Best-effort: if the patch
+ * fails, the dispatch itself is still considered successful — the card can
+ * still surface the issue id from local state.
+ */
+export const tagFeedbackWithIssueId = async (traceId: string, assessmentId: string, issueId: string): Promise<void> => {
+  try {
+    await fetch(
+      getAjaxUrl(
+        `ajax-api/3.0/mlflow/traces/${encodeURIComponent(traceId)}/assessments/${encodeURIComponent(assessmentId)}`,
+      ),
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getDefaultHeaders(document.cookie),
+        },
+        body: JSON.stringify({
+          assessment: { metadata: { issue_id: issueId } },
+          update_mask: { paths: ['metadata'] },
+        }),
+      },
+    );
+  } catch {
+    // best-effort; don't surface errors to the user — dispatch already
+    // succeeded and the local state holds the issue id for this session.
+  }
+};
+
+export const DispatchModal = ({
+  feedback,
+  visible,
+  isSubmitting,
+  onCancel,
+  onConfirm,
+}: {
+  feedback: PlaygroundFeedback | null;
+  visible: boolean;
+  isSubmitting: boolean;
+  onCancel: () => void;
+  onConfirm: (overrides: { rationale: string; aspect: string; expected_output?: string }) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [rationale, setRationale] = useState('');
+  const [aspect, setAspect] = useState<Aspect>('quality');
+  const [expectedOutput, setExpectedOutput] = useState('');
+
+  useEffect(() => {
+    if (visible && feedback) {
+      setRationale(feedback.rationale);
+      setAspect(feedback.aspect);
+      setExpectedOutput(feedback.expected_output ?? '');
+    }
+  }, [visible, feedback]);
+
+  return (
+    <Modal
+      componentId="mlflow.playground.feedback.dispatch-modal"
+      visible={visible}
+      title="Dispatch as Issue"
+      okText="Create Issue"
+      cancelText="Cancel"
+      onCancel={onCancel}
+      onOk={() =>
+        onConfirm({
+          rationale: rationale.trim(),
+          aspect,
+          expected_output: expectedOutput.trim() || undefined,
+        })
+      }
+      okButtonProps={{
+        disabled: !rationale.trim() || isSubmitting,
+        loading: isSubmitting,
+      }}
+    >
+      {feedback && (
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+          <Typography.Text color="secondary" size="sm">
+            We'll generate a runnable test from this feedback, store it in this experiment's regression dataset, and
+            create an Issue at state=todo with `source_trace_id` set to{' '}
+            <code css={{ fontFamily: 'monospace' }}>{feedback.trace_id}</code>.
+          </Typography.Text>
+          <div
+            css={{
+              padding: theme.spacing.sm,
+              borderLeft: `3px solid ${theme.colors.blue400}`,
+              backgroundColor: 'rgba(238,244,255,0.6)',
+              fontStyle: 'italic',
+              maxHeight: 96,
+              overflow: 'auto',
+            }}
+          >
+            "{feedback.anchor.selected_text}"
+          </div>
+          <div>
+            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>Aspect</Typography.Text>
+            <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+              {ASPECT_OPTIONS.map((option) => (
+                <Tag
+                  key={option}
+                  componentId="mlflow.playground.feedback.dispatch-aspect-chip"
+                  color={aspect === option ? 'indigo' : 'default'}
+                  onClick={() => setAspect(option)}
+                  css={{ cursor: 'pointer' }}
+                >
+                  {option}
+                </Tag>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>
+              Rationale (drives the generated test)
+            </Typography.Text>
+            <Input.TextArea
+              componentId="mlflow.playground.feedback.dispatch-rationale"
+              value={rationale}
+              onChange={(e) => setRationale(e.target.value)}
+              autoSize={{ minRows: 3, maxRows: 8 }}
+            />
+          </div>
+          <div>
+            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>
+              Expected response (optional)
+            </Typography.Text>
+            <Input.TextArea
+              componentId="mlflow.playground.feedback.dispatch-expected"
+              value={expectedOutput}
+              onChange={(e) => setExpectedOutput(e.target.value)}
+              autoSize={{ minRows: 2, maxRows: 6 }}
+            />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+};
+
 // --- Anchor highlight helpers ------------------------------------------------
 
 /**
