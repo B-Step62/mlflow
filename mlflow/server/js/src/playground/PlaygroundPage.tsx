@@ -315,6 +315,27 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
   const { expandedKeys, setExpandedKeys } = useTimelineTreeExpandedNodes({
     rootNodes: topLevelNodes,
   });
+
+  // Live polling produces a new tree shape on every refresh: while in-progress,
+  // `parseModelTraceToTreeWithMultipleRoots` returns orphan child spans as
+  // top-level nodes; once the root span finalizes, those children consolidate
+  // under a brand-new root whose span_id was never in `expandedKeys`. Without
+  // this merge, the new root renders collapsed and hides the entire tree.
+  // We only *add* keys, never remove, so user-collapsed nodes stay collapsed.
+  useEffect(() => {
+    if (topLevelNodes.length === 0) return;
+    setExpandedKeys((current) => {
+      const next = new Set(current);
+      const before = next.size;
+      const walk = (node: { key: string | number; children?: typeof topLevelNodes }) => {
+        next.add(node.key);
+        node.children?.forEach(walk);
+      };
+      topLevelNodes.forEach(walk);
+      return next.size === before ? current : next;
+    });
+  }, [topLevelNodes, setExpandedKeys]);
+
   const { spanFilterState, setSpanFilterState, filteredTreeNodes } = useModelTraceSearch({
     treeNodes: topLevelNodes,
     selectedNode,
@@ -992,19 +1013,14 @@ const PlaygroundPageImpl = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+              padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
               backgroundColor: theme.colors.blue100,
             }}
           >
             <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
               <SpeechBubbleIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
-              <div>
-                <Typography.Text css={{ display: 'block', fontWeight: 700 }}>Conversation</Typography.Text>
-                <Typography.Text color="secondary">
-                  Each turn streams into the right pane as the agent runs.
-                </Typography.Text>
-              </div>
+              <Typography.Text css={{ fontWeight: 700 }}>Conversation</Typography.Text>
             </div>
             <Tooltip componentId="mlflow.playground.clear-thread.tooltip" content="Clear conversation">
               <Button
