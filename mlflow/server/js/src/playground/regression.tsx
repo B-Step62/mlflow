@@ -507,13 +507,9 @@ const BrowseSuiteDrawer = ({
             </Typography.Text>
           )}
           {!loading && !error && cases.length > 0 && (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, overflow: 'auto' }}>
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, overflow: 'auto' }}>
               {cases.map((tc, idx) => (
-                <RegressionCaseCard
-                  key={tc.test_case_id ?? `case-${idx}`}
-                  case_={tc}
-                  experimentId={experimentId}
-                />
+                <RegressionCaseRow key={tc.test_case_id ?? `case-${idx}`} case_={tc} />
               ))}
             </div>
           )}
@@ -523,168 +519,112 @@ const BrowseSuiteDrawer = ({
   );
 };
 
-const RegressionCaseCard = ({
-  case_,
-  experimentId,
-}: {
-  case_: RegressionCase;
-  experimentId: string | undefined;
-}) => {
+/**
+ * One row per regression test case. Reads as a sentence: the question on
+ * top, then one or more "Answer must <verb> <object>" lines below. The
+ * verb is highlighted so it's scannable in a list of many cases. Object
+ * style depends on what it is — short string values render as code-style
+ * chips, prose criteria render as italic text, expected responses render
+ * as preformatted text.
+ */
+const RegressionCaseRow = ({ case_ }: { case_: RegressionCase }) => {
   const { theme } = useDesignSystemTheme();
-  const issueHref = experimentId && case_.issue_id ? `/#/experiments/${experimentId}/issues/${case_.issue_id}` : null;
-  const traceHref =
-    experimentId && case_.source_trace_id
-      ? `/#/experiments/${experimentId}/traces/${case_.source_trace_id}`
-      : null;
+  const sentences = buildAssertionSentences(case_);
 
   return (
     <div
       css={{
         display: 'flex',
         flexDirection: 'column',
-        gap: theme.spacing.sm,
-        padding: theme.spacing.md,
+        gap: theme.spacing.xs,
+        padding: theme.spacing.sm,
         borderRadius: theme.borders.borderRadiusMd,
         border: `1px solid ${theme.colors.border}`,
         backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-        <Typography.Text size="sm" color="secondary" css={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Question
+      <Typography.Text css={{ whiteSpace: 'pre-wrap' }}>
+        {case_.input_question || <em>(no user message in prefix)</em>}
+      </Typography.Text>
+      {sentences.length === 0 ? (
+        <Typography.Text size="sm" color="secondary">
+          (no conditions — likely malformed spec)
         </Typography.Text>
-        <Typography.Text css={{ whiteSpace: 'pre-wrap' }}>
-          {case_.input_question || <em>(no user message in prefix)</em>}
-        </Typography.Text>
-      </div>
-
-      <ConditionsView case_={case_} />
-
-      <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.md, marginTop: theme.spacing.xs }}>
-        {case_.rationale_summary && (
-          <Typography.Text size="sm" color="secondary" css={{ fontStyle: 'italic' }}>
-            “{case_.rationale_summary}”
-          </Typography.Text>
-        )}
-        {issueHref && (
-          <a
-            href={issueHref}
-            target="_blank"
-            rel="noreferrer"
-            css={{ fontSize: theme.typography.fontSizeSm, color: theme.colors.actionPrimaryTextDefault }}
-          >
-            {case_.issue_id} →
-          </a>
-        )}
-        {traceHref && (
-          <a
-            href={traceHref}
-            target="_blank"
-            rel="noreferrer"
-            css={{
-              fontSize: theme.typography.fontSizeSm,
-              color: theme.colors.textSecondary,
-              fontFamily: 'monospace',
-            }}
-          >
-            trace →
-          </a>
-        )}
-        {case_.promoted && (
-          <Typography.Text size="sm" color="success">
-            promoted
-          </Typography.Text>
-        )}
-      </div>
+      ) : (
+        <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {sentences.map((s, i) => (
+            <AssertionSentence key={i} sentence={s} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-const ConditionsView = ({ case_ }: { case_: RegressionCase }) => {
-  const { theme } = useDesignSystemTheme();
+type AssertionSentence = {
+  verb: string;
+  // Either a list of short values (rendered as code chips) or a single
+  // prose object (criteria, expected response).
+  values?: string[];
+  prose?: string;
+};
 
+function buildAssertionSentences(case_: RegressionCase): AssertionSentence[] {
+  const out: AssertionSentence[] = [];
   if (case_.strategy === 'assertion' && case_.assertion) {
     const a = case_.assertion;
-    const items: Array<[string, string[]]> = [
-      ['must contain', a.must_contain ?? []],
-      ['must not contain', a.must_not_contain ?? []],
-      ['must call tool', a.must_call_tool ?? []],
-      ['must not call tool', a.must_not_call_tool ?? []],
-    ];
-    const nonEmpty = items.filter(([, v]) => v.length > 0);
-    if (nonEmpty.length === 0) {
-      return (
-        <Typography.Text size="sm" color="secondary">
-          (assertion spec has no conditions — likely malformed)
-        </Typography.Text>
-      );
-    }
-    return (
-      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-        {nonEmpty.map(([label, values]) => (
-          <div key={label} css={{ display: 'flex', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-            <Typography.Text
-              size="sm"
-              color="secondary"
-              css={{ minWidth: 140, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-            >
-              {label}
-            </Typography.Text>
-            <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs }}>
-              {values.map((v) => (
-                <code
-                  key={v}
-                  css={{
-                    fontSize: theme.typography.fontSizeSm,
-                    padding: `2px ${theme.spacing.xs}px`,
-                    borderRadius: theme.borders.borderRadiusSm,
-                    backgroundColor: theme.colors.backgroundSecondary,
-                  }}
-                >
-                  {v}
-                </code>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+    if (a.must_contain?.length) out.push({ verb: 'contain', values: a.must_contain });
+    if (a.must_not_contain?.length) out.push({ verb: 'not contain', values: a.must_not_contain });
+    if (a.must_call_tool?.length) out.push({ verb: 'call tool', values: a.must_call_tool });
+    if (a.must_not_call_tool?.length) out.push({ verb: 'not call tool', values: a.must_not_call_tool });
   }
-
   if (case_.strategy === 'judge' && case_.judge) {
-    return (
-      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-        <div css={{ display: 'flex', gap: theme.spacing.sm }}>
-          <Typography.Text
-            size="sm"
-            color="secondary"
-            css={{ minWidth: 140, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-          >
-            judge criteria
-          </Typography.Text>
-          <Typography.Text size="sm">{case_.judge.criteria}</Typography.Text>
-        </div>
-        {case_.judge.expected_response && (
-          <div css={{ display: 'flex', gap: theme.spacing.sm }}>
-            <Typography.Text
-              size="sm"
-              color="secondary"
-              css={{ minWidth: 140, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-            >
-              expected response
-            </Typography.Text>
-            <Typography.Text size="sm" css={{ whiteSpace: 'pre-wrap' }}>
-              {case_.judge.expected_response}
-            </Typography.Text>
-          </div>
-        )}
-      </div>
-    );
+    if (case_.judge.criteria) out.push({ verb: 'follow', prose: case_.judge.criteria });
+    if (case_.judge.expected_response) out.push({ verb: 'match', prose: case_.judge.expected_response });
   }
+  // expected_response can also live at the top level (older rows) — show it
+  // even if the judge object isn't present.
+  if (
+    case_.expected_response &&
+    !out.some((s) => s.verb === 'match' && s.prose === case_.expected_response)
+  ) {
+    out.push({ verb: 'match', prose: case_.expected_response });
+  }
+  return out;
+}
 
+const AssertionSentence = ({ sentence }: { sentence: AssertionSentence }) => {
+  const { theme } = useDesignSystemTheme();
   return (
-    <Typography.Text size="sm" color="secondary">
-      (unknown strategy — strategy field is {case_.strategy ?? 'missing'})
-    </Typography.Text>
+    <div css={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: theme.spacing.xs }}>
+      <Typography.Text size="sm" color="secondary">
+        Answer must
+      </Typography.Text>
+      <Typography.Text size="sm" css={{ fontWeight: 600 }}>
+        {sentence.verb}
+      </Typography.Text>
+      {sentence.values && (
+        <div css={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {sentence.values.map((v, i) => (
+            <code
+              key={`${v}-${i}`}
+              css={{
+                fontSize: theme.typography.fontSizeSm,
+                padding: `1px 6px`,
+                borderRadius: theme.borders.borderRadiusSm,
+                backgroundColor: theme.colors.backgroundSecondary,
+              }}
+            >
+              {v}
+            </code>
+          ))}
+        </div>
+      )}
+      {sentence.prose && (
+        <Typography.Text size="sm" css={{ fontStyle: 'italic' }}>
+          “{sentence.prose}”
+        </Typography.Text>
+      )}
+    </div>
   );
 };
