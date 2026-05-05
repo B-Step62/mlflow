@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import logging
 import sys
 import threading
 import types
@@ -164,26 +163,13 @@ def test_enable_hot_reload_continues_after_callback_failure(tmp_path):
     assert calls["n"] == 2
 
 
-def test_enable_hot_reload_logs_warning_when_watchfiles_missing(tmp_path):
+def test_enable_hot_reload_warns_when_watchfiles_missing(tmp_path, capfd):
     """If ``watchfiles`` isn't installed the watcher must bow out gracefully
-    with a warning rather than letting the ImportError bubble up the thread.
+    with a user-visible message printed to stdout (logger config is unreliable
+    when called from inside ``mlflow agent playground``)."""
+    with mock.patch.dict(sys.modules, {"watchfiles": None}):
+        thread = enable_hot_reload(tmp_path, on_change=lambda: None)
+        thread.join(timeout=2.0)
 
-    We attach a one-shot handler to the module's logger so we can read the
-    warning regardless of pytest's thread-handling for ``caplog`` (which has
-    been flaky for thread-emitted records in some setups)."""
-    captured: list[logging.LogRecord] = []
-    handler = logging.Handler()
-    handler.setLevel(logging.WARNING)
-    handler.emit = captured.append  # type: ignore[assignment]
-    server_logger = logging.getLogger("mlflow.genai.agent_server.server")
-    server_logger.addHandler(handler)
-    try:
-        # Make sure any cached real `watchfiles` module is invisible so the
-        # `from watchfiles import watch` inside the watcher thread fails.
-        with mock.patch.dict(sys.modules, {"watchfiles": None}):
-            thread = enable_hot_reload(tmp_path, on_change=lambda: None)
-            thread.join(timeout=2.0)
-    finally:
-        server_logger.removeHandler(handler)
-
-    assert any("watchfiles" in record.getMessage() for record in captured)
+    out, _err = capfd.readouterr()
+    assert "watchfiles" in out
