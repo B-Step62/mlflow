@@ -112,15 +112,38 @@ Return JSON matching the schema.
 """
 
 
-def _default_llm_call(prompt: str) -> str:
-    from mlflow.genai.simulators.utils import (
-        get_default_simulation_model,
-        invoke_model_without_tracing,
+def _resolve_default_model_uri() -> str:
+    """Pick an LLM whose API key is actually present in the environment.
+
+    Native gateway providers (used by ``invoke_model_without_tracing``) require
+    the matching API key at construction time; if it's missing, the call
+    silently falls back to litellm and dies with an unhelpful message when
+    litellm isn't installed. So we probe for keys ourselves and return the
+    first provider we can actually run, with a clear error if none are set.
+
+    Provider preference matches the playground's worker bias: Claude users hit
+    Anthropic first. Long-term, this should consult the configured worker
+    (claude-code → anthropic, codex → openai) — see follow-up ticket.
+    """
+    import os
+
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic:/claude-sonnet-4-5-20250929"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai:/gpt-5"
+    raise RuntimeError(
+        "Test-case generation needs an LLM API key. Set ANTHROPIC_API_KEY "
+        "(preferred — matches the claude-code worker) or OPENAI_API_KEY in "
+        "the environment running `mlflow agent playground`, then retry."
     )
+
+
+def _default_llm_call(prompt: str) -> str:
+    from mlflow.genai.simulators.utils import invoke_model_without_tracing
     from mlflow.types.llm import ChatMessage
 
     return invoke_model_without_tracing(
-        model_uri=get_default_simulation_model(),
+        model_uri=_resolve_default_model_uri(),
         messages=[ChatMessage(role="user", content=prompt)],
         response_format=_LLMTestCase,
     )
