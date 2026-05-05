@@ -42,6 +42,13 @@ export type RunTestVerdict = {
   agent_tool_calls: string[];
 };
 
+export type TestCaseRow = {
+  messages: { role: string; content: string }[];
+  test_spec: { strategy?: string; assertions?: string[]; judge_prompt?: string; [k: string]: unknown };
+  expected_response?: string | null;
+  tags: Record<string, string>;
+};
+
 // --- API helpers -------------------------------------------------------------
 
 export const fetchIssue = async (issueId: string): Promise<IssueDetail> => {
@@ -52,6 +59,18 @@ export const fetchIssue = async (issueId: string): Promise<IssueDetail> => {
     throw new Error(`Failed to fetch issue (${response.status}): ${await response.text()}`);
   }
   return (await response.json()) as IssueDetail;
+};
+
+export const fetchIssueTestCase = async (issueId: string): Promise<TestCaseRow | null> => {
+  const response = await fetch(
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/test-case`),
+    { headers: getDefaultHeaders(document.cookie) },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Failed to fetch test case (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as TestCaseRow;
 };
 
 export const runIssueTest = async (issueId: string): Promise<RunTestVerdict> => {
@@ -95,6 +114,7 @@ export const IssueDetailDrawer = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const [issue, setIssue] = useState<IssueDetail | null>(null);
+  const [testCase, setTestCase] = useState<TestCaseRow | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -103,16 +123,20 @@ export const IssueDetailDrawer = ({
   useEffect(() => {
     if (!visible || !issueId) {
       setIssue(null);
+      setTestCase(null);
       setLoadError(null);
       setVerdict(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    fetchIssue(issueId)
-      .then((data) => {
+    // Fetch issue and test case in parallel; a missing test case (404) is
+    // expected for issues whose generation hasn't completed yet.
+    Promise.all([fetchIssue(issueId), fetchIssueTestCase(issueId).catch(() => null)])
+      .then(([issueData, testCaseData]) => {
         if (cancelled) return;
-        setIssue(data);
+        setIssue(issueData);
+        setTestCase(testCaseData);
         setLoadError(null);
       })
       .catch((e) => {
@@ -233,6 +257,8 @@ export const IssueDetailDrawer = ({
                 )}
               </div>
 
+              <TestCasePanel testCase={testCase} />
+
               <div
                 css={{
                   borderTop: `1px solid ${theme.colors.border}`,
@@ -264,6 +290,125 @@ export const IssueDetailDrawer = ({
         </div>
       </Drawer.Content>
     </Drawer.Root>
+  );
+};
+
+const TestCasePanel = ({ testCase }: { testCase: TestCaseRow | null }) => {
+  const { theme } = useDesignSystemTheme();
+  if (!testCase) {
+    return (
+      <div
+        css={{
+          borderTop: `1px solid ${theme.colors.border}`,
+          paddingTop: theme.spacing.md,
+        }}
+      >
+        <Typography.Text css={{ fontWeight: 600 }}>Test case</Typography.Text>
+        <Typography.Text color="secondary" size="sm" css={{ display: 'block' }}>
+          Not generated yet — the worker hasn't synthesized a regression case for this issue.
+        </Typography.Text>
+      </div>
+    );
+  }
+  const strategy = testCase.test_spec.strategy ?? 'assertion';
+  const assertions = Array.isArray(testCase.test_spec.assertions)
+    ? (testCase.test_spec.assertions as string[])
+    : [];
+  const judgePrompt =
+    typeof testCase.test_spec.judge_prompt === 'string' ? testCase.test_spec.judge_prompt : '';
+  return (
+    <div
+      css={{
+        borderTop: `1px solid ${theme.colors.border}`,
+        paddingTop: theme.spacing.md,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+      }}
+    >
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+        <Typography.Text css={{ fontWeight: 600 }}>Test case</Typography.Text>
+        <Tag componentId="mlflow.playground.issue-detail.test-strategy" color="indigo">
+          {strategy}
+        </Tag>
+      </div>
+      <div>
+        <Typography.Text color="secondary" size="sm">
+          Input ({testCase.messages.length} {testCase.messages.length === 1 ? 'message' : 'messages'})
+        </Typography.Text>
+        <div
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing.xs,
+            marginTop: theme.spacing.xs,
+          }}
+        >
+          {testCase.messages.map((msg, i) => (
+            <div
+              key={i}
+              css={{
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusMd,
+                padding: theme.spacing.sm,
+                backgroundColor:
+                  msg.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundSecondary,
+              }}
+            >
+              <Typography.Text size="sm" color="secondary" css={{ display: 'block' }}>
+                {msg.role}
+              </Typography.Text>
+              <Typography.Text css={{ whiteSpace: 'pre-wrap' }}>{msg.content}</Typography.Text>
+            </div>
+          ))}
+        </div>
+      </div>
+      {strategy === 'assertion' && assertions.length > 0 && (
+        <div>
+          <Typography.Text color="secondary" size="sm">
+            Assertions
+          </Typography.Text>
+          <ul css={{ marginTop: theme.spacing.xs, paddingLeft: theme.spacing.lg }}>
+            {assertions.map((assertion, i) => (
+              <li key={i}>
+                <Typography.Text>{assertion}</Typography.Text>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {strategy === 'judge' && judgePrompt && (
+        <div>
+          <Typography.Text color="secondary" size="sm">
+            Judge prompt
+          </Typography.Text>
+          <pre
+            css={{
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'monospace',
+              fontSize: theme.typography.fontSizeSm,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              padding: theme.spacing.sm,
+              marginTop: theme.spacing.xs,
+              backgroundColor: theme.colors.backgroundSecondary,
+            }}
+          >
+            {judgePrompt}
+          </pre>
+        </div>
+      )}
+      {testCase.expected_response && (
+        <div>
+          <Typography.Text color="secondary" size="sm">
+            Expected response
+          </Typography.Text>
+          <Typography.Paragraph css={{ marginTop: theme.spacing.xs, whiteSpace: 'pre-wrap' }}>
+            {testCase.expected_response}
+          </Typography.Paragraph>
+        </div>
+      )}
+    </div>
   );
 };
 
