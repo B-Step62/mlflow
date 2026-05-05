@@ -582,6 +582,43 @@ def test_health_poll_resets_failure_count_on_recovery():
     assert conn.status == "ready"
 
 
+def test_get_config_reads_active_connection_url():
+    """After YUK-49, /config GET should reflect the active connection's URL."""
+    client = create_test_client()
+    new_id = client.post(
+        f"{_CONN_BASE}/register",
+        json={"name": "alt", "agent_url": "http://127.0.0.1:9777"},
+    ).json()["connection_id"]
+    client.post(f"{_CONN_BASE}/{new_id}/activate")
+
+    with (
+        mock.patch("mlflow.server.playground_api._ensure_agent_running", return_value=False),
+        mock.patch("mlflow.server.playground_api._is_agent_healthy_sync", return_value=True),
+    ):
+        response = client.get("/ajax-api/3.0/mlflow/playground/config")
+
+    assert response.status_code == 200
+    assert response.json()["agent_url"] == "http://127.0.0.1:9777"
+
+
+def test_probe_config_updates_main_connection_url():
+    client = create_test_client()
+    main_id = client.get(_CONN_BASE).json()["active_connection_id"]
+
+    with (
+        mock.patch("mlflow.server.playground_api._ensure_agent_running", return_value=True),
+        mock.patch("mlflow.server.playground_api._is_agent_healthy_sync", return_value=True),
+    ):
+        response = client.post(
+            "/ajax-api/3.0/mlflow/playground/config",
+            json={"agent_url": "http://127.0.0.1:9888"},
+        )
+    assert response.status_code == 200
+
+    main = client.get(f"{_CONN_BASE}/{main_id}").json()
+    assert main["agent_url"] == "http://127.0.0.1:9888"
+
+
 @pytest.mark.parametrize("status", ["pending", "dead"])
 def test_health_poll_skips_pending_and_dead(status: str):
     from mlflow.playground.server import (
