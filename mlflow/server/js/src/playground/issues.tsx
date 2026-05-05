@@ -7,7 +7,7 @@
  * evaluate the response, and on green transition the Issue to ``done``.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Alert, Button, Drawer, Spinner, Tag, Typography, useDesignSystemTheme } from '@databricks/design-system';
 
@@ -15,6 +15,7 @@ import {
   getAjaxUrl,
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
+import { useConnections, type AgentConnection } from './connections';
 
 // --- Types -------------------------------------------------------------------
 
@@ -54,6 +55,30 @@ export type TestCaseRow = {
 };
 
 // --- API helpers -------------------------------------------------------------
+
+export type DispatchWorkerResponse = {
+  connection_id: string;
+  worktree_path: string;
+  branch: string;
+  base_commit: string;
+  base_branch: string;
+};
+
+export const dispatchWorker = async (issueId: string): Promise<DispatchWorkerResponse> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/dispatch-worker`,
+    ),
+    {
+      method: 'POST',
+      headers: getDefaultHeaders(document.cookie),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to dispatch worker (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as DispatchWorkerResponse;
+};
 
 export const fetchIssues = async (
   experimentId: string,
@@ -304,6 +329,182 @@ const CopyFixPromptButton = ({
   );
 };
 
+// --- Worker section (Epic 8 / YUK-54) ---------------------------------------
+
+const findWorkerConnection = (
+  issueId: string | null,
+  connections: AgentConnection[],
+): AgentConnection | null => {
+  if (!issueId) return null;
+  // Prefer ready, then pending, then failed — newest within each bucket.
+  const candidates = connections.filter((c) => c.source_issue_id === issueId);
+  const order = ['ready', 'pending', 'failed', 'dead'];
+  candidates.sort((a, b) => {
+    const ai = order.indexOf(a.status);
+    const bi = order.indexOf(b.status);
+    if (ai !== bi) return ai - bi;
+    return b.created_at_ms - a.created_at_ms;
+  });
+  return candidates[0] ?? null;
+};
+
+const WorkerSection = ({
+  issue,
+  experimentId,
+  onDispatched,
+}: {
+  issue: IssueDetail;
+  experimentId: string;
+  onDispatched: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const { connections } = useConnections();
+  const worker = useMemo(
+    () => findWorkerConnection(issue.issue_id, connections),
+    [issue.issue_id, connections],
+  );
+  const [dispatching, setDispatching] = useState(false);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+
+  const onDispatchWorker = useCallback(async () => {
+    setDispatching(true);
+    setDispatchError(null);
+    try {
+      await dispatchWorker(issue.issue_id);
+      onDispatched();
+    } catch (e) {
+      setDispatchError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDispatching(false);
+    }
+  }, [issue.issue_id, onDispatched]);
+
+  // Status `todo` with no worker yet → show dispatch button.
+  if (issue.status === 'todo' && !worker) {
+    return (
+      <div
+        css={{
+          borderTop: `1px solid ${theme.colors.border}`,
+          paddingTop: theme.spacing.md,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
+        }}
+      >
+        <Typography.Text css={{ fontWeight: 600 }}>Dispatch a worker</Typography.Text>
+        <Typography.Text color="secondary" size="sm">
+          Send this Issue to a Claude Code worker. It opens an isolated worktree, iterates on the
+          regression test until green, then connects the fixed agent here for you to test.
+        </Typography.Text>
+        <div>
+          <Button
+            componentId="mlflow.playground.issue-detail.dispatch-worker"
+            type="primary"
+            onClick={onDispatchWorker}
+            disabled={dispatching}
+          >
+            {dispatching ? 'Dispatching…' : 'Send to worker'}
+          </Button>
+        </div>
+        {dispatchError && (
+          <Alert
+            componentId="mlflow.playground.issue-detail.dispatch-error"
+            type="error"
+            message={dispatchError}
+            closable
+            onClose={() => setDispatchError(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Worker pending — iteration in progress.
+  if (worker && worker.status === 'pending') {
+    return (
+      <div
+        css={{
+          borderTop: `1px solid ${theme.colors.border}`,
+          paddingTop: theme.spacing.md,
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+        }}
+      >
+        <Spinner size="small" />
+        <div css={{ display: 'flex', flexDirection: 'column' }}>
+          <Typography.Text css={{ fontWeight: 600 }}>Worker iterating…</Typography.Text>
+          <Typography.Text color="secondary" size="sm">
+            {worker.name} (<code>{worker.branch}</code>). Test runs locally; the connection will
+            flip to ready once the test goes green.
+          </Typography.Text>
+        </div>
+      </div>
+    );
+  }
+
+  // Worker ready — surface the deeplink to the playground.
+  if (worker && worker.status === 'ready') {
+    const playgroundHref = `/experiments/${encodeURIComponent(experimentId)}/playground?activate_for_issue=${encodeURIComponent(
+      issue.issue_id,
+    )}`;
+    return (
+      <div
+        css={{
+          borderTop: `1px solid ${theme.colors.border}`,
+          paddingTop: theme.spacing.md,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
+        }}
+      >
+        <Typography.Text css={{ fontWeight: 600 }}>Worker ready for review</Typography.Text>
+        <Typography.Text color="secondary" size="sm">
+          {worker.name} (<code>{worker.branch}</code>) is up. Switch to it in the playground and
+          run a chat turn to verify the fix.
+        </Typography.Text>
+        <div>
+          <Button
+            componentId="mlflow.playground.issue-detail.test-in-playground"
+            type="primary"
+            href={playgroundHref}
+          >
+            Test in playground →
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Worker failed.
+  if (worker && worker.status === 'failed') {
+    return (
+      <div
+        css={{
+          borderTop: `1px solid ${theme.colors.border}`,
+          paddingTop: theme.spacing.md,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
+        }}
+      >
+        <Typography.Text css={{ fontWeight: 600, color: theme.colors.red600 }}>
+          Worker failed
+        </Typography.Text>
+        <Typography.Text color="secondary" size="sm">
+          {worker.status_message ?? 'Claude could not get the test green.'}
+        </Typography.Text>
+        <Typography.Text size="sm" color="secondary">
+          You can retry by discarding the worker (YUK-55), or fall back to the manual fix flow
+          below.
+        </Typography.Text>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 // --- Drawer -----------------------------------------------------------------
 
 const STATUS_TAG_COLOR = {
@@ -319,11 +520,16 @@ export const IssueDetailDrawer = ({
   visible,
   onClose,
   onIssueUpdated,
+  experimentId,
 }: {
   issueId: string | null;
   visible: boolean;
   onClose: () => void;
   onIssueUpdated?: (issue: IssueDetail) => void;
+  // Used to build the "Test in playground →" deeplink on workers in review.
+  // When omitted (legacy callers) the worker section degrades gracefully —
+  // dispatch + status display still work, only the deeplink button hides.
+  experimentId?: string;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [issue, setIssue] = useState<IssueDetail | null>(null);
@@ -472,6 +678,19 @@ export const IssueDetailDrawer = ({
 
               <TestCasePanel testCase={testCase} />
 
+              {experimentId && (
+                <WorkerSection
+                  issue={issue}
+                  experimentId={experimentId}
+                  onDispatched={() => {
+                    void fetchIssue(issue.issue_id).then((refreshed) => {
+                      setIssue(refreshed);
+                      onIssueUpdated?.(refreshed);
+                    });
+                  }}
+                />
+              )}
+
               <div
                 css={{
                   borderTop: `1px solid ${theme.colors.border}`,
@@ -481,7 +700,7 @@ export const IssueDetailDrawer = ({
                   gap: theme.spacing.sm,
                 }}
               >
-                <Typography.Text css={{ fontWeight: 600 }}>Run the regression test</Typography.Text>
+                <Typography.Text css={{ fontWeight: 600 }}>Manual fix (escape hatch)</Typography.Text>
                 <Typography.Text color="secondary" size="sm">
                   Replays this Issue's test against the local agent. On a pass, the Issue auto-transitions to{' '}
                   <code>done</code>.

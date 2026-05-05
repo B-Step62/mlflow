@@ -75,10 +75,25 @@ const STATUS_ICON_COLOR: Record<ColumnStatus, (theme: any) => string> = {
 const resolveStatus = (status: string): ColumnStatus =>
   (COLUMN_ORDER as readonly string[]).includes(status) ? (status as ColumnStatus) : 'todo';
 
-const IssueCard = ({ issue, onClick }: { issue: IssueDetail; onClick: () => void }) => {
+const IssueCard = ({
+  issue,
+  experimentId,
+  onClick,
+}: {
+  issue: IssueDetail;
+  experimentId: string;
+  onClick: () => void;
+}) => {
   const { theme } = useDesignSystemTheme();
   const status = resolveStatus(issue.status);
   const StatusIcon = COLUMN_ICON[status];
+  // Issue.assignee that looks like `conn-...` is a worker (Epic 8); used to
+  // surface the kanban-side deeplink + the in-progress robot indicator.
+  const hasWorker = !!issue.assignee?.startsWith('conn-');
+  const playgroundHref =
+    status === 'review' && hasWorker && experimentId
+      ? `/experiments/${encodeURIComponent(experimentId)}/playground?activate_for_issue=${encodeURIComponent(issue.issue_id)}`
+      : null;
   return (
     <button
       type="button"
@@ -127,6 +142,26 @@ const IssueCard = ({ issue, onClick }: { issue: IssueDetail; onClick: () => void
             </Typography.Text>
           )}
         </div>
+      )}
+      {playgroundHref && (
+        <a
+          href={playgroundHref}
+          onClick={(e) => e.stopPropagation()}
+          css={{
+            alignSelf: 'flex-start',
+            color: theme.colors.actionPrimaryTextDefault,
+            fontSize: theme.typography.fontSizeSm,
+            textDecoration: 'none',
+            ':hover': { textDecoration: 'underline' },
+          }}
+        >
+          ↗ Test in playground
+        </a>
+      )}
+      {status === 'in_progress' && hasWorker && (
+        <Typography.Text size="sm" color="secondary">
+          Worker iterating…
+        </Typography.Text>
       )}
     </button>
   );
@@ -332,7 +367,12 @@ export const IssuesBoardPanel = ({
                     </Typography.Text>
                   ) : (
                     cards.map((issue) => (
-                      <IssueCard key={issue.issue_id} issue={issue} onClick={() => onOpenIssue(issue.issue_id)} />
+                      <IssueCard
+                        key={issue.issue_id}
+                        issue={issue}
+                        experimentId={experimentId}
+                        onClick={() => onOpenIssue(issue.issue_id)}
+                      />
                     ))
                   )}
                 </div>

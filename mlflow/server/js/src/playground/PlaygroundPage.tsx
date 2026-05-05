@@ -3441,7 +3441,12 @@ const PlaygroundPageImpl = () => {
           );
         })()}
 
-      <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={onIssueDrawerClose} />
+      <IssueDetailDrawer
+        issueId={openIssueId}
+        visible={!!openIssueId}
+        onClose={onIssueDrawerClose}
+        experimentId={experimentId}
+      />
 
       {/* Full-trace drawer: opens on demand for the full explorer experience
           (assessments pane, attributes, events, linked prompts). */}
