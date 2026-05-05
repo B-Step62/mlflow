@@ -683,6 +683,177 @@ def create_playground_api_router(
             "agent_tool_calls": response.tool_calls,
         }
 
+    @router.get("/regression-suite/run-grouped/stream")
+    async def run_regression_suite_grouped_stream(experiment_id: str) -> StreamingResponse:
+        """Run the entire regression suite, grouping cases by their input
+        conversation prefix so the agent is invoked once per unique question
+        rather than once per case.
+
+        Why grouping matters: a single Issue often spawns multiple test
+        cases (one per dispatched feedback) that all anchor to the same
+        failing turn. Hitting the agent N times with the same prompt
+        wastes tokens / time when one invocation produces a response that
+        every spec can be evaluated against.
+
+        Stream events (each is one ``data: <json>\\n\\n`` line):
+
+          * ``{type: "started", total_groups, total_cases}``
+          * ``{type: "group_started", group_index, label, case_count, messages}``
+          * ``{type: "group_verdict", group_index, agent_response_text,``
+            ``agent_tool_calls, verdicts: [...]}`` — each verdict is
+            ``{test_case_id, issue_id, rationale_summary, passed, reasons, strategy}``.
+          * ``{type: "group_error", group_index, detail}`` — the group's
+            agent invocation failed; following groups still run.
+          * ``{type: "summary", total_groups, ...}``
+        """
+        import json as _json
+
+        from mlflow.playground.regression_suite import get_or_create_regression_dataset
+        from mlflow.playground.test_runner import evaluate, normalize_agent_response
+
+        async def _events():
+            def _emit(payload: dict[str, Any]) -> str:
+                return f"data: {_json.dumps(payload)}\n\n"
+
+            # Reuse the same coercion the cockpit cases endpoint uses — the
+            # dataset backend may round-trip `inputs` and nested `messages`
+            # as JSON-encoded strings rather than parsed dicts.
+            def _coerce(v: Any) -> Any:
+                if isinstance(v, str):
+                    try:
+                        return _json.loads(v)
+                    except (ValueError, TypeError):
+                        return v
+                return v
+
+            try:
+                dataset = await asyncio.to_thread(get_or_create_regression_dataset, experiment_id)
+                df = await asyncio.to_thread(dataset.to_df)
+            except Exception as exc:
+                yield _emit({
+                    "type": "group_error",
+                    "group_index": -1,
+                    "detail": f"Could not load regression dataset: {exc}",
+                })
+                return
+
+            rows = df.to_dict(orient="records") if not df.empty else []
+            # Group by the conversation prefix — JSON-stringify with sorted
+            # keys so dict ordering can't accidentally split a group.
+            groups: dict[str, list[dict[str, Any]]] = {}
+            for row in rows:
+                inputs = _coerce(row.get("inputs") or {})
+                if not isinstance(inputs, dict):
+                    continue
+                messages = _coerce(inputs.get("messages") or [])
+                if not isinstance(messages, list):
+                    continue
+                key = _json.dumps(messages, sort_keys=True)
+                groups.setdefault(key, []).append(row)
+
+            groups_list = list(groups.items())
+            total_cases = sum(len(g) for _, g in groups_list)
+            yield _emit({
+                "type": "started",
+                "total_groups": len(groups_list),
+                "total_cases": total_cases,
+            })
+
+            for gi, (key, group_rows) in enumerate(groups_list):
+                messages = _json.loads(key)
+                # Pick the first non-empty rationale_summary as the group label;
+                # fall back to the last user content; finally to a generic stub.
+                label = ""
+                for row in group_rows:
+                    expectations = _coerce(row.get("expectations") or {})
+                    if isinstance(expectations, dict):
+                        candidate = expectations.get("rationale_summary")
+                        if isinstance(candidate, str) and candidate:
+                            label = candidate
+                            break
+                if not label:
+                    for msg in reversed(messages):
+                        if isinstance(msg, dict) and msg.get("role") == "user":
+                            content = msg.get("content")
+                            if isinstance(content, str):
+                                label = content
+                                break
+                if not label:
+                    label = f"group {gi + 1}"
+
+                yield _emit({
+                    "type": "group_started",
+                    "group_index": gi,
+                    "total_groups": len(groups_list),
+                    "label": label,
+                    "case_count": len(group_rows),
+                    "messages": messages,
+                })
+
+                try:
+                    raw, _protocol = await _invoke_agent(
+                        agent_url=runtime.agent_url,
+                        messages=messages,
+                        timeout_seconds=120.0,
+                    )
+                except Exception as exc:
+                    yield _emit({
+                        "type": "group_error",
+                        "group_index": gi,
+                        "detail": f"Agent invocation failed: {exc}",
+                    })
+                    continue
+
+                response = normalize_agent_response(raw)
+
+                verdicts: list[dict[str, Any]] = []
+                for row in group_rows:
+                    expectations = _coerce(row.get("expectations") or {})
+                    spec = expectations.get("test_spec") if isinstance(expectations, dict) else {}
+                    if not isinstance(spec, dict):
+                        spec = {}
+                    tags = _coerce(row.get("tags") or {})
+                    if not isinstance(tags, dict):
+                        tags = {}
+                    test_case_id = (
+                        expectations.get("test_case_id") if isinstance(expectations, dict) else None
+                    )
+                    rationale_summary = (
+                        expectations.get("rationale_summary")
+                        if isinstance(expectations, dict)
+                        else None
+                    )
+                    try:
+                        v = await asyncio.to_thread(evaluate, spec, response)
+                        verdicts.append({
+                            "test_case_id": test_case_id,
+                            "issue_id": tags.get("issue_id"),
+                            "rationale_summary": rationale_summary,
+                            "passed": v.passed,
+                            "reasons": list(v.reasons),
+                            "strategy": v.strategy,
+                        })
+                    except Exception as exc:
+                        verdicts.append({
+                            "test_case_id": test_case_id,
+                            "issue_id": tags.get("issue_id"),
+                            "passed": False,
+                            "reasons": [f"Evaluator error: {exc}"],
+                            "strategy": "error",
+                        })
+
+                yield _emit({
+                    "type": "group_verdict",
+                    "group_index": gi,
+                    "agent_response_text": response.text,
+                    "agent_tool_calls": response.tool_calls,
+                    "verdicts": verdicts,
+                })
+
+            yield _emit({"type": "summary", "total_groups": len(groups_list)})
+
+        return StreamingResponse(_events(), media_type="text/event-stream")
+
     @router.get("/issues/{issue_id}/run-test/stream")
     async def run_test_stream(issue_id: str) -> StreamingResponse:
         """Streaming variant of ``run_test`` — emits stage-level progress events
