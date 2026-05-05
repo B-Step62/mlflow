@@ -43,8 +43,11 @@ import Utils from '../common/utils/Utils';
 import { withErrorBoundary } from '../common/utils/withErrorBoundary';
 import {
   Alert,
+  BookmarkIcon,
   Button,
+  ChevronLeftIcon,
   ChevronRightIcon,
+  CloseSmallIcon,
   DagIcon,
   Input,
   MegaphoneIcon,
@@ -87,6 +90,13 @@ import {
 } from './feedback';
 import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
 import { RegressionTestsPanel, type RegressionRunSummary } from './regression';
+import { SessionHistoryMenu, type ResumedSession } from './sessions';
+import {
+  addQuestion as apiAddQuestion,
+  deleteQuestion as apiDeleteQuestion,
+  fetchQuestionBank,
+  type SavedQuestion,
+} from './questionBank';
 
 type MessageRole = 'user' | 'assistant' | 'system' | 'developer';
 
@@ -598,6 +608,268 @@ const CollapsibleSection = ({
   );
 };
 
+/**
+ * Horizontal scrollable strip of saved questions, lives directly above the
+ * chat input. Click a chip → fires that question as the next user turn
+ * (immediately, no edit step). Hover → tooltip with full text. Each chip
+ * has a small × that deletes the question. Right side hosts the
+ * `[▶ Run all]` batch button.
+ */
+const QuestionBankChips = ({
+  questions,
+  disabled,
+  onSendQuestion,
+  onDeleteQuestion,
+  onRunAll,
+}: {
+  questions: SavedQuestion[];
+  disabled: boolean;
+  onSendQuestion: (content: string) => void;
+  onDeleteQuestion: (questionId: string) => void;
+  onRunAll: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  if (questions.length === 0) {
+    // Strip stays out of the way until the user has saved at least one
+    // question; otherwise it'd be a permanent "no questions" placeholder
+    // that adds chrome without value.
+    return null;
+  }
+  // Newest left — list_questions returns oldest-first server-side.
+  const ordered = [...questions].reverse();
+  return (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing.sm,
+        marginBottom: theme.spacing.sm,
+      }}
+    >
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.xs,
+          flex: 1,
+          minWidth: 0,
+          overflowX: 'auto',
+          paddingBottom: 4,
+        }}
+      >
+        {ordered.map((q) => (
+          <QuestionChip
+            key={q.question_id}
+            question={q}
+            disabled={disabled}
+            onSend={() => onSendQuestion(q.content)}
+            onDelete={() => onDeleteQuestion(q.question_id)}
+          />
+        ))}
+      </div>
+      <Tooltip
+        componentId="mlflow.playground.question-bank.run-all.tooltip"
+        content={`Run all ${ordered.length} ${ordered.length === 1 ? 'question' : 'questions'}`}
+      >
+        <Button
+          componentId="mlflow.playground.question-bank.run-all"
+          icon={<PlayIcon />}
+          onClick={onRunAll}
+          disabled={disabled}
+        >
+          {`Run all (${ordered.length})`}
+        </Button>
+      </Tooltip>
+    </div>
+  );
+};
+
+const QuestionChip = ({
+  question,
+  disabled,
+  onSend,
+  onDelete,
+}: {
+  question: SavedQuestion;
+  disabled: boolean;
+  onSend: () => void;
+  onDelete: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const truncated =
+    question.content.length > 30 ? `${question.content.slice(0, 30).trimEnd()}…` : question.content;
+  return (
+    <Tooltip componentId="mlflow.playground.question-bank.chip.tooltip" content={question.content}>
+      <div
+        css={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: `2px ${theme.spacing.xs}px 2px ${theme.spacing.sm}px`,
+          borderRadius: 999,
+          border: `1px solid ${theme.colors.border}`,
+          backgroundColor: theme.colors.backgroundPrimary,
+          flexShrink: 0,
+          maxWidth: 240,
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onSend}
+          css={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: disabled ? 'default' : 'pointer',
+            fontSize: theme.typography.fontSizeSm,
+            color: theme.colors.actionPrimaryTextDefault,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: 200,
+          }}
+        >
+          {truncated}
+        </button>
+        <button
+          type="button"
+          aria-label="Remove question"
+          disabled={disabled}
+          onClick={onDelete}
+          css={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: disabled ? 'default' : 'pointer',
+            display: 'inline-flex',
+            color: theme.colors.textSecondary,
+            ':hover': { color: theme.colors.textPrimary },
+          }}
+        >
+          <CloseSmallIcon />
+        </button>
+      </div>
+    </Tooltip>
+  );
+};
+
+/**
+ * Pinned strip at the top of the chat thread when a batch run is active.
+ * Shows `◀ Question m / N ▶` plus per-conversation status + a Back-to-live
+ * exit. The arrow buttons mirror the keyboard arrow handler in PlaygroundPage.
+ */
+type BatchKindForNav = 'question_bank' | 'regression_suite';
+type BatchConvForNav = {
+  row_id: string;
+  label: string;
+  status: 'pending' | 'streaming' | 'done' | 'failed';
+  trace_id?: string;
+};
+type BatchRunForNav = {
+  kind: BatchKindForNav;
+  conversations: BatchConvForNav[];
+  activeIndex: number;
+};
+
+const BatchNavigator = ({
+  run,
+  onPrev,
+  onNext,
+  onClose,
+  experimentId,
+}: {
+  run: BatchRunForNav;
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+  experimentId: string | undefined;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const total = run.conversations.length;
+  const active = run.conversations[run.activeIndex];
+  const statusLabel = (() => {
+    switch (active?.status) {
+      case 'pending':
+        return 'queued';
+      case 'streaming':
+        return 'running…';
+      case 'done':
+        return '✓ done';
+      case 'failed':
+        return '✗ failed';
+      default:
+        return '';
+    }
+  })();
+  const statusColor =
+    active?.status === 'failed'
+      ? theme.colors.textValidationDanger
+      : active?.status === 'done'
+        ? theme.colors.textValidationSuccess
+        : theme.colors.textSecondary;
+  const traceHref =
+    experimentId && active?.trace_id
+      ? `/#/experiments/${experimentId}/traces/${active.trace_id}`
+      : null;
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing.sm,
+        padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+        borderRadius: theme.borders.borderRadiusMd,
+        border: `1px solid ${theme.colors.border}`,
+        backgroundColor: theme.colors.blue100,
+      }}
+    >
+      <Tooltip componentId="mlflow.playground.batch-nav.prev.tooltip" content="Previous question (←)">
+        <Button
+          componentId="mlflow.playground.batch-nav.prev"
+          icon={<ChevronLeftIcon />}
+          aria-label="Previous question"
+          onClick={onPrev}
+          disabled={run.activeIndex === 0}
+        />
+      </Tooltip>
+      <Typography.Text css={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+        Question {run.activeIndex + 1} / {total}
+      </Typography.Text>
+      <Tooltip componentId="mlflow.playground.batch-nav.next.tooltip" content="Next question (→)">
+        <Button
+          componentId="mlflow.playground.batch-nav.next"
+          icon={<ChevronRightIcon />}
+          aria-label="Next question"
+          onClick={onNext}
+          disabled={run.activeIndex === total - 1}
+        />
+      </Tooltip>
+      <Typography.Text size="sm" color="secondary" css={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={active?.label}>
+        {active?.label}
+      </Typography.Text>
+      <Typography.Text size="sm" css={{ color: statusColor }}>
+        {statusLabel}
+      </Typography.Text>
+      {traceHref && (
+        <a
+          href={traceHref}
+          target="_blank"
+          rel="noreferrer"
+          css={{ fontSize: theme.typography.fontSizeSm, color: theme.colors.actionPrimaryTextDefault }}
+        >
+          trace →
+        </a>
+      )}
+      <Button componentId="mlflow.playground.batch-nav.close" type="link" onClick={onClose}>
+        Back to live chat
+      </Button>
+    </div>
+  );
+};
+
 const PlaygroundPageImpl = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
@@ -618,17 +890,21 @@ const PlaygroundPageImpl = () => {
   // message rows. Polling and SSE assistant_final both write here; the data
   // attribute, feedback anchor, and trace panel all read from here.
   const [traceIdsByRequestId, setTraceIdsByRequestId] = useState<Record<string, string>>({});
+  // Stable conversation id, written to each turn's trace as `mlflow.trace.session`
+  // metadata so past conversations can be listed and rehydrated via the session
+  // history picker. Minted lazily on the first send of a fresh thread; reset by
+  // "Clear conversation" so a new chat starts a new session.
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const traceLookupAbortersRef = useRef<Set<AbortController>>(new Set());
 
   // --- Session persistence (localStorage) ---------------------------------
   // Survive page reloads by stashing the messages array + traceIdsByRequestId
-  // map keyed by experimentId. The trace and feedback rail rebuild themselves
-  // from those two pieces (trace via /traces/{id}/get, feedbacks via the
+  // map + sessionId keyed by experimentId. The trace and feedback rail rebuild
+  // themselves from those (trace via /traces/{id}/get, feedbacks via the
   // assessments embedded in each fetched trace). Bump SESSION_STORAGE_VERSION
-  // when the message shape changes so old sessions are dropped instead of
-  // corrupting the page.
-  const SESSION_STORAGE_VERSION = 1;
+  // when the persisted shape changes so old payloads are dropped cleanly.
+  const SESSION_STORAGE_VERSION = 2;
   const sessionStorageKey = useMemo(
     () => (experimentId ? `mlflow.playground.session.v${SESSION_STORAGE_VERSION}.${experimentId}` : null),
     [experimentId],
@@ -643,12 +919,16 @@ const PlaygroundPageImpl = () => {
       const parsed = JSON.parse(raw) as {
         messages?: PlaygroundMessage[];
         traceIdsByRequestId?: Record<string, string>;
+        sessionId?: string;
       };
       if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
         setMessages(parsed.messages);
       }
       if (parsed.traceIdsByRequestId && typeof parsed.traceIdsByRequestId === 'object') {
         setTraceIdsByRequestId(parsed.traceIdsByRequestId);
+      }
+      if (typeof parsed.sessionId === 'string' && parsed.sessionId) {
+        setSessionId(parsed.sessionId);
       }
     } catch {
       // Corrupt entry — drop it silently so the page boots cleanly.
@@ -658,19 +938,16 @@ const PlaygroundPageImpl = () => {
   useEffect(() => {
     if (!sessionStorageKey || !hydratedRef.current) return;
     try {
-      if (messages.length === 0 && Object.keys(traceIdsByRequestId).length === 0) {
+      if (messages.length === 0 && Object.keys(traceIdsByRequestId).length === 0 && !sessionId) {
         window.localStorage.removeItem(sessionStorageKey);
         return;
       }
-      window.localStorage.setItem(
-        sessionStorageKey,
-        JSON.stringify({ messages, traceIdsByRequestId }),
-      );
+      window.localStorage.setItem(sessionStorageKey, JSON.stringify({ messages, traceIdsByRequestId, sessionId }));
     } catch {
       // Quota exceeded / private mode etc. — fall through; the user can still
       // chat, they just won't get cross-reload persistence this session.
     }
-  }, [sessionStorageKey, messages, traceIdsByRequestId]);
+  }, [sessionStorageKey, messages, traceIdsByRequestId, sessionId]);
 
   // --- Annotation state (Epic 4) -------------------------------------------
   const { selection, clear: clearSelection } = useChatSelection();
@@ -806,15 +1083,27 @@ const PlaygroundPageImpl = () => {
     });
   }, []);
 
+  const handleResumeSession = useCallback((resumed: ResumedSession) => {
+    // Cancel any in-flight tag-lookup polling from the active turn before we
+    // swap state — the stale resolver could otherwise stamp a trace id onto
+    // the rehydrated map.
+    traceLookupAbortersRef.current.forEach((controller) => controller.abort());
+    traceLookupAbortersRef.current.clear();
+    setMessages(resumed.messages);
+    setTraceIdsByRequestId(resumed.traceIdsByRequestId);
+    setFeedbacks(resumed.feedbacks);
+    setSessionId(resumed.sessionId);
+    setStreamingText('');
+    setSelectedTrace(null);
+    setError(null);
+  }, []);
+
   // --- Regression suite (placeholder — server SSE wiring is YUK-45) -------
   const [regressionRecentRuns] = useState<RegressionRunSummary[]>([]);
   const [regressionInProgress] = useState<
     { current: number; total: number; passed: number; failed: number } | undefined
   >(undefined);
-  const dispatchedFeedbackCount = useMemo(
-    () => feedbacks.filter((f) => f.dispatched_issue_id).length,
-    [feedbacks],
-  );
+  const dispatchedFeedbackCount = useMemo(() => feedbacks.filter((f) => f.dispatched_issue_id).length, [feedbacks]);
   const onRunRegressionSuite = useCallback(() => {
     // Wired up in YUK-45 follow-up; surface a clear info toast for now so the
     // button isn't a silent no-op.
@@ -826,6 +1115,48 @@ const PlaygroundPageImpl = () => {
       duration: 5,
     });
   }, []);
+
+  // --- Question bank (YUK-46) ---------------------------------------------
+  // Saved per-experiment probe questions. Powers the chip strip above the
+  // input + the [Run all] batch flow. We fetch on mount and after every
+  // mutation; no React Query for now to keep the dependency surface tight.
+  const [savedQuestions, setSavedQuestions] = useState<SavedQuestion[]>([]);
+  const reloadQuestionBank = useCallback(() => {
+    if (!experimentId) return;
+    fetchQuestionBank(experimentId)
+      .then(setSavedQuestions)
+      .catch(() => {
+        // Silent — question bank is a nice-to-have, missing it shouldn't
+        // break chat. If the user opens the chip strip and finds it empty
+        // we can surface in a toast at that point.
+      });
+  }, [experimentId]);
+  useEffect(() => {
+    reloadQuestionBank();
+  }, [reloadQuestionBank]);
+
+  // --- Batch run state ----------------------------------------------------
+  // When `batchRun` is non-null the chat thread switches from the live
+  // `messages` view to a paged navigator over `batchRun.conversations`.
+  // Live chat state stays preserved in `messages` and is restored when the
+  // user clicks "Back to live chat".
+  type BatchKind = 'question_bank' | 'regression_suite';
+  type BatchConversation = {
+    row_id: string;
+    label: string;
+    messages: PlaygroundMessage[];
+    streamingText: string;
+    status: 'pending' | 'streaming' | 'done' | 'failed';
+    trace_id?: string;
+    error?: string;
+  };
+  type BatchRunState = {
+    kind: BatchKind;
+    run_id: string;
+    conversations: BatchConversation[];
+    activeIndex: number;
+  };
+  const [batchRun, setBatchRun] = useState<BatchRunState | null>(null);
 
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
@@ -1133,13 +1464,23 @@ const PlaygroundPageImpl = () => {
     }
   }, [agentUrlInput]);
 
-  const sendMessage = useCallback(async () => {
-    const content = draft.trim();
+  const sendMessage = useCallback(async (overrideContent?: string) => {
+    // Allow callers (e.g. question-bank chip clicks) to bypass the input box
+    // by passing the content explicitly. Default behaviour reads from `draft`
+    // so the existing Send button + Enter-key handler work unchanged.
+    const content = (overrideContent ?? draft).trim();
     if (!content || isSubmitting) {
       return;
     }
 
     const requestId = createRequestId();
+    // Mint a session id on the first send of a fresh thread; subsequent sends
+    // (and a resumed history selected from the picker) reuse the same id so all
+    // their traces share `mlflow.trace.session`.
+    const turnSessionId = sessionId ?? createRequestId();
+    if (!sessionId) {
+      setSessionId(turnSessionId);
+    }
     const userMessage: PlaygroundMessage = {
       id: createMessageId('user'),
       role: 'user',
@@ -1149,7 +1490,11 @@ const PlaygroundPageImpl = () => {
     const nextMessages = [...messages, userMessage];
 
     setMessages(nextMessages);
-    setDraft('');
+    if (overrideContent === undefined) {
+      // Only clear the input box when the send came from the input. Chip
+      // clicks (with overrideContent) leave the user's in-progress draft alone.
+      setDraft('');
+    }
     setStreamingText('');
     setIsSubmitting(true);
     setError(null);
@@ -1194,6 +1539,7 @@ const PlaygroundPageImpl = () => {
           messages: nextMessages.map(({ role, content: messageContent }) => ({ role, content: messageContent })),
           agent_url: agentUrlInput,
           request_id: requestId,
+          session_id: turnSessionId,
         }),
       });
       if (!response.ok) {
@@ -1256,13 +1602,161 @@ const PlaygroundPageImpl = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [agentUrlInput, draft, experimentId, isSubmitting, messages]);
+  }, [agentUrlInput, draft, experimentId, isSubmitting, messages, sessionId]);
+
+  // Single batch turn — fires one question through the agent, no shared
+  // history with the live chat or with sibling batch slots, and updates the
+  // matching `BatchConversation` slot as the SSE stream resolves. Returns
+  // when the slot's status reaches `done` or `failed`.
+  const runBatchTurn = useCallback(
+    async (rowId: string, question: string) => {
+      const setSlot = (updater: (slot: BatchConversation) => BatchConversation) =>
+        setBatchRun((current) => {
+          if (!current) return current;
+          const idx = current.conversations.findIndex((c) => c.row_id === rowId);
+          if (idx < 0) return current;
+          const next = [...current.conversations];
+          next[idx] = updater(next[idx]);
+          return { ...current, conversations: next };
+        });
+
+      const requestId = createRequestId();
+      const userMessage: PlaygroundMessage = {
+        id: createMessageId('user'),
+        role: 'user',
+        content: question,
+        requestId,
+      };
+      setSlot((slot) => ({ ...slot, status: 'streaming', messages: [userMessage] }));
+
+      try {
+        const response = await fetch(getAjaxUrl('ajax-api/3.0/mlflow/playground/chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: question }],
+            agent_url: agentUrlInput,
+            request_id: requestId,
+            // NB: server-side trace tagging with `playground.batch_run_id` is
+            // a follow-up. For now `request_id` is the only tag the chat
+            // endpoint sets; the batch-level grouping lives in client state
+            // for this session.
+          }),
+        });
+        if (!response.ok || !response.body) {
+          throw new Error(await parseErrorText(response));
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalMessage: PlaygroundMessage | null = null;
+        let traceId: string | undefined;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() ?? '';
+          chunks.forEach((chunk) =>
+            parseSseChunk(chunk, (event) => {
+              if (event.type === 'assistant_delta') {
+                setSlot((slot) => ({ ...slot, streamingText: slot.streamingText + event.delta }));
+              }
+              if (event.type === 'assistant_final') {
+                finalMessage = {
+                  id: createMessageId('assistant'),
+                  role: 'assistant',
+                  content: event.message.content,
+                  requestId,
+                  toolCalls: event.tool_calls,
+                };
+                if (event.trace_id) traceId = event.trace_id;
+              }
+            }),
+          );
+        }
+        if (!finalMessage) {
+          throw new Error('Stream ended without an assistant_final event.');
+        }
+        const completed = finalMessage as PlaygroundMessage;
+        setSlot((slot) => ({
+          ...slot,
+          status: 'done',
+          streamingText: '',
+          messages: [...slot.messages, completed],
+          trace_id: traceId,
+        }));
+      } catch (err) {
+        setSlot((slot) => ({
+          ...slot,
+          status: 'failed',
+          streamingText: '',
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      }
+    },
+    [agentUrlInput],
+  );
+
+  const runAllQuestions = useCallback(async () => {
+    if (savedQuestions.length === 0 || batchRun !== null) return;
+    const runId = createRequestId();
+    setBatchRun({
+      kind: 'question_bank',
+      run_id: runId,
+      activeIndex: 0,
+      conversations: savedQuestions.map((q) => ({
+        row_id: q.question_id,
+        label: q.content,
+        messages: [],
+        streamingText: '',
+        status: 'pending',
+      })),
+    });
+    // Fire all in parallel — the agent server can stack as many concurrent
+    // chats as the user's CPU allows, and serial would make 12 questions
+    // feel painfully slow vs. 12 in parallel.
+    await Promise.all(savedQuestions.map((q) => runBatchTurn(q.question_id, q.content)));
+  }, [batchRun, runBatchTurn, savedQuestions]);
 
   const selectedTraceInfo = useMemo(
     () =>
       selectedTrace && isV3ModelTraceInfo(selectedTrace.info) ? (selectedTrace.info as ModelTraceInfoV3) : undefined,
     [selectedTrace],
   );
+
+  // When a batch run is active, the chat thread renders the active
+  // conversation slot's messages instead of the live `messages`. Live state
+  // is preserved untouched — clearing `batchRun` returns to the live chat.
+  const activeBatch = batchRun ? batchRun.conversations[batchRun.activeIndex] ?? null : null;
+  const displayedMessages = activeBatch ? activeBatch.messages : messages;
+  const displayedStreamingText = activeBatch ? activeBatch.streamingText : streamingText;
+  const displayedIsSubmitting = activeBatch ? activeBatch.status === 'streaming' : isSubmitting;
+
+  // Keyboard nav — ◀ / ▶ flips the active batch conversation. Only fires when
+  // no input is focused so typing in the chat composer doesn't get hijacked.
+  useEffect(() => {
+    if (!batchRun) return undefined;
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        setBatchRun((current) =>
+          current ? { ...current, activeIndex: Math.max(0, current.activeIndex - 1) } : current,
+        );
+      } else if (e.key === 'ArrowRight') {
+        setBatchRun((current) =>
+          current
+            ? { ...current, activeIndex: Math.min(current.conversations.length - 1, current.activeIndex + 1) }
+            : current,
+        );
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [batchRun]);
 
   return (
     <div
@@ -1363,18 +1857,28 @@ const PlaygroundPageImpl = () => {
               <SpeechBubbleIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
               <Typography.Text css={{ fontWeight: 700 }}>Conversation</Typography.Text>
             </div>
-            <Tooltip componentId="mlflow.playground.clear-thread.tooltip" content="Clear conversation">
-              <Button
-                componentId="mlflow.playground.clear-thread"
-                icon={<TrashIcon />}
-                onClick={() => {
-                  setMessages([]);
-                  setStreamingText('');
-                }}
-                disabled={messages.length === 0 && !streamingText}
-                aria-label="Clear conversation"
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+              <SessionHistoryMenu
+                experimentId={experimentId}
+                onResumeSession={handleResumeSession}
+                hasUnsavedConversation={messages.length > 0 || Boolean(streamingText)}
               />
-            </Tooltip>
+              <Tooltip componentId="mlflow.playground.clear-thread.tooltip" content="Clear conversation">
+                <Button
+                  componentId="mlflow.playground.clear-thread"
+                  icon={<TrashIcon />}
+                  onClick={() => {
+                    setMessages([]);
+                    setStreamingText('');
+                    setTraceIdsByRequestId({});
+                    setFeedbacks([]);
+                    setSessionId(null);
+                  }}
+                  disabled={messages.length === 0 && !streamingText}
+                  aria-label="Clear conversation"
+                />
+              </Tooltip>
+            </div>
           </div>
 
           <div
@@ -1387,11 +1891,30 @@ const PlaygroundPageImpl = () => {
               gap: theme.spacing.md,
             }}
           >
+            {batchRun && (
+              <BatchNavigator
+                run={batchRun}
+                onPrev={() =>
+                  setBatchRun((current) =>
+                    current ? { ...current, activeIndex: Math.max(0, current.activeIndex - 1) } : current,
+                  )
+                }
+                onNext={() =>
+                  setBatchRun((current) =>
+                    current
+                      ? { ...current, activeIndex: Math.min(current.conversations.length - 1, current.activeIndex + 1) }
+                      : current,
+                  )
+                }
+                onClose={() => setBatchRun(null)}
+                experimentId={experimentId}
+              />
+            )}
             {isLoadingConfig ? (
               <div css={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spinner />
               </div>
-            ) : messages.length === 0 && !streamingText ? (
+            ) : displayedMessages.length === 0 && !displayedStreamingText ? (
               <div
                 css={{
                   flex: 1,
@@ -1403,11 +1926,13 @@ const PlaygroundPageImpl = () => {
                 }}
               >
                 <Typography.Text color="secondary">
-                  Send a turn to start the session. The right pane will fill with the live trace.
+                  {batchRun
+                    ? 'Question pending — agent has not started this conversation yet.'
+                    : 'Send a turn to start the session. The right pane will fill with the live trace.'}
                 </Typography.Text>
               </div>
             ) : (
-              messages.map((message, index) => (
+              displayedMessages.map((message, index) => (
                 <div
                   key={message.id}
                   css={{
@@ -1418,13 +1943,54 @@ const PlaygroundPageImpl = () => {
                     gap: theme.spacing.xs,
                   }}
                 >
-                  <Typography.Text
-                    color="secondary"
-                    size="sm"
-                    css={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                  <div
+                    css={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
+                      gap: theme.spacing.xs,
+                    }}
                   >
-                    {message.role === 'user' ? 'User' : `Assistant turn ${String(index + 1).padStart(2, '0')}`}
-                  </Typography.Text>
+                    <Typography.Text
+                      color="secondary"
+                      size="sm"
+                      css={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                    >
+                      {message.role === 'user' ? 'User' : `Assistant turn ${String(index + 1).padStart(2, '0')}`}
+                    </Typography.Text>
+                    {message.role === 'user' && experimentId && (
+                      <Tooltip
+                        componentId="mlflow.playground.save-question.tooltip"
+                        content="Save this question to the bank"
+                      >
+                        <button
+                          type="button"
+                          aria-label="Save this question to the bank"
+                          onClick={async () => {
+                            try {
+                              await apiAddQuestion(experimentId, message.content, {
+                                sourceMessageId: message.id,
+                              });
+                              reloadQuestionBank();
+                            } catch {
+                              // Best-effort — bank is non-critical, swallow.
+                            }
+                          }}
+                          css={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 2,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            color: theme.colors.textSecondary,
+                            ':hover': { color: theme.colors.textPrimary },
+                          }}
+                        >
+                          <BookmarkIcon />
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
                   <div
                     data-mlflow-feedback-anchor={message.role === 'assistant' ? message.id : undefined}
                     data-mlflow-feedback-trace-id={
@@ -1447,14 +2013,14 @@ const PlaygroundPageImpl = () => {
               ))
             )}
 
-            {(isSubmitting || streamingText) && (
+            {(displayedIsSubmitting || displayedStreamingText) && (
               <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
                 <Typography.Text
                   color="secondary"
                   size="sm"
                   css={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}
                 >
-                  {streamingText ? 'Assistant is responding' : 'Assistant is thinking'}
+                  {displayedStreamingText ? 'Assistant is responding' : 'Assistant is thinking'}
                 </Typography.Text>
                 <div
                   css={{
@@ -1470,7 +2036,7 @@ const PlaygroundPageImpl = () => {
                     minHeight: 56,
                   }}
                 >
-                  {streamingText || <ThinkingDots />}
+                  {displayedStreamingText || <ThinkingDots />}
                 </div>
               </div>
             )}
@@ -1484,6 +2050,16 @@ const PlaygroundPageImpl = () => {
               backgroundColor: theme.colors.backgroundSecondary,
             }}
           >
+            <QuestionBankChips
+              questions={savedQuestions}
+              disabled={isSubmitting || batchRun !== null}
+              onSendQuestion={(content) => void sendMessage(content)}
+              onDeleteQuestion={(qid) => {
+                if (!experimentId) return;
+                void apiDeleteQuestion(experimentId, qid).then(reloadQuestionBank);
+              }}
+              onRunAll={() => void runAllQuestions()}
+            />
             <Input.TextArea
               componentId="mlflow.playground.composer"
               autoSize={{ minRows: 2, maxRows: 8 }}
