@@ -1,18 +1,4 @@
-"""Local bootstrap for auto-starting an MLflow agent server from a repo.
-
-Hot-reload contract
--------------------
-``main()`` (the parent process) parses CLI args, stashes the repo dir into
-``MLFLOW_PLAYGROUND_AGENT_REPO_DIR``, and execs uvicorn with the import string
-``mlflow.playground.agent_bootstrap:app`` plus ``--reload``. uvicorn forks a
-worker per code change; each worker re-imports this module, which re-runs
-``discover_agent`` against the (possibly edited) repo and rebuilds the
-``AgentServer`` app from scratch. So the user can edit their agent file and
-the next request picks up the new code without restarting the playground.
-
-The ``app`` attribute is only built when the env var is set, so importing
-this module from tests / tooling stays cheap and side-effect-free.
-"""
+"""Local bootstrap for auto-starting an MLflow agent server from a repo."""
 
 from __future__ import annotations
 
@@ -20,7 +6,6 @@ import argparse
 import importlib
 import importlib.util
 import inspect
-import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -29,10 +14,6 @@ import uvicorn
 
 from mlflow.genai.agent_server import AgentServer, get_invoke_function
 import mlflow.genai.agent_server.server as agent_server_module
-
-# Parent sets this for the uvicorn worker. We don't pass repo_dir on the
-# command line because uvicorn's reload subprocess gets a different argv.
-_REPO_DIR_ENV = "MLFLOW_PLAYGROUND_AGENT_REPO_DIR"
 
 EXCLUDED_DIR_NAMES = {
     ".git",
@@ -156,65 +137,22 @@ def discover_agent(repo_dir: Path) -> tuple[Path, str | None]:
     )
 
 
-def _build_app():
-    """Build the AgentServer FastAPI app from the repo dir env var.
-
-    Called at module import time when ``MLFLOW_PLAYGROUND_AGENT_REPO_DIR`` is
-    set — i.e. inside the uvicorn worker. Each reload re-imports this module
-    and re-runs discovery, so edits to the agent file land in the next worker.
-    """
-    repo_dir_str = os.environ.get(_REPO_DIR_ENV)
-    if not repo_dir_str:
-        raise RuntimeError(
-            f"{_REPO_DIR_ENV} is not set; agent_bootstrap.app cannot be built. "
-            "This module should be loaded via uvicorn started by `main()`."
-        )
-    repo_dir = Path(repo_dir_str).resolve()
-    candidate, agent_type = discover_agent(repo_dir)
-    print(f"MLflow Agent Playground loaded entrypoint from {candidate}", flush=True)
-    return AgentServer(agent_type).app
-
-
-# Module-level handle uvicorn imports. Only built inside the worker — bare
-# imports (tests, IDE tooling) stay side-effect-free because the env var is
-# only set by `main()` before exec'ing uvicorn.
-app = _build_app() if os.environ.get(_REPO_DIR_ENV) else None
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Auto-start a local MLflow agent server.")
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument(
-        "--no-reload",
-        action="store_true",
-        help="Disable uvicorn auto-reload on agent file changes (default: reload on).",
-    )
     args = parser.parse_args()
 
     repo_dir = Path(args.repo_dir).resolve()
     if not repo_dir.exists():
         raise SystemExit(f"Repo directory does not exist: {repo_dir}")
 
-    # Stash the repo dir in env so the uvicorn worker can re-run discovery on
-    # every reload. Argparse-style flags don't survive the reload spawn.
-    os.environ[_REPO_DIR_ENV] = str(repo_dir)
+    candidate, agent_type = discover_agent(repo_dir)
+    print(f"MLflow Agent Playground loaded entrypoint from {candidate}", flush=True)
 
-    reload_enabled = not args.no_reload
-    # Skip large noisy subtrees so the watcher doesn't spam syscalls when the
-    # repo includes a virtualenv or installed test caches. Patterns mirror
-    # `EXCLUDED_DIR_NAMES` since the same dirs are unlikely to contain agent
-    # source.
-    reload_excludes = [f"**/{name}/**" for name in EXCLUDED_DIR_NAMES]
-    uvicorn.run(
-        "mlflow.playground.agent_bootstrap:app",
-        host=args.host,
-        port=args.port,
-        reload=reload_enabled,
-        reload_dirs=[str(repo_dir)] if reload_enabled else None,
-        reload_excludes=reload_excludes if reload_enabled else None,
-    )
+    server = AgentServer(agent_type)
+    uvicorn.run(server.app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
