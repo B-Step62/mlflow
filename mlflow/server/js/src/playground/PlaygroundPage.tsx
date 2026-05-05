@@ -237,13 +237,17 @@ const parseSseChunk = (rawChunk: string, onEvent: (event: StreamEvent) => void) 
 };
 
 /**
- * Compact header strip for the inline trace pane. Renders ONLY the pills the
+ * Compact metric strip for the inline trace pane. Renders ONLY the pills the
  * playground needs (status / tokens / cost / latency) by re-using the same
  * components `ModelTraceHeaderDetails` uses, so the styling stays
  * pixel-identical to the regular trace view. Trace-id, tags, and user/session
  * pills are intentionally omitted; full detail is available via "Open full trace".
+ *
+ * Positioned at the bottom of the trace body (below the span tree) so the user's
+ * eye lands on the structure first, then the totals — same pattern as the
+ * "Cost" / "Tokens" footer of the regular trace explorer.
  */
-const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info'] }) => {
+const PlaygroundTraceMetricsBar = ({ traceInfo }: { traceInfo: ModelTrace['info'] }) => {
   const { theme } = useDesignSystemTheme();
   const { rootNode } = useModelTraceExplorerViewState();
   const tokenUsage = useMemo<Partial<TokenUsage> | undefined>(
@@ -269,9 +273,11 @@ const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info
         rowGap: theme.spacing.sm,
         flexWrap: 'wrap',
         paddingLeft: theme.spacing.md,
+        paddingRight: theme.spacing.md,
         paddingTop: theme.spacing.sm,
         paddingBottom: theme.spacing.sm,
-        borderBottom: `1px solid ${theme.colors.border}`,
+        borderTop: `1px solid ${theme.colors.border}`,
+        backgroundColor: 'rgba(250,250,250,0.85)',
       }}
     >
       {statusState && <ModelTraceHeaderStatusTag statusState={statusState} getTruncatedLabel={getTruncatedLabel} />}
@@ -296,15 +302,12 @@ const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info
  * that the regular trace explorer uses. Layout:
  *
  *   ┌───────────────────────────────┐
- *   │ status / tokens / cost / lat  │  ← PlaygroundTraceHeaderPills
- *   ├───────────────────────────────┤    (re-uses MLflow's pill components)
  *   │  TimelineTree                  │  ← deep-imported tree
  *   │   ├─ root                      │
  *   │   │   └─ ...                   │
  *   ├───────────────────────────────┤
- *   │  ModelTraceExplorerContentTab │  ← deep-imported I/O renderer
- *   │  (selected span's I/O)        │     same component as the regular right-pane
- *   └───────────────────────────────┘    "Inputs / Outputs" tab
+ *   │ status / tokens / cost / lat  │  ← PlaygroundTraceMetricsBar
+ *   └───────────────────────────────┘    (footer; re-uses MLflow's pill components)
  */
 const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
   const { selectedNode, setSelectedNode, setActiveTab, rootNode, topLevelNodes } = useModelTraceExplorerViewState();
@@ -352,7 +355,6 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
 
   return (
     <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <PlaygroundTraceHeaderPills traceInfo={trace.info} />
       <div
         css={{
           flex: 1,
@@ -374,6 +376,7 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
           setSpanFilterState={setSpanFilterState}
         />
       </div>
+      <PlaygroundTraceMetricsBar traceInfo={trace.info} />
     </div>
   );
 };
