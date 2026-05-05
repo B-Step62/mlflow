@@ -1655,4 +1655,47 @@ def create_playground_api_router(
             "base_branch": worktree.base_branch,
         }
 
+    # ----- Worker actions: accept / rework / discard (Epic 8 / YUK-55) -------
+
+    @router.post("/agent-connections/{connection_id}/accept")
+    async def accept_connection(connection_id: str) -> dict[str, Any]:
+        from mlflow.playground.worker import (
+            WorkerActionError,
+            accept_worker_connection,
+        )
+
+        try:
+            return await asyncio.to_thread(accept_worker_connection, runtime, connection_id)
+        except WorkerActionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    @router.post("/agent-connections/{connection_id}/rework")
+    async def rework_connection(connection_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from mlflow.playground.worker import (
+            WorkerActionError,
+            rework_worker_connection,
+        )
+
+        feedback = request.get("feedback")
+        if not isinstance(feedback, str) or not feedback.strip():
+            raise HTTPException(status_code=400, detail="`feedback` is required.")
+        try:
+            return await asyncio.to_thread(
+                rework_worker_connection, runtime, connection_id, feedback=feedback
+            )
+        except WorkerActionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    @router.post("/agent-connections/{connection_id}/discard")
+    async def discard_connection(connection_id: str) -> dict[str, Any]:
+        from mlflow.playground.worker import (
+            WorkerActionError,
+            discard_worker_connection,
+        )
+
+        try:
+            return await asyncio.to_thread(discard_worker_connection, runtime, connection_id)
+        except WorkerActionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
     return router
