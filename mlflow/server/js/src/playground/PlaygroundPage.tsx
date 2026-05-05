@@ -362,16 +362,9 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
         }}
       >
         {hasChatMessages && selectedNode ? (
-          <ModelTraceExplorerChatTab
-            chatMessages={selectedNode.chatMessages!}
-            chatTools={selectedNode.chatTools}
-          />
+          <ModelTraceExplorerChatTab chatMessages={selectedNode.chatMessages!} chatTools={selectedNode.chatTools} />
         ) : (
-          <ModelTraceExplorerContentTab
-            activeSpan={selectedNode}
-            searchFilter=""
-            activeMatch={matchData.match}
-          />
+          <ModelTraceExplorerContentTab activeSpan={selectedNode} searchFilter="" activeMatch={matchData.match} />
         )}
       </div>
     </div>
@@ -1167,9 +1160,8 @@ const PlaygroundPageImpl = () => {
           </div>
           <div
             css={{
-              flex: '1 1 0',
-              minHeight: 120,
-              maxHeight: '40vh',
+              flex: 1,
+              minHeight: 0,
               overflowY: 'auto',
               borderBottom: `1px solid ${theme.colors.border}`,
             }}
@@ -1186,63 +1178,78 @@ const PlaygroundPageImpl = () => {
               }}
             />
           </div>
+          {/* Trace section grows twice as tall as the feedback rail above
+              (1:2 ratio between feedback and trace content areas). */}
           <div
             css={{
+              flex: 2,
+              minHeight: 0,
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: theme.spacing.sm,
-              padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-              borderBottom: `1px solid ${theme.colors.border}`,
-              background:
-                'linear-gradient(90deg, rgba(232,244,255,0.85) 0%, rgba(250,250,250,0.85) 55%, rgba(255,244,214,0.85) 100%)',
+              flexDirection: 'column',
             }}
           >
-            <Typography.Text css={{ fontWeight: 700, flexShrink: 0 }}>Live Trace</Typography.Text>
-            {latestTraceId && (
-              <Typography.Text
-                color="secondary"
-                size="sm"
-                css={{
-                  fontFamily: 'monospace',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  flex: 1,
-                  minWidth: 0,
-                }}
-                title={latestTraceId}
-              >
-                {latestTraceId}
-              </Typography.Text>
-            )}
-            <Button
-              componentId="mlflow.playground.open-full-trace"
-              size="small"
-              disabled={!selectedTrace}
-              onClick={() => setIsFullTraceOpen(true)}
-            >
-              Open full trace
-            </Button>
-          </div>
-
-          {selectedTrace ? (
-            <PlaygroundTracePane trace={selectedTrace} />
-          ) : (
             <div
               css={{
-                flex: 1,
                 display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
-                justifyContent: 'center',
-                padding: theme.spacing.lg,
+                gap: theme.spacing.sm,
+                padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                background:
+                  'linear-gradient(90deg, rgba(232,244,255,0.85) 0%, rgba(250,250,250,0.85) 55%, rgba(255,244,214,0.85) 100%)',
               }}
             >
-              <Typography.Text color="secondary">
-                {latestTraceId ? 'Loading trace…' : 'No trace yet — send a turn and the span tree will stream in here.'}
-              </Typography.Text>
+              <Typography.Text css={{ fontWeight: 700, flexShrink: 0 }}>Live Trace</Typography.Text>
+              {latestTraceId && (
+                <Typography.Text
+                  color="secondary"
+                  size="sm"
+                  css={{
+                    fontFamily: 'monospace',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                  title={latestTraceId}
+                >
+                  {latestTraceId}
+                </Typography.Text>
+              )}
+              <Button
+                componentId="mlflow.playground.open-full-trace"
+                size="small"
+                disabled={!selectedTrace}
+                onClick={() => setIsFullTraceOpen(true)}
+              >
+                Open full trace
+              </Button>
             </div>
-          )}
+
+            <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              {selectedTrace ? (
+                <PlaygroundTracePane trace={selectedTrace} />
+              ) : (
+                <div
+                  css={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: theme.spacing.lg,
+                  }}
+                >
+                  <Typography.Text color="secondary">
+                    {latestTraceId
+                      ? 'Loading trace…'
+                      : 'No trace yet — send a turn and the span tree will stream in here.'}
+                  </Typography.Text>
+                </div>
+              )}
+            </div>
+          </div>
         </aside>
       </div>
 
