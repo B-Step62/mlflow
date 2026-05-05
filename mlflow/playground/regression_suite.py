@@ -52,6 +52,126 @@ def append_test_case(
     return dataset
 
 
+def update_test_case(
+    experiment_id: str,
+    test_case_id: str,
+    *,
+    question: str | None = None,
+    assertion: dict[str, list[str]] | None = None,
+    judge: dict[str, str | None] | None = None,
+) -> None:
+    """Edit one test case in place. ``None`` for any field means "keep what
+    was there." Performs a delete-then-insert because ``upsert_dataset_records``
+    dedupes by hash of ``inputs``: changing the question would otherwise
+    insert a second row with the same ``test_case_id`` instead of replacing
+    the original.
+
+    No-op when the ``test_case_id`` doesn't resolve. Preserves all existing
+    tags (``issue_id``, ``source_trace_id``, ``promoted``) and the original
+    ``test_case_id`` itself, so external lineage links don't break.
+    """
+    import json
+
+    try:
+        dataset = get_dataset(name=regression_dataset_name(experiment_id))
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return
+        raise
+
+    df = dataset.to_df()
+    if df.empty:
+        return
+
+    def _coerce(v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return v
+        return v
+
+    target_row = None
+    target_record_id = None
+    for row in df.to_dict(orient="records"):
+        expectations = _coerce(row.get("expectations") or {})
+        if isinstance(expectations, dict) and expectations.get("test_case_id") == test_case_id:
+            target_row = row
+            target_record_id = row.get("dataset_record_id")
+            break
+    if target_row is None:
+        return
+
+    existing_inputs = _coerce(target_row.get("inputs") or {})
+    existing_messages = (
+        _coerce(existing_inputs.get("messages") or [])
+        if isinstance(existing_inputs, dict)
+        else []
+    )
+    if not isinstance(existing_messages, list):
+        existing_messages = []
+    existing_expectations = _coerce(target_row.get("expectations") or {})
+    if not isinstance(existing_expectations, dict):
+        existing_expectations = {}
+    existing_spec = existing_expectations.get("test_spec") or {}
+    if not isinstance(existing_spec, dict):
+        existing_spec = {}
+    existing_tags = _coerce(target_row.get("tags") or {})
+    if not isinstance(existing_tags, dict):
+        existing_tags = {}
+
+    # Build the new messages list. If the caller supplied a fresh question we
+    # rewrite the LAST user turn — anything before it is preserved (the agent
+    # may need that prefix for context). If there's no user turn at all we
+    # synthesize one.
+    new_messages = list(existing_messages)
+    if question is not None:
+        replaced = False
+        for i in range(len(new_messages) - 1, -1, -1):
+            msg = new_messages[i]
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                new_messages[i] = {"role": "user", "content": question}
+                replaced = True
+                break
+        if not replaced:
+            new_messages.append({"role": "user", "content": question})
+
+    new_spec = dict(existing_spec)
+    if assertion is not None:
+        new_spec["strategy"] = "assertion"
+        new_spec["assertion"] = {
+            "must_contain": list(assertion.get("must_contain") or []),
+            "must_not_contain": list(assertion.get("must_not_contain") or []),
+            "must_call_tool": list(assertion.get("must_call_tool") or []),
+            "must_not_call_tool": list(assertion.get("must_not_call_tool") or []),
+        }
+        new_spec.pop("judge", None)
+    if judge is not None:
+        new_spec["strategy"] = "judge"
+        new_spec["judge"] = {
+            "criteria": judge.get("criteria") or "",
+            "expected_response": judge.get("expected_response"),
+        }
+        new_spec.pop("assertion", None)
+
+    new_record = {
+        "inputs": {"messages": new_messages},
+        "expectations": {
+            **{k: v for k, v in existing_expectations.items() if k != "test_spec"},
+            "test_case_id": test_case_id,
+            "test_spec": new_spec,
+        },
+        "tags": dict(existing_tags),
+    }
+
+    # Delete-then-insert. Insert first would risk a transient duplicate; the
+    # cockpit's list_regression_cases tolerates orphans, but a duplicate
+    # share-the-same-test_case_id row is worse than a brief no-row state.
+    if target_record_id:
+        dataset.delete_records([target_record_id])
+    dataset.merge_records([new_record])
+
+
 def delete_test_case(experiment_id: str, test_case_id: str) -> None:
     """Remove one test case by ``test_case_id``. No-op if it doesn't exist —
     matches HTTP DELETE semantics so a double-click in the UI doesn't error.
@@ -102,4 +222,5 @@ __all__ = [
     "delete_test_case",
     "get_or_create_regression_dataset",
     "regression_dataset_name",
+    "update_test_case",
 ]

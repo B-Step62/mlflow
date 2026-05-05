@@ -10,6 +10,7 @@ from mlflow.playground.regression_suite import (
     delete_test_case,
     get_or_create_regression_dataset,
     regression_dataset_name,
+    update_test_case,
 )
 from mlflow.playground.test_case_generator import (
     AssertionSpec,
@@ -180,3 +181,135 @@ def test_delete_test_case_is_noop_when_dataset_missing():
     )
     with mock.patch.object(regression_suite, "get_dataset", side_effect=not_found):
         delete_test_case("exp-1", "tc-anything")
+
+
+def test_update_test_case_replaces_question_and_keeps_other_fields():
+    import pandas as pd
+
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "dataset_record_id": "rec-1",
+                "inputs": {"messages": [{"role": "user", "content": "old question"}]},
+                "expectations": {
+                    "test_case_id": "tc-1",
+                    "rationale_summary": "must cite §4.2",
+                    "test_spec": {
+                        "strategy": "assertion",
+                        "assertion": {"must_contain": ["§4.2"], "must_not_contain": [], "must_call_tool": [], "must_not_call_tool": []},
+                    },
+                },
+                "tags": {"issue_id": "iss-1", "source_trace_id": "tr-1", "promoted": "false"},
+            },
+        ]
+    )
+    with mock.patch.object(regression_suite, "get_dataset", return_value=dataset):
+        update_test_case("exp-1", "tc-1", question="new question")
+
+    dataset.delete_records.assert_called_once_with(["rec-1"])
+    dataset.merge_records.assert_called_once()
+    [records] = dataset.merge_records.call_args.args
+    assert records[0]["inputs"] == {"messages": [{"role": "user", "content": "new question"}]}
+    # spec untouched
+    assert records[0]["expectations"]["test_spec"]["assertion"]["must_contain"] == ["§4.2"]
+    # test_case_id + tags preserved
+    assert records[0]["expectations"]["test_case_id"] == "tc-1"
+    assert records[0]["tags"]["issue_id"] == "iss-1"
+    assert records[0]["tags"]["promoted"] == "false"
+    # rationale_summary preserved
+    assert records[0]["expectations"]["rationale_summary"] == "must cite §4.2"
+
+
+def test_update_test_case_replaces_assertion_lists_only():
+    import pandas as pd
+
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "dataset_record_id": "rec-1",
+                "inputs": {"messages": [{"role": "user", "content": "Q"}]},
+                "expectations": {
+                    "test_case_id": "tc-1",
+                    "test_spec": {
+                        "strategy": "assertion",
+                        "assertion": {"must_contain": ["old"], "must_not_contain": [], "must_call_tool": [], "must_not_call_tool": []},
+                    },
+                },
+                "tags": {},
+            },
+        ]
+    )
+    with mock.patch.object(regression_suite, "get_dataset", return_value=dataset):
+        update_test_case(
+            "exp-1",
+            "tc-1",
+            assertion={"must_contain": ["new1", "new2"], "must_not_contain": ["nope"]},
+        )
+
+    [records] = dataset.merge_records.call_args.args
+    spec = records[0]["expectations"]["test_spec"]
+    assert spec["strategy"] == "assertion"
+    assert spec["assertion"]["must_contain"] == ["new1", "new2"]
+    assert spec["assertion"]["must_not_contain"] == ["nope"]
+    assert spec["assertion"]["must_call_tool"] == []
+    assert "judge" not in spec
+    # Question unchanged
+    assert records[0]["inputs"]["messages"] == [{"role": "user", "content": "Q"}]
+
+
+def test_update_test_case_switches_strategy_to_judge():
+    import pandas as pd
+
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "dataset_record_id": "rec-1",
+                "inputs": {"messages": [{"role": "user", "content": "Q"}]},
+                "expectations": {
+                    "test_case_id": "tc-1",
+                    "test_spec": {
+                        "strategy": "assertion",
+                        "assertion": {"must_contain": ["x"]},
+                    },
+                },
+                "tags": {},
+            },
+        ]
+    )
+    with mock.patch.object(regression_suite, "get_dataset", return_value=dataset):
+        update_test_case(
+            "exp-1",
+            "tc-1",
+            judge={"criteria": "tone is professional", "expected_response": "A formal reply."},
+        )
+
+    [records] = dataset.merge_records.call_args.args
+    spec = records[0]["expectations"]["test_spec"]
+    assert spec["strategy"] == "judge"
+    assert spec["judge"]["criteria"] == "tone is professional"
+    assert spec["judge"]["expected_response"] == "A formal reply."
+    assert "assertion" not in spec
+
+
+def test_update_test_case_is_noop_when_id_not_found():
+    import pandas as pd
+
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "dataset_record_id": "rec-1",
+                "inputs": {"messages": [{"role": "user", "content": "Q"}]},
+                "expectations": {"test_case_id": "tc-keep", "test_spec": {"strategy": "judge", "judge": {}}},
+                "tags": {},
+            },
+        ]
+    )
+    with mock.patch.object(regression_suite, "get_dataset", return_value=dataset):
+        update_test_case("exp-1", "tc-does-not-exist", question="ignored")
+
+    dataset.delete_records.assert_not_called()
+    dataset.merge_records.assert_not_called()

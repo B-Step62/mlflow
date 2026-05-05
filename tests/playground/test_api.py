@@ -235,6 +235,42 @@ def test_question_bank_delete_calls_storage_layer():
     m.assert_called_once_with("exp-1", "qb-1")
 
 
+def test_regression_case_patch_calls_storage_layer():
+    client = create_test_client()
+    with mock.patch("mlflow.playground.regression_suite.update_test_case") as m:
+        response = client.patch(
+            "/ajax-api/3.0/mlflow/playground/regression-suite/cases/tc-1",
+            json={
+                "experiment_id": "exp-1",
+                "question": "new q",
+                "assertion": {"must_contain": ["§4.2"]},
+            },
+        )
+    assert response.status_code == 200
+    assert response.json() == {"updated": "tc-1"}
+    m.assert_called_once_with(
+        "exp-1",
+        "tc-1",
+        question="new q",
+        assertion={"must_contain": ["§4.2"]},
+        judge=None,
+    )
+
+
+def test_regression_case_patch_rejects_both_assertion_and_judge():
+    client = create_test_client()
+    response = client.patch(
+        "/ajax-api/3.0/mlflow/playground/regression-suite/cases/tc-1",
+        json={
+            "experiment_id": "exp-1",
+            "assertion": {"must_contain": []},
+            "judge": {"criteria": "x"},
+        },
+    )
+    assert response.status_code == 400
+    assert "either" in response.json()["detail"].lower()
+
+
 def test_regression_case_delete_calls_storage_layer():
     client = create_test_client()
     with mock.patch("mlflow.playground.regression_suite.delete_test_case") as m:
