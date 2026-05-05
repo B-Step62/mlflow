@@ -160,8 +160,13 @@ export const FloatingAnnotateButton = ({
 }) => {
   if (!selection) return null;
   const { rect } = selection;
-  const top = window.scrollY + rect.top - 8;
-  const left = window.scrollX + rect.right + 6;
+  // Viewport-relative coordinates. Using `position: fixed` so the button
+  // tracks the selection regardless of which positioned ancestor the
+  // playground happens to be mounted under (the MLflow shell wraps the
+  // route in a positioned container, which would shift `position: absolute`
+  // off-screen).
+  const top = Math.max(8, rect.top - 36);
+  const left = Math.min(window.innerWidth - 130, rect.right + 6);
   return (
     <button
       type="button"
@@ -171,7 +176,7 @@ export const FloatingAnnotateButton = ({
       }}
       onClick={onClick}
       css={{
-        position: 'absolute',
+        position: 'fixed',
         top,
         left,
         zIndex: 1000,
