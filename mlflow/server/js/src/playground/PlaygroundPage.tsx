@@ -826,9 +826,44 @@ const buildBatchFixPrompt = (args: {
   lines.push('');
   lines.push('## Your job');
   lines.push(
-    'Find and fix the agent code in this repo so re-running this test passes. ' +
-      'Touch only the agent under development; do NOT modify the test row or its assertion / judge spec ' +
-      "(the playground regenerates it from the original feedback if you delete it).",
+    "Treat this test as a SYMPTOM of a behaviour gap in the agent, not the target itself. " +
+      'A user wrote down what a correct response looks like; this run shows the agent missed that bar. ' +
+      "Your task is to identify the underlying behaviour gap and improve the agent's general handling of " +
+      'the kind of input that triggered it — not to make this one assertion green.',
+  );
+  lines.push('');
+  lines.push('### Before you write code');
+  lines.push(
+    "1. State, in one or two sentences, what the agent's CURRENT behaviour is and what it SHOULD be. " +
+      "Phrase it generally — not 'when the user asks <this exact question>', but in terms of the " +
+      'capability or knowledge that was missing.',
+  );
+  lines.push(
+    '2. List 2–3 PARAPHRASES or sibling inputs that should produce the same corrected behaviour. ' +
+      'If your fix would not also help those, you are over-fitting to this test.',
+  );
+  lines.push(
+    '3. Decide on the root-cause layer: prompt / system instructions / tool definitions / retrieval / ' +
+      'reasoning logic / training data. Touch the layer that owns the gap; avoid downstream bandaids.',
+  );
+  lines.push('');
+  lines.push('### Hard rules — do not do these');
+  lines.push('- Do NOT special-case this exact question, this exact phrasing, or this exact assertion text.');
+  lines.push('- Do NOT add a branch like `if "refund policy" in question: respond with "§4.2"`.');
+  lines.push('- Do NOT hard-code the expected response or its keywords into the agent.');
+  lines.push(
+    '- Do NOT post-process the agent output to inject the missing tokens — fix the upstream behaviour.',
+  );
+  lines.push(
+    '- Do NOT modify the test row or its assertion / judge spec (the playground regenerates it from ' +
+      'the original feedback if you delete it).',
+  );
+  lines.push('');
+  lines.push('### Generalisation check before you finish');
+  lines.push(
+    'Mentally run two paraphrased versions of the question through your fix. If either still fails, ' +
+      "your fix is too narrow — keep going. Aim for a change a future you would describe as 'taught the " +
+      "agent X', not 'patched test Y'.",
   );
   lines.push('');
   lines.push('## Verify');
