@@ -41,14 +41,7 @@ import { FormattedMessage } from 'react-intl';
 
 import ErrorUtils from '../common/utils/ErrorUtils';
 import { withErrorBoundary } from '../common/utils/withErrorBoundary';
-import {
-  Alert,
-  Button,
-  Input,
-  Spinner,
-  Typography,
-  useDesignSystemTheme,
-} from '@databricks/design-system';
+import { Alert, Button, Input, Spinner, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import type { ModelTraceInfoV3 } from '@databricks/web-shared/model-trace-explorer';
 import {
   isV3ModelTraceInfo,
@@ -65,6 +58,17 @@ import {
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
 import { useParams } from '../common/utils/RoutingUtils';
+import {
+  FeedbackComposer,
+  FeedbackRail,
+  FloatingAnnotateButton,
+  feedbacksFromTraceAssessments,
+  persistFeedback,
+  resolveAnchorOffsets,
+  useChatSelection,
+  type AssistantMessageAnchor,
+  type PlaygroundFeedback,
+} from './feedback';
 
 type MessageRole = 'user' | 'assistant' | 'system' | 'developer';
 
@@ -123,10 +127,7 @@ const TRACE_LOOKUP_TIMEOUT_MS = 30_000;
 // growing as new spans land. Stops once the trace state finalizes (OK / ERROR).
 const LIVE_TRACE_REFRESH_MS = 1_000;
 
-const fetchTraceSpansV3 = async (
-  traceId: string,
-  signal?: AbortSignal,
-): Promise<ModelTrace | null> => {
+const fetchTraceSpansV3 = async (traceId: string, signal?: AbortSignal): Promise<ModelTrace | null> => {
   // Use the same fetcher the Experiment Traces tab uses — `TracesServiceV3.getTraceV3`
   // combines `/api/3.0/mlflow/traces/{traceId}` (info) and
   // `/api/3.0/mlflow/get-trace-artifact?request_id=...` (spans). The artifact
@@ -207,10 +208,7 @@ const parseErrorText = async (response: Response) => {
   }
 };
 
-const parseSseChunk = (
-  rawChunk: string,
-  onEvent: (event: StreamEvent) => void,
-) => {
+const parseSseChunk = (rawChunk: string, onEvent: (event: StreamEvent) => void) => {
   const dataLines = rawChunk
     .split('\n')
     .filter((line) => line.startsWith('data:'))
@@ -244,14 +242,8 @@ const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info
     () => (_isV3(traceInfo) ? (traceInfo as ModelTraceInfoV3).state : undefined),
     [traceInfo],
   );
-  const latency = useMemo(
-    () => (rootNode ? spanTimeFormatter(rootNode.end - rootNode.start) : undefined),
-    [rootNode],
-  );
-  const getTruncatedLabel = useCallback(
-    (label: string) => truncateToFirstLineWithMaxLength(label, 40),
-    [],
-  );
+  const latency = useMemo(() => (rootNode ? spanTimeFormatter(rootNode.end - rootNode.start) : undefined), [rootNode]);
+  const getTruncatedLabel = useCallback((label: string) => truncateToFirstLineWithMaxLength(label, 40), []);
   return (
     <div
       css={{
@@ -266,18 +258,12 @@ const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info
         borderBottom: `1px solid ${theme.colors.border}`,
       }}
     >
-      {statusState && (
-        <ModelTraceHeaderStatusTag statusState={statusState} getTruncatedLabel={getTruncatedLabel} />
-      )}
-      {isTokenUsageType(tokenUsage) && (
-        <ModelTraceExplorerTokenUsageHoverCard tokenUsage={tokenUsage} />
-      )}
+      {statusState && <ModelTraceHeaderStatusTag statusState={statusState} getTruncatedLabel={getTruncatedLabel} />}
+      {isTokenUsageType(tokenUsage) && <ModelTraceExplorerTokenUsageHoverCard tokenUsage={tokenUsage} />}
       {isTraceCostType(cost) && <ModelTraceExplorerCostHoverCard cost={cost} />}
       {latency && (
         <ModelTraceHeaderMetricSection
-          label={
-            <FormattedMessage defaultMessage="Latency" description="Label for the latency section" />
-          }
+          label={<FormattedMessage defaultMessage="Latency" description="Label for the latency section" />}
           icon={<ClockIcon css={{ fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }} />}
           value={latency}
           getTruncatedLabel={getTruncatedLabel}
@@ -306,8 +292,7 @@ const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info
  */
 const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
   const { theme } = useDesignSystemTheme();
-  const { selectedNode, setSelectedNode, setActiveTab, rootNode, topLevelNodes } =
-    useModelTraceExplorerViewState();
+  const { selectedNode, setSelectedNode, setActiveTab, rootNode, topLevelNodes } = useModelTraceExplorerViewState();
 
   // expandedKeys / spanFilterState aren't part of the view-state context —
   // they're owned per-mount by the regular DetailView via these hooks.
@@ -315,15 +300,14 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
   const { expandedKeys, setExpandedKeys } = useTimelineTreeExpandedNodes({
     rootNodes: topLevelNodes,
   });
-  const { spanFilterState, setSpanFilterState, filteredTreeNodes, matchData } =
-    useModelTraceSearch({
-      treeNodes: topLevelNodes,
-      selectedNode,
-      setSelectedNode,
-      setActiveTab,
-      setExpandedKeys,
-      modelTraceInfo: trace.info,
-    });
+  const { spanFilterState, setSpanFilterState, filteredTreeNodes, matchData } = useModelTraceSearch({
+    treeNodes: topLevelNodes,
+    selectedNode,
+    setSelectedNode,
+    setActiveTab,
+    setExpandedKeys,
+    modelTraceInfo: trace.info,
+  });
 
   const { traceStartTime, traceEndTime } = useMemo(() => {
     if (!rootNode) return { traceStartTime: 0, traceEndTime: 0 };
@@ -364,11 +348,7 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
           flexDirection: 'column',
         }}
       >
-        <ModelTraceExplorerContentTab
-          activeSpan={selectedNode}
-          searchFilter=""
-          activeMatch={matchData.match}
-        />
+        <ModelTraceExplorerContentTab activeSpan={selectedNode} searchFilter="" activeMatch={matchData.match} />
       </div>
     </div>
   );
@@ -380,10 +360,7 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
  * as the public `<ModelTraceExplorer>` — and renders the compact stacked body.
  */
 const PlaygroundTracePane = ({ trace }: { trace: ModelTrace }) => {
-  const traceInfo = useMemo(
-    () => (_isV3(trace.info) ? (trace.info as ModelTraceInfoV3) : undefined),
-    [trace.info],
-  );
+  const traceInfo = useMemo(() => (_isV3(trace.info) ? (trace.info as ModelTraceInfoV3) : undefined), [trace.info]);
   return (
     <ModelTraceExplorerPreferencesProvider>
       <ModelTraceExplorerContextProvider>
@@ -469,6 +446,107 @@ const PlaygroundPageImpl = () => {
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const traceLookupAbortersRef = useRef<Set<AbortController>>(new Set());
 
+  // --- Annotation state (Epic 4) -------------------------------------------
+  const { selection, clear: clearSelection } = useChatSelection();
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerSelection, setComposerSelection] = useState<typeof selection>(null);
+  const [feedbacks, setFeedbacks] = useState<PlaygroundFeedback[]>([]);
+  const [hoveredFeedback, setHoveredFeedback] = useState<string | null>(null);
+  const [flashedFeedback, setFlashedFeedback] = useState<string | null>(null);
+
+  const upsertFeedback = useCallback((next: PlaygroundFeedback) => {
+    setFeedbacks((prev) => {
+      const idx = prev.findIndex((f) => f.assessment_id === next.assessment_id);
+      if (idx >= 0) {
+        const merged = [...prev];
+        merged[idx] = { ...prev[idx], ...next };
+        return merged;
+      }
+      return [...prev, next];
+    });
+  }, []);
+
+  // Hydrate feedbacks from each turn's trace assessments. The trace already
+  // arrives via the live-trace polling effect above; we walk its info
+  // assessments and merge anything tagged as a playground feedback.
+  useEffect(() => {
+    if (!selectedTrace) return;
+    const traceId = (selectedTrace.info as { trace_id?: string })?.trace_id;
+    const assessments = (selectedTrace.info as { assessments?: never[] })?.assessments;
+    if (!traceId) return;
+    const reconstructed = feedbacksFromTraceAssessments(traceId, assessments);
+    if (reconstructed.length === 0) return;
+    setFeedbacks((prev) => {
+      const byId = new Map(prev.map((f) => [f.assessment_id, f] as const));
+      for (const f of reconstructed) {
+        // Don't overwrite a locally-pending row with a server row that's
+        // missing the dispatched flag etc. — keep the most-informed copy.
+        const existing = byId.get(f.assessment_id);
+        byId.set(f.assessment_id, existing ? { ...existing, ...f } : f);
+      }
+      return Array.from(byId.values());
+    });
+  }, [selectedTrace]);
+
+  const submitFeedback = useCallback(
+    async (input: {
+      rationale: string;
+      aspect: PlaygroundFeedback['aspect'];
+      expected_output?: string;
+      anchor: AssistantMessageAnchor;
+    }) => {
+      const traceId = input.anchor.trace_id;
+      if (!traceId) {
+        setError('Cannot save feedback: this turn has no trace yet. Try again in a moment.');
+        return;
+      }
+      const optimisticId = `pending-${Date.now()}`;
+      const optimistic: PlaygroundFeedback = {
+        assessment_id: optimisticId,
+        trace_id: traceId,
+        rationale: input.rationale,
+        aspect: input.aspect,
+        expected_output: input.expected_output,
+        anchor: input.anchor,
+        pending: true,
+      };
+      setFeedbacks((prev) => [...prev, optimistic]);
+      setComposerOpen(false);
+      clearSelection();
+      try {
+        const { assessment_id } = await persistFeedback({
+          trace_id: traceId,
+          rationale: input.rationale,
+          aspect: input.aspect,
+          expected_output: input.expected_output,
+          anchor: input.anchor,
+        });
+        setFeedbacks((prev) =>
+          prev.map((f) =>
+            f.assessment_id === optimisticId
+              ? { ...f, assessment_id: assessment_id || optimisticId, pending: false }
+              : f,
+          ),
+        );
+      } catch (e) {
+        setFeedbacks((prev) => prev.filter((f) => f.assessment_id !== optimisticId));
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [clearSelection],
+  );
+
+  const handleFeedbackHover = useCallback((feedbackId: string | null) => {
+    setHoveredFeedback(feedbackId);
+    setFlashedFeedback(feedbackId);
+  }, []);
+
+  const resolveFeedback = useCallback((feedback: PlaygroundFeedback) => {
+    setFeedbacks((prev) =>
+      prev.map((f) => (f.assessment_id === feedback.assessment_id ? { ...f, resolved: true } : f)),
+    );
+  }, []);
+
   useEffect(() => {
     const aborters = traceLookupAbortersRef.current;
     return () => {
@@ -505,10 +583,7 @@ const PlaygroundPageImpl = () => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamingText]);
 
-  const latestTraceMessage = useMemo(
-    () => [...messages].reverse().find((message) => message.traceId),
-    [messages],
-  );
+  const latestTraceMessage = useMemo(() => [...messages].reverse().find((message) => message.traceId), [messages]);
   const latestTraceId = latestTraceMessage?.traceId;
 
   // Live-poll the latest trace's span tree so the inline panel grows as the
@@ -621,15 +696,9 @@ const PlaygroundPageImpl = () => {
       traceLookupAbortersRef.current.add(controller);
       void (async () => {
         try {
-          const resolved = await lookupTraceIdByRequestId(
-            experimentId,
-            requestId,
-            controller.signal,
-          );
+          const resolved = await lookupTraceIdByRequestId(experimentId, requestId, controller.signal);
           if (resolved) {
-            setMessages((current) =>
-              current.map((m) => (m.id === userMessage.id ? { ...m, traceId: resolved } : m)),
-            );
+            setMessages((current) => current.map((m) => (m.id === userMessage.id ? { ...m, traceId: resolved } : m)));
           }
         } finally {
           traceLookupAbortersRef.current.delete(controller);
@@ -711,7 +780,8 @@ const PlaygroundPageImpl = () => {
   }, [agentUrlInput, draft, experimentId, isSubmitting, messages]);
 
   const selectedTraceInfo = useMemo(
-    () => (selectedTrace && isV3ModelTraceInfo(selectedTrace.info) ? (selectedTrace.info as ModelTraceInfoV3) : undefined),
+    () =>
+      selectedTrace && isV3ModelTraceInfo(selectedTrace.info) ? (selectedTrace.info as ModelTraceInfoV3) : undefined,
     [selectedTrace],
   );
 
@@ -761,8 +831,8 @@ const PlaygroundPageImpl = () => {
           </Typography.Text>
         </div>
         <Typography.Text color="secondary" css={{ maxWidth: 760 }}>
-          Chat with a local `@invoke` agent, watch the real MLflow trace stream in for each turn, and leave feedback from the
-          built-in assessments pane.
+          Chat with a local `@invoke` agent, watch the real MLflow trace stream in for each turn, and leave feedback
+          from the built-in assessments pane.
         </Typography.Text>
       </div>
 
@@ -868,12 +938,12 @@ const PlaygroundPageImpl = () => {
                     {message.role === 'user' ? 'User' : `Assistant turn ${String(index + 1).padStart(2, '0')}`}
                   </Typography.Text>
                   <div
+                    data-mlflow-feedback-anchor={message.role === 'assistant' ? message.id : undefined}
+                    data-mlflow-feedback-trace-id={message.role === 'assistant' ? message.traceId : undefined}
                     css={{
                       borderRadius: theme.borders.borderRadiusLg,
                       padding: theme.spacing.md,
-                      border: `1px solid ${
-                        message.role === 'user' ? theme.colors.blue400 : theme.colors.border
-                      }`,
+                      border: `1px solid ${message.role === 'user' ? theme.colors.blue400 : theme.colors.border}`,
                       backgroundColor:
                         message.role === 'user' ? 'rgba(238, 244, 255, 0.95)' : 'rgba(255, 255, 255, 0.98)',
                       whiteSpace: 'pre-wrap',
@@ -956,8 +1026,9 @@ const PlaygroundPageImpl = () => {
           </div>
         </section>
 
-        {/* Right pane: live span tree (auto-tracks the latest message's
-            trace; polls until the trace state finalizes). */}
+        {/* Right pane: feedback rail on top (per-session annotation cards),
+            live span tree below. Each section scrolls independently so the
+            trace stays usable when the rail fills with cards. */}
         <aside
           css={{
             display: 'flex',
@@ -970,6 +1041,43 @@ const PlaygroundPageImpl = () => {
             boxShadow: theme.shadows.sm,
           }}
         >
+          <div
+            css={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+              borderBottom: `1px solid ${theme.colors.border}`,
+              background: 'linear-gradient(90deg, rgba(232,255,232,0.85) 0%, rgba(250,250,250,0.85) 100%)',
+            }}
+          >
+            <Typography.Text css={{ fontWeight: 700 }}>Feedback</Typography.Text>
+            <Typography.Text size="sm" color="secondary">
+              {feedbacks.filter((f) => !f.resolved).length} active
+            </Typography.Text>
+          </div>
+          <div
+            css={{
+              flex: '1 1 0',
+              minHeight: 120,
+              maxHeight: '40vh',
+              overflowY: 'auto',
+              borderBottom: `1px solid ${theme.colors.border}`,
+            }}
+          >
+            <FeedbackRail
+              feedbacks={feedbacks}
+              hoveredId={hoveredFeedback}
+              flashedId={flashedFeedback}
+              callbacks={{
+                onHover: handleFeedbackHover,
+                onDispatch: () => {
+                  setError('Dispatch flow lands in the next commit (YUK-21/22 wire-up).');
+                },
+                onResolve: resolveFeedback,
+              }}
+            />
+          </div>
           <div
             css={{
               display: 'flex',
@@ -1023,14 +1131,35 @@ const PlaygroundPageImpl = () => {
               }}
             >
               <Typography.Text color="secondary">
-                {latestTraceId
-                  ? 'Loading trace…'
-                  : 'No trace yet — send a turn and the span tree will stream in here.'}
+                {latestTraceId ? 'Loading trace…' : 'No trace yet — send a turn and the span tree will stream in here.'}
               </Typography.Text>
             </div>
           )}
         </aside>
       </div>
+
+      {/* Floating 💬 button shown next to the active text selection.
+          Click → captures the selection into composerSelection and opens the
+          composer modal. The button itself uses preventDefault on mousedown
+          so the underlying selection doesn't collapse before our handler runs. */}
+      {!composerOpen && (
+        <FloatingAnnotateButton
+          selection={selection}
+          onClick={() => {
+            setComposerSelection(selection);
+            setComposerOpen(true);
+          }}
+        />
+      )}
+      <FeedbackComposer
+        selection={composerSelection}
+        visible={composerOpen}
+        onCancel={() => {
+          setComposerOpen(false);
+          setComposerSelection(null);
+        }}
+        onSubmit={submitFeedback}
+      />
 
       {/* Full-trace drawer: opens on demand for the full explorer experience
           (assessments pane, attributes, events, linked prompts). */}
