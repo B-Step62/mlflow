@@ -352,6 +352,9 @@ export type FeedbackCardCallbacks = {
   // Set of dispatched-issue ids whose test run is currently in flight; the
   // matching feedback card shows a spinner instead of the "Test" button.
   runningTestIssueIds?: Set<string>;
+  // Set of feedback assessment ids whose dispatch is currently in flight.
+  // Drives the [Dispatch] button's loading spinner.
+  dispatchingIds?: Set<string>;
 };
 
 export const FeedbackRail = ({
@@ -467,6 +470,7 @@ export const FeedbackRail = ({
                 type="primary"
                 size="small"
                 disabled={!feedback.rationale.trim() || dispatched || feedback.pending}
+                loading={callbacks.dispatchingIds?.has(feedback.assessment_id)}
                 onClick={() => callbacks.onDispatch(feedback)}
               >
                 {dispatched ? 'Dispatched' : 'Dispatch'}

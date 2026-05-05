@@ -76,6 +76,42 @@ class Utils {
     (Utils.#notificationsApi as any).info({ message: content, duration: duration });
   }
 
+  /**
+   * Displays a notification through the globally-registered notification API
+   * with full control over severity, placement, and de-dup key.
+   *
+   * Use this (not the convenience wrappers above) when you need:
+   *   - sticky progress notifications (`duration: 0`),
+   *   - to update or dismiss a notification programmatically (`key`),
+   *   - non-default placement (`'topRight'` etc.).
+   *
+   * Posting twice with the same `key` updates the existing toast in place,
+   * so this is also the right call site for streaming progress messages.
+   */
+  static displayGlobalNotification(opts: {
+    severity: 'info' | 'success' | 'warning' | 'error';
+    message: any;
+    description?: any;
+    key?: string;
+    duration?: number;
+    placement?: 'top' | 'topLeft' | 'topRight' | 'bottom' | 'bottomLeft' | 'bottomRight';
+  }) {
+    if (!Utils.#notificationsApi) {
+      return;
+    }
+    const { severity, ...rest } = opts;
+    (Utils.#notificationsApi as any)[severity](rest);
+  }
+
+  /** Dismiss a previously-shown global notification by its `key`. No-op if the
+   * notification isn't visible (e.g. it already auto-dismissed). */
+  static closeGlobalNotification(key: string) {
+    if (!Utils.#notificationsApi) {
+      return;
+    }
+    (Utils.#notificationsApi as any).close(key);
+  }
+
   static runNameTag = 'mlflow.runName';
   static sourceNameTag = 'mlflow.source.name';
   static sourceTypeTag = 'mlflow.source.type';
