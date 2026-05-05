@@ -252,7 +252,6 @@ const parseSseChunk = (rawChunk: string, onEvent: (event: StreamEvent) => void) 
  */
 const PlaygroundTraceMetricsBar = ({ traceInfo }: { traceInfo: ModelTrace['info'] }) => {
   const { theme } = useDesignSystemTheme();
-  const { rootNode } = useModelTraceExplorerViewState();
   const tokenUsage = useMemo<Partial<TokenUsage> | undefined>(
     () => getTraceTokenUsage(traceInfo as ModelTraceInfoV3) as Partial<TokenUsage> | undefined,
     [traceInfo],
@@ -265,7 +264,17 @@ const PlaygroundTraceMetricsBar = ({ traceInfo }: { traceInfo: ModelTrace['info'
     () => (_isV3(traceInfo) ? (traceInfo as ModelTraceInfoV3).state : undefined),
     [traceInfo],
   );
-  const latency = useMemo(() => (rootNode ? spanTimeFormatter(rootNode.end - rootNode.start) : undefined), [rootNode]);
+  // Derive latency directly from `traceInfo` rather than from the view-state
+  // provider's rootNode — this lets the bar render outside the trace
+  // section's collapsible body (where the providers wrap), so the metrics
+  // stay visible whenever a trace is loaded, regardless of section state.
+  const latency = useMemo(() => {
+    if (_isV3(traceInfo)) {
+      return (traceInfo as ModelTraceInfoV3).execution_duration;
+    }
+    const ms = (traceInfo as { execution_time_ms?: number }).execution_time_ms;
+    return ms != null ? spanTimeFormatter(ms) : undefined;
+  }, [traceInfo]);
   const getTruncatedLabel = useCallback((label: string) => truncateToFirstLineWithMaxLength(label, 40), []);
   return (
     <div
@@ -379,7 +388,6 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
           setSpanFilterState={setSpanFilterState}
         />
       </div>
-      <PlaygroundTraceMetricsBar traceInfo={trace.info} />
     </div>
   );
 };
@@ -483,6 +491,7 @@ const CollapsibleSection = ({
   title,
   icon,
   rightSlot,
+  pinnedSlot,
   open,
   onToggle,
   children,
@@ -491,6 +500,10 @@ const CollapsibleSection = ({
   title: string;
   icon?: React.ReactNode;
   rightSlot?: React.ReactNode;
+  // Always-rendered strip directly below the header, regardless of `open`.
+  // Use for metadata that should stay visible when the section is collapsed
+  // (e.g. trace status/cost/latency pills above the span tree).
+  pinnedSlot?: React.ReactNode;
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -550,6 +563,7 @@ const CollapsibleSection = ({
           </div>
         )}
       </button>
+      {pinnedSlot}
       {/*
         grid-template-rows trick: an open section is `1fr` and a closed one
         is `0fr`. Since `fr` units are interpolatable, the height transitions
@@ -1575,6 +1589,9 @@ const PlaygroundPageImpl = () => {
             id="trace"
             title="Trace"
             icon={<DagIcon css={{ color: theme.colors.textSecondary }} />}
+            // Metrics live in the always-visible pinnedSlot below the
+            // header (see below) — keep the right slot lean: trace id +
+            // open-full button only.
             rightSlot={
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
                 {latestTraceId && (
@@ -1609,6 +1626,10 @@ const PlaygroundPageImpl = () => {
             }
             open={openSections.has('trace')}
             onToggle={() => toggleSection('trace')}
+            // Metrics pinned below the header — visible whether or not the
+            // section is expanded. The user wants to see status/tokens/cost/
+            // latency at a glance even while the span tree itself is hidden.
+            pinnedSlot={selectedTrace && <PlaygroundTraceMetricsBar traceInfo={selectedTrace.info} />}
           >
             {selectedTrace ? (
               <PlaygroundTracePane trace={selectedTrace} />
