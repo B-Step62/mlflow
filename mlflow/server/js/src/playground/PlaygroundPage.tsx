@@ -34,6 +34,7 @@ import {
   useTimelineTreeExpandedNodes,
 } from '../shared/web-shared/model-trace-explorer/timeline-tree/TimelineTree.utils';
 import { useModelTraceSearch } from '../shared/web-shared/model-trace-explorer/hooks/useModelTraceSearch';
+import { GenAIMarkdownRenderer } from '../shared/web-shared/genai-markdown-renderer';
 import { ClockIcon } from '@databricks/design-system';
 import type { ModelTraceState } from '../shared/web-shared/model-trace-explorer/ModelTrace.types';
 import { FormattedMessage } from 'react-intl';
@@ -2751,11 +2752,19 @@ const PlaygroundPageImpl = () => {
                       padding: theme.spacing.md,
                       border: `1px solid ${message.role === 'user' ? theme.colors.blue400 : theme.colors.border}`,
                       backgroundColor: message.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundPrimary,
-                      whiteSpace: 'pre-wrap',
+                      // Preserve newlines in user input (people don't usually
+                      // write markdown there); assistant content is rendered
+                      // through GenAIMarkdownRenderer below, which handles
+                      // its own whitespace.
+                      whiteSpace: message.role === 'user' ? 'pre-wrap' : 'normal',
                       lineHeight: 1.6,
                     }}
                   >
-                    {message.content}
+                    {message.role === 'assistant' ? (
+                      <GenAIMarkdownRenderer>{message.content}</GenAIMarkdownRenderer>
+                    ) : (
+                      message.content
+                    )}
                   </div>
                 </div>
               ))
@@ -2776,15 +2785,18 @@ const PlaygroundPageImpl = () => {
                     padding: theme.spacing.md,
                     border: `1px solid ${theme.colors.border}`,
                     backgroundColor: theme.colors.backgroundPrimary,
-                    whiteSpace: 'pre-wrap',
                     lineHeight: 1.6,
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: displayedStreamingText ? 'flex-start' : 'center',
                     gap: theme.spacing.sm,
                     minHeight: 56,
                   }}
                 >
-                  {displayedStreamingText || <ThinkingDots />}
+                  {displayedStreamingText ? (
+                    <GenAIMarkdownRenderer>{displayedStreamingText}</GenAIMarkdownRenderer>
+                  ) : (
+                    <ThinkingDots />
+                  )}
                 </div>
               </div>
             )}
