@@ -72,6 +72,7 @@ import {
   type AssistantMessageAnchor,
   type PlaygroundFeedback,
 } from './feedback';
+import { IssueDetailDrawer } from './issues';
 
 type MessageRole = 'user' | 'assistant' | 'system' | 'developer';
 
@@ -553,6 +554,9 @@ const PlaygroundPageImpl = () => {
   // --- Dispatch flow (Epic 5) ---------------------------------------------
   const [dispatchTarget, setDispatchTarget] = useState<PlaygroundFeedback | null>(null);
   const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
+
+  // --- Issue detail drawer (Epic 6) ---------------------------------------
+  const [openIssueId, setOpenIssueId] = useState<string | null>(null);
 
   /**
    * Build the conversation prefix for the dispatch payload by walking
@@ -1158,6 +1162,7 @@ const PlaygroundPageImpl = () => {
                 onHover: handleFeedbackHover,
                 onDispatch: (feedback) => setDispatchTarget(feedback),
                 onResolve: resolveFeedback,
+                onOpenIssue: (issueId) => setOpenIssueId(issueId),
               }}
             />
           </div>
@@ -1251,6 +1256,8 @@ const PlaygroundPageImpl = () => {
         onCancel={() => setDispatchTarget(null)}
         onConfirm={confirmDispatch}
       />
+
+      <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={() => setOpenIssueId(null)} />
 
       {/* Full-trace drawer: opens on demand for the full explorer experience
           (assessments pane, attributes, events, linked prompts). */}
