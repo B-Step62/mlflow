@@ -45,9 +45,11 @@ import {
   Alert,
   BookmarkIcon,
   Button,
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseSmallIcon,
+  CopyIcon,
   DagIcon,
   Input,
   MegaphoneIcon,
@@ -773,13 +775,120 @@ const QuestionChip = ({
  */
 type BannerVerdict = {
   test_case_id?: string;
+  issue_id?: string;
   rationale_summary?: string;
   passed: boolean;
   reasons: string[];
   strategy: string;
 };
 
-const VerdictBanner = ({ verdict }: { verdict: BannerVerdict }) => {
+/**
+ * Build a copy-pasteable prompt for a coding agent to fix a regression
+ * test failure. Mirrors the spirit of `buildFixPrompt` from issues.tsx but
+ * works off the slimmer batch-run shape (no full IssueDetail / TestCaseRow
+ * — just what the navigator already has).
+ */
+const buildBatchFixPrompt = (args: {
+  verdict: BannerVerdict;
+  question: string;
+  agentResponse: string;
+}): string => {
+  const { verdict, question, agentResponse } = args;
+  const lines: string[] = [];
+  lines.push(`# Fix failing regression test`);
+  if (verdict.rationale_summary) {
+    lines.push('');
+    lines.push(`**Test:** ${verdict.rationale_summary}`);
+  }
+  if (verdict.issue_id) {
+    lines.push(`**Issue:** \`${verdict.issue_id}\``);
+  }
+  if (verdict.test_case_id) {
+    lines.push(`**Test case:** \`${verdict.test_case_id}\``);
+  }
+  lines.push('');
+  lines.push('## Question the agent was asked');
+  lines.push(question || '(no user message in prefix)');
+  lines.push('');
+  lines.push('## What the agent said this run');
+  lines.push('```');
+  lines.push(agentResponse || '(no response)');
+  lines.push('```');
+  lines.push('');
+  lines.push(`## Why this run failed (${verdict.strategy})`);
+  if (verdict.reasons.length === 0) {
+    lines.push('(no reasons recorded — see the verdict banner in the playground)');
+  } else {
+    for (const reason of verdict.reasons) {
+      lines.push(`- ${reason}`);
+    }
+  }
+  lines.push('');
+  lines.push('## Your job');
+  lines.push(
+    'Find and fix the agent code in this repo so re-running this test passes. ' +
+      'Touch only the agent under development; do NOT modify the test row or its assertion / judge spec ' +
+      "(the playground regenerates it from the original feedback if you delete it).",
+  );
+  lines.push('');
+  lines.push('## Verify');
+  if (verdict.issue_id) {
+    lines.push('```bash');
+    lines.push(`mlflow agent test run --issue ${verdict.issue_id}`);
+    lines.push('```');
+    lines.push('Exit code 0 = pass.');
+  } else {
+    lines.push('Re-run the regression suite from the MLflow Agent Playground after your fix lands.');
+  }
+  return lines.join('\n');
+};
+
+const FixFailedTestButton = ({
+  verdict,
+  question,
+  agentResponse,
+}: {
+  verdict: BannerVerdict;
+  question: string;
+  agentResponse: string;
+}) => {
+  const [copied, setCopied] = useState(false);
+  const onClick = useCallback(async () => {
+    const prompt = buildBatchFixPrompt({ verdict, question, agentResponse });
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Could not copy to clipboard',
+        description: e instanceof Error ? e.message : String(e),
+        placement: 'topRight',
+      });
+    }
+  }, [verdict, question, agentResponse]);
+  return (
+    <Button
+      componentId="mlflow.playground.regression.fix-failed-test"
+      size="small"
+      icon={copied ? <CheckIcon /> : <CopyIcon />}
+      onClick={onClick}
+    >
+      {copied ? 'Copied prompt' : 'Fix failed test'}
+    </Button>
+  );
+};
+
+const VerdictBanner = ({
+  verdict,
+  question,
+  agentResponse,
+}: {
+  verdict: BannerVerdict;
+  question: string;
+  agentResponse: string;
+}) => {
   const { theme } = useDesignSystemTheme();
   const palette = verdict.passed
     ? {
@@ -814,6 +923,11 @@ const VerdictBanner = ({ verdict }: { verdict: BannerVerdict }) => {
         <Typography.Text size="sm" color="secondary">
           ({verdict.strategy})
         </Typography.Text>
+        {!verdict.passed && (
+          <div css={{ marginLeft: 'auto' }}>
+            <FixFailedTestButton verdict={verdict} question={question} agentResponse={agentResponse} />
+          </div>
+        )}
       </div>
       {verdict.reasons.length > 0 && (
         <ul css={{ margin: 0, paddingLeft: theme.spacing.lg }}>
@@ -828,13 +942,26 @@ const VerdictBanner = ({ verdict }: { verdict: BannerVerdict }) => {
   );
 };
 
-const VerdictStack = ({ verdicts }: { verdicts: BannerVerdict[] }) => {
+const VerdictStack = ({
+  verdicts,
+  question,
+  agentResponse,
+}: {
+  verdicts: BannerVerdict[];
+  question: string;
+  agentResponse: string;
+}) => {
   const { theme } = useDesignSystemTheme();
   if (!verdicts || verdicts.length === 0) return null;
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
       {verdicts.map((v, i) => (
-        <VerdictBanner key={v.test_case_id ?? `${i}`} verdict={v} />
+        <VerdictBanner
+          key={v.test_case_id ?? `${i}`}
+          verdict={v}
+          question={question}
+          agentResponse={agentResponse}
+        />
       ))}
     </div>
   );
@@ -2243,7 +2370,15 @@ const PlaygroundPageImpl = () => {
               />
             )}
             {activeBatch?.verdicts && activeBatch.verdicts.length > 0 && (
-              <VerdictStack verdicts={activeBatch.verdicts} />
+              <VerdictStack
+                verdicts={activeBatch.verdicts}
+                question={
+                  activeBatch.messages.find((m) => m.role === 'user')?.content ?? activeBatch.label ?? ''
+                }
+                agentResponse={
+                  [...activeBatch.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''
+                }
+              />
             )}
             {isLoadingConfig ? (
               <div css={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
