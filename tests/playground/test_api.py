@@ -103,9 +103,7 @@ def test_dispatch_rejects_blank_rationale():
 def test_dispatch_rejects_non_list_conversation_prefix():
     client = create_test_client()
 
-    response = client.post(
-        _DISPATCH_PATH, json=_valid_dispatch_payload(conversation_prefix="hi")
-    )
+    response = client.post(_DISPATCH_PATH, json=_valid_dispatch_payload(conversation_prefix="hi"))
 
     assert response.status_code == 400
     assert "conversation_prefix" in response.json()["detail"]
@@ -141,19 +139,17 @@ def test_get_test_case_returns_matched_row():
     client = create_test_client()
     issue = mock.Mock(experiment_id="0", test_case_id="tc-1")
     dataset = mock.Mock()
-    dataset.to_df.return_value = pd.DataFrame(
-        [
-            {
-                "inputs": {"messages": [{"role": "user", "content": "Hi"}]},
-                "expectations": {
-                    "test_case_id": "tc-1",
-                    "test_spec": {"strategy": "assertion", "assertions": ["mentions §4.2"]},
-                    "expected_response": "We mention §4.2.",
-                },
-                "tags": {"issue_id": "iss-1"},
-            }
-        ]
-    )
+    dataset.to_df.return_value = pd.DataFrame([
+        {
+            "inputs": {"messages": [{"role": "user", "content": "Hi"}]},
+            "expectations": {
+                "test_case_id": "tc-1",
+                "test_spec": {"strategy": "assertion", "assertions": ["mentions §4.2"]},
+                "expected_response": "We mention §4.2.",
+            },
+            "tags": {"issue_id": "iss-1"},
+        }
+    ])
     with (
         mock.patch(
             "mlflow.tracking._tracking_service.utils._get_store",
@@ -259,3 +255,67 @@ def test_get_test_case_returns_404_when_no_matching_row():
         response = client.get("/ajax-api/3.0/mlflow/playground/issues/iss-2/test-case")
 
     assert response.status_code == 404
+
+
+def _issue_dict(issue_id: str, status: str = "todo") -> dict:
+    return {"issue_id": issue_id, "experiment_id": "0", "name": issue_id, "status": status}
+
+
+def test_list_issues_returns_search_results():
+    client = create_test_client()
+    issues = [
+        mock.Mock(to_dictionary=mock.Mock(return_value=_issue_dict("iss-1", "todo"))),
+        mock.Mock(to_dictionary=mock.Mock(return_value=_issue_dict("iss-2", "done"))),
+    ]
+    store = mock.Mock(search_issues=mock.Mock(return_value=issues))
+    with mock.patch(
+        "mlflow.tracking._tracking_service.utils._get_store",
+        return_value=store,
+    ):
+        response = client.get("/ajax-api/3.0/mlflow/playground/issues?experiment_id=0")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [issue["issue_id"] for issue in body["issues"]] == ["iss-1", "iss-2"]
+    store.search_issues.assert_called_once_with(
+        experiment_id="0",
+        filter_string=None,
+        max_results=200,
+        include_trace_count=False,
+    )
+
+
+def test_list_issues_passes_state_through_as_filter_string():
+    client = create_test_client()
+    store = mock.Mock(search_issues=mock.Mock(return_value=[]))
+    with mock.patch(
+        "mlflow.tracking._tracking_service.utils._get_store",
+        return_value=store,
+    ):
+        response = client.get(
+            "/ajax-api/3.0/mlflow/playground/issues?experiment_id=0&state=in_progress"
+        )
+
+    assert response.status_code == 200
+    store.search_issues.assert_called_once_with(
+        experiment_id="0",
+        filter_string="status = 'in_progress'",
+        max_results=200,
+        include_trace_count=False,
+    )
+
+
+def test_list_issues_translates_mlflow_exception_to_400():
+    from mlflow.exceptions import MlflowException
+
+    client = create_test_client()
+    store = mock.Mock(search_issues=mock.Mock(side_effect=MlflowException("bad filter")))
+    with mock.patch(
+        "mlflow.tracking._tracking_service.utils._get_store",
+        return_value=store,
+    ):
+        response = client.get("/ajax-api/3.0/mlflow/playground/issues?experiment_id=0")
+
+    assert response.status_code == 400
+    assert "bad filter" in response.json()["detail"]
+    store.search_issues.assert_called_once()

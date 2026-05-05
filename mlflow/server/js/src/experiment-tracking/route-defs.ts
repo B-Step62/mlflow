@@ -175,6 +175,19 @@ const getExperimentPageRouteDefs = () => {
           } satisfies RouteHandle,
         },
         {
+          path: RoutePaths.experimentPageTabIssues,
+          pageId: PageId.experimentPageTabIssues,
+          element: createLazyRouteElement(() => import('./pages/experiment-issues/ExperimentIssuesPage')),
+          handle: {
+            getPageTitle: (params) => `Issues - Experiment ${params['experimentId']}`,
+            getAssistantPrompts: () => [
+              'Which issues are still in review?',
+              'Summarize the open issues for this agent.',
+              'Which issue should I fix next?',
+            ],
+          } satisfies RouteHandle,
+        },
+        {
           path: RoutePaths.experimentPageTabDatasets,
           pageId: PageId.experimentPageTabDatasets,
           element: createLazyRouteElement(() => {

@@ -3,6 +3,7 @@ import { ExperimentKind } from '../../../constants';
 import { ExperimentPageTabName } from '../../../constants';
 import {
   ChartLineIcon,
+  ColumnsIcon,
   DatabaseIcon,
   ForkHorizontalIcon,
   GavelIcon,
@@ -91,6 +92,17 @@ const ExperimentPageSideNavGenAIConfig = {
       icon: <PlusMinusSquareIcon />,
       tabName: ExperimentPageTabName.EvaluationRuns,
       componentId: 'mlflow.experiment-side-nav.genai.evaluation-runs',
+    },
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Issues"
+          description="Label for the issues kanban tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <ColumnsIcon />,
+      tabName: ExperimentPageTabName.Issues,
+      componentId: 'mlflow.experiment-side-nav.genai.issues',
     },
   ],
   'prompts-versions': [

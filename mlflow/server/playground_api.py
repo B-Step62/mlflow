@@ -46,7 +46,11 @@ def _fetch_tool_calls_from_trace(config_path: Path, trace_id: str) -> list[dict[
 def _root_span(trace: Any) -> Any | None:
     spans = getattr(trace.data, "spans", []) or []
     return next(
-        (s for s in spans if not getattr(s, "parent_id", None) and not getattr(s, "parent_span_id", None)),
+        (
+            s
+            for s in spans
+            if not getattr(s, "parent_id", None) and not getattr(s, "parent_span_id", None)
+        ),
         spans[0] if spans else None,
     )
 
@@ -343,6 +347,35 @@ def create_playground_api_router(
     async def get_session(session_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(_rehydrate_session, runtime.config_path, session_id)
 
+    @router.get("/issues")
+    async def list_issues(
+        experiment_id: str,
+        state: str | None = None,
+        max_results: int = 200,
+    ) -> dict[str, Any]:
+        """List Issues for an experiment, grouped/filtered by state.
+
+        Backs the kanban board: the UI buckets the response by ``status`` into
+        the five state-machine columns. ``state`` is an optional pre-filter
+        (passed through as ``status = '...'`` to ``search_issues``); when
+        omitted the caller groups client-side.
+        """
+        from mlflow.exceptions import MlflowException
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        filter_string = f"status = '{state}'" if state else None
+        try:
+            page = await asyncio.to_thread(
+                _get_store().search_issues,
+                experiment_id=experiment_id,
+                filter_string=filter_string,
+                max_results=max_results,
+                include_trace_count=False,
+            )
+        except MlflowException as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"issues": [issue.to_dictionary() for issue in page]}
+
     @router.get("/issues/{issue_id}")
     async def get_issue(issue_id: str) -> dict[str, Any]:
         """Light-weight wrapper around the tracking-store ``get_issue`` so
@@ -388,10 +421,7 @@ def create_playground_api_router(
         match = None
         for row in rows:
             expectations = row.get("expectations") or {}
-            if (
-                issue.test_case_id
-                and expectations.get("test_case_id") == issue.test_case_id
-            ):
+            if issue.test_case_id and expectations.get("test_case_id") == issue.test_case_id:
                 match = row
                 break
             tags = row.get("tags") or {}
@@ -582,10 +612,7 @@ def create_playground_api_router(
         match = None
         for row in rows:
             expectations = row.get("expectations") or {}
-            if (
-                issue.test_case_id
-                and expectations.get("test_case_id") == issue.test_case_id
-            ):
+            if issue.test_case_id and expectations.get("test_case_id") == issue.test_case_id:
                 match = row
                 break
             tags = row.get("tags") or {}
@@ -621,9 +648,7 @@ def create_playground_api_router(
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(
-                status_code=502, detail=f"Agent invocation failed: {exc}"
-            ) from exc
+            raise HTTPException(status_code=502, detail=f"Agent invocation failed: {exc}") from exc
 
         response = normalize_agent_response(raw)
         verdict = await asyncio.to_thread(evaluate, spec, response)
@@ -641,9 +666,7 @@ def create_playground_api_router(
                 if issue.status == target:
                     continue
                 try:
-                    issue = await asyncio.to_thread(
-                        store.transition_issue, issue_id, target, ""
-                    )
+                    issue = await asyncio.to_thread(store.transition_issue, issue_id, target, "")
                 except MlflowException:
                     # Skip illegal hops silently — happens when issue.status
                     # is already past the target.
@@ -722,10 +745,7 @@ def create_playground_api_router(
             match = None
             for row in rows:
                 expectations = row.get("expectations") or {}
-                if (
-                    issue.test_case_id
-                    and expectations.get("test_case_id") == issue.test_case_id
-                ):
+                if issue.test_case_id and expectations.get("test_case_id") == issue.test_case_id:
                     match = row
                     break
                 tags = row.get("tags") or {}
@@ -794,9 +814,7 @@ def create_playground_api_router(
                 new_status = issue.status
 
             # --- 4. Verdict --------------------------------------------------
-            issue_status = (
-                new_status.value if hasattr(new_status, "value") else str(new_status)
-            )
+            issue_status = new_status.value if hasattr(new_status, "value") else str(new_status)
             yield _emit({
                 "type": "verdict",
                 "passed": verdict.passed,
@@ -817,18 +835,14 @@ def create_playground_api_router(
         prefix = request.get("conversation_prefix")
 
         if not isinstance(rationale, str) or not rationale.strip():
-            raise HTTPException(
-                status_code=400, detail="`rationale` must be a non-empty string."
-            )
+            raise HTTPException(status_code=400, detail="`rationale` must be a non-empty string.")
         if not isinstance(failing, str) or not failing.strip():
             raise HTTPException(
                 status_code=400,
                 detail="`failing_assistant_message` must be a non-empty string.",
             )
         if not isinstance(prefix, list):
-            raise HTTPException(
-                status_code=400, detail="`conversation_prefix` must be a list."
-            )
+            raise HTTPException(status_code=400, detail="`conversation_prefix` must be a list.")
 
         try:
             return await asyncio.to_thread(
@@ -846,8 +860,6 @@ def create_playground_api_router(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(
-                status_code=500, detail=f"Dispatch failed: {exc}"
-            ) from exc
+            raise HTTPException(status_code=500, detail=f"Dispatch failed: {exc}") from exc
 
     return router

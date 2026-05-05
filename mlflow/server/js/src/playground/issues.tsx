@@ -51,6 +51,22 @@ export type TestCaseRow = {
 
 // --- API helpers -------------------------------------------------------------
 
+export const fetchIssues = async (
+  experimentId: string,
+  state?: string,
+): Promise<IssueDetail[]> => {
+  const params = new URLSearchParams({ experiment_id: experimentId });
+  if (state) params.set('state', state);
+  const response = await fetch(getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues?${params}`), {
+    headers: getDefaultHeaders(document.cookie),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to list issues (${response.status}): ${await response.text()}`);
+  }
+  const body = (await response.json()) as { issues?: IssueDetail[] };
+  return body.issues ?? [];
+};
+
 export const fetchIssue = async (issueId: string): Promise<IssueDetail> => {
   const response = await fetch(getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}`), {
     headers: getDefaultHeaders(document.cookie),
