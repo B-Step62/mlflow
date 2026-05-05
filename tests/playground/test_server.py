@@ -83,7 +83,7 @@ def test_build_url_without_experiment_falls_back_to_list():
 def test_cli_playground_invokes_serve(monkeypatch):
     captured = {}
 
-    def fake_serve(host, port, open_browser, reload, agent_url):
+    def fake_serve(host, port, open_browser, reload, agent_url, **_):
         captured.update(
             host=host,
             port=port,
@@ -267,7 +267,7 @@ def test_serve_runs_mlflow_server_with_local_env(monkeypatch, tmp_path):
     repo_dir.mkdir()
     monkeypatch.chdir(repo_dir)
     monkeypatch.setattr(server, "DEFAULT_CONFIG_PATH", config_path)
-    monkeypatch.setattr(server, "_ensure_mlflow_ui_assets", lambda: None)
+    monkeypatch.setattr(server, "_ensure_mlflow_ui_assets", lambda **_: None)
     monkeypatch.setattr(server, "_default_artifact_root", lambda: "file:///tmp/playground-artifacts")
     monkeypatch.setattr(server.threading, "Thread", mock.Mock())
 
