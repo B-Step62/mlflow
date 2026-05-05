@@ -89,6 +89,9 @@ def create_playground_api_router(
         request_id = request.get("request_id")
         if request_id is not None and not isinstance(request_id, str):
             raise HTTPException(status_code=400, detail="`request_id` must be a string.")
+        session_id = request.get("session_id")
+        if session_id is not None and not isinstance(session_id, str):
+            raise HTTPException(status_code=400, detail="`session_id` must be a string.")
         # If we manage the local agent subprocess, ensure it's healthy before
         # POSTing — otherwise the POST blows up with a raw httpx.ConnectError.
         # Returning a clean 502 lets the UI surface a real error message.
@@ -109,6 +112,7 @@ def create_playground_api_router(
             messages=normalized_messages,
             timeout_seconds=runtime.request_timeout_seconds,
             request_id=request_id,
+            session_id=session_id,
         )
         runtime.agent_url = agent_url
 
@@ -205,6 +209,73 @@ def create_playground_api_router(
             "test_spec": expectations.get("test_spec") or {},
             "expected_response": expectations.get("expected_response"),
             "tags": match.get("tags") or {},
+        }
+
+    @router.get("/regression-suite/cases")
+    async def list_regression_cases(experiment_id: str) -> dict[str, Any]:
+        """Return the cockpit-shaped view of every test case in an experiment's
+        regression dataset. Each row is reduced to what the playground's
+        Browse-suite drawer needs to render: the input question (last user
+        message), the strategy + assertion or judge details, the originating
+        feedback's issue id, and the source trace id. The full conversation
+        prefix and raw spec stay available under ``raw`` for callers that
+        want to drill in.
+
+        We deliberately don't expose the underlying EvaluationDataset row
+        model directly — its ``inputs`` / ``expectations`` / ``tags`` shape
+        is generic and harder to scan in a card list. The transform here
+        keeps the UI thin.
+        """
+        from mlflow.playground.regression_suite import (
+            get_or_create_regression_dataset,
+            regression_dataset_name,
+        )
+
+        try:
+            dataset = await asyncio.to_thread(get_or_create_regression_dataset, experiment_id)
+            df = await asyncio.to_thread(dataset.to_df)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not load regression dataset for experiment {experiment_id!r}: {exc}",
+            ) from exc
+
+        rows = df.to_dict(orient="records") if not df.empty else []
+        cases = []
+        for row in rows:
+            inputs = row.get("inputs") or {}
+            messages = inputs.get("messages") or []
+            # The "input question" is the last user message in the prefix —
+            # that's what the assistant was responding to when the failing
+            # turn happened.
+            input_question = ""
+            for msg in reversed(messages):
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    input_question = str(msg.get("content") or "")
+                    break
+
+            expectations = row.get("expectations") or {}
+            spec = expectations.get("test_spec") or {}
+            tags = row.get("tags") or {}
+
+            cases.append({
+                "test_case_id": expectations.get("test_case_id"),
+                "rationale_summary": expectations.get("rationale_summary") or "",
+                "input_question": input_question,
+                "conversation_prefix": messages,
+                "strategy": spec.get("strategy"),
+                "assertion": spec.get("assertion"),
+                "judge": spec.get("judge"),
+                "expected_response": expectations.get("expected_response"),
+                "issue_id": tags.get("issue_id"),
+                "source_trace_id": tags.get("source_trace_id"),
+                "promoted": tags.get("promoted") == "true",
+            })
+
+        return {
+            "dataset_name": regression_dataset_name(experiment_id),
+            "experiment_id": experiment_id,
+            "cases": cases,
         }
 
     @router.post("/issues/{issue_id}/run-test")
