@@ -133,3 +133,65 @@ def test_dispatch_translates_unexpected_error_to_500():
 
     assert response.status_code == 500
     assert "LLM down" in response.json()["detail"]
+
+
+def test_get_test_case_returns_matched_row():
+    import pandas as pd
+
+    client = create_test_client()
+    issue = mock.Mock(experiment_id="0", test_case_id="tc-1")
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "inputs": {"messages": [{"role": "user", "content": "Hi"}]},
+                "expectations": {
+                    "test_case_id": "tc-1",
+                    "test_spec": {"strategy": "assertion", "assertions": ["mentions §4.2"]},
+                    "expected_response": "We mention §4.2.",
+                },
+                "tags": {"issue_id": "iss-1"},
+            }
+        ]
+    )
+    with (
+        mock.patch(
+            "mlflow.tracking._tracking_service.utils._get_store",
+            return_value=mock.Mock(get_issue=mock.Mock(return_value=issue)),
+        ),
+        mock.patch(
+            "mlflow.playground.regression_suite.get_or_create_regression_dataset",
+            return_value=dataset,
+        ),
+    ):
+        response = client.get("/ajax-api/3.0/mlflow/playground/issues/iss-1/test-case")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["messages"] == [{"role": "user", "content": "Hi"}]
+    assert body["test_spec"]["strategy"] == "assertion"
+    assert body["test_spec"]["assertions"] == ["mentions §4.2"]
+    assert body["expected_response"] == "We mention §4.2."
+    assert body["tags"] == {"issue_id": "iss-1"}
+
+
+def test_get_test_case_returns_404_when_no_matching_row():
+    import pandas as pd
+
+    client = create_test_client()
+    issue = mock.Mock(experiment_id="0", test_case_id=None)
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame()
+    with (
+        mock.patch(
+            "mlflow.tracking._tracking_service.utils._get_store",
+            return_value=mock.Mock(get_issue=mock.Mock(return_value=issue)),
+        ),
+        mock.patch(
+            "mlflow.playground.regression_suite.get_or_create_regression_dataset",
+            return_value=dataset,
+        ),
+    ):
+        response = client.get("/ajax-api/3.0/mlflow/playground/issues/iss-2/test-case")
+
+    assert response.status_code == 404

@@ -135,6 +135,63 @@ def create_playground_api_router(
             raise HTTPException(status_code=status, detail=str(exc)) from exc
         return issue.to_dictionary()
 
+    @router.get("/issues/{issue_id}/test-case")
+    async def get_issue_test_case(issue_id: str) -> dict[str, Any]:
+        """Return the regression-suite row generated for this Issue, so the
+        UI can preview the test before running it.
+
+        Match strategy mirrors ``run_test``: prefer ``test_case_id`` when the
+        Issue carries one, otherwise fall back to the row's ``issue_id`` tag.
+        Returns ``{messages, test_spec, tags}`` — everything the cockpit needs
+        to render the test case panel — or 404 if the row hasn't been
+        generated yet.
+        """
+        from mlflow.exceptions import MlflowException
+        from mlflow.playground.regression_suite import get_or_create_regression_dataset
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        store = _get_store()
+        try:
+            issue = await asyncio.to_thread(store.get_issue, issue_id)
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+        dataset = await asyncio.to_thread(
+            get_or_create_regression_dataset, str(issue.experiment_id)
+        )
+        df = await asyncio.to_thread(dataset.to_df)
+        rows = df.to_dict(orient="records") if not df.empty else []
+        match = None
+        for row in rows:
+            expectations = row.get("expectations") or {}
+            if (
+                issue.test_case_id
+                and expectations.get("test_case_id") == issue.test_case_id
+            ):
+                match = row
+                break
+            tags = row.get("tags") or {}
+            if tags.get("issue_id") == issue_id:
+                match = row
+                break
+        if match is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No regression-suite row found for issue {issue_id!r}. "
+                    "Has the test case been generated yet?"
+                ),
+            )
+
+        expectations = match.get("expectations") or {}
+        return {
+            "messages": (match.get("inputs") or {}).get("messages") or [],
+            "test_spec": expectations.get("test_spec") or {},
+            "expected_response": expectations.get("expected_response"),
+            "tags": match.get("tags") or {},
+        }
+
     @router.post("/issues/{issue_id}/run-test")
     async def run_test(issue_id: str) -> dict[str, Any]:
         """Run the regression test for an Issue against the user's local
