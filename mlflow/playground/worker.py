@@ -514,13 +514,21 @@ def accept_worker_connection(runtime: PlaygroundRuntime, connection_id: str) -> 
         raise WorkerActionError(f"Issue transition failed: {exc}", status_code=500) from exc
 
     # Append to regression suite (best-effort — same hook as the manual flow).
+    # `append_for_issue` is a YUK-15 placeholder that may not yet exist; the
+    # manual-accept CLI gracefully ignores ImportError, so do the same here.
     try:
-        from mlflow.playground.regression_suite import append_for_issue
+        from mlflow.playground.regression_suite import (
+            append_for_issue,  # type: ignore[attr-defined]
+        )
 
-        issue = _get_store().get_issue(connection.source_issue_id)
-        append_for_issue(issue)
+        append_for_issue(_get_store().get_issue(connection.source_issue_id))
+    except ImportError:
+        pass
     except Exception:
-        _logger.exception("Regression-suite append failed for %s", connection.source_issue_id)
+        _logger.exception(
+            "Regression-suite append failed for %s (continuing)",
+            connection.source_issue_id,
+        )
 
     # Tear down the worker's agent + drop connection + prune worktree.
     _terminate_connection_process(runtime, connection_id)
