@@ -2,14 +2,24 @@
 
 Hot-reload contract
 -------------------
-``main()`` (the parent process) parses CLI args, stashes the repo dir into
-``MLFLOW_PLAYGROUND_AGENT_REPO_DIR``, and execs uvicorn with the import
-string ``mlflow.playground.agent_bootstrap:app`` plus ``reload=True``.
-uvicorn's reload supervisor holds the bound socket and forks a worker per
-code change; each worker re-imports this module, which re-runs
-``discover_agent`` against the (possibly edited) repo and rebuilds the
-``AgentServer`` app from scratch. The user can edit their agent file and
-the next request picks up the new code without restarting the playground.
+``main()`` parses CLI args, stashes the repo dir into
+``MLFLOW_PLAYGROUND_AGENT_REPO_DIR``, and either:
+
+- **No reload (default):** discovers the agent inline, builds the
+  ``AgentServer`` app, and hands it to ``uvicorn.run(app, ...)``.
+- **--reload:** re-execs the current process into ``python -m uvicorn
+  mlflow.playground.agent_bootstrap:app --reload``. The re-exec is
+  important: uvicorn's reload supervisor uses ``multiprocessing.spawn``,
+  which re-imports the parent's ``__main__`` module in each spawn-child.
+  If our bootstrap is ``__main__`` (i.e. invoked as ``python -m
+  mlflow.playground.agent_bootstrap``), the spawn-child re-runs the
+  ``if __name__ == "__main__": main()`` block — calling ``uvicorn.run``
+  again, which immediately fails with ``[Errno 48] Address already in
+  use``. Re-exec'ing into ``python -m uvicorn`` makes uvicorn the
+  ``__main__``, and *its* main is well-behaved under spawn. Our module
+  is then imported as a regular module via the import-string, with its
+  top-level ``app = _build_app() if env else None`` running per-worker
+  (env is set, so a fresh app builds each reload).
 
 The module-level ``app`` attribute is only built when the env var is set,
 so importing this module from tests / tooling stays cheap and
@@ -190,13 +200,9 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
-        "--reload",
+        "--no-reload",
         action="store_true",
-        help=(
-            "Enable uvicorn auto-reload on agent file changes (default: off; "
-            "experimental — known issue under `python -m` + spawn-style "
-            "multiprocessing where the worker re-runs the bootstrap script)."
-        ),
+        help="Disable uvicorn auto-reload on agent file changes (default: reload on).",
     )
     args = parser.parse_args()
 
@@ -204,36 +210,45 @@ def main() -> None:
     if not repo_dir.exists():
         raise SystemExit(f"Repo directory does not exist: {repo_dir}")
 
-    # Stash the repo dir in env so the uvicorn worker can re-run discovery
-    # on every reload. Argparse-style flags don't survive uvicorn's reload
-    # subprocess argv.
+    # Stash the repo dir in env so each uvicorn worker (incl. spawn-children
+    # of the reload supervisor) can re-run discovery. Argparse-style flags
+    # don't survive uvicorn's reload subprocess argv.
     os.environ[_REPO_DIR_ENV] = str(repo_dir)
 
-    if args.reload:
-        # `reload_excludes` is only honored by watchfiles; statreload ignores
-        # it silently. Either way, scoping the watcher to `repo_dir` already
-        # avoids picking up MLflow's own source edits.
-        uvicorn.run(
-            "mlflow.playground.agent_bootstrap:app",
-            host=args.host,
-            port=args.port,
-            reload=True,
-            reload_dirs=[str(repo_dir)],
-            reload_excludes=[f"**/{name}/**" for name in EXCLUDED_DIR_NAMES],
-        )
-    else:
+    if args.no_reload:
         # No-reload path: build the app inline and hand it to uvicorn as an
-        # object (no import-string round trip → no spawn-child re-execution).
-        # This is the path that works reliably today; fall back here by default
-        # so the playground unblocks other development.
+        # object (no import-string round trip, no reload supervisor).
         if app is None:
-            # Module-level `app` is None when the env var wasn't set at import
-            # time (i.e. when Python imported this module before main() ran).
-            # Build it now from the freshly-set env var.
             inline_app = _build_app()
         else:
             inline_app = app
         uvicorn.run(inline_app, host=args.host, port=args.port)
+        return
+
+    # Reload path: re-exec into `python -m uvicorn ...:app --reload` so that
+    # uvicorn's main module is what spawn-children re-import (rather than
+    # this bootstrap module, which would otherwise trigger
+    # `if __name__ == "__main__": main()` recursively in each spawn-child).
+    # See module docstring for the gory details.
+    # Note: deliberately not passing --reload-exclude. uvicorn's CLI silently
+    # hangs at startup when given multiple --reload-exclude args under
+    # StatReload (the fallback when watchfiles isn't installed). The
+    # --reload-dir scope keeps the watcher off MLflow's source tree, which is
+    # the only thing we actually need to exclude.
+    argv = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "mlflow.playground.agent_bootstrap:app",
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+        "--reload",
+        "--reload-dir",
+        str(repo_dir),
+    ]
+    os.execv(sys.executable, argv)
 
 
 if __name__ == "__main__":

@@ -38,56 +38,52 @@ def test_adapt_invoke_signature_leaves_request_functions_unchanged():
     assert recorded["request"] == {"messages": [{"role": "user", "content": "hi"}]}
 
 
-def test_main_default_invokes_uvicorn_inline_without_reload(tmp_path, monkeypatch):
-    """Default path: hand the app object to uvicorn directly (no reload, no
-    import-string round trip). Inline build is what works reliably today.
+def test_main_with_reload_execs_into_uvicorn_module(tmp_path, monkeypatch):
+    """Default path: re-exec into ``python -m uvicorn ...:app --reload`` so
+    that uvicorn becomes ``__main__`` and its spawn-child re-import doesn't
+    trigger our bootstrap's ``main()`` recursively. The PID stays the same
+    across exec, so the playground's process handle keeps tracking it.
+    """
+    captured = {}
+
+    def fake_execv(executable, argv):
+        captured["executable"] = executable
+        captured["argv"] = argv
+        captured["env_var"] = os.environ.get(bootstrap._REPO_DIR_ENV)
+
+    monkeypatch.setattr(bootstrap.os, "execv", fake_execv)
+    monkeypatch.setattr(sys, "argv", ["agent_bootstrap", "--repo-dir", str(tmp_path)])
+
+    bootstrap.main()
+
+    assert captured["executable"] == sys.executable
+    assert "uvicorn" in captured["argv"]
+    assert "mlflow.playground.agent_bootstrap:app" in captured["argv"]
+    assert "--reload" in captured["argv"]
+    assert "--reload-dir" in captured["argv"]
+    # Repo dir is stashed in the env var so the spawn-child workers (which
+    # uvicorn forks under multiprocessing.spawn) inherit it and re-run
+    # discovery.
+    assert captured["env_var"] == str(tmp_path)
+
+
+def test_main_no_reload_invokes_uvicorn_inline(tmp_path, monkeypatch):
+    """Opt-out `--no-reload`: build the app inline and hand it to uvicorn as
+    an object (no reload supervisor, no import-string round trip).
     """
     captured = {}
 
     def fake_run(app_or_str, *, host, port):
-        captured.update(
-            app_or_str=app_or_str,
-            host=host,
-            port=port,
-            env_var=os.environ.get(bootstrap._REPO_DIR_ENV),
-        )
+        captured.update(app_or_str=app_or_str, host=host, port=port)
 
     monkeypatch.setattr(bootstrap.uvicorn, "run", fake_run)
     monkeypatch.setattr(bootstrap, "_build_app", lambda: "fake-fastapi-app")
     monkeypatch.setattr(bootstrap, "app", None)
-    monkeypatch.setattr(sys, "argv", ["agent_bootstrap", "--repo-dir", str(tmp_path)])
+    monkeypatch.setattr(
+        sys, "argv", ["agent_bootstrap", "--repo-dir", str(tmp_path), "--no-reload"]
+    )
 
     bootstrap.main()
 
     assert captured["app_or_str"] == "fake-fastapi-app"
     assert captured["host"] == "127.0.0.1"
-    # Repo dir is stashed in the env var even on the no-reload path so reload
-    # can be turned on later without restarting the bootstrap from scratch.
-    assert captured["env_var"] == str(tmp_path)
-
-
-def test_main_with_reload_uses_import_string(tmp_path, monkeypatch):
-    """Opt-in `--reload` flag delegates to uvicorn's reload supervisor with
-    an import string so the worker re-imports on file changes.
-    """
-    captured = {}
-
-    def fake_run(import_string, *, host, port, reload, reload_dirs, reload_excludes):
-        captured.update(
-            import_string=import_string,
-            reload=reload,
-            reload_dirs=reload_dirs,
-            reload_excludes=reload_excludes,
-        )
-
-    monkeypatch.setattr(bootstrap.uvicorn, "run", fake_run)
-    monkeypatch.setattr(
-        sys, "argv", ["agent_bootstrap", "--repo-dir", str(tmp_path), "--reload"]
-    )
-
-    bootstrap.main()
-
-    assert captured["import_string"] == "mlflow.playground.agent_bootstrap:app"
-    assert captured["reload"] is True
-    assert captured["reload_dirs"] == [str(tmp_path)]
-    assert captured["reload_excludes"] is not None
