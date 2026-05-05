@@ -681,8 +681,10 @@ def test_dispatch_worker_happy_path(tmp_path):
         mock.patch(
             "mlflow.playground.worker.create_worker_worktree", return_value=fake_worktree
         ) as create,
+        mock.patch("mlflow.playground.worker.dispatch_claude_fix") as claude_dispatch,
     ):
         response = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
+        claude_dispatch.assert_called_once()
 
     assert response.status_code == 200
     body = response.json()
@@ -728,6 +730,7 @@ def test_dispatch_worker_409_when_active_worker_exists(tmp_path):
     with (
         mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store),
         mock.patch("mlflow.playground.worker.create_worker_worktree", return_value=fake_worktree),
+        mock.patch("mlflow.playground.worker.dispatch_claude_fix"),
     ):
         first = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
         second = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
