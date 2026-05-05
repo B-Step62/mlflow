@@ -124,7 +124,8 @@ def create_playground_api_router(
     @router.get("/issues/{issue_id}")
     async def get_issue(issue_id: str) -> dict[str, Any]:
         """Light-weight wrapper around the tracking-store ``get_issue`` so
-        the cockpit doesn't have to chase MlflowClient initialisation."""
+        the cockpit doesn't have to chase MlflowClient initialisation.
+        """
         from mlflow.exceptions import MlflowException
         from mlflow.tracking._tracking_service.utils import _get_store
 
@@ -271,7 +272,7 @@ def create_playground_api_router(
             )
         except HTTPException:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise HTTPException(
                 status_code=502, detail=f"Agent invocation failed: {exc}"
             ) from exc
@@ -310,6 +311,156 @@ def create_playground_api_router(
             "agent_response_text": response.text,
             "agent_tool_calls": response.tool_calls,
         }
+
+    @router.get("/issues/{issue_id}/run-test/stream")
+    async def run_test_stream(issue_id: str) -> StreamingResponse:
+        """Streaming variant of ``run_test`` — emits stage-level progress events
+        so the cockpit can show the user what the runner is doing instead of a
+        bare spinner. Same logic flow as the POST endpoint:
+
+            loading → replaying → evaluating → verdict
+
+        Each event is a single ``data: <json>\\n\\n`` line. The JSON ``type``
+        field is one of ``"progress"``, ``"verdict"``, or ``"error"`` — the
+        client dispatches on it. We deliberately do not use the SSE ``event:``
+        field for parity with the chat endpoint and to keep the parser simple.
+        """
+        import json as _json
+
+        from mlflow.entities.issue import IssueStatus
+        from mlflow.exceptions import MlflowException
+        from mlflow.playground.regression_suite import get_or_create_regression_dataset
+        from mlflow.playground.test_runner import evaluate, normalize_agent_response
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        async def _events():
+            def _emit(payload: dict[str, Any]) -> str:
+                return f"data: {_json.dumps(payload)}\n\n"
+
+            def _progress(stage: str, message: str) -> str:
+                return _emit({"type": "progress", "stage": stage, "message": message})
+
+            def _error(stage: str, detail: str) -> str:
+                return _emit({"type": "error", "stage": stage, "detail": detail})
+
+            # --- 1. Loading test case ---------------------------------------
+            yield _progress("loading", "Loading test case…")
+
+            store = _get_store()
+            try:
+                issue = await asyncio.to_thread(store.get_issue, issue_id)
+            except MlflowException as exc:
+                yield _error("loading", str(exc))
+                return
+
+            if issue.status in (IssueStatus.PENDING, IssueStatus.RESOLVED):
+                yield _error(
+                    "loading",
+                    "Legacy detection-path issues aren't runnable through the "
+                    "playground; use the discovery flow instead.",
+                )
+                return
+
+            try:
+                dataset = await asyncio.to_thread(
+                    get_or_create_regression_dataset, str(issue.experiment_id)
+                )
+                df = await asyncio.to_thread(dataset.to_df)
+            except Exception as exc:
+                yield _error("loading", f"Could not load regression dataset: {exc}")
+                return
+
+            rows = df.to_dict(orient="records") if not df.empty else []
+            match = None
+            for row in rows:
+                expectations = row.get("expectations") or {}
+                if (
+                    issue.test_case_id
+                    and expectations.get("test_case_id") == issue.test_case_id
+                ):
+                    match = row
+                    break
+                tags = row.get("tags") or {}
+                if tags.get("issue_id") == issue_id:
+                    match = row
+                    break
+            if match is None:
+                yield _error(
+                    "loading",
+                    f"No regression-suite row found for issue {issue_id!r}. "
+                    "Has the test case been generated yet?",
+                )
+                return
+
+            expectations = match.get("expectations") or {}
+            spec = expectations.get("test_spec") or {}
+            messages = (match.get("inputs") or {}).get("messages")
+            if not isinstance(messages, list) or not isinstance(spec, dict):
+                yield _error(
+                    "loading",
+                    "Regression-suite row is malformed (missing inputs.messages or test_spec).",
+                )
+                return
+
+            # --- 2. Replaying conversation ----------------------------------
+            yield _progress("replaying", "Replaying conversation against the agent…")
+
+            try:
+                raw, _protocol = await _invoke_agent(
+                    agent_url=runtime.agent_url,
+                    messages=messages,
+                    timeout_seconds=120.0,
+                )
+            except Exception as exc:
+                yield _error("replaying", f"Agent invocation failed: {exc}")
+                return
+
+            response = normalize_agent_response(raw)
+
+            # --- 3. Evaluating assertions -----------------------------------
+            yield _progress("evaluating", "Evaluating assertions…")
+
+            try:
+                verdict = await asyncio.to_thread(evaluate, spec, response)
+            except Exception as exc:
+                yield _error("evaluating", f"Evaluator raised: {exc}")
+                return
+
+            new_status = issue.status
+            if verdict.passed and issue.status != IssueStatus.DONE:
+                # Mirror run_test's transition path: in_progress → review → done,
+                # skipping hops that fail (issue may already be past a stage).
+                for target in (
+                    IssueStatus.IN_PROGRESS,
+                    IssueStatus.REVIEW,
+                    IssueStatus.DONE,
+                ):
+                    if issue.status == target:
+                        continue
+                    try:
+                        issue = await asyncio.to_thread(
+                            store.transition_issue, issue_id, target, ""
+                        )
+                    except MlflowException:
+                        pass
+                new_status = issue.status
+
+            # --- 4. Verdict --------------------------------------------------
+            issue_status = (
+                new_status.value if hasattr(new_status, "value") else str(new_status)
+            )
+            yield _emit({
+                "type": "verdict",
+                "passed": verdict.passed,
+                "reasons": list(verdict.reasons),
+                "strategy": verdict.strategy,
+                "judge_reasoning": verdict.judge_reasoning,
+                "issue_status": issue_status,
+                "agent_response_text": response.text,
+                "agent_tool_calls": response.tool_calls,
+            })
+
+        return StreamingResponse(_events(), media_type="text/event-stream")
 
     @router.post("/issues/dispatch")
     async def dispatch_issue(request: dict[str, Any]) -> dict[str, Any]:

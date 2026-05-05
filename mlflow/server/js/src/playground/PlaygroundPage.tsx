@@ -39,6 +39,7 @@ import type { ModelTraceState } from '../shared/web-shared/model-trace-explorer/
 import { FormattedMessage } from 'react-intl';
 
 import ErrorUtils from '../common/utils/ErrorUtils';
+import Utils from '../common/utils/Utils';
 import { withErrorBoundary } from '../common/utils/withErrorBoundary';
 import {
   Alert,
@@ -46,7 +47,6 @@ import {
   DagIcon,
   Input,
   MegaphoneIcon,
-  Notification,
   SpeechBubbleIcon,
   Spinner,
   Tooltip,
@@ -583,10 +583,12 @@ const PlaygroundPageImpl = () => {
   // --- Dispatch flow (Epic 5) ---------------------------------------------
   // The dispatch button creates the Issue immediately, no confirmation modal
   // — the user already wrote the rationale in the feedback composer, asking
-  // them to retype it under a new heading is friction. Failures surface in
-  // the page-level error banner; success surfaces as a top-right toast that
-  // auto-dismisses after a few seconds.
-  const [dispatchSuccess, setDispatchSuccess] = useState<{ issueId: string } | null>(null);
+  // them to retype it under a new heading is friction. Progress, success,
+  // and failure all surface through MLflow's global notification API
+  // (Utils.displayGlobalNotification), so the playground reuses the same
+  // notification surface the rest of the app does instead of mounting its
+  // own toast provider.
+  const [dispatchingIds, setDispatchingIds] = useState<Set<string>>(new Set());
   const inFlightDispatchesRef = useRef<Set<string>>(new Set());
 
   // --- Issue detail drawer (Epic 6) ---------------------------------------
@@ -597,7 +599,6 @@ const PlaygroundPageImpl = () => {
   // card so the user doesn't have to open the detail drawer. The verdict
   // surfaces as a toast (pass/fail + reasons + status transition).
   const [runningTestIssueIds, setRunningTestIssueIds] = useState<Set<string>>(new Set());
-  const [testVerdict, setTestVerdict] = useState<{ issueId: string; verdict: RunTestVerdict } | null>(null);
   const runTestNow = useCallback(async (feedback: PlaygroundFeedback) => {
     const issueId = feedback.dispatched_issue_id;
     if (!issueId) return;
@@ -607,11 +608,44 @@ const PlaygroundPageImpl = () => {
       next.add(issueId);
       return next;
     });
+    const progressKey = `mlflow.playground.run-test.${issueId}`;
+    Utils.displayGlobalNotification({
+      severity: 'info',
+      message: `Running regression test for ${issueId}…`,
+      key: progressKey,
+      duration: 0,
+      placement: 'topRight',
+    });
     try {
-      const verdict = await runIssueTest(issueId);
-      setTestVerdict({ issueId, verdict });
+      const verdict = await runIssueTest(issueId, ({ message }) => {
+        // Re-post with the same `key` to update the toast text in place.
+        Utils.displayGlobalNotification({
+          severity: 'info',
+          message,
+          description: issueId,
+          key: progressKey,
+          duration: 0,
+          placement: 'topRight',
+        });
+      });
+      Utils.closeGlobalNotification(progressKey);
+      Utils.displayGlobalNotification({
+        severity: verdict.passed ? 'success' : 'warning',
+        message: verdict.passed ? `Test passed — ${issueId}` : `Test failed — ${issueId}`,
+        description: verdict.passed
+          ? `Issue moved to ${verdict.issue_status}.`
+          : (verdict.reasons[0] ?? 'See issue detail for full agent response.'),
+        duration: verdict.passed ? 4 : 8,
+        placement: 'topRight',
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      Utils.closeGlobalNotification(progressKey);
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Test run failed',
+        description: e instanceof Error ? e.message : String(e),
+        placement: 'topRight',
+      });
     } finally {
       setRunningTestIssueIds((prev) => {
         if (!prev.has(issueId)) return prev;
@@ -665,15 +699,25 @@ const PlaygroundPageImpl = () => {
 
   const dispatchNow = useCallback(
     async (feedback: PlaygroundFeedback) => {
-      // Already dispatched — the rail's "Dispatched" state should hide the
-      // button anyway, but guard here in case of a double-click before the
-      // state propagates.
       if (feedback.dispatched_issue_id) return;
-      // Coalesce concurrent clicks on the same feedback row using a ref —
-      // setState lags by a render, so a synchronous-set guard avoids duplicate
-      // POSTs that would create duplicate issues.
+      // Synchronous dedup guard — setState lags by a render, a Set ref avoids
+      // duplicate POSTs from a fast double-click.
       if (inFlightDispatchesRef.current.has(feedback.assessment_id)) return;
       inFlightDispatchesRef.current.add(feedback.assessment_id);
+      setDispatchingIds((prev) => {
+        const next = new Set(prev);
+        next.add(feedback.assessment_id);
+        return next;
+      });
+
+      const progressKey = `mlflow.playground.dispatch.${feedback.assessment_id}`;
+      Utils.displayGlobalNotification({
+        severity: 'info',
+        message: 'Generating task and test case from feedback…',
+        key: progressKey,
+        duration: 0,
+        placement: 'topRight',
+      });
 
       // Reuse the rationale / aspect / expected_output the user already typed
       // into the feedback composer; the old modal made them retype.
@@ -683,9 +727,24 @@ const PlaygroundPageImpl = () => {
         expected_output: feedback.expected_output,
       };
       const payload = buildDispatchPayload(feedback, overrides);
-      if (!payload) {
+      const cleanup = () => {
         inFlightDispatchesRef.current.delete(feedback.assessment_id);
-        setError('Cannot dispatch: the assistant message this feedback is anchored to was not found.');
+        setDispatchingIds((prev) => {
+          if (!prev.has(feedback.assessment_id)) return prev;
+          const next = new Set(prev);
+          next.delete(feedback.assessment_id);
+          return next;
+        });
+      };
+      if (!payload) {
+        Utils.closeGlobalNotification(progressKey);
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Cannot dispatch',
+          description: 'The assistant message this feedback is anchored to was not found.',
+          placement: 'topRight',
+        });
+        cleanup();
         return;
       }
       try {
@@ -697,11 +756,24 @@ const PlaygroundPageImpl = () => {
         );
         // Best-effort: stamp the assessment so the dispatched link survives a reload.
         void tagFeedbackWithIssueId(feedback.trace_id, feedback.assessment_id, result.issue_id);
-        setDispatchSuccess({ issueId: result.issue_id });
+        Utils.closeGlobalNotification(progressKey);
+        Utils.displayGlobalNotification({
+          severity: 'success',
+          message: 'Issue created',
+          description: `${result.issue_id} — worker will pick it up on the next poll.`,
+          duration: 4,
+          placement: 'topRight',
+        });
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        Utils.closeGlobalNotification(progressKey);
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Dispatch failed',
+          description: e instanceof Error ? e.message : String(e),
+          placement: 'topRight',
+        });
       } finally {
-        inFlightDispatchesRef.current.delete(feedback.assessment_id);
+        cleanup();
       }
     },
     [buildDispatchPayload],
@@ -1261,6 +1333,7 @@ const PlaygroundPageImpl = () => {
                 onOpenIssue: (issueId) => setOpenIssueId(issueId),
                 onRunTest: (feedback) => void runTestNow(feedback),
                 runningTestIssueIds,
+                dispatchingIds,
               }}
             />
           </div>
@@ -1364,50 +1437,6 @@ const PlaygroundPageImpl = () => {
         }}
         onSubmit={submitFeedback}
       />
-
-      {dispatchSuccess && (
-        <Notification.Provider duration={4000}>
-          <Notification.Root
-            severity="success"
-            componentId="mlflow.playground.dispatch.success"
-            onOpenChange={(open) => {
-              if (!open) setDispatchSuccess(null);
-            }}
-          >
-            <Notification.Title>Issue created</Notification.Title>
-            <Notification.Description>
-              {`Created ${dispatchSuccess.issueId}. Worker will pick it up on the next poll.`}
-            </Notification.Description>
-            <Notification.Close componentId="mlflow.playground.dispatch.success.close" />
-          </Notification.Root>
-          <Notification.Viewport css={{ top: 0, right: 0, bottom: 'auto' }} />
-        </Notification.Provider>
-      )}
-
-      {testVerdict && (
-        <Notification.Provider duration={testVerdict.verdict.passed ? 4000 : 8000}>
-          <Notification.Root
-            severity={testVerdict.verdict.passed ? 'success' : 'warning'}
-            componentId="mlflow.playground.test.verdict"
-            onOpenChange={(open) => {
-              if (!open) setTestVerdict(null);
-            }}
-          >
-            <Notification.Title>
-              {testVerdict.verdict.passed
-                ? `Test passed — ${testVerdict.issueId}`
-                : `Test failed — ${testVerdict.issueId}`}
-            </Notification.Title>
-            <Notification.Description>
-              {testVerdict.verdict.passed
-                ? `Issue moved to ${testVerdict.verdict.issue_status}.`
-                : (testVerdict.verdict.reasons[0] ?? 'See issue detail for full agent response.')}
-            </Notification.Description>
-            <Notification.Close componentId="mlflow.playground.test.verdict.close" />
-          </Notification.Root>
-          <Notification.Viewport css={{ top: 0, right: 0, bottom: 'auto' }} />
-        </Notification.Provider>
-      )}
 
       <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={() => setOpenIssueId(null)} />
 
