@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import atexit
 import asyncio
+import atexit
 import json
 import os
 import socket
@@ -11,11 +11,12 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import click
@@ -42,6 +43,60 @@ STREAM_CHUNK_DELAY_SECONDS = 0.016
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 5000
 
+# Connection-registry tunables (Epic 8 / YUK-47). Pull-based health: the registry
+# polls each non-terminal connection's /health on this cadence; a connection is
+# marked `dead` after this many consecutive failures and dropped on the next sweep.
+HEALTH_POLL_INTERVAL_SECONDS = 5.0
+HEALTH_TIMEOUT_SECONDS = 1.5
+HEALTH_FAILURE_THRESHOLD = 3
+
+ConnectionStatus = Literal["pending", "ready", "failed", "dead"]
+
+
+@dataclass
+class AgentConnection:
+    """An agent registered with the playground.
+
+    Ephemeral and in-memory: the registry never touches disk and resets on
+    playground restart. The originally launched agent is auto-registered as
+    `main` (see `_register_main_connection`); workers self-register later via
+    the `mlflow agent connect` CLI (YUK-48).
+    """
+
+    connection_id: str
+    name: str
+    agent_url: str
+    repo_dir: Path | None = None
+    source_issue_id: str | None = None
+    branch: str | None = None
+    base_commit: str | None = None
+    status: ConnectionStatus = "ready"
+    status_message: str | None = None
+    created_at_ms: int = 0
+    process: subprocess.Popen[Any] | None = None
+    log_path: Path | None = None
+    consecutive_health_failures: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        # `process` and `log_path` deliberately excluded — we don't expose
+        # subprocess handles or filesystem paths over the REST surface.
+        return {
+            "connection_id": self.connection_id,
+            "name": self.name,
+            "agent_url": self.agent_url,
+            "repo_dir": str(self.repo_dir) if self.repo_dir else None,
+            "source_issue_id": self.source_issue_id,
+            "branch": self.branch,
+            "base_commit": self.base_commit,
+            "status": self.status,
+            "status_message": self.status_message,
+            "created_at_ms": self.created_at_ms,
+        }
+
+
+def _new_connection_id() -> str:
+    return f"conn-{uuid.uuid4().hex[:12]}"
+
 
 @dataclass
 class PlaygroundRuntime:
@@ -52,6 +107,15 @@ class PlaygroundRuntime:
     agent_process: subprocess.Popen[Any] | None = None
     managed_agent_url: str | None = None
     process_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Connection registry (Epic 8 / YUK-47). YUK-49 will swap chat routing
+    # to read from `connections[active_connection_id].agent_url`; for now the
+    # existing `agent_url` field stays authoritative for /chat and the
+    # registry runs alongside it.
+    connections: dict[str, AgentConnection] = field(default_factory=dict)
+    active_connection_id: str | None = None
+    connections_lock: threading.Lock = field(default_factory=threading.Lock)
+    health_thread: threading.Thread | None = None
+    health_stop_event: threading.Event = field(default_factory=threading.Event)
 
 
 def _default_artifact_root() -> str:
@@ -412,6 +476,120 @@ def _ensure_agent_running(runtime: PlaygroundRuntime, agent_url: str) -> bool:
     return _wait_for_agent_health(agent_url)
 
 
+# ---------------------------------------------------------------------------
+# Agent connection registry (Epic 8 / YUK-47)
+# ---------------------------------------------------------------------------
+
+
+def register_main_connection(runtime: PlaygroundRuntime) -> AgentConnection:
+    """Auto-register the playground's launched agent as the ``main`` connection.
+
+    Idempotent — calling twice returns the existing main entry. Called once at
+    router construction so the registry always has a baseline entry that
+    workers (registered via ``mlflow agent connect``) coexist alongside.
+    """
+    with runtime.connections_lock:
+        existing = next(
+            (c for c in runtime.connections.values() if c.name == "main"),
+            None,
+        )
+        if existing is not None:
+            return existing
+        connection = AgentConnection(
+            connection_id=_new_connection_id(),
+            name="main",
+            agent_url=runtime.agent_url,
+            repo_dir=runtime.repo_dir,
+            status="ready",
+            created_at_ms=int(time.time() * 1000),
+        )
+        runtime.connections[connection.connection_id] = connection
+        if runtime.active_connection_id is None:
+            runtime.active_connection_id = connection.connection_id
+        return connection
+
+
+def _poll_connection_health(runtime: PlaygroundRuntime, connection: AgentConnection) -> None:
+    """Health-check a single connection and update its status in place.
+
+    Pending and dead connections are skipped — pending hasn't booted yet
+    (worker is still iterating) and dead is terminal until pruned.
+    """
+    if connection.status in {"pending", "dead"}:
+        return
+    healthy = _is_agent_healthy_sync(connection.agent_url, timeout_seconds=HEALTH_TIMEOUT_SECONDS)
+    with runtime.connections_lock:
+        # Re-check existence: could have been deregistered while we polled.
+        if connection.connection_id not in runtime.connections:
+            return
+        if healthy:
+            connection.consecutive_health_failures = 0
+        else:
+            connection.consecutive_health_failures += 1
+            if connection.consecutive_health_failures >= HEALTH_FAILURE_THRESHOLD:
+                connection.status = "dead"
+
+
+def _prune_dead_connections(runtime: PlaygroundRuntime) -> None:
+    """Drop connections whose status is `dead`.
+
+    Runs after each health sweep so a dead connection appears in one
+    `GET /agent-connections` response (so the UI can surface "this just
+    died") and is gone by the next.
+    """
+    with runtime.connections_lock:
+        dead_ids = [cid for cid, conn in runtime.connections.items() if conn.status == "dead"]
+        for cid in dead_ids:
+            runtime.connections.pop(cid, None)
+            if runtime.active_connection_id == cid:
+                runtime.active_connection_id = next(
+                    (c.connection_id for c in runtime.connections.values() if c.name == "main"),
+                    None,
+                )
+
+
+def _health_poll_loop(runtime: PlaygroundRuntime) -> None:
+    while not runtime.health_stop_event.wait(HEALTH_POLL_INTERVAL_SECONDS):
+        # Snapshot under the lock; release before doing network I/O so we
+        # don't hold up register/list while a slow agent's /health blocks.
+        with runtime.connections_lock:
+            snapshot = list(runtime.connections.values())
+        for connection in snapshot:
+            _poll_connection_health(runtime, connection)
+        _prune_dead_connections(runtime)
+
+
+def start_health_poll_thread(runtime: PlaygroundRuntime) -> None:
+    """Start the background health-check thread (idempotent).
+
+    Skipped when ``MLFLOW_PLAYGROUND_DISABLE_HEALTH_POLL`` is truthy in the
+    environment — tests use this to avoid leaking daemon threads since each
+    `create_test_client()` constructs a fresh runtime.
+    """
+    if os.environ.get("MLFLOW_PLAYGROUND_DISABLE_HEALTH_POLL"):
+        return
+    with runtime.connections_lock:
+        if runtime.health_thread is not None and runtime.health_thread.is_alive():
+            return
+        runtime.health_stop_event.clear()
+        thread = threading.Thread(
+            target=_health_poll_loop,
+            args=(runtime,),
+            daemon=True,
+            name="mlflow-playground-health",
+        )
+        runtime.health_thread = thread
+    thread.start()
+
+
+def stop_health_poll_thread(runtime: PlaygroundRuntime) -> None:
+    runtime.health_stop_event.set()
+    thread = runtime.health_thread
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=2.0)
+    runtime.health_thread = None
+
+
 def _build_agent_payload(messages: list[dict[str, str]], protocol: str) -> dict[str, Any]:
     if protocol == "responses":
         return {
@@ -447,16 +625,12 @@ async def _invoke_agent(
 
     headers = {"x-mlflow-return-trace-id": "true"}
     if request_id:
-        headers["x-mlflow-trace-tags"] = json.dumps(
-            {"playground.request_id": request_id}
-        )
+        headers["x-mlflow-trace-tags"] = json.dumps({"playground.request_id": request_id})
     if session_id:
         # Standard MLflow session key — search filters spell it as
         # `metadata.`mlflow.trace.session` = '<id>'`. Sent as metadata
         # (not a tag) per the agent server's documented convention.
-        headers["x-mlflow-trace-metadata"] = json.dumps(
-            {"mlflow.trace.session": session_id}
-        )
+        headers["x-mlflow-trace-metadata"] = json.dumps({"mlflow.trace.session": session_id})
 
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         response = await client.post(
@@ -524,9 +698,7 @@ def _dispatch_feedback(
 
     config = _load_playground_config(config_path)
     if experiment_id is None:
-        experiment_id = _ensure_experiment_id(
-            config["tracking_uri"], config["experiment"]
-        )
+        experiment_id = _ensure_experiment_id(config["tracking_uri"], config["experiment"])
     if experiment_id is None:
         raise ValueError(
             "experiment_id was not provided and could not be resolved from the "
@@ -575,7 +747,15 @@ def _chunk_text(text: str) -> list[str]:
     cursor = 0
     while cursor < len(text):
         next_stop = min(len(text), cursor + 12)
-        while next_stop < len(text) and text[next_stop - 1] not in {" ", "\n", "\t", ".", ",", "!", "?"}:
+        while next_stop < len(text) and text[next_stop - 1] not in {
+            " ",
+            "\n",
+            "\t",
+            ".",
+            ",",
+            "!",
+            "?",
+        }:
             next_stop += 1
             if next_stop - cursor >= 22:
                 break
@@ -784,7 +964,9 @@ def serve(
     click.echo(f"Tracking backend: {backend_store_uri}")
     click.echo(f"Experiment: {experiment_name}")
     click.echo(f"Agent endpoint: {normalized_agent_url}")
-    click.echo("Local agent auto-start: enabled for loopback URLs when an @invoke repo is available.")
+    click.echo(
+        "Local agent auto-start: enabled for loopback URLs when an @invoke repo is available."
+    )
 
     env_overrides = {
         "MLFLOW_TRACKING_URI": backend_store_uri,
