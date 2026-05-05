@@ -76,8 +76,31 @@ def setup(
     default=None,
     help="Base URL for the agent server /invocations endpoint (default: http://127.0.0.1:8000).",
 )
-def playground(host: str, port: int, no_browser: bool, reload: bool, agent_url: str | None) -> None:
+@click.option(
+    "--rebuild-ui",
+    is_flag=True,
+    help=(
+        "Force a fresh `yarn build` of the React bundle before starting. Use this "
+        "after editing source files in mlflow/server/js/src — otherwise the cached "
+        "bundle from the previous run is served and your changes won't appear."
+    ),
+)
+def playground(
+    host: str,
+    port: int,
+    no_browser: bool,
+    reload: bool,
+    agent_url: str | None,
+    rebuild_ui: bool,
+) -> None:
     """Start the local MLflow playground flow and open the browser."""
     from mlflow.playground.server import serve
 
-    serve(host=host, port=port, open_browser=not no_browser, reload=reload, agent_url=agent_url)
+    serve(
+        host=host,
+        port=port,
+        open_browser=not no_browser,
+        reload=reload,
+        agent_url=agent_url,
+        rebuild_ui=rebuild_ui,
+    )

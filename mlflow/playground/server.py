@@ -113,9 +113,9 @@ def _mlflow_ui_index_path() -> Path:
     return Path(flask_app.static_folder) / "index.html"
 
 
-def _ensure_mlflow_ui_assets() -> None:
+def _ensure_mlflow_ui_assets(*, force_rebuild: bool = False) -> None:
     index_path = _mlflow_ui_index_path()
-    if index_path.exists():
+    if index_path.exists() and not force_rebuild:
         return
 
     source_dir = _frontend_source_dir()
@@ -130,7 +130,10 @@ def _ensure_mlflow_ui_assets() -> None:
         click.echo("Installing MLflow UI dependencies for local playground startup...")
         subprocess.run(["yarn", "install"], cwd=source_dir, check=True)
 
-    click.echo("Building MLflow UI assets for local playground startup...")
+    if force_rebuild and index_path.exists():
+        click.echo("Rebuilding MLflow UI assets (--rebuild-ui)…")
+    else:
+        click.echo("Building MLflow UI assets for local playground startup…")
     subprocess.run(["yarn", "build"], cwd=source_dir, check=True)
 
     if not index_path.exists():
@@ -750,6 +753,7 @@ def serve(
     open_browser: bool = True,
     reload: bool = False,
     agent_url: str | None = None,
+    rebuild_ui: bool = False,
 ) -> None:
     """Start the local MLflow-backed playground flow. Blocks until interrupted."""
     from mlflow.server import _run_server
@@ -760,7 +764,7 @@ def serve(
     experiment_name = config.mlflow.experiment
     normalized_agent_url = _normalize_agent_url(agent_url)
 
-    _ensure_mlflow_ui_assets()
+    _ensure_mlflow_ui_assets(force_rebuild=rebuild_ui)
 
     experiment_id = _ensure_experiment_id(backend_store_uri, experiment_name)
     url = build_url(host, port, experiment_id)
