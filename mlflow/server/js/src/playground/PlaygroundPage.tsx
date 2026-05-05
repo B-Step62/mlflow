@@ -479,6 +479,57 @@ const PlaygroundPageImpl = () => {
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const traceLookupAbortersRef = useRef<Set<AbortController>>(new Set());
 
+  // --- Session persistence (localStorage) ---------------------------------
+  // Survive page reloads by stashing the messages array + traceIdsByRequestId
+  // map keyed by experimentId. The trace and feedback rail rebuild themselves
+  // from those two pieces (trace via /traces/{id}/get, feedbacks via the
+  // assessments embedded in each fetched trace). Bump SESSION_STORAGE_VERSION
+  // when the message shape changes so old sessions are dropped instead of
+  // corrupting the page.
+  const SESSION_STORAGE_VERSION = 1;
+  const sessionStorageKey = useMemo(
+    () => (experimentId ? `mlflow.playground.session.v${SESSION_STORAGE_VERSION}.${experimentId}` : null),
+    [experimentId],
+  );
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (!sessionStorageKey || hydratedRef.current) return;
+    hydratedRef.current = true;
+    try {
+      const raw = window.localStorage.getItem(sessionStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        messages?: PlaygroundMessage[];
+        traceIdsByRequestId?: Record<string, string>;
+      };
+      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+        setMessages(parsed.messages);
+      }
+      if (parsed.traceIdsByRequestId && typeof parsed.traceIdsByRequestId === 'object') {
+        setTraceIdsByRequestId(parsed.traceIdsByRequestId);
+      }
+    } catch {
+      // Corrupt entry — drop it silently so the page boots cleanly.
+      window.localStorage.removeItem(sessionStorageKey);
+    }
+  }, [sessionStorageKey]);
+  useEffect(() => {
+    if (!sessionStorageKey || !hydratedRef.current) return;
+    try {
+      if (messages.length === 0 && Object.keys(traceIdsByRequestId).length === 0) {
+        window.localStorage.removeItem(sessionStorageKey);
+        return;
+      }
+      window.localStorage.setItem(
+        sessionStorageKey,
+        JSON.stringify({ messages, traceIdsByRequestId }),
+      );
+    } catch {
+      // Quota exceeded / private mode etc. — fall through; the user can still
+      // chat, they just won't get cross-reload persistence this session.
+    }
+  }, [sessionStorageKey, messages, traceIdsByRequestId]);
+
   // --- Annotation state (Epic 4) -------------------------------------------
   const { selection, clear: clearSelection } = useChatSelection();
   const [composerOpen, setComposerOpen] = useState(false);
