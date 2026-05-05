@@ -89,9 +89,10 @@ type PlaygroundMessage = {
   content: string;
   // Client-generated id sent with the chat request; the agent tags the resulting
   // trace with `playground.request_id = requestId` so we can look it up by tag
-  // independently of the SSE response shape.
+  // independently of the SSE response shape. The trace_id itself is *not* on
+  // the message — it's keyed by requestId in the page-level traceIdsByRequestId
+  // map, since both turn participants share one trace.
   requestId?: string;
-  traceId?: string;
   toolCalls?: ToolCall[];
 };
 
@@ -433,6 +434,12 @@ const PlaygroundPageImpl = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<ModelTrace | null>(null);
   const [isFullTraceOpen, setIsFullTraceOpen] = useState(false);
+  // Per-turn `requestId → trace_id` index. The trace belongs to the turn, not
+  // to either message individually; both participants share the same trace,
+  // so keying by requestId avoids the need to mirror traceId across two
+  // message rows. Polling and SSE assistant_final both write here; the data
+  // attribute, feedback anchor, and trace panel all read from here.
+  const [traceIdsByRequestId, setTraceIdsByRequestId] = useState<Record<string, string>>({});
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const traceLookupAbortersRef = useRef<Set<AbortController>>(new Set());
 
@@ -658,8 +665,17 @@ const PlaygroundPageImpl = () => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamingText]);
 
-  const latestTraceMessage = useMemo(() => [...messages].reverse().find((message) => message.traceId), [messages]);
-  const latestTraceId = latestTraceMessage?.traceId;
+  // Walk back through messages and pick the most recent one whose requestId
+  // has a resolved trace. This is what drives the right-pane live trace view.
+  const latestTraceId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const requestId = messages[i].requestId;
+      if (requestId && traceIdsByRequestId[requestId]) {
+        return traceIdsByRequestId[requestId];
+      }
+    }
+    return undefined;
+  }, [messages, traceIdsByRequestId]);
 
   // Live-poll the latest trace's span tree so the inline panel grows as the
   // agent runs. Polls until the trace's `state` finalizes (OK / ERROR) or until
@@ -773,17 +789,8 @@ const PlaygroundPageImpl = () => {
         try {
           const resolved = await lookupTraceIdByRequestId(experimentId, requestId, controller.signal);
           if (resolved) {
-            // Mirror the resolved traceId onto every message that shares this
-            // requestId (user + assistant). Without this, an assistant_final
-            // event that arrives without a trace_id leaves the assistant
-            // message with traceId=undefined, which breaks the feedback flow
-            // ("this turn has no trace yet").
-            setMessages((current) =>
-              current.map((m) =>
-                (m.id === userMessage.id || m.requestId === requestId) && !m.traceId
-                  ? { ...m, traceId: resolved }
-                  : m,
-              ),
+            setTraceIdsByRequestId((current) =>
+              current[requestId] ? current : { ...current, [requestId]: resolved },
             );
           }
         } finally {
@@ -838,28 +845,23 @@ const PlaygroundPageImpl = () => {
                 role: 'assistant',
                 content: event.message.content,
                 requestId,
-                traceId: event.trace_id,
                 toolCalls: event.tool_calls,
               };
+              if (event.trace_id) {
+                const sseTraceId = event.trace_id;
+                setTraceIdsByRequestId((current) =>
+                  current[requestId] ? current : { ...current, [requestId]: sseTraceId },
+                );
+              }
             }
           }),
         );
       }
 
       if (finalMessage) {
-        const completed: PlaygroundMessage = finalMessage;
-        setMessages((current) => {
-          // If assistant_final arrived without a trace_id but the polling
-          // fallback already resolved one onto the user message of this
-          // requestId, inherit it so the feedback flow can find it.
-          const inherited =
-            completed.traceId ?? current.find((m) => m.requestId === requestId && m.traceId)?.traceId;
-          return [...current, { ...completed, traceId: inherited }];
-        });
+        setMessages((current) => [...current, finalMessage as PlaygroundMessage]);
         setStreamingText('');
-        if (completed.traceId) {
-          setConfig((current) => (current ? { ...current, agent_connected: true } : current));
-        }
+        setConfig((current) => (current ? { ...current, agent_connected: true } : current));
       } else {
         throw new Error('The playground did not receive a completed assistant response.');
       }
@@ -891,7 +893,7 @@ const PlaygroundPageImpl = () => {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        backgroundColor: theme.colors.backgroundSecondary,
+        backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
       {/* Page header: title + tagline + tiny connection dot. Worker /
@@ -958,7 +960,7 @@ const PlaygroundPageImpl = () => {
             minHeight: 0,
             borderRadius: theme.borders.borderRadiusLg,
             border: `1px solid ${theme.colors.border}`,
-            backgroundColor: theme.colors.backgroundPrimary,
+            backgroundColor: theme.colors.backgroundSecondary,
             overflow: 'hidden',
             boxShadow: theme.shadows.sm,
           }}
@@ -970,11 +972,11 @@ const PlaygroundPageImpl = () => {
               alignItems: 'center',
               padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
-              backgroundColor: theme.colors.backgroundSecondary,
+              backgroundColor: theme.colors.blue100,
             }}
           >
             <div>
-              <Typography.Text css={{ display: 'block', fontWeight: 700 }}>Live Thread</Typography.Text>
+              <Typography.Text css={{ display: 'block', fontWeight: 700 }}>Chat Thread</Typography.Text>
               <Typography.Text color="secondary">
                 Each turn streams into the right pane as the agent runs.
               </Typography.Text>
@@ -1030,13 +1032,17 @@ const PlaygroundPageImpl = () => {
                   </Typography.Text>
                   <div
                     data-mlflow-feedback-anchor={message.role === 'assistant' ? message.id : undefined}
-                    data-mlflow-feedback-trace-id={message.role === 'assistant' ? message.traceId : undefined}
+                    data-mlflow-feedback-trace-id={
+                      message.role === 'assistant' && message.requestId
+                        ? traceIdsByRequestId[message.requestId]
+                        : undefined
+                    }
                     css={{
                       borderRadius: theme.borders.borderRadiusLg,
                       padding: theme.spacing.md,
                       border: `1px solid ${message.role === 'user' ? theme.colors.blue400 : theme.colors.border}`,
                       backgroundColor:
-                        message.role === 'user' ? theme.colors.backgroundSecondary : theme.colors.backgroundPrimary,
+                        message.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundPrimary,
                       whiteSpace: 'pre-wrap',
                       lineHeight: 1.6,
                     }}
@@ -1139,7 +1145,7 @@ const PlaygroundPageImpl = () => {
               alignItems: 'center',
               padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
-              backgroundColor: theme.colors.backgroundSecondary,
+              backgroundColor: theme.colors.blue100,
             }}
           >
             <Typography.Text css={{ fontWeight: 700 }}>Feedback</Typography.Text>
@@ -1185,7 +1191,7 @@ const PlaygroundPageImpl = () => {
                 gap: theme.spacing.sm,
                 padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
                 borderBottom: `1px solid ${theme.colors.border}`,
-                backgroundColor: theme.colors.backgroundSecondary,
+                backgroundColor: theme.colors.blue100,
               }}
             >
               <Typography.Text css={{ fontWeight: 700, flexShrink: 0 }}>Live Trace</Typography.Text>
@@ -1206,14 +1212,15 @@ const PlaygroundPageImpl = () => {
                   {latestTraceId}
                 </Typography.Text>
               )}
-              <Button
-                componentId="mlflow.playground.open-full-trace"
-                size="small"
-                disabled={!selectedTrace}
-                onClick={() => setIsFullTraceOpen(true)}
-              >
-                Open full trace
-              </Button>
+              {selectedTrace && (
+                <Button
+                  componentId="mlflow.playground.open-full-trace"
+                  size="small"
+                  onClick={() => setIsFullTraceOpen(true)}
+                >
+                  Open full trace
+                </Button>
+              )}
             </div>
 
             <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
