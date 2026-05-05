@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -1530,5 +1531,118 @@ def create_playground_api_router(
                 )
             runtime.active_connection_id = connection_id
             return connection.to_dict()
+
+    # ----- Worker dispatch (Epic 8 / YUK-50) ---------------------------------
+
+    @router.post("/issues/{issue_id}/dispatch-worker")
+    async def dispatch_worker(issue_id: str) -> dict[str, Any]:
+        """Reserve an Issue for a worker: create the worktree + register a
+        pending placeholder connection + transition issue todo→in_progress.
+
+        The actual Claude dispatch (YUK-51) is a separate background step
+        that finalises the connection by calling ``mlflow agent connect``
+        once the fix is committed.
+        """
+        from mlflow.entities.issue import IssueStatus
+        from mlflow.exceptions import MlflowException
+        from mlflow.playground.worker import (
+            WorkerWorktree,
+            create_worker_worktree,
+            prune_worker_worktree,
+        )
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        if runtime.repo_dir is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Playground was not launched against an agent repo, so there's "
+                    "nowhere to put a worker worktree. Restart with `mlflow agent "
+                    "playground` from your agent repo."
+                ),
+            )
+
+        # Refuse concurrent dispatch.
+        with runtime.connections_lock:
+            existing = next(
+                (
+                    c
+                    for c in runtime.connections.values()
+                    if c.source_issue_id == issue_id and c.status in {"pending", "ready"}
+                ),
+                None,
+            )
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Issue {issue_id} already has an active worker "
+                    f"(connection_id={existing.connection_id}, status={existing.status}). "
+                    "Discard or accept it before dispatching a new one."
+                ),
+            )
+
+        store = _get_store()
+        try:
+            issue = await asyncio.to_thread(store.get_issue, issue_id)
+        except MlflowException as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        if issue.status != IssueStatus.TODO:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Issue {issue_id} is in status {issue.status.value!r}; only "
+                    "issues in `todo` can be dispatched. Move it back to todo or "
+                    "use the manual fix flow."
+                ),
+            )
+
+        try:
+            worktree: WorkerWorktree = await asyncio.to_thread(
+                create_worker_worktree, runtime.repo_dir, issue_id
+            )
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except subprocess.CalledProcessError as exc:
+            raise HTTPException(status_code=500, detail=f"git worktree add failed: {exc}") from exc
+
+        connection = AgentConnection(
+            connection_id=_new_connection_id(),
+            name=f"fix-{issue_id}-1",
+            agent_url="",  # Filled in once the worker boots its agent (YUK-51).
+            repo_dir=worktree.worktree_path,
+            source_issue_id=issue_id,
+            branch=worktree.branch,
+            base_commit=worktree.base_commit,
+            status="pending",
+            status_message="Waiting for worker to bring the agent up.",
+            created_at_ms=int(time.time() * 1000),
+            log_path=worktree.worktree_path / ".mlflow" / "claude.log",
+        )
+        with runtime.connections_lock:
+            runtime.connections[connection.connection_id] = connection
+
+        try:
+            await asyncio.to_thread(
+                store.transition_issue,
+                issue_id,
+                IssueStatus.IN_PROGRESS,
+                connection.connection_id,
+            )
+        except MlflowException as exc:
+            # Roll back: drop the connection + worktree.
+            with runtime.connections_lock:
+                runtime.connections.pop(connection.connection_id, None)
+            await asyncio.to_thread(prune_worker_worktree, runtime.repo_dir, issue_id, force=True)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return {
+            "connection_id": connection.connection_id,
+            "worktree_path": str(worktree.worktree_path),
+            "branch": worktree.branch,
+            "base_commit": worktree.base_commit,
+            "base_branch": worktree.base_branch,
+        }
 
     return router
