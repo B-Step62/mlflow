@@ -44,9 +44,12 @@ import { withErrorBoundary } from '../common/utils/withErrorBoundary';
 import {
   Alert,
   Button,
+  ChevronDownIcon,
+  ChevronRightIcon,
   DagIcon,
   Input,
   MegaphoneIcon,
+  PlayIcon,
   SpeechBubbleIcon,
   Spinner,
   Tooltip,
@@ -84,6 +87,7 @@ import {
   type PlaygroundFeedback,
 } from './feedback';
 import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
+import { RegressionTestsPanel, type RegressionRunSummary } from './regression';
 
 type MessageRole = 'user' | 'assistant' | 'system' | 'developer';
 
@@ -456,6 +460,94 @@ const ThinkingDots = () => {
   );
 };
 
+/**
+ * Right-pane accordion section. The header row is always rendered (a
+ * clickable strip showing chevron + icon + title + optional right-side
+ * slot). When `open`, the body fills the remaining vertical space —
+ * sibling open sections in the same flex parent share that space. When
+ * collapsed, the section shrinks to just the header row.
+ *
+ * Why inline rather than a shared component: the right pane is the only
+ * accordion in the playground today, and the styling matches the existing
+ * pane chrome (blue100 header, secondary border). If a second consumer
+ * appears, this is small enough to extract.
+ */
+const CollapsibleSection = ({
+  id,
+  title,
+  icon,
+  rightSlot,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  icon?: React.ReactNode;
+  rightSlot?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: open ? 1 : '0 0 auto',
+        minHeight: 0,
+        borderBottom: `1px solid ${theme.colors.border}`,
+        ':last-of-type': { borderBottom: 'none' },
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`mlflow-playground-section-${id}`}
+        css={{
+          display: 'flex',
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: theme.spacing.sm,
+          padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+          backgroundColor: theme.colors.blue100,
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          ':hover': { backgroundColor: theme.colors.blue200 },
+        }}
+      >
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
+          {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          {icon}
+          <Typography.Text css={{ fontWeight: 700 }}>{title}</Typography.Text>
+        </div>
+        {rightSlot && (
+          <div
+            css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}
+            // The right slot may host clickable elements (e.g. "Open full trace")
+            // — stop propagation so clicking them doesn't also toggle the section.
+            onClick={(e) => e.stopPropagation()}
+          >
+            {rightSlot}
+          </div>
+        )}
+      </button>
+      {open && (
+        <div
+          id={`mlflow-playground-section-${id}`}
+          css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PlaygroundPageImpl = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
@@ -641,6 +733,49 @@ const PlaygroundPageImpl = () => {
   // own toast provider.
   const [dispatchingIds, setDispatchingIds] = useState<Set<string>>(new Set());
   const inFlightDispatchesRef = useRef<Set<string>>(new Set());
+
+  // --- Right-pane accordion state -----------------------------------------
+  // Three collapsible sections: Feedback (open by default — primary action
+  // surface during chat), Tests (open by default — visible at a glance so
+  // the user knows the regression suite is there), Trace (collapsed by
+  // default — expandable on demand; the live trace can chew up a lot of
+  // vertical space). Each section is a separate concern; they share
+  // remaining vertical space proportionally based on which are open.
+  const [openSections, setOpenSections] = useState<Set<'feedback' | 'tests' | 'trace'>>(
+    () => new Set(['feedback', 'tests']),
+  );
+  const toggleSection = useCallback((id: 'feedback' | 'tests' | 'trace') => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  // --- Regression suite (placeholder — server SSE wiring is YUK-45) -------
+  const [regressionRecentRuns] = useState<RegressionRunSummary[]>([]);
+  const [regressionInProgress] = useState<
+    { current: number; total: number; passed: number; failed: number } | undefined
+  >(undefined);
+  const dispatchedFeedbackCount = useMemo(
+    () => feedbacks.filter((f) => f.dispatched_issue_id).length,
+    [feedbacks],
+  );
+  const onRunRegressionSuite = useCallback(() => {
+    // Wired up in YUK-45 follow-up; surface a clear info toast for now so the
+    // button isn't a silent no-op.
+    Utils.displayGlobalNotification({
+      severity: 'info',
+      message: 'Regression suite runner coming soon',
+      description: 'Tracked in YUK-45 — running individual tests via the feedback rail still works.',
+      placement: 'topRight',
+      duration: 5,
+    });
+  }, []);
 
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
@@ -1332,9 +1467,12 @@ const PlaygroundPageImpl = () => {
           </div>
         </section>
 
-        {/* Right pane: feedback rail on top (per-session annotation cards),
-            live span tree below. Each section scrolls independently so the
-            trace stays usable when the rail fills with cards. */}
+        {/* Right pane: three collapsible sections (Feedback, Tests, Trace).
+            Default state — Feedback + Tests open, Trace collapsed. The trace
+            chews up vertical real estate; users can expand it on demand for
+            the full span tree, otherwise the rail + tests panel get the room
+            they need. Each open section flexes equally; collapsed sections
+            shrink to just their header row. */}
         <aside
           css={{
             display: 'flex',
@@ -1347,31 +1485,17 @@ const PlaygroundPageImpl = () => {
             boxShadow: theme.shadows.sm,
           }}
         >
-          <div
-            css={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-              borderBottom: `1px solid ${theme.colors.border}`,
-              backgroundColor: theme.colors.blue100,
-            }}
-          >
-            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-              <MegaphoneIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
-              <Typography.Text css={{ fontWeight: 700 }}>Feedback</Typography.Text>
-            </div>
-            <Typography.Text size="sm" color="secondary">
-              {feedbacks.filter((f) => !f.resolved).length} active
-            </Typography.Text>
-          </div>
-          <div
-            css={{
-              flex: 1,
-              minHeight: 0,
-              overflowY: 'auto',
-              borderBottom: `1px solid ${theme.colors.border}`,
-            }}
+          <CollapsibleSection
+            id="feedback"
+            title="Feedback"
+            icon={<MegaphoneIcon css={{ color: theme.colors.textSecondary }} />}
+            rightSlot={
+              <Typography.Text size="sm" color="secondary">
+                {feedbacks.filter((f) => !f.resolved).length} active
+              </Typography.Text>
+            }
+            open={openSections.has('feedback')}
+            onToggle={() => toggleSection('feedback')}
           >
             <FeedbackRail
               feedbacks={feedbacks}
@@ -1387,82 +1511,89 @@ const PlaygroundPageImpl = () => {
                 dispatchingIds,
               }}
             />
-          </div>
-          {/* Feedback rail and trace section share the right pane equally
-              (1:1 ratio between content areas). */}
-          <div
-            css={{
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <div
-              css={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-                padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-                borderBottom: `1px solid ${theme.colors.border}`,
-                backgroundColor: theme.colors.blue100,
-              }}
-            >
-              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexShrink: 0 }}>
-                <DagIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
-                <Typography.Text css={{ fontWeight: 700 }}>Live Trace</Typography.Text>
-              </div>
-              {latestTraceId && (
-                <Typography.Text
-                  color="secondary"
-                  size="sm"
-                  css={{
-                    fontFamily: 'monospace',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                  title={latestTraceId}
-                >
-                  {latestTraceId}
-                </Typography.Text>
-              )}
-              {selectedTrace && (
-                <Button
-                  componentId="mlflow.playground.open-full-trace"
-                  size="small"
-                  onClick={() => setIsFullTraceOpen(true)}
-                >
-                  Open full trace
-                </Button>
-              )}
-            </div>
+          </CollapsibleSection>
 
-            <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              {selectedTrace ? (
-                <PlaygroundTracePane trace={selectedTrace} />
-              ) : (
-                <div
-                  css={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: theme.spacing.lg,
-                  }}
-                >
-                  <Typography.Text color="secondary">
-                    {latestTraceId
-                      ? 'Loading trace…'
-                      : 'No trace yet — send a turn and the span tree will stream in here.'}
+          <CollapsibleSection
+            id="tests"
+            title="Tests"
+            icon={<PlayIcon css={{ color: theme.colors.textSecondary }} />}
+            rightSlot={
+              <Typography.Text size="sm" color="secondary">
+                {dispatchedFeedbackCount} {dispatchedFeedbackCount === 1 ? 'case' : 'cases'}
+              </Typography.Text>
+            }
+            open={openSections.has('tests')}
+            onToggle={() => toggleSection('tests')}
+          >
+            <RegressionTestsPanel
+              experimentId={experimentId}
+              testCount={dispatchedFeedbackCount}
+              recentRuns={regressionRecentRuns}
+              inProgress={regressionInProgress}
+              canRun
+              onRunSuite={onRunRegressionSuite}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            id="trace"
+            title="Trace"
+            icon={<DagIcon css={{ color: theme.colors.textSecondary }} />}
+            rightSlot={
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
+                {latestTraceId && (
+                  <Typography.Text
+                    color="secondary"
+                    size="sm"
+                    css={{
+                      fontFamily: 'monospace',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: 220,
+                    }}
+                    title={latestTraceId}
+                  >
+                    {latestTraceId}
                   </Typography.Text>
-                </div>
-              )}
-            </div>
-          </div>
+                )}
+                {selectedTrace && (
+                  <Button
+                    componentId="mlflow.playground.open-full-trace"
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsFullTraceOpen(true);
+                    }}
+                  >
+                    Open full
+                  </Button>
+                )}
+              </div>
+            }
+            open={openSections.has('trace')}
+            onToggle={() => toggleSection('trace')}
+          >
+            {selectedTrace ? (
+              <PlaygroundTracePane trace={selectedTrace} />
+            ) : (
+              <div
+                css={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: theme.spacing.lg,
+                }}
+              >
+                <Typography.Text color="secondary">
+                  {latestTraceId
+                    ? 'Loading trace…'
+                    : 'No trace yet — send a turn and the span tree will stream in here.'}
+                </Typography.Text>
+              </div>
+            )}
+          </CollapsibleSection>
         </aside>
       </div>
 
