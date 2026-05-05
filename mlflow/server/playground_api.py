@@ -652,6 +652,9 @@ def create_playground_api_router(
 
         response = normalize_agent_response(raw)
         verdict = await asyncio.to_thread(evaluate, spec, response)
+        # Surface the test run's trace_id so the playground UI can render it
+        # in the live trace pane (same code path as the chat endpoint).
+        trace_id = _extract_trace_id(raw)
 
         new_status = issue.status
         if verdict.passed and issue.status != IssueStatus.DONE:
@@ -681,6 +684,7 @@ def create_playground_api_router(
             "issue_status": new_status.value if hasattr(new_status, "value") else str(new_status),
             "agent_response_text": response.text,
             "agent_tool_calls": response.tool_calls,
+            "trace_id": trace_id,
         }
 
     @router.patch("/regression-suite/cases/{test_case_id}")
@@ -1068,6 +1072,9 @@ def create_playground_api_router(
                 "issue_status": issue_status,
                 "agent_response_text": response.text,
                 "agent_tool_calls": response.tool_calls,
+                # Surface the test run's trace_id so the playground UI can
+                # render it in the live trace pane (same as the chat path).
+                "trace_id": _extract_trace_id(raw),
             })
 
         return StreamingResponse(_events(), media_type="text/event-stream")

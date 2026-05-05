@@ -40,6 +40,10 @@ export type RunTestVerdict = {
   issue_status: string;
   agent_response_text: string;
   agent_tool_calls: string[];
+  // Trace produced by the test run's agent invocation. Surfaced in the
+  // playground's Live Trace pane so the user can inspect spans without
+  // leaving the playground.
+  trace_id?: string | null;
 };
 
 export type TestCaseRow = {
