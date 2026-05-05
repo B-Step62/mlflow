@@ -345,6 +345,13 @@ export type FeedbackCardCallbacks = {
   onDispatch: (feedback: PlaygroundFeedback) => void;
   onResolve: (feedback: PlaygroundFeedback) => void;
   onOpenIssue?: (issueId: string) => void;
+  // Run the regression test for a dispatched feedback's issue. Only shown when
+  // `feedback.dispatched_issue_id` is set. The page wires this to
+  // `runIssueTest(issueId)` and surfaces the verdict via a top-right toast.
+  onRunTest?: (feedback: PlaygroundFeedback) => void;
+  // Set of dispatched-issue ids whose test run is currently in flight; the
+  // matching feedback card shows a spinner instead of the "Test" button.
+  runningTestIssueIds?: Set<string>;
 };
 
 export const FeedbackRail = ({
@@ -464,6 +471,16 @@ export const FeedbackRail = ({
               >
                 {dispatched ? 'Dispatched' : 'Dispatch'}
               </Button>
+              {dispatched && callbacks.onRunTest && (
+                <Button
+                  componentId="mlflow.playground.feedback.run-test"
+                  size="small"
+                  loading={callbacks.runningTestIssueIds?.has(feedback.dispatched_issue_id as string)}
+                  onClick={() => callbacks.onRunTest?.(feedback)}
+                >
+                  Test
+                </Button>
+              )}
               <Button
                 componentId="mlflow.playground.feedback.resolve"
                 size="small"

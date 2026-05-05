@@ -83,7 +83,7 @@ import {
   type AssistantMessageAnchor,
   type PlaygroundFeedback,
 } from './feedback';
-import { IssueDetailDrawer } from './issues';
+import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
 
 type MessageRole = 'user' | 'assistant' | 'system' | 'developer';
 
@@ -592,6 +592,36 @@ const PlaygroundPageImpl = () => {
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
 
+  // --- Inline test-run (YUK / Epic 6) -------------------------------------
+  // Run the regression test for a dispatched issue straight from the feedback
+  // card so the user doesn't have to open the detail drawer. The verdict
+  // surfaces as a toast (pass/fail + reasons + status transition).
+  const [runningTestIssueIds, setRunningTestIssueIds] = useState<Set<string>>(new Set());
+  const [testVerdict, setTestVerdict] = useState<{ issueId: string; verdict: RunTestVerdict } | null>(null);
+  const runTestNow = useCallback(async (feedback: PlaygroundFeedback) => {
+    const issueId = feedback.dispatched_issue_id;
+    if (!issueId) return;
+    setRunningTestIssueIds((prev) => {
+      if (prev.has(issueId)) return prev;
+      const next = new Set(prev);
+      next.add(issueId);
+      return next;
+    });
+    try {
+      const verdict = await runIssueTest(issueId);
+      setTestVerdict({ issueId, verdict });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunningTestIssueIds((prev) => {
+        if (!prev.has(issueId)) return prev;
+        const next = new Set(prev);
+        next.delete(issueId);
+        return next;
+      });
+    }
+  }, []);
+
   /**
    * Build the conversation prefix for the dispatch payload by walking
    * `messages` up to (but not including) the assistant message that the
@@ -1016,7 +1046,7 @@ const PlaygroundPageImpl = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
               backgroundColor: theme.colors.blue100,
             }}
@@ -1199,7 +1229,7 @@ const PlaygroundPageImpl = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
               backgroundColor: theme.colors.blue100,
             }}
@@ -1229,6 +1259,8 @@ const PlaygroundPageImpl = () => {
                 onDispatch: (feedback) => void dispatchNow(feedback),
                 onResolve: resolveFeedback,
                 onOpenIssue: (issueId) => setOpenIssueId(issueId),
+                onRunTest: (feedback) => void runTestNow(feedback),
+                runningTestIssueIds,
               }}
             />
           </div>
@@ -1248,7 +1280,7 @@ const PlaygroundPageImpl = () => {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: theme.spacing.sm,
-                padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+                padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
                 borderBottom: `1px solid ${theme.colors.border}`,
                 backgroundColor: theme.colors.blue100,
               }}
@@ -1347,6 +1379,31 @@ const PlaygroundPageImpl = () => {
               {`Created ${dispatchSuccess.issueId}. Worker will pick it up on the next poll.`}
             </Notification.Description>
             <Notification.Close componentId="mlflow.playground.dispatch.success.close" />
+          </Notification.Root>
+          <Notification.Viewport css={{ top: 0, right: 0, bottom: 'auto' }} />
+        </Notification.Provider>
+      )}
+
+      {testVerdict && (
+        <Notification.Provider duration={testVerdict.verdict.passed ? 4000 : 8000}>
+          <Notification.Root
+            severity={testVerdict.verdict.passed ? 'success' : 'warning'}
+            componentId="mlflow.playground.test.verdict"
+            onOpenChange={(open) => {
+              if (!open) setTestVerdict(null);
+            }}
+          >
+            <Notification.Title>
+              {testVerdict.verdict.passed
+                ? `Test passed — ${testVerdict.issueId}`
+                : `Test failed — ${testVerdict.issueId}`}
+            </Notification.Title>
+            <Notification.Description>
+              {testVerdict.verdict.passed
+                ? `Issue moved to ${testVerdict.verdict.issue_status}.`
+                : (testVerdict.verdict.reasons[0] ?? 'See issue detail for full agent response.')}
+            </Notification.Description>
+            <Notification.Close componentId="mlflow.playground.test.verdict.close" />
           </Notification.Root>
           <Notification.Viewport css={{ top: 0, right: 0, bottom: 'auto' }} />
         </Notification.Provider>
