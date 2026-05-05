@@ -7,6 +7,7 @@ from mlflow.playground import regression_suite
 from mlflow.playground.regression_suite import (
     REGRESSION_DATASET_PREFIX,
     append_test_case,
+    delete_test_case,
     get_or_create_regression_dataset,
     regression_dataset_name,
 )
@@ -128,3 +129,54 @@ def test_append_test_case_omits_lineage_tags_when_not_provided():
 
     [records] = dataset.merge_records.call_args.args
     assert records[0]["tags"] == {"promoted": "false"}
+
+
+def test_delete_test_case_resolves_record_id_and_calls_delete_records():
+    import pandas as pd
+
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "dataset_record_id": "rec-1",
+                "expectations": {"test_case_id": "tc-keep"},
+            },
+            {
+                "dataset_record_id": "rec-2",
+                "expectations": {"test_case_id": "tc-drop"},
+            },
+        ]
+    )
+    with mock.patch.object(regression_suite, "get_dataset", return_value=dataset):
+        delete_test_case("exp-1", "tc-drop")
+
+    dataset.delete_records.assert_called_once_with(["rec-2"])
+
+
+def test_delete_test_case_is_noop_when_id_not_found():
+    import pandas as pd
+
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame(
+        [
+            {
+                "dataset_record_id": "rec-1",
+                "expectations": {"test_case_id": "tc-1"},
+            },
+        ]
+    )
+    with mock.patch.object(regression_suite, "get_dataset", return_value=dataset):
+        delete_test_case("exp-1", "tc-does-not-exist")
+
+    dataset.delete_records.assert_not_called()
+
+
+def test_delete_test_case_is_noop_when_dataset_missing():
+    from mlflow.exceptions import MlflowException
+
+    not_found = MlflowException(
+        "Dataset not found.",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+    with mock.patch.object(regression_suite, "get_dataset", side_effect=not_found):
+        delete_test_case("exp-1", "tc-anything")
