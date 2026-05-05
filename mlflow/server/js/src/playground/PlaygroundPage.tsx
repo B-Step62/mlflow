@@ -1776,6 +1776,36 @@ const PlaygroundPageImpl = () => {
     activate: activateConnection,
   } = useConnections();
 
+  // YUK-53: surface a notification when a worker connection transitions
+  // into `ready` while the user is on the page. Seed the seen set on the
+  // very first non-empty poll so pre-existing connections don't fire.
+  const seenReadyConnectionIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (connections.length === 0) return;
+    const readyIds = connections
+      .filter((c) => c.status === 'ready' && c.name !== 'main')
+      .map((c) => c.connection_id);
+    if (seenReadyConnectionIdsRef.current === null) {
+      seenReadyConnectionIdsRef.current = new Set(readyIds);
+      return;
+    }
+    const seen = seenReadyConnectionIdsRef.current;
+    for (const cid of readyIds) {
+      if (seen.has(cid)) continue;
+      seen.add(cid);
+      const conn = connections.find((c) => c.connection_id === cid);
+      if (!conn) continue;
+      Utils.displayGlobalNotification({
+        severity: 'info',
+        message: `New agent version: ${conn.name}`,
+        description: conn.source_issue_id
+          ? `Worker for issue ${conn.source_issue_id} is ready. Switch to test it.`
+          : 'A new agent connection is ready. Switch to test it.',
+        placement: 'topRight',
+      });
+    }
+  }, [connections]);
+
   // ?activate_for_issue=X deeplink — when the kanban "Test in playground →"
   // button routes here, find the matching ready worker and activate it.
   // Strips the param so the user can refresh without re-triggering.
