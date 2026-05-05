@@ -398,6 +398,25 @@ const PastRunRow = ({ run, experimentId }: { run: RegressionRunRow; experimentId
   );
 };
 
+type RegressionCase = {
+  test_case_id?: string;
+  rationale_summary: string;
+  input_question: string;
+  conversation_prefix: { role: string; content: string }[];
+  strategy?: 'assertion' | 'judge';
+  assertion?: {
+    must_contain?: string[];
+    must_not_contain?: string[];
+    must_call_tool?: string[];
+    must_not_call_tool?: string[];
+  };
+  judge?: { criteria: string; expected_response?: string | null };
+  expected_response?: string | null;
+  issue_id?: string;
+  source_trace_id?: string;
+  promoted: boolean;
+};
+
 const BrowseSuiteDrawer = ({
   open,
   onClose,
@@ -408,40 +427,255 @@ const BrowseSuiteDrawer = ({
   experimentId: string | undefined;
 }) => {
   const { theme } = useDesignSystemTheme();
+  const [cases, setCases] = useState<RegressionCase[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !experimentId) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(
+      getAjaxUrl(
+        `ajax-api/3.0/mlflow/playground/regression-suite/cases?experiment_id=${encodeURIComponent(experimentId)}`,
+      ),
+      { headers: getDefaultHeaders(document.cookie) },
+    )
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Load failed (${r.status}): ${await r.text()}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (!cancelled) setCases((data?.cases ?? []) as RegressionCase[]);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, experimentId]);
+
   const fullUrl = experimentId
     ? `/#/experiments/${experimentId}/datasets?name=regression_suite_${experimentId}`
     : '#';
 
-  // The suite is an EvaluationDataset; embedding the row table requires the
-  // dataset records API which expects pagination / column-resolving. For
-  // first cut we surface a clean entry point + reuse of the existing
-  // dataset detail page via "Open in new window". Real embedded row table
-  // is a YUK-45 follow-up.
   return (
     <Drawer.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content
         componentId="mlflow.playground.regression.browse-suite.drawer"
         title="Regression suite"
-        width="640px"
+        width="720px"
       >
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, height: '100%' }}>
-          <div css={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography.Text color="secondary">
+              {loading ? 'Loading…' : `${cases.length} test ${cases.length === 1 ? 'case' : 'cases'}`}
+            </Typography.Text>
             <Button
               componentId="mlflow.playground.regression.browse-suite.open-window"
               icon={<NewWindowIcon />}
               onClick={() => window.open(fullUrl, '_blank', 'noopener,noreferrer')}
               disabled={!experimentId}
             >
-              Open in new window
+              Raw dataset view
             </Button>
           </div>
 
-          <Typography.Text color="secondary">
-            Inline row browser is coming as part of YUK-45. For now, click <em>Open in new window</em> above to view
-            and edit the suite on the EvaluationDataset detail page.
-          </Typography.Text>
+          {loading && (
+            <div css={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.lg }}>
+              <Spinner />
+            </div>
+          )}
+          {error && <Typography.Text color="error">{error}</Typography.Text>}
+          {!loading && !error && cases.length === 0 && (
+            <Typography.Text color="secondary">
+              No test cases yet — dispatch feedback to generate the first one.
+            </Typography.Text>
+          )}
+          {!loading && !error && cases.length > 0 && (
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, overflow: 'auto' }}>
+              {cases.map((tc, idx) => (
+                <RegressionCaseCard
+                  key={tc.test_case_id ?? `case-${idx}`}
+                  case_={tc}
+                  experimentId={experimentId}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </Drawer.Content>
     </Drawer.Root>
+  );
+};
+
+const RegressionCaseCard = ({
+  case_,
+  experimentId,
+}: {
+  case_: RegressionCase;
+  experimentId: string | undefined;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const issueHref = experimentId && case_.issue_id ? `/#/experiments/${experimentId}/issues/${case_.issue_id}` : null;
+  const traceHref =
+    experimentId && case_.source_trace_id
+      ? `/#/experiments/${experimentId}/traces/${case_.source_trace_id}`
+      : null;
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+        padding: theme.spacing.md,
+        borderRadius: theme.borders.borderRadiusMd,
+        border: `1px solid ${theme.colors.border}`,
+        backgroundColor: theme.colors.backgroundPrimary,
+      }}
+    >
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        <Typography.Text size="sm" color="secondary" css={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Question
+        </Typography.Text>
+        <Typography.Text css={{ whiteSpace: 'pre-wrap' }}>
+          {case_.input_question || <em>(no user message in prefix)</em>}
+        </Typography.Text>
+      </div>
+
+      <ConditionsView case_={case_} />
+
+      <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.md, marginTop: theme.spacing.xs }}>
+        {case_.rationale_summary && (
+          <Typography.Text size="sm" color="secondary" css={{ fontStyle: 'italic' }}>
+            “{case_.rationale_summary}”
+          </Typography.Text>
+        )}
+        {issueHref && (
+          <a
+            href={issueHref}
+            target="_blank"
+            rel="noreferrer"
+            css={{ fontSize: theme.typography.fontSizeSm, color: theme.colors.actionPrimaryTextDefault }}
+          >
+            {case_.issue_id} →
+          </a>
+        )}
+        {traceHref && (
+          <a
+            href={traceHref}
+            target="_blank"
+            rel="noreferrer"
+            css={{
+              fontSize: theme.typography.fontSizeSm,
+              color: theme.colors.textSecondary,
+              fontFamily: 'monospace',
+            }}
+          >
+            trace →
+          </a>
+        )}
+        {case_.promoted && (
+          <Typography.Text size="sm" color="success">
+            promoted
+          </Typography.Text>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ConditionsView = ({ case_ }: { case_: RegressionCase }) => {
+  const { theme } = useDesignSystemTheme();
+
+  if (case_.strategy === 'assertion' && case_.assertion) {
+    const a = case_.assertion;
+    const items: Array<[string, string[]]> = [
+      ['must contain', a.must_contain ?? []],
+      ['must not contain', a.must_not_contain ?? []],
+      ['must call tool', a.must_call_tool ?? []],
+      ['must not call tool', a.must_not_call_tool ?? []],
+    ];
+    const nonEmpty = items.filter(([, v]) => v.length > 0);
+    if (nonEmpty.length === 0) {
+      return (
+        <Typography.Text size="sm" color="secondary">
+          (assertion spec has no conditions — likely malformed)
+        </Typography.Text>
+      );
+    }
+    return (
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        {nonEmpty.map(([label, values]) => (
+          <div key={label} css={{ display: 'flex', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
+            <Typography.Text
+              size="sm"
+              color="secondary"
+              css={{ minWidth: 140, textTransform: 'uppercase', letterSpacing: '0.04em' }}
+            >
+              {label}
+            </Typography.Text>
+            <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs }}>
+              {values.map((v) => (
+                <code
+                  key={v}
+                  css={{
+                    fontSize: theme.typography.fontSizeSm,
+                    padding: `2px ${theme.spacing.xs}px`,
+                    borderRadius: theme.borders.borderRadiusSm,
+                    backgroundColor: theme.colors.backgroundSecondary,
+                  }}
+                >
+                  {v}
+                </code>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (case_.strategy === 'judge' && case_.judge) {
+    return (
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        <div css={{ display: 'flex', gap: theme.spacing.sm }}>
+          <Typography.Text
+            size="sm"
+            color="secondary"
+            css={{ minWidth: 140, textTransform: 'uppercase', letterSpacing: '0.04em' }}
+          >
+            judge criteria
+          </Typography.Text>
+          <Typography.Text size="sm">{case_.judge.criteria}</Typography.Text>
+        </div>
+        {case_.judge.expected_response && (
+          <div css={{ display: 'flex', gap: theme.spacing.sm }}>
+            <Typography.Text
+              size="sm"
+              color="secondary"
+              css={{ minWidth: 140, textTransform: 'uppercase', letterSpacing: '0.04em' }}
+            >
+              expected response
+            </Typography.Text>
+            <Typography.Text size="sm" css={{ whiteSpace: 'pre-wrap' }}>
+              {case_.judge.expected_response}
+            </Typography.Text>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Typography.Text size="sm" color="secondary">
+      (unknown strategy — strategy field is {case_.strategy ?? 'missing'})
+    </Typography.Text>
   );
 };
