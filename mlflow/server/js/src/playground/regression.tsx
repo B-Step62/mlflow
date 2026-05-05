@@ -403,7 +403,7 @@ const PastRunRow = ({ run, experimentId }: { run: RegressionRunRow; experimentId
   );
 };
 
-type RegressionCase = {
+export type RegressionCase = {
   test_case_id?: string;
   rationale_summary: string;
   input_question: string;
@@ -420,6 +420,26 @@ type RegressionCase = {
   issue_id?: string;
   source_trace_id?: string;
   promoted: boolean;
+};
+
+/**
+ * Fetch the cockpit-shaped regression-suite cases for an experiment. Used
+ * by the Browse-suite drawer (renders one row per case) and by the
+ * `[Run regression suite]` batch flow (one slot per case in the
+ * BatchRunState).
+ */
+export const fetchRegressionCases = async (experimentId: string): Promise<RegressionCase[]> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/regression-suite/cases?experiment_id=${encodeURIComponent(experimentId)}`,
+    ),
+    { headers: getDefaultHeaders(document.cookie) },
+  );
+  if (!response.ok) {
+    throw new Error(`Load failed (${response.status}): ${await response.text()}`);
+  }
+  const body = (await response.json()) as { cases?: RegressionCase[] };
+  return body.cases ?? [];
 };
 
 const BrowseSuiteDrawer = ({
@@ -441,18 +461,9 @@ const BrowseSuiteDrawer = ({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(
-      getAjaxUrl(
-        `ajax-api/3.0/mlflow/playground/regression-suite/cases?experiment_id=${encodeURIComponent(experimentId)}`,
-      ),
-      { headers: getDefaultHeaders(document.cookie) },
-    )
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Load failed (${r.status}): ${await r.text()}`);
-        return r.json();
-      })
-      .then((data) => {
-        if (!cancelled) setCases((data?.cases ?? []) as RegressionCase[]);
+    fetchRegressionCases(experimentId)
+      .then((cases) => {
+        if (!cancelled) setCases(cases);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));

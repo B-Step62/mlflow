@@ -90,7 +90,12 @@ import {
   type PlaygroundFeedback,
 } from './feedback';
 import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
-import { RegressionTestsPanel, type RegressionRunSummary } from './regression';
+import {
+  fetchRegressionCases,
+  RegressionTestsPanel,
+  type RegressionCase as RegressionCaseT,
+  type RegressionRunSummary,
+} from './regression';
 import { SessionHistoryMenu, type ResumedSession } from './sessions';
 import {
   addQuestion as apiAddQuestion,
@@ -770,6 +775,7 @@ type BatchConvForNav = {
   label: string;
   status: 'pending' | 'streaming' | 'done' | 'failed';
   trace_id?: string;
+  verdict?: { passed: boolean; reasons: string[]; strategy: string };
 };
 type BatchRunForNav = {
   kind: BatchKindForNav;
@@ -793,26 +799,27 @@ const BatchNavigator = ({
   const { theme } = useDesignSystemTheme();
   const total = run.conversations.length;
   const active = run.conversations[run.activeIndex];
+  // For regression suite slots, the verdict is the real signal — `done`
+  // alone isn't pass/fail. When verdict is present we route the status
+  // pill through it; otherwise (question bank, in-flight, errors) we fall
+  // back to the slot's `status`.
+  const verdict = active?.verdict;
   const statusLabel = (() => {
-    switch (active?.status) {
-      case 'pending':
-        return 'queued';
-      case 'streaming':
-        return 'running…';
-      case 'done':
-        return '✓ done';
-      case 'failed':
-        return '✗ failed';
-      default:
-        return '';
-    }
+    if (active?.status === 'pending') return 'queued';
+    if (active?.status === 'streaming') return 'running…';
+    if (verdict) return verdict.passed ? '✓ passed' : '✗ failed';
+    if (active?.status === 'failed') return '✗ error';
+    if (active?.status === 'done') return '✓ done';
+    return '';
   })();
-  const statusColor =
-    active?.status === 'failed'
-      ? theme.colors.textValidationDanger
-      : active?.status === 'done'
-        ? theme.colors.textValidationSuccess
-        : theme.colors.textSecondary;
+  const statusColor = (() => {
+    if (verdict) {
+      return verdict.passed ? theme.colors.textValidationSuccess : theme.colors.textValidationDanger;
+    }
+    if (active?.status === 'failed') return theme.colors.textValidationDanger;
+    if (active?.status === 'done') return theme.colors.textValidationSuccess;
+    return theme.colors.textSecondary;
+  })();
   const traceHref =
     experimentId && active?.trace_id
       ? `/#/experiments/${experimentId}/traces/${active.trace_id}`
@@ -822,8 +829,10 @@ const BatchNavigator = ({
     <div
       css={{
         display: 'flex',
+        flexWrap: 'wrap',
         alignItems: 'center',
         gap: theme.spacing.sm,
+        rowGap: theme.spacing.xs,
         padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
         borderRadius: theme.borders.borderRadiusMd,
         border: `1px solid ${theme.colors.border}`,
@@ -885,6 +894,22 @@ const BatchNavigator = ({
       <Button componentId="mlflow.playground.batch-nav.close" type="link" onClick={onClose}>
         Back to live chat
       </Button>
+      {verdict && !verdict.passed && verdict.reasons.length > 0 && (
+        <Typography.Text
+          size="sm"
+          css={{
+            // Wraps onto the next visual line via flexBasis: 100% on a flex
+            // container — the navigator strip's flex is `flex-wrap` capable
+            // because the parent allows wrapping; here we force a break.
+            flexBasis: '100%',
+            color: theme.colors.textValidationDanger,
+            fontStyle: 'italic',
+            paddingLeft: theme.spacing.lg,
+          }}
+        >
+          {verdict.reasons[0]}
+        </Typography.Text>
+      )}
     </div>
   );
 };
@@ -1117,23 +1142,12 @@ const PlaygroundPageImpl = () => {
     setError(null);
   }, []);
 
-  // --- Regression suite (placeholder — server SSE wiring is YUK-45) -------
+  // --- Regression suite ---------------------------------------------------
   const [regressionRecentRuns] = useState<RegressionRunSummary[]>([]);
-  const [regressionInProgress] = useState<
+  const [regressionInProgress, setRegressionInProgress] = useState<
     { current: number; total: number; passed: number; failed: number } | undefined
   >(undefined);
   const dispatchedFeedbackCount = useMemo(() => feedbacks.filter((f) => f.dispatched_issue_id).length, [feedbacks]);
-  const onRunRegressionSuite = useCallback(() => {
-    // Wired up in YUK-45 follow-up; surface a clear info toast for now so the
-    // button isn't a silent no-op.
-    Utils.displayGlobalNotification({
-      severity: 'info',
-      message: 'Regression suite runner coming soon',
-      description: 'Tracked in YUK-45 — running individual tests via the feedback rail still works.',
-      placement: 'topRight',
-      duration: 5,
-    });
-  }, []);
 
   // --- Question bank (YUK-46) ---------------------------------------------
   // Saved per-experiment probe questions. Powers the chip strip above the
@@ -1160,6 +1174,11 @@ const PlaygroundPageImpl = () => {
   // Live chat state stays preserved in `messages` and is restored when the
   // user clicks "Back to live chat".
   type BatchKind = 'question_bank' | 'regression_suite';
+  type BatchVerdict = {
+    passed: boolean;
+    reasons: string[];
+    strategy: string;
+  };
   type BatchConversation = {
     row_id: string;
     label: string;
@@ -1168,6 +1187,10 @@ const PlaygroundPageImpl = () => {
     status: 'pending' | 'streaming' | 'done' | 'failed';
     trace_id?: string;
     error?: string;
+    // Only set for `kind === 'regression_suite'` — the run-test verdict
+    // (pass/fail + reasons + strategy). Drives the navigator's status pill
+    // and the "✓ passed" / "✗ failed" badge in the conversation header.
+    verdict?: BatchVerdict;
   };
   type BatchRunState = {
     kind: BatchKind;
@@ -1738,6 +1761,156 @@ const PlaygroundPageImpl = () => {
     await Promise.all(savedQuestions.map((q) => runBatchTurn(q.question_id, q.content)));
   }, [batchRun, runBatchTurn, savedQuestions]);
 
+  // --- Regression-suite batch run -----------------------------------------
+  // Reuses the BatchRunState navigator with `kind: 'regression_suite'` —
+  // each slot is one regression case. We invoke the existing per-issue SSE
+  // endpoint (`/issues/{id}/run-test/stream`) in parallel; that endpoint
+  // already handles agent invocation + spec evaluation, so we just need to
+  // shape the response into a navigator slot (user message + agent reply,
+  // verdict on the slot).
+  const runRegressionSuite = useCallback(async () => {
+    if (!experimentId || batchRun !== null) return;
+    let cases: RegressionCaseT[] = [];
+    try {
+      cases = (await fetchRegressionCases(experimentId)) as RegressionCaseT[];
+    } catch (e) {
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Could not load regression cases',
+        description: e instanceof Error ? e.message : String(e),
+        placement: 'topRight',
+      });
+      return;
+    }
+    // The per-issue SSE endpoint resolves the test row by `issue_id`; cases
+    // without one (synthetic / pre-Epic-3) can't be run today. Filter them
+    // out and warn if the result is empty.
+    const runnable = cases.filter((c) => Boolean(c.issue_id));
+    if (runnable.length === 0) {
+      Utils.displayGlobalNotification({
+        severity: 'warning',
+        message: 'No runnable regression cases',
+        description:
+          cases.length === 0
+            ? 'The regression suite is empty — dispatch some feedback to populate it.'
+            : 'Cases lack an issue_id linkage; today only feedback-dispatched cases are runnable.',
+        placement: 'topRight',
+      });
+      return;
+    }
+
+    const runId = createRequestId();
+    setBatchRun({
+      kind: 'regression_suite',
+      run_id: runId,
+      activeIndex: 0,
+      conversations: runnable.map((c) => ({
+        row_id: c.issue_id as string,
+        label: c.rationale_summary || c.input_question || c.test_case_id || c.issue_id || 'case',
+        // Pre-populate the user message from the case's input — the actual
+        // conversation prefix may be longer, but for the navigator's quick
+        // glance the latest user turn is what matters. The agent's reply
+        // gets appended once the verdict event arrives.
+        messages: [
+          {
+            id: createMessageId('user'),
+            role: 'user',
+            content: c.input_question || '(no user message in prefix)',
+          },
+        ],
+        streamingText: '',
+        status: 'pending',
+      })),
+    });
+
+    setRegressionInProgress({
+      current: 0,
+      total: runnable.length,
+      passed: 0,
+      failed: 0,
+    });
+
+    let done = 0;
+    let passed = 0;
+    let failed = 0;
+
+    await Promise.all(
+      runnable.map(async (c) => {
+        const issueId = c.issue_id as string;
+
+        const setSlot = (updater: (slot: BatchConversation) => BatchConversation) =>
+          setBatchRun((current) => {
+            if (!current) return current;
+            const idx = current.conversations.findIndex((s) => s.row_id === issueId);
+            if (idx < 0) return current;
+            const next = [...current.conversations];
+            next[idx] = updater(next[idx]);
+            return { ...current, conversations: next };
+          });
+
+        setSlot((slot) => ({ ...slot, status: 'streaming' }));
+
+        try {
+          const verdict = await runIssueTest(issueId, ({ message }) => {
+            // Surface the stage label as ephemeral streamingText so the user
+            // sees `Replaying conversation against the agent…` etc.
+            setSlot((slot) => ({ ...slot, streamingText: message }));
+          });
+          done += 1;
+          if (verdict.passed) {
+            passed += 1;
+          } else {
+            failed += 1;
+          }
+          setRegressionInProgress({
+            current: done,
+            total: runnable.length,
+            passed,
+            failed,
+          });
+          setSlot((slot) => ({
+            ...slot,
+            status: 'done',
+            streamingText: '',
+            messages: [
+              ...slot.messages,
+              {
+                id: createMessageId('assistant'),
+                role: 'assistant',
+                content: verdict.agent_response_text || '(no response)',
+              },
+            ],
+            verdict: {
+              passed: verdict.passed,
+              reasons: verdict.reasons,
+              strategy: verdict.strategy,
+            },
+          }));
+        } catch (err) {
+          done += 1;
+          failed += 1;
+          setRegressionInProgress({
+            current: done,
+            total: runnable.length,
+            passed,
+            failed,
+          });
+          setSlot((slot) => ({
+            ...slot,
+            status: 'failed',
+            streamingText: '',
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
+      }),
+    );
+
+    // Once everything's done, drop the panel-level progress badge — the
+    // per-slot statuses in the navigator + the run completion are the real
+    // signal now.
+    setRegressionInProgress(undefined);
+  }, [batchRun, experimentId]);
+
   const selectedTraceInfo = useMemo(
     () =>
       selectedTrace && isV3ModelTraceInfo(selectedTrace.info) ? (selectedTrace.info as ModelTraceInfoV3) : undefined,
@@ -2186,7 +2359,7 @@ const PlaygroundPageImpl = () => {
               recentRuns={regressionRecentRuns}
               inProgress={regressionInProgress}
               canRun
-              onRunSuite={onRunRegressionSuite}
+              onRunSuite={() => void runRegressionSuite()}
             />
           </CollapsibleSection>
 
