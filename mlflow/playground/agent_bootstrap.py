@@ -142,6 +142,11 @@ def main() -> None:
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--no-reload",
+        action="store_true",
+        help="Disable in-process hot reload of the agent on file changes (default: on).",
+    )
     args = parser.parse_args()
 
     repo_dir = Path(args.repo_dir).resolve()
@@ -152,6 +157,20 @@ def main() -> None:
     print(f"MLflow Agent Playground loaded entrypoint from {candidate}", flush=True)
 
     server = AgentServer(agent_type)
+
+    if not args.no_reload:
+        from mlflow.genai.agent_server.server import enable_hot_reload
+
+        def _rediscover() -> None:
+            new_candidate, _ = discover_agent(repo_dir)
+            print(f"[hot-reload] reloaded entrypoint {new_candidate}", flush=True)
+
+        enable_hot_reload(
+            watch_dir=repo_dir,
+            on_change=_rediscover,
+            excluded_dir_names=EXCLUDED_DIR_NAMES,
+        )
+
     uvicorn.run(server.app, host=args.host, port=args.port)
 
 
