@@ -1147,7 +1147,24 @@ const PlaygroundPageImpl = () => {
   const [regressionInProgress, setRegressionInProgress] = useState<
     { current: number; total: number; passed: number; failed: number } | undefined
   >(undefined);
-  const dispatchedFeedbackCount = useMemo(() => feedbacks.filter((f) => f.dispatched_issue_id).length, [feedbacks]);
+  // Source of truth for the panel header / [Run regression suite] enable
+  // gate. Reading it from `feedbacks` (dispatched-in-this-session) was
+  // wrong — the suite is a per-experiment dataset that outlives any single
+  // chat session, so we need the actual row count.
+  const [regressionCasesCount, setRegressionCasesCount] = useState(0);
+  const reloadRegressionCount = useCallback(() => {
+    if (!experimentId) return;
+    fetchRegressionCases(experimentId)
+      .then((cases) => setRegressionCasesCount(cases.length))
+      .catch(() => {
+        // Same silent-failure rationale as the question bank reload — a
+        // stale count is fine; a flaky tracking server shouldn't break
+        // chat. The Browse-suite drawer surfaces real fetch errors.
+      });
+  }, [experimentId]);
+  useEffect(() => {
+    reloadRegressionCount();
+  }, [reloadRegressionCount]);
 
   // --- Question bank (YUK-46) ---------------------------------------------
   // Saved per-experiment probe questions. Powers the chip strip above the
@@ -1365,6 +1382,10 @@ const PlaygroundPageImpl = () => {
         );
         // Best-effort: stamp the assessment so the dispatched link survives a reload.
         void tagFeedbackWithIssueId(feedback.trace_id, feedback.assessment_id, result.issue_id);
+        // Refresh the Tests-panel case count — the dispatch just generated
+        // a regression-suite row, and the panel header should reflect that
+        // immediately rather than waiting for a page reload.
+        reloadRegressionCount();
         Utils.closeGlobalNotification(progressKey);
         Utils.displayGlobalNotification({
           severity: 'success',
@@ -1385,7 +1406,7 @@ const PlaygroundPageImpl = () => {
         cleanup();
       }
     },
-    [buildDispatchPayload],
+    [buildDispatchPayload, reloadRegressionCount],
   );
 
   useEffect(() => {
@@ -2347,7 +2368,7 @@ const PlaygroundPageImpl = () => {
             icon={<PlayIcon css={{ color: theme.colors.textSecondary }} />}
             rightSlot={
               <Typography.Text size="sm" color="secondary">
-                {dispatchedFeedbackCount} {dispatchedFeedbackCount === 1 ? 'case' : 'cases'}
+                {regressionCasesCount} {regressionCasesCount === 1 ? 'case' : 'cases'}
               </Typography.Text>
             }
             open={openSections.has('tests')}
@@ -2355,7 +2376,7 @@ const PlaygroundPageImpl = () => {
           >
             <RegressionTestsPanel
               experimentId={experimentId}
-              testCount={dispatchedFeedbackCount}
+              testCount={regressionCasesCount}
               recentRuns={regressionRecentRuns}
               inProgress={regressionInProgress}
               canRun
