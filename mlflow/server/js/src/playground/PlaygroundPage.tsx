@@ -765,25 +765,34 @@ const QuestionChip = ({
 };
 
 /**
- * Big green/red banner shown above the chat messages when a regression-suite
- * slot has a verdict. Surfaces the pass/fail outcome and the failure reasons
- * (if any) prominently — the navigator's status pill is small and easy to
- * miss when scanning a long agent response.
+ * Stack of green/red banners, one per spec evaluated against the active
+ * conversation's agent response. Renders directly above the chat messages
+ * so the verdict is impossible to miss when scanning the reply. A single
+ * conversation can have multiple verdicts because we group cases that
+ * share the same prefix (`/regression-suite/run-grouped/stream`).
  */
-const VerdictBanner = ({ verdict }: { verdict: { passed: boolean; reasons: string[]; strategy: string } }) => {
+type BannerVerdict = {
+  test_case_id?: string;
+  rationale_summary?: string;
+  passed: boolean;
+  reasons: string[];
+  strategy: string;
+};
+
+const VerdictBanner = ({ verdict }: { verdict: BannerVerdict }) => {
   const { theme } = useDesignSystemTheme();
   const palette = verdict.passed
     ? {
         bg: 'rgba(220, 245, 220, 0.55)',
         border: theme.colors.green400,
         fg: theme.colors.textValidationSuccess,
-        title: '✓ Test passed',
+        title: '✓ Passed',
       }
     : {
         bg: 'rgba(255, 224, 224, 0.55)',
         border: theme.colors.red400,
         fg: theme.colors.textValidationDanger,
-        title: '✗ Test failed',
+        title: '✗ Failed',
       };
   return (
     <div
@@ -797,10 +806,13 @@ const VerdictBanner = ({ verdict }: { verdict: { passed: boolean; reasons: strin
         backgroundColor: palette.bg,
       }}
     >
-      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+      <div css={{ display: 'flex', alignItems: 'baseline', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
         <Typography.Text css={{ color: palette.fg, fontWeight: 700 }}>{palette.title}</Typography.Text>
+        {verdict.rationale_summary && (
+          <Typography.Text css={{ fontStyle: 'italic' }}>{verdict.rationale_summary}</Typography.Text>
+        )}
         <Typography.Text size="sm" color="secondary">
-          (strategy: {verdict.strategy})
+          ({verdict.strategy})
         </Typography.Text>
       </div>
       {verdict.reasons.length > 0 && (
@@ -816,18 +828,38 @@ const VerdictBanner = ({ verdict }: { verdict: { passed: boolean; reasons: strin
   );
 };
 
+const VerdictStack = ({ verdicts }: { verdicts: BannerVerdict[] }) => {
+  const { theme } = useDesignSystemTheme();
+  if (!verdicts || verdicts.length === 0) return null;
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+      {verdicts.map((v, i) => (
+        <VerdictBanner key={v.test_case_id ?? `${i}`} verdict={v} />
+      ))}
+    </div>
+  );
+};
+
 /**
  * Pinned strip at the top of the chat thread when a batch run is active.
  * Shows `◀ Question m / N ▶` plus per-conversation status + a Back-to-live
  * exit. The arrow buttons mirror the keyboard arrow handler in PlaygroundPage.
  */
 type BatchKindForNav = 'question_bank' | 'regression_suite';
+type BatchVerdictForNav = {
+  test_case_id?: string;
+  issue_id?: string;
+  rationale_summary?: string;
+  passed: boolean;
+  reasons: string[];
+  strategy: string;
+};
 type BatchConvForNav = {
   row_id: string;
   label: string;
   status: 'pending' | 'streaming' | 'done' | 'failed';
   trace_id?: string;
-  verdict?: { passed: boolean; reasons: string[]; strategy: string };
+  verdicts?: BatchVerdictForNav[];
 };
 type BatchRunForNav = {
   kind: BatchKindForNav;
@@ -851,22 +883,28 @@ const BatchNavigator = ({
   const { theme } = useDesignSystemTheme();
   const total = run.conversations.length;
   const active = run.conversations[run.activeIndex];
-  // For regression suite slots, the verdict is the real signal — `done`
-  // alone isn't pass/fail. When verdict is present we route the status
-  // pill through it; otherwise (question bank, in-flight, errors) we fall
-  // back to the slot's `status`.
-  const verdict = active?.verdict;
+  // For regression suite slots, verdicts are the real signal — `done` alone
+  // isn't pass/fail, and a slot can carry multiple verdicts (one per
+  // grouped case). The pill summarises: all-pass → ✓ passed, any fail →
+  // ✗ N/M failed.
+  const verdicts = active?.verdicts;
+  const failedCount = verdicts?.filter((v) => !v.passed).length ?? 0;
+  const passedCount = verdicts?.filter((v) => v.passed).length ?? 0;
   const statusLabel = (() => {
     if (active?.status === 'pending') return 'queued';
     if (active?.status === 'streaming') return 'running…';
-    if (verdict) return verdict.passed ? '✓ passed' : '✗ failed';
+    if (verdicts && verdicts.length > 0) {
+      return failedCount === 0
+        ? `✓ ${passedCount} passed`
+        : `✗ ${failedCount}/${verdicts.length} failed`;
+    }
     if (active?.status === 'failed') return '✗ error';
     if (active?.status === 'done') return '✓ done';
     return '';
   })();
   const statusColor = (() => {
-    if (verdict) {
-      return verdict.passed ? theme.colors.textValidationSuccess : theme.colors.textValidationDanger;
+    if (verdicts && verdicts.length > 0) {
+      return failedCount === 0 ? theme.colors.textValidationSuccess : theme.colors.textValidationDanger;
     }
     if (active?.status === 'failed') return theme.colors.textValidationDanger;
     if (active?.status === 'done') return theme.colors.textValidationSuccess;
@@ -1233,6 +1271,9 @@ const PlaygroundPageImpl = () => {
   // user clicks "Back to live chat".
   type BatchKind = 'question_bank' | 'regression_suite';
   type BatchVerdict = {
+    test_case_id?: string;
+    issue_id?: string;
+    rationale_summary?: string;
     passed: boolean;
     reasons: string[];
     strategy: string;
@@ -1245,10 +1286,11 @@ const PlaygroundPageImpl = () => {
     status: 'pending' | 'streaming' | 'done' | 'failed';
     trace_id?: string;
     error?: string;
-    // Only set for `kind === 'regression_suite'` — the run-test verdict
-    // (pass/fail + reasons + strategy). Drives the navigator's status pill
-    // and the "✓ passed" / "✗ failed" badge in the conversation header.
-    verdict?: BatchVerdict;
+    // Only set for `kind === 'regression_suite'`. A single conversation
+    // can carry multiple verdicts because we group cases by input
+    // conversation: every spec that anchors to the same prefix gets
+    // evaluated against the same agent response, all in one slot.
+    verdicts?: BatchVerdict[];
   };
   type BatchRunState = {
     kind: BatchKind;
@@ -1832,158 +1874,181 @@ const PlaygroundPageImpl = () => {
   // verdict on the slot).
   const runRegressionSuite = useCallback(async () => {
     if (!experimentId || batchRun !== null) return;
-    let cases: RegressionCaseT[] = [];
-    try {
-      cases = (await fetchRegressionCases(experimentId)) as RegressionCaseT[];
-    } catch (e) {
-      Utils.displayGlobalNotification({
-        severity: 'error',
-        message: 'Could not load regression cases',
-        description: e instanceof Error ? e.message : String(e),
-        placement: 'topRight',
-      });
-      return;
-    }
-    // The per-issue SSE endpoint resolves the test row by `issue_id`; cases
-    // without one (synthetic / pre-Epic-3) can't be run today. Filter them
-    // out and warn if the result is empty.
-    const runnable = cases.filter((c) => Boolean(c.issue_id));
-    if (runnable.length === 0) {
-      Utils.displayGlobalNotification({
-        severity: 'warning',
-        message: 'No runnable regression cases',
-        description:
-          cases.length === 0
-            ? 'The regression suite is empty — dispatch some feedback to populate it.'
-            : 'Cases lack an issue_id linkage; today only feedback-dispatched cases are runnable.',
-        placement: 'topRight',
-      });
-      return;
-    }
-
     const runId = createRequestId();
     const startedAt = Date.now();
-    setBatchRun({
-      kind: 'regression_suite',
-      run_id: runId,
-      activeIndex: 0,
-      conversations: runnable.map((c) => ({
-        row_id: c.issue_id as string,
-        label: c.rationale_summary || c.input_question || c.test_case_id || c.issue_id || 'case',
-        // Pre-populate the user message from the case's input — the actual
-        // conversation prefix may be longer, but for the navigator's quick
-        // glance the latest user turn is what matters. The agent's reply
-        // gets appended once the verdict event arrives.
-        messages: [
-          {
-            id: createMessageId('user'),
-            role: 'user',
-            content: c.input_question || '(no user message in prefix)',
-          },
-        ],
-        streamingText: '',
-        status: 'pending',
-      })),
-    });
 
-    setRegressionInProgress({
-      current: 0,
-      total: runnable.length,
-      passed: 0,
-      failed: 0,
-    });
+    setBatchRun({ kind: 'regression_suite', run_id: runId, activeIndex: 0, conversations: [] });
+    setRegressionInProgress({ current: 0, total: 0, passed: 0, failed: 0 });
 
-    let done = 0;
-    let passed = 0;
-    let failed = 0;
+    type GroupStarted = {
+      type: 'group_started';
+      group_index: number;
+      total_groups: number;
+      label: string;
+      case_count: number;
+      messages: { role: string; content: string }[];
+    };
+    type GroupVerdict = {
+      type: 'group_verdict';
+      group_index: number;
+      agent_response_text: string;
+      agent_tool_calls: unknown;
+      verdicts: BatchVerdict[];
+    };
+    type GroupError = { type: 'group_error'; group_index: number; detail: string };
+    type Started = { type: 'started'; total_groups: number; total_cases: number };
+    type Summary = { type: 'summary'; total_groups: number };
+    type GroupedEvent = GroupStarted | GroupVerdict | GroupError | Started | Summary;
 
-    await Promise.all(
-      runnable.map(async (c) => {
-        const issueId = c.issue_id as string;
+    let response: Response;
+    try {
+      response = await fetch(
+        getAjaxUrl(
+          `ajax-api/3.0/mlflow/playground/regression-suite/run-grouped/stream?experiment_id=${encodeURIComponent(experimentId)}`,
+        ),
+        { headers: getDefaultHeaders(document.cookie) },
+      );
+    } catch (err) {
+      setBatchRun(null);
+      setRegressionInProgress(undefined);
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Regression run failed to start',
+        description: err instanceof Error ? err.message : String(err),
+        placement: 'topRight',
+      });
+      return;
+    }
+    if (!response.ok || !response.body) {
+      setBatchRun(null);
+      setRegressionInProgress(undefined);
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Regression run failed',
+        description: `Status ${response.status}: ${await response.text()}`,
+        placement: 'topRight',
+      });
+      return;
+    }
 
-        const setSlot = (updater: (slot: BatchConversation) => BatchConversation) =>
-          setBatchRun((current) => {
-            if (!current) return current;
-            const idx = current.conversations.findIndex((s) => s.row_id === issueId);
-            if (idx < 0) return current;
-            const next = [...current.conversations];
-            next[idx] = updater(next[idx]);
-            return { ...current, conversations: next };
-          });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let totalCases = 0;
+    let doneGroups = 0;
+    let passedCases = 0;
+    let failedCases = 0;
 
-        setSlot((slot) => ({ ...slot, status: 'streaming' }));
-
-        try {
-          const verdict = await runIssueTest(issueId, ({ message }) => {
-            // Surface the stage label as ephemeral streamingText so the user
-            // sees `Replaying conversation against the agent…` etc.
-            setSlot((slot) => ({ ...slot, streamingText: message }));
-          });
-          done += 1;
-          if (verdict.passed) {
-            passed += 1;
-          } else {
-            failed += 1;
-          }
-          setRegressionInProgress({
-            current: done,
-            total: runnable.length,
-            passed,
-            failed,
-          });
-          setSlot((slot) => ({
-            ...slot,
+    const handleEvent = (event: GroupedEvent) => {
+      if (event.type === 'started') {
+        totalCases = event.total_cases;
+        setRegressionInProgress({ current: 0, total: event.total_cases, passed: 0, failed: 0 });
+        return;
+      }
+      if (event.type === 'group_started') {
+        const slot: BatchConversation = {
+          row_id: `group-${event.group_index}`,
+          label: event.label,
+          messages: event.messages.map((m) => ({
+            id: createMessageId(m.role),
+            role: m.role as PlaygroundMessage['role'],
+            content: m.content,
+          })),
+          streamingText: 'Replaying conversation against the agent…',
+          status: 'streaming',
+        };
+        setBatchRun((current) =>
+          current ? { ...current, conversations: [...current.conversations, slot] } : current,
+        );
+        return;
+      }
+      if (event.type === 'group_verdict') {
+        const slotPasses = event.verdicts.filter((v) => v.passed).length;
+        const slotFails = event.verdicts.length - slotPasses;
+        passedCases += slotPasses;
+        failedCases += slotFails;
+        doneGroups += 1;
+        setRegressionInProgress({
+          current: passedCases + failedCases,
+          total: totalCases,
+          passed: passedCases,
+          failed: failedCases,
+        });
+        setBatchRun((current) => {
+          if (!current) return current;
+          const idx = current.conversations.findIndex((s) => s.row_id === `group-${event.group_index}`);
+          if (idx < 0) return current;
+          const next = [...current.conversations];
+          next[idx] = {
+            ...next[idx],
             status: 'done',
             streamingText: '',
             messages: [
-              ...slot.messages,
+              ...next[idx].messages,
               {
                 id: createMessageId('assistant'),
                 role: 'assistant',
-                content: verdict.agent_response_text || '(no response)',
+                content: event.agent_response_text || '(no response)',
               },
             ],
-            verdict: {
-              passed: verdict.passed,
-              reasons: verdict.reasons,
-              strategy: verdict.strategy,
-            },
-          }));
-        } catch (err) {
-          done += 1;
-          failed += 1;
-          setRegressionInProgress({
-            current: done,
-            total: runnable.length,
-            passed,
-            failed,
-          });
-          setSlot((slot) => ({
-            ...slot,
-            status: 'failed',
-            streamingText: '',
-            error: err instanceof Error ? err.message : String(err),
-          }));
-        }
-      }),
-    );
+            verdicts: event.verdicts,
+          };
+          return { ...current, conversations: next };
+        });
+        return;
+      }
+      if (event.type === 'group_error') {
+        doneGroups += 1;
+        setBatchRun((current) => {
+          if (!current) return current;
+          const idx = current.conversations.findIndex((s) => s.row_id === `group-${event.group_index}`);
+          if (idx < 0) return current;
+          const next = [...current.conversations];
+          next[idx] = { ...next[idx], status: 'failed', streamingText: '', error: event.detail };
+          return { ...current, conversations: next };
+        });
+        return;
+      }
+      // 'summary' — handled after the loop ends.
+    };
 
-    // Once everything's done, drop the panel-level progress badge — the
-    // per-slot statuses in the navigator + the run completion are the real
-    // signal now.
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() ?? '';
+      for (const chunk of chunks) {
+        const line = chunk
+          .split('\n')
+          .find((l) => l.startsWith('data:'))
+          ?.slice('data:'.length)
+          .trim();
+        if (!line) continue;
+        try {
+          handleEvent(JSON.parse(line) as GroupedEvent);
+        } catch {
+          // Malformed event; skip rather than abort the whole run.
+        }
+      }
+    }
+
     setRegressionInProgress(undefined);
-    setRegressionRecentRuns((current) => [
-      {
-        parent_run_id: runId,
-        pass_count: passed,
-        fail_count: failed,
-        total_count: runnable.length,
-        pass_rate: runnable.length > 0 ? passed / runnable.length : 0,
-        started_at: startedAt,
-        ended_at: Date.now(),
-      },
-      ...current,
-    ].slice(0, 10));
+    setRegressionRecentRuns((current) =>
+      [
+        {
+          parent_run_id: runId,
+          pass_count: passedCases,
+          fail_count: failedCases,
+          total_count: totalCases,
+          pass_rate: totalCases > 0 ? passedCases / totalCases : 0,
+          started_at: startedAt,
+          ended_at: Date.now(),
+        },
+        ...current,
+      ].slice(0, 10),
+    );
+    void doneGroups; // accumulator kept for future "groups completed" debugging
   }, [batchRun, experimentId]);
 
   const selectedTraceInfo = useMemo(
@@ -2177,7 +2242,9 @@ const PlaygroundPageImpl = () => {
                 experimentId={experimentId}
               />
             )}
-            {activeBatch?.verdict && <VerdictBanner verdict={activeBatch.verdict} />}
+            {activeBatch?.verdicts && activeBatch.verdicts.length > 0 && (
+              <VerdictStack verdicts={activeBatch.verdicts} />
+            )}
             {isLoadingConfig ? (
               <div css={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spinner />
