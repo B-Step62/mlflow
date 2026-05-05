@@ -1912,9 +1912,19 @@ const PlaygroundPageImpl = () => {
   // turn. Cleared on the next chat send so the chat path resumes control.
   const [manualTraceId, setManualTraceId] = useState<string | undefined>(undefined);
 
-  // Walk back through messages and pick the most recent one whose requestId
-  // has a resolved trace. This is what drives the right-pane live trace view.
+  // Drives the right-pane live trace view. Precedence:
+  //   1. The active batch conversation's trace, when a batch run is in
+  //      progress / displayed — this is what makes the "Question m/N"
+  //      navigator advance the trace pane in lock-step.
+  //   2. `manualTraceId` — pinned out-of-band by the single-issue
+  //      "Run regression test" path on the feedback rail.
+  //   3. The most recent chat message whose requestId has a resolved
+  //      trace — the regular chat path.
   const latestTraceId = useMemo(() => {
+    if (batchRun) {
+      const active = batchRun.conversations[batchRun.activeIndex];
+      if (active?.trace_id) return active.trace_id;
+    }
     if (manualTraceId) return manualTraceId;
     for (let i = messages.length - 1; i >= 0; i--) {
       const requestId = messages[i].requestId;
@@ -1923,7 +1933,7 @@ const PlaygroundPageImpl = () => {
       }
     }
     return undefined;
-  }, [manualTraceId, messages, traceIdsByRequestId]);
+  }, [batchRun, manualTraceId, messages, traceIdsByRequestId]);
 
   // Live-poll the latest trace's span tree so the inline panel grows as the
   // agent runs. Polls until the trace's `state` finalizes (OK / ERROR) or until
