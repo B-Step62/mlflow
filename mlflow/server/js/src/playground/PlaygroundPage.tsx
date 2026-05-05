@@ -11,8 +11,6 @@ import {
   useModelTraceExplorerViewState,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorerViewStateContext';
 import { TimelineTree } from '../shared/web-shared/model-trace-explorer/timeline-tree/TimelineTree';
-import { ModelTraceExplorerContentTab } from '../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerContentTab';
-import { ModelTraceExplorerChatTab } from '../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerChatTab';
 import { ModelTraceHeaderStatusTag } from '../shared/web-shared/model-trace-explorer/ModelTraceHeaderStatusTag';
 import {
   ModelTraceExplorerCostHoverCard,
@@ -296,7 +294,6 @@ const PlaygroundTraceHeaderPills = ({ traceInfo }: { traceInfo: ModelTrace['info
  *   └───────────────────────────────┘    "Inputs / Outputs" tab
  */
 const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
-  const { theme } = useDesignSystemTheme();
   const { selectedNode, setSelectedNode, setActiveTab, rootNode, topLevelNodes } = useModelTraceExplorerViewState();
 
   // expandedKeys / spanFilterState aren't part of the view-state context —
@@ -305,7 +302,7 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
   const { expandedKeys, setExpandedKeys } = useTimelineTreeExpandedNodes({
     rootNodes: topLevelNodes,
   });
-  const { spanFilterState, setSpanFilterState, filteredTreeNodes, matchData } = useModelTraceSearch({
+  const { spanFilterState, setSpanFilterState, filteredTreeNodes } = useModelTraceSearch({
     treeNodes: topLevelNodes,
     selectedNode,
     setSelectedNode,
@@ -319,19 +316,12 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
     return { traceStartTime: rootNode.start, traceEndTime: rootNode.end };
   }, [rootNode]);
 
-  // Mirror what the regular right-pane does: when the selected span has
-  // structured chat messages (i.e. it's a chat-completion call with messages /
-  // tool calls), prefer the Chat tab — it renders the conversation as bubbles
-  // with tool-call expansions, which is much friendlier than the raw I/O JSON.
-  // Fall back to the I/O renderer for any other span type.
-  const hasChatMessages = Boolean(selectedNode?.chatMessages?.length);
-
   return (
     <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <PlaygroundTraceHeaderPills traceInfo={trace.info} />
       <div
         css={{
-          flex: '1 1 35%',
+          flex: 1,
           minHeight: 0,
           overflow: 'auto',
           display: 'flex',
@@ -349,23 +339,6 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
           spanFilterState={spanFilterState}
           setSpanFilterState={setSpanFilterState}
         />
-      </div>
-      <div
-        css={{
-          flex: '1 1 65%',
-          minHeight: 0,
-          borderTop: `1px solid ${theme.colors.border}`,
-          backgroundColor: 'rgba(255,255,255,0.96)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'auto',
-        }}
-      >
-        {hasChatMessages && selectedNode ? (
-          <ModelTraceExplorerChatTab chatMessages={selectedNode.chatMessages!} chatTools={selectedNode.chatTools} />
-        ) : (
-          <ModelTraceExplorerContentTab activeSpan={selectedNode} searchFilter="" activeMatch={matchData.match} />
-        )}
       </div>
     </div>
   );
@@ -800,7 +773,18 @@ const PlaygroundPageImpl = () => {
         try {
           const resolved = await lookupTraceIdByRequestId(experimentId, requestId, controller.signal);
           if (resolved) {
-            setMessages((current) => current.map((m) => (m.id === userMessage.id ? { ...m, traceId: resolved } : m)));
+            // Mirror the resolved traceId onto every message that shares this
+            // requestId (user + assistant). Without this, an assistant_final
+            // event that arrives without a trace_id leaves the assistant
+            // message with traceId=undefined, which breaks the feedback flow
+            // ("this turn has no trace yet").
+            setMessages((current) =>
+              current.map((m) =>
+                (m.id === userMessage.id || m.requestId === requestId) && !m.traceId
+                  ? { ...m, traceId: resolved }
+                  : m,
+              ),
+            );
           }
         } finally {
           traceLookupAbortersRef.current.delete(controller);
@@ -864,7 +848,14 @@ const PlaygroundPageImpl = () => {
 
       if (finalMessage) {
         const completed: PlaygroundMessage = finalMessage;
-        setMessages((current) => [...current, completed]);
+        setMessages((current) => {
+          // If assistant_final arrived without a trace_id but the polling
+          // fallback already resolved one onto the user message of this
+          // requestId, inherit it so the feedback flow can find it.
+          const inherited =
+            completed.traceId ?? current.find((m) => m.requestId === requestId && m.traceId)?.traceId;
+          return [...current, { ...completed, traceId: inherited }];
+        });
         setStreamingText('');
         if (completed.traceId) {
           setConfig((current) => (current ? { ...current, agent_connected: true } : current));
@@ -900,8 +891,7 @@ const PlaygroundPageImpl = () => {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        background:
-          'linear-gradient(180deg, rgba(255, 250, 239, 0.9) 0%, rgba(248, 250, 252, 0.98) 38%, rgba(255,255,255,1) 100%)',
+        backgroundColor: theme.colors.backgroundSecondary,
       }}
     >
       {/* Page header: title + tagline + tiny connection dot. Worker /
@@ -968,7 +958,7 @@ const PlaygroundPageImpl = () => {
             minHeight: 0,
             borderRadius: theme.borders.borderRadiusLg,
             border: `1px solid ${theme.colors.border}`,
-            backgroundColor: 'rgba(255,255,255,0.92)',
+            backgroundColor: theme.colors.backgroundPrimary,
             overflow: 'hidden',
             boxShadow: theme.shadows.sm,
           }}
@@ -980,8 +970,7 @@ const PlaygroundPageImpl = () => {
               alignItems: 'center',
               padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
-              background:
-                'linear-gradient(90deg, rgba(255,244,214,0.85) 0%, rgba(250,250,250,0.85) 55%, rgba(232,244,255,0.85) 100%)',
+              backgroundColor: theme.colors.backgroundSecondary,
             }}
           >
             <div>
@@ -1047,7 +1036,7 @@ const PlaygroundPageImpl = () => {
                       padding: theme.spacing.md,
                       border: `1px solid ${message.role === 'user' ? theme.colors.blue400 : theme.colors.border}`,
                       backgroundColor:
-                        message.role === 'user' ? 'rgba(238, 244, 255, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+                        message.role === 'user' ? theme.colors.backgroundSecondary : theme.colors.backgroundPrimary,
                       whiteSpace: 'pre-wrap',
                       lineHeight: 1.6,
                     }}
@@ -1072,7 +1061,7 @@ const PlaygroundPageImpl = () => {
                     borderRadius: theme.borders.borderRadiusLg,
                     padding: theme.spacing.md,
                     border: `1px solid ${theme.colors.border}`,
-                    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                    backgroundColor: theme.colors.backgroundPrimary,
                     whiteSpace: 'pre-wrap',
                     lineHeight: 1.6,
                     display: 'flex',
@@ -1092,7 +1081,7 @@ const PlaygroundPageImpl = () => {
             css={{
               borderTop: `1px solid ${theme.colors.border}`,
               padding: theme.spacing.lg,
-              backgroundColor: 'rgba(255,255,255,0.98)',
+              backgroundColor: theme.colors.backgroundPrimary,
             }}
           >
             <Input.TextArea
@@ -1138,7 +1127,7 @@ const PlaygroundPageImpl = () => {
             minHeight: 0,
             borderRadius: theme.borders.borderRadiusLg,
             border: `1px solid ${theme.colors.border}`,
-            backgroundColor: 'rgba(255,255,255,0.92)',
+            backgroundColor: theme.colors.backgroundPrimary,
             overflow: 'hidden',
             boxShadow: theme.shadows.sm,
           }}
@@ -1150,7 +1139,7 @@ const PlaygroundPageImpl = () => {
               alignItems: 'center',
               padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
               borderBottom: `1px solid ${theme.colors.border}`,
-              background: 'linear-gradient(90deg, rgba(232,255,232,0.85) 0%, rgba(250,250,250,0.85) 100%)',
+              backgroundColor: theme.colors.backgroundSecondary,
             }}
           >
             <Typography.Text css={{ fontWeight: 700 }}>Feedback</Typography.Text>
@@ -1196,8 +1185,7 @@ const PlaygroundPageImpl = () => {
                 gap: theme.spacing.sm,
                 padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
                 borderBottom: `1px solid ${theme.colors.border}`,
-                background:
-                  'linear-gradient(90deg, rgba(232,244,255,0.85) 0%, rgba(250,250,250,0.85) 55%, rgba(255,244,214,0.85) 100%)',
+                backgroundColor: theme.colors.backgroundSecondary,
               }}
             >
               <Typography.Text css={{ fontWeight: 700, flexShrink: 0 }}>Live Trace</Typography.Text>
