@@ -103,6 +103,10 @@ def test_append_test_case_writes_record_with_promoted_false_default():
     assert len(records) == 1
     record = records[0]
     assert record["expectations"]["test_case_id"] == "tc-1"
+    # `_test_case_id` lives inside `inputs` to disambiguate the row's hash —
+    # without it, two cases anchored to the same conversation would collide
+    # in `upsert_dataset_records` and the older one would be overwritten.
+    assert record["inputs"]["_test_case_id"] == "tc-1"
     assert record["tags"] == {
         "issue_id": "iss-1",
         "source_trace_id": "tr-1",
@@ -210,7 +214,10 @@ def test_update_test_case_replaces_question_and_keeps_other_fields():
     dataset.delete_records.assert_called_once_with(["rec-1"])
     dataset.merge_records.assert_called_once()
     [records] = dataset.merge_records.call_args.args
-    assert records[0]["inputs"] == {"messages": [{"role": "user", "content": "new question"}]}
+    assert records[0]["inputs"] == {
+        "messages": [{"role": "user", "content": "new question"}],
+        "_test_case_id": "tc-1",
+    }
     # spec untouched
     assert records[0]["expectations"]["test_spec"]["assertion"]["must_contain"] == ["§4.2"]
     # test_case_id + tags preserved

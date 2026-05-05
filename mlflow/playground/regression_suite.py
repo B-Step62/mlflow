@@ -47,6 +47,14 @@ def append_test_case(
         test_case, issue_id=issue_id, source_trace_id=source_trace_id
     )
     record["tags"]["promoted"] = "true" if promoted else "false"
+    # The store's `upsert_dataset_records` dedupes by `sha256(json.dumps(inputs))`,
+    # which means two test cases anchored to the same conversation prefix would
+    # otherwise collide and the older one would be overwritten. Sticking
+    # `_test_case_id` into `inputs` makes every case's hash unique. Readers
+    # (the agent invocation, the regression runner's group key, the
+    # `list_regression_cases` shape transform) all key off `inputs.messages`
+    # and ignore extra keys, so this is invisible to them.
+    record["inputs"] = {**record["inputs"], "_test_case_id": test_case.test_case_id}
     dataset = get_or_create_regression_dataset(experiment_id)
     dataset.merge_records([record])
     return dataset
@@ -155,7 +163,10 @@ def update_test_case(
         new_spec.pop("assertion", None)
 
     new_record = {
-        "inputs": {"messages": new_messages},
+        # `_test_case_id` mirrors the disambiguator `append_test_case` adds —
+        # without it the new record's input hash would collide with whatever
+        # else lives at the same conversation prefix.
+        "inputs": {"messages": new_messages, "_test_case_id": test_case_id},
         "expectations": {
             **{k: v for k, v in existing_expectations.items() if k != "test_spec"},
             "test_case_id": test_case_id,
