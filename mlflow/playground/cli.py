@@ -133,3 +133,53 @@ def playground(
         agent_url=agent_url,
         rebuild_ui=rebuild_ui,
     )
+
+
+@agent_commands.command("connect")
+@click.option(
+    "--playground-url",
+    default=None,
+    help="Playground server URL (default: http://127.0.0.1:5000).",
+)
+@click.option(
+    "--name",
+    required=True,
+    help="Display name for the connection (e.g. 'fix-iss-abc-1' or 'experimental').",
+)
+@click.option(
+    "--source-issue",
+    default=None,
+    help="Issue id this connection is associated with (worker dispatch sets this).",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=0,
+    help="Port to start the agent on (default: pick a free one).",
+)
+@click.option(
+    "--repo-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help="Repo directory containing the @invoke agent (default: current working directory).",
+)
+def connect(
+    playground_url: str | None,
+    name: str,
+    source_issue: str | None,
+    port: int,
+    repo_dir: Path | None,
+) -> None:
+    """Start the local @invoke agent and self-register with a playground.
+
+    Blocks foreground; Ctrl-C deregisters and tears down the agent.
+    """
+    from mlflow.playground.connect import DEFAULT_PLAYGROUND_URL, run_connect
+
+    run_connect(
+        playground_url=playground_url or DEFAULT_PLAYGROUND_URL,
+        name=name,
+        source_issue=source_issue,
+        port=port,
+        repo_dir=repo_dir if repo_dir is not None else Path.cwd(),
+    )
