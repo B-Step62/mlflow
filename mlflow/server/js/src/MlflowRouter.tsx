@@ -126,17 +126,28 @@ const MlflowRootRoute = () => {
 
   const [showSidebar, setShowSidebar] = useState(true);
   const { experimentId } = useParams();
+  const location = useLocation();
   const enableWorkflowBasedNavigation = shouldEnableWorkflowBasedNavigation();
 
   // Hide sidebar if we are in a single experiment page (only when feature flag is disabled)
   const isSingleExperimentPage = Boolean(experimentId);
+  // The Agent Playground is its own focused workspace — chat + feedback +
+  // tests need every pixel, and the global experiments/models nav is noise
+  // mid-iteration. Force the sidebar hidden whenever the URL ends in
+  // `/playground`; the user can still navigate out via the experiment
+  // breadcrumb at the top.
+  const isPlaygroundPage = location.pathname.endsWith('/playground');
   useEffect(() => {
+    if (isPlaygroundPage) {
+      setShowSidebar(false);
+      return;
+    }
     // When feature flag is enabled, sidebar should always retain its current state
     if (enableWorkflowBasedNavigation) {
       return;
     }
     setShowSidebar(enableWorkflowBasedNavigation || !isSingleExperimentPage);
-  }, [isSingleExperimentPage, enableWorkflowBasedNavigation]);
+  }, [isPlaygroundPage, isSingleExperimentPage, enableWorkflowBasedNavigation]);
 
   return (
     <AssistantProvider>
