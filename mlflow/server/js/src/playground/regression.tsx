@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import {
   Button,
   Drawer,
+  GearIcon,
   NewWindowIcon,
   Spinner,
   Tooltip,
@@ -58,7 +59,6 @@ export const RegressionTestsPanel = ({
   const { theme } = useDesignSystemTheme();
   const disabled = !canRun || testCount === 0;
 
-  const [pastRunsOpen, setPastRunsOpen] = useState(false);
   const [browseSuiteOpen, setBrowseSuiteOpen] = useState(false);
 
   return (
@@ -74,11 +74,26 @@ export const RegressionTestsPanel = ({
         }}
       >
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-          <Typography.Text size="sm" color="secondary">
-            {testCount === 0
-              ? 'No test cases yet — dispatch feedback to generate the first one.'
-              : `Suite contains ${testCount} test ${testCount === 1 ? 'case' : 'cases'}.`}
-          </Typography.Text>
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            <Typography.Text size="sm" color="secondary" css={{ flex: 1, minWidth: 0 }}>
+              {testCount === 0
+                ? 'No test cases yet — dispatch feedback to generate the first one.'
+                : `Suite contains ${testCount} test ${testCount === 1 ? 'case' : 'cases'}.`}
+            </Typography.Text>
+            <Tooltip
+              componentId="mlflow.playground.regression.browse-suite.tooltip"
+              content="Browse / manage suite"
+            >
+              <Button
+                componentId="mlflow.playground.regression.browse-suite"
+                size="small"
+                icon={<GearIcon />}
+                aria-label="Browse / manage suite"
+                onClick={() => setBrowseSuiteOpen(true)}
+                disabled={!experimentId}
+              />
+            </Tooltip>
+          </div>
           <Button
             componentId="mlflow.playground.regression.run-all"
             type="primary"
@@ -112,31 +127,8 @@ export const RegressionTestsPanel = ({
           )}
         </div>
 
-        <div css={{ display: 'flex', gap: theme.spacing.md, marginTop: 'auto' }}>
-          <Button
-            componentId="mlflow.playground.regression.past-runs"
-            type="link"
-            onClick={() => setPastRunsOpen(true)}
-            disabled={!experimentId}
-          >
-            Past runs →
-          </Button>
-          <Button
-            componentId="mlflow.playground.regression.browse-suite"
-            type="link"
-            onClick={() => setBrowseSuiteOpen(true)}
-            disabled={!experimentId}
-          >
-            Browse suite →
-          </Button>
-        </div>
       </div>
 
-      <PastRunsDrawer
-        open={pastRunsOpen}
-        onClose={() => setPastRunsOpen(false)}
-        experimentId={experimentId}
-      />
       <BrowseSuiteDrawer
         open={browseSuiteOpen}
         onClose={() => setBrowseSuiteOpen(false)}
@@ -238,177 +230,13 @@ const RecentRunRow = ({ run, experimentId }: { run: RegressionRunSummary; experi
   );
 };
 
-// --- Drawers -----------------------------------------------------------------
+// --- Drawer ------------------------------------------------------------------
 //
-// Each drawer pairs an in-place compact view (live data fetched against
-// the same MLflow APIs the standalone pages use) with an "Open in new
-// window" escape hatch for the full experience. The fetched data is the
-// minimal slice needed for at-a-glance triage; the user pops the full
+// The Browse-suite drawer pairs an in-place compact view (live data fetched
+// against the same MLflow APIs the standalone pages use) with an "Open in
+// new window" escape hatch for the full experience. The fetched data is
+// the minimal slice needed for at-a-glance triage; the user pops the full
 // page when they need filters / column controls / compare flows.
-
-type RegressionRunRow = {
-  info?: { run_id?: string; start_time?: number; status?: string };
-  data?: {
-    metrics?: { key: string; value: number }[];
-    tags?: { key: string; value: string }[];
-  };
-};
-
-const PastRunsDrawer = ({
-  open,
-  onClose,
-  experimentId,
-}: {
-  open: boolean;
-  onClose: () => void;
-  experimentId: string | undefined;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const [runs, setRuns] = useState<RegressionRunRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open || !experimentId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(getAjaxUrl('ajax-api/2.0/mlflow/runs/search'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
-      body: JSON.stringify({
-        experiment_ids: [experimentId],
-        filter: `tags."playground.run_kind" = "regression_suite"`,
-        max_results: 50,
-        order_by: ['attributes.start_time DESC'],
-      }),
-    })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Search runs failed (${r.status})`);
-        return r.json();
-      })
-      .then((data) => {
-        if (!cancelled) setRuns(data.runs ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, experimentId]);
-
-  const fullUrl = experimentId
-    ? `/#/experiments/${experimentId}/evaluation-runs?run_kind=regression_suite`
-    : '#';
-
-  return (
-    <Drawer.Root open={open} onOpenChange={(o) => !o && onClose()}>
-      <Drawer.Content
-        componentId="mlflow.playground.regression.past-runs.drawer"
-        title="Past regression runs"
-        width="640px"
-      >
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, height: '100%' }}>
-          <div css={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Tooltip
-              componentId="mlflow.playground.regression.past-runs.open-window.tooltip"
-              content="Open in new window"
-            >
-              <Button
-                componentId="mlflow.playground.regression.past-runs.open-window"
-                icon={<NewWindowIcon />}
-                onClick={() => window.open(fullUrl, '_blank', 'noopener,noreferrer')}
-                disabled={!experimentId}
-                aria-label="Open in new window"
-              />
-            </Tooltip>
-          </div>
-
-          {loading && (
-            <div css={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.lg }}>
-              <Spinner />
-            </div>
-          )}
-          {error && <Typography.Text color="error">{error}</Typography.Text>}
-          {!loading && !error && runs.length === 0 && (
-            <Typography.Text color="secondary">No regression runs yet.</Typography.Text>
-          )}
-          {!loading && !error && runs.length > 0 && (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, overflow: 'auto' }}>
-              {runs.map((run) => (
-                <PastRunRow key={run.info?.run_id ?? Math.random()} run={run} experimentId={experimentId} />
-              ))}
-            </div>
-          )}
-        </div>
-      </Drawer.Content>
-    </Drawer.Root>
-  );
-};
-
-const PastRunRow = ({ run, experimentId }: { run: RegressionRunRow; experimentId: string | undefined }) => {
-  const { theme } = useDesignSystemTheme();
-  const runId = run.info?.run_id;
-  const startTime = run.info?.start_time;
-  const ts = startTime
-    ? new Date(startTime).toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '—';
-  const metrics = Object.fromEntries((run.data?.metrics ?? []).map((m) => [m.key, m.value]));
-  const tags = Object.fromEntries((run.data?.tags ?? []).map((t) => [t.key, t.value]));
-  const passRate = metrics['pass_rate'];
-  const passCount = metrics['pass_count'];
-  const failCount = metrics['fail_count'];
-  const total = (passCount ?? 0) + (failCount ?? 0);
-  const allPassed = (failCount ?? 0) === 0;
-  const sha = tags['agent_git_sha'];
-  const href = experimentId && runId ? `/#/experiments/${experimentId}/runs/${runId}` : undefined;
-
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      css={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
-        padding: theme.spacing.sm,
-        borderRadius: theme.borders.borderRadiusMd,
-        border: `1px solid ${theme.colors.border}`,
-        textDecoration: 'none',
-        color: 'inherit',
-        ':hover': { backgroundColor: theme.colors.backgroundSecondary },
-      }}
-    >
-      <div css={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Typography.Text>{ts}</Typography.Text>
-        {sha && (
-          <Typography.Text size="sm" color="secondary" css={{ fontFamily: 'monospace' }}>
-            @ {sha.slice(0, 7)}
-          </Typography.Text>
-        )}
-      </div>
-      <Typography.Text color={allPassed ? 'success' : 'warning'}>
-        {passCount ?? 0}/{total || '?'} {allPassed ? '✓' : '⚠'}
-        {passRate != null && (
-          <Typography.Text size="sm" color="secondary" css={{ marginLeft: theme.spacing.xs }}>
-            {Math.round(passRate * 100)}%
-          </Typography.Text>
-        )}
-      </Typography.Text>
-    </a>
-  );
-};
 
 export type RegressionCase = {
   test_case_id?: string;
