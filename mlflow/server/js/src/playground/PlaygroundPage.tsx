@@ -1229,11 +1229,11 @@ const PlaygroundPageImpl = () => {
               }}
             />
           </div>
-          {/* Trace section grows twice as tall as the feedback rail above
-              (1:2 ratio between feedback and trace content areas). */}
+          {/* Feedback rail and trace section share the right pane equally
+              (1:1 ratio between content areas). */}
           <div
             css={{
-              flex: 2,
+              flex: 1,
               minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
