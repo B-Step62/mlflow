@@ -557,8 +557,13 @@ const PlaygroundPageImpl = () => {
   }, []);
 
   // --- Dispatch flow (Epic 5) ---------------------------------------------
-  const [dispatchTarget, setDispatchTarget] = useState<PlaygroundFeedback | null>(null);
-  const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
+  // The dispatch button creates the Issue immediately, no confirmation modal
+  // — the user already wrote the rationale in the feedback composer, asking
+  // them to retype it under a new heading is friction. Failures surface in
+  // the page-level error banner; success surfaces as a top-right toast that
+  // auto-dismisses after a few seconds.
+  const [dispatchSuccess, setDispatchSuccess] = useState<{ issueId: string } | null>(null);
+  const inFlightDispatchesRef = useRef<Set<string>>(new Set());
 
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
@@ -604,41 +609,48 @@ const PlaygroundPageImpl = () => {
     [messages, experimentId],
   );
 
-  const confirmDispatch = useCallback(
-    async (overrides: { rationale: string; aspect: string; expected_output?: string }) => {
-      if (!dispatchTarget) return;
-      const payload = buildDispatchPayload(dispatchTarget, overrides);
+  const dispatchNow = useCallback(
+    async (feedback: PlaygroundFeedback) => {
+      // Already dispatched — the rail's "Dispatched" state should hide the
+      // button anyway, but guard here in case of a double-click before the
+      // state propagates.
+      if (feedback.dispatched_issue_id) return;
+      // Coalesce concurrent clicks on the same feedback row using a ref —
+      // setState lags by a render, so a synchronous-set guard avoids duplicate
+      // POSTs that would create duplicate issues.
+      if (inFlightDispatchesRef.current.has(feedback.assessment_id)) return;
+      inFlightDispatchesRef.current.add(feedback.assessment_id);
+
+      // Reuse the rationale / aspect / expected_output the user already typed
+      // into the feedback composer; the old modal made them retype.
+      const overrides = {
+        rationale: feedback.rationale,
+        aspect: feedback.aspect,
+        expected_output: feedback.expected_output,
+      };
+      const payload = buildDispatchPayload(feedback, overrides);
       if (!payload) {
+        inFlightDispatchesRef.current.delete(feedback.assessment_id);
         setError('Cannot dispatch: the assistant message this feedback is anchored to was not found.');
-        setDispatchTarget(null);
         return;
       }
-      setDispatchSubmitting(true);
       try {
         const result = await dispatchFeedback(payload);
         setFeedbacks((prev) =>
           prev.map((f) =>
-            f.assessment_id === dispatchTarget.assessment_id
-              ? {
-                  ...f,
-                  dispatched_issue_id: result.issue_id,
-                  rationale: overrides.rationale,
-                  aspect: overrides.aspect,
-                  expected_output: overrides.expected_output,
-                }
-              : f,
+            f.assessment_id === feedback.assessment_id ? { ...f, dispatched_issue_id: result.issue_id } : f,
           ),
         );
         // Best-effort: stamp the assessment so the dispatched link survives a reload.
-        void tagFeedbackWithIssueId(dispatchTarget.trace_id, dispatchTarget.assessment_id, result.issue_id);
-        setDispatchTarget(null);
+        void tagFeedbackWithIssueId(feedback.trace_id, feedback.assessment_id, result.issue_id);
+        setDispatchSuccess({ issueId: result.issue_id });
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setDispatchSubmitting(false);
+        inFlightDispatchesRef.current.delete(feedback.assessment_id);
       }
     },
-    [dispatchTarget, buildDispatchPayload],
+    [buildDispatchPayload],
   );
 
   useEffect(() => {
@@ -1195,7 +1207,7 @@ const PlaygroundPageImpl = () => {
               flashedId={flashedFeedback}
               callbacks={{
                 onHover: handleFeedbackHover,
-                onDispatch: (feedback) => setDispatchTarget(feedback),
+                onDispatch: (feedback) => void dispatchNow(feedback),
                 onResolve: resolveFeedback,
                 onOpenIssue: (issueId) => setOpenIssueId(issueId),
               }}
@@ -1302,13 +1314,24 @@ const PlaygroundPageImpl = () => {
         onSubmit={submitFeedback}
       />
 
-      <DispatchModal
-        feedback={dispatchTarget}
-        visible={!!dispatchTarget}
-        isSubmitting={dispatchSubmitting}
-        onCancel={() => setDispatchTarget(null)}
-        onConfirm={confirmDispatch}
-      />
+      {dispatchSuccess && (
+        <Notification.Provider duration={4000}>
+          <Notification.Root
+            severity="success"
+            componentId="mlflow.playground.dispatch.success"
+            onOpenChange={(open) => {
+              if (!open) setDispatchSuccess(null);
+            }}
+          >
+            <Notification.Title>Issue created</Notification.Title>
+            <Notification.Description>
+              {`Created ${dispatchSuccess.issueId}. Worker will pick it up on the next poll.`}
+            </Notification.Description>
+            <Notification.Close componentId="mlflow.playground.dispatch.success.close" />
+          </Notification.Root>
+          <Notification.Viewport css={{ top: 0, right: 0, bottom: 'auto' }} />
+        </Notification.Provider>
+      )}
 
       <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={() => setOpenIssueId(null)} />
 
