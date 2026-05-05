@@ -32,6 +32,29 @@ SESSION_PREVIEW_MAX_CHARS = 80
 PLAYGROUND_REQUEST_ID_TAG = "playground.request_id"
 
 
+def _lookup_trace_id_by_request_id(experiment_id: str, request_id: str) -> str | None:
+    """Find a freshly-emitted trace by its ``playground.request_id`` tag.
+
+    Used by paths that need to know the trace_id but invoke a non-ResponsesAgent
+    (where ``_extract_trace_id`` on the response returns None because the
+    agent server only adds ``metadata.trace_id`` for ResponsesAgent).
+    Returns None on any error so the caller can degrade to "no trace pane".
+    """
+    try:
+        client = MlflowClient()
+        traces = client.search_traces(
+            experiment_ids=[experiment_id],
+            filter_string=f"tags.`{PLAYGROUND_REQUEST_ID_TAG}` = '{request_id}'",
+            max_results=1,
+        )
+        if not traces:
+            return None
+        info = getattr(traces[0], "info", None) or traces[0]
+        return getattr(info, "trace_id", None)
+    except Exception:
+        return None
+
+
 def _fetch_tool_calls_from_trace(config_path: Path, trace_id: str) -> list[dict[str, Any]]:
     config = _load_playground_config(config_path)
     tracking_uri = config["tracking_uri"]
@@ -942,11 +965,20 @@ def create_playground_api_router(
 
             async def run_one(gi: int, messages: list[Any], group_rows: list[dict[str, Any]]):
                 async with sem:
+                    # Tag the agent's trace with a per-group request_id so we
+                    # can look it up by tag below — non-ResponsesAgent agents
+                    # don't include `metadata.trace_id` in their response, so
+                    # `_extract_trace_id(raw)` returns None for the typical
+                    # plain `@invoke()` agent. The tag is the universal escape
+                    # hatch (same pattern the chat handler uses).
+                    import uuid as _uuid
+                    group_request_id = f"reg-{run_id}-{gi}-{_uuid.uuid4().hex[:8]}"
                     try:
                         raw, _protocol = await _invoke_agent(
                             agent_url=runtime.agent_url,
                             messages=messages,
                             timeout_seconds=120.0,
+                            request_id=group_request_id,
                         )
                     except Exception as exc:
                         snapshot_slots[gi]["status"] = "failed"
@@ -1001,6 +1033,18 @@ def create_playground_api_router(
                             })
 
                     trace_id = _extract_trace_id(raw)
+                    if not trace_id:
+                        # Fallback for non-ResponsesAgent: the agent server only
+                        # adds `metadata.trace_id` to the response when the
+                        # agent_type is "ResponsesAgent" (see
+                        # `mlflow/genai/agent_server/server.py:390-395`). For
+                        # plain `@invoke()` agents, look the trace up by the
+                        # request_id tag we just set above.
+                        trace_id = await asyncio.to_thread(
+                            _lookup_trace_id_by_request_id,
+                            experiment_id,
+                            group_request_id,
+                        )
                     snapshot_slots[gi]["status"] = "done"
                     snapshot_slots[gi]["messages"] = [
                         *snapshot_slots[gi]["messages"],
