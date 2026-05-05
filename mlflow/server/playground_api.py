@@ -18,11 +18,18 @@ from mlflow.playground.server import (
     _extract_trace_id,
     _invoke_agent,
     _is_agent_healthy_sync,
+    _json_safe_load,
     _load_playground_config,
     _normalize_agent_url,
     _resolve_repo_dir,
 )
+from mlflow.tracing.constant import TraceMetadataKey
 from mlflow.tracking.client import MlflowClient
+
+SESSION_LIST_MAX_TRACES = 500
+SESSION_LIST_MAX_SESSIONS = 50
+SESSION_PREVIEW_MAX_CHARS = 80
+PLAYGROUND_REQUEST_ID_TAG = "playground.request_id"
 
 
 def _fetch_tool_calls_from_trace(config_path: Path, trace_id: str) -> list[dict[str, Any]]:
@@ -34,6 +41,194 @@ def _fetch_tool_calls_from_trace(config_path: Path, trace_id: str) -> list[dict[
     client = MlflowClient(tracking_uri=tracking_uri)
     trace = client.get_trace(trace_id, display=False, flush=True)
     return _extract_tool_calls(trace)
+
+
+def _root_span(trace: Any) -> Any | None:
+    spans = getattr(trace.data, "spans", []) or []
+    return next(
+        (s for s in spans if not getattr(s, "parent_id", None) and not getattr(s, "parent_span_id", None)),
+        spans[0] if spans else None,
+    )
+
+
+def _last_user_content(inputs: Any) -> str:
+    """Pull the most recent user message text from a root-span inputs payload.
+
+    Handles both messages-protocol (`{"messages": [...]}`) and responses-protocol
+    (`{"input": [...]}`) shapes that `_build_agent_payload` produces.
+    """
+    if isinstance(inputs, str):
+        return inputs
+    if not isinstance(inputs, dict):
+        return ""
+    for key in ("messages", "input"):
+        items = inputs.get(key)
+        if isinstance(items, list):
+            for item in reversed(items):
+                if isinstance(item, dict) and item.get("role") == "user":
+                    content = item.get("content")
+                    if isinstance(content, str):
+                        return content
+                    if isinstance(content, list):
+                        # responses-protocol may wrap text under [{type:..., text:...}]
+                        return "".join(
+                            str(p.get("text", "")) for p in content if isinstance(p, dict)
+                        )
+    return ""
+
+
+def _truncate(text: str, limit: int) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _session_id_of(trace_info: Any) -> str | None:
+    metadata = getattr(trace_info, "trace_metadata", None) or {}
+    value = metadata.get(TraceMetadataKey.TRACE_SESSION)
+    return value if isinstance(value, str) and value else None
+
+
+def _list_session_summaries(config_path: Path) -> list[dict[str, Any]]:
+    config = _load_playground_config(config_path)
+    tracking_uri = config["tracking_uri"]
+    experiment_name = config.get("experiment")
+    if not tracking_uri or not experiment_name:
+        return []
+
+    client = MlflowClient(tracking_uri=tracking_uri)
+    experiment = client.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        return []
+
+    traces = client.search_traces(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["timestamp_ms DESC"],
+        max_results=SESSION_LIST_MAX_TRACES,
+        include_spans=False,
+    )
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for trace in traces:
+        info = getattr(trace, "info", None) or trace
+        session_id = _session_id_of(info)
+        if not session_id:
+            continue
+        bucket = grouped.setdefault(
+            session_id,
+            {
+                "session_id": session_id,
+                "trace_count": 0,
+                "first_activity_ms": getattr(info, "request_time", 0),
+                "last_activity_ms": getattr(info, "request_time", 0),
+                "preview": "",
+                "_earliest_request_preview": None,
+                "_earliest_request_time": None,
+            },
+        )
+        bucket["trace_count"] += 1
+        request_time = getattr(info, "request_time", 0) or 0
+        if request_time > bucket["last_activity_ms"]:
+            bucket["last_activity_ms"] = request_time
+        if request_time < bucket["first_activity_ms"] or bucket["first_activity_ms"] == 0:
+            bucket["first_activity_ms"] = request_time
+        # Track the earliest trace's request_preview to derive the session preview.
+        if (
+            bucket["_earliest_request_time"] is None
+            or request_time < bucket["_earliest_request_time"]
+        ):
+            bucket["_earliest_request_time"] = request_time
+            bucket["_earliest_request_preview"] = getattr(info, "request_preview", None)
+
+    summaries = []
+    for bucket in grouped.values():
+        preview_source = bucket.pop("_earliest_request_preview", None)
+        bucket.pop("_earliest_request_time", None)
+        if isinstance(preview_source, str) and preview_source:
+            parsed = _json_safe_load(preview_source)
+            preview_text = _last_user_content(parsed) or preview_source
+        else:
+            preview_text = ""
+        bucket["preview"] = _truncate(preview_text, SESSION_PREVIEW_MAX_CHARS)
+        summaries.append(bucket)
+
+    summaries.sort(key=lambda s: s["last_activity_ms"], reverse=True)
+    return summaries[:SESSION_LIST_MAX_SESSIONS]
+
+
+def _rehydrate_session(config_path: Path, session_id: str) -> dict[str, Any]:
+    config = _load_playground_config(config_path)
+    tracking_uri = config["tracking_uri"]
+    experiment_name = config.get("experiment")
+    if not tracking_uri or not experiment_name:
+        raise HTTPException(
+            status_code=404,
+            detail="Tracking URI or experiment is not configured for this playground.",
+        )
+
+    client = MlflowClient(tracking_uri=tracking_uri)
+    experiment = client.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_name!r} not found.")
+
+    traces = client.search_traces(
+        experiment_ids=[experiment.experiment_id],
+        filter_string=f"metadata.`{TraceMetadataKey.TRACE_SESSION}` = '{session_id}'",
+        order_by=["timestamp_ms ASC"],
+        max_results=SESSION_LIST_MAX_TRACES,
+        include_spans=True,
+    )
+
+    messages: list[dict[str, Any]] = []
+    trace_ids_by_request_id: dict[str, str] = {}
+    assessments: list[dict[str, Any]] = []
+
+    for trace in traces:
+        info = trace.info
+        trace_id = info.trace_id
+        request_id = (info.tags or {}).get(PLAYGROUND_REQUEST_ID_TAG)
+
+        root = _root_span(trace)
+        user_content = ""
+        assistant_content = ""
+        tool_calls: list[dict[str, Any]] = []
+        if root is not None:
+            user_content = _last_user_content(_json_safe_load(root.inputs))
+            assistant_content = _extract_assistant_text(_json_safe_load(root.outputs))
+            tool_calls = _extract_tool_calls(trace)
+
+        if request_id and trace_id:
+            trace_ids_by_request_id[request_id] = trace_id
+
+        if user_content:
+            messages.append({
+                "id": f"user-{trace_id}",
+                "role": "user",
+                "content": user_content,
+                "requestId": request_id,
+            })
+        if assistant_content or tool_calls:
+            messages.append({
+                "id": f"assistant-{trace_id}",
+                "role": "assistant",
+                "content": assistant_content,
+                "requestId": request_id,
+                "toolCalls": tool_calls,
+            })
+
+        for assessment in info.assessments or []:
+            assessments.append({
+                "trace_id": trace_id,
+                "assessment": assessment.to_dictionary(),
+            })
+
+    return {
+        "session_id": session_id,
+        "messages": messages,
+        "traceIdsByRequestId": trace_ids_by_request_id,
+        "assessments": assessments,
+    }
 
 
 def create_playground_api_router(
@@ -139,6 +334,15 @@ def create_playground_api_router(
             media_type="text/event-stream",
         )
 
+    @router.get("/sessions")
+    async def list_sessions() -> dict[str, Any]:
+        sessions = await asyncio.to_thread(_list_session_summaries, runtime.config_path)
+        return {"sessions": sessions}
+
+    @router.get("/sessions/{session_id}")
+    async def get_session(session_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(_rehydrate_session, runtime.config_path, session_id)
+
     @router.get("/issues/{issue_id}")
     async def get_issue(issue_id: str) -> dict[str, Any]:
         """Light-weight wrapper around the tracking-store ``get_issue`` so
@@ -210,6 +414,65 @@ def create_playground_api_router(
             "expected_response": expectations.get("expected_response"),
             "tags": match.get("tags") or {},
         }
+
+    @router.get("/question-bank")
+    async def list_question_bank(experiment_id: str) -> dict[str, Any]:
+        """Return saved questions for the chip strip above the chat input.
+
+        The bank is an ``EvaluationDataset`` of inputs-only records — a
+        per-experiment, lightweight curated probe list (no assertions, no
+        verdicts). Caller filters by experiment; returned in insertion
+        order (the cockpit reverses for "newest left").
+        """
+        from mlflow.playground.question_bank import list_questions
+
+        try:
+            questions = await asyncio.to_thread(list_questions, experiment_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"experiment_id": experiment_id, "questions": questions}
+
+    @router.post("/question-bank/add")
+    async def add_to_question_bank(request: dict[str, Any]) -> dict[str, Any]:
+        experiment_id = request.get("experiment_id")
+        question = request.get("question")
+        source_message_id = request.get("source_message_id")
+        if not isinstance(experiment_id, str) or not experiment_id:
+            raise HTTPException(
+                status_code=400, detail="`experiment_id` must be a non-empty string."
+            )
+        if not isinstance(question, str) or not question.strip():
+            raise HTTPException(status_code=400, detail="`question` must be a non-empty string.")
+        if source_message_id is not None and not isinstance(source_message_id, str):
+            raise HTTPException(
+                status_code=400, detail="`source_message_id` must be a string when provided."
+            )
+
+        from mlflow.playground.question_bank import add_question
+
+        try:
+            question_id = await asyncio.to_thread(
+                add_question,
+                experiment_id,
+                question.strip(),
+                source_message_id=source_message_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"question_id": question_id}
+
+    @router.delete("/question-bank/{question_id}")
+    async def delete_from_question_bank(question_id: str, experiment_id: str) -> dict[str, Any]:
+        """Remove one question. No-op if the id doesn't exist (HTTP-DELETE
+        idempotency — double-click in the UI shouldn't 404).
+        """
+        from mlflow.playground.question_bank import delete_question
+
+        try:
+            await asyncio.to_thread(delete_question, experiment_id, question_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"deleted": question_id}
 
     @router.get("/regression-suite/cases")
     async def list_regression_cases(experiment_id: str) -> dict[str, Any]:

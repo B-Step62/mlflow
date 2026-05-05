@@ -175,6 +175,70 @@ def test_get_test_case_returns_matched_row():
     assert body["tags"] == {"issue_id": "iss-1"}
 
 
+_QB_BASE = "/ajax-api/3.0/mlflow/playground/question-bank"
+
+
+def test_question_bank_list_returns_questions_from_storage():
+    client = create_test_client()
+    fake_questions = [
+        {"question_id": "qb-1", "content": "Q1", "dataset_record_id": "rec-1"},
+        {"question_id": "qb-2", "content": "Q2", "dataset_record_id": "rec-2"},
+    ]
+    with mock.patch(
+        "mlflow.playground.question_bank.list_questions",
+        return_value=fake_questions,
+    ) as m:
+        response = client.get(f"{_QB_BASE}?experiment_id=exp-1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["experiment_id"] == "exp-1"
+    assert body["questions"] == fake_questions
+    m.assert_called_once_with("exp-1")
+
+
+def test_question_bank_add_returns_new_question_id():
+    client = create_test_client()
+    with mock.patch(
+        "mlflow.playground.question_bank.add_question",
+        return_value="qb-new",
+    ) as m:
+        response = client.post(
+            f"{_QB_BASE}/add",
+            json={"experiment_id": "exp-1", "question": "How fast?", "source_message_id": "msg-x"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"question_id": "qb-new"}
+    m.assert_called_once_with("exp-1", "How fast?", source_message_id="msg-x")
+
+
+def test_question_bank_add_rejects_blank_question():
+    client = create_test_client()
+    response = client.post(
+        f"{_QB_BASE}/add",
+        json={"experiment_id": "exp-1", "question": "   "},
+    )
+    assert response.status_code == 400
+    assert "non-empty" in response.json()["detail"]
+
+
+def test_question_bank_add_rejects_missing_experiment_id():
+    client = create_test_client()
+    response = client.post(f"{_QB_BASE}/add", json={"question": "ok"})
+    assert response.status_code == 400
+
+
+def test_question_bank_delete_calls_storage_layer():
+    client = create_test_client()
+    with mock.patch("mlflow.playground.question_bank.delete_question") as m:
+        response = client.delete(f"{_QB_BASE}/qb-1?experiment_id=exp-1")
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "qb-1"}
+    m.assert_called_once_with("exp-1", "qb-1")
+
+
 def test_get_test_case_returns_404_when_no_matching_row():
     import pandas as pd
 
