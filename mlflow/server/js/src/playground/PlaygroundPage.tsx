@@ -765,6 +765,58 @@ const QuestionChip = ({
 };
 
 /**
+ * Big green/red banner shown above the chat messages when a regression-suite
+ * slot has a verdict. Surfaces the pass/fail outcome and the failure reasons
+ * (if any) prominently — the navigator's status pill is small and easy to
+ * miss when scanning a long agent response.
+ */
+const VerdictBanner = ({ verdict }: { verdict: { passed: boolean; reasons: string[]; strategy: string } }) => {
+  const { theme } = useDesignSystemTheme();
+  const palette = verdict.passed
+    ? {
+        bg: 'rgba(220, 245, 220, 0.55)',
+        border: theme.colors.green400,
+        fg: theme.colors.textValidationSuccess,
+        title: '✓ Test passed',
+      }
+    : {
+        bg: 'rgba(255, 224, 224, 0.55)',
+        border: theme.colors.red400,
+        fg: theme.colors.textValidationDanger,
+        title: '✗ Test failed',
+      };
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.xs,
+        padding: theme.spacing.md,
+        borderRadius: theme.borders.borderRadiusMd,
+        border: `1px solid ${palette.border}`,
+        backgroundColor: palette.bg,
+      }}
+    >
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+        <Typography.Text css={{ color: palette.fg, fontWeight: 700 }}>{palette.title}</Typography.Text>
+        <Typography.Text size="sm" color="secondary">
+          (strategy: {verdict.strategy})
+        </Typography.Text>
+      </div>
+      {verdict.reasons.length > 0 && (
+        <ul css={{ margin: 0, paddingLeft: theme.spacing.lg }}>
+          {verdict.reasons.map((reason, i) => (
+            <li key={i}>
+              <Typography.Text css={{ color: palette.fg, whiteSpace: 'pre-wrap' }}>{reason}</Typography.Text>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+/**
  * Pinned strip at the top of the chat thread when a batch run is active.
  * Shows `◀ Question m / N ▶` plus per-conversation status + a Back-to-live
  * exit. The arrow buttons mirror the keyboard arrow handler in PlaygroundPage.
@@ -894,22 +946,6 @@ const BatchNavigator = ({
       <Button componentId="mlflow.playground.batch-nav.close" type="link" onClick={onClose}>
         Back to live chat
       </Button>
-      {verdict && !verdict.passed && verdict.reasons.length > 0 && (
-        <Typography.Text
-          size="sm"
-          css={{
-            // Wraps onto the next visual line via flexBasis: 100% on a flex
-            // container — the navigator strip's flex is `flex-wrap` capable
-            // because the parent allows wrapping; here we force a break.
-            flexBasis: '100%',
-            color: theme.colors.textValidationDanger,
-            fontStyle: 'italic',
-            paddingLeft: theme.spacing.lg,
-          }}
-        >
-          {verdict.reasons[0]}
-        </Typography.Text>
-      )}
     </div>
   );
 };
@@ -1143,7 +1179,12 @@ const PlaygroundPageImpl = () => {
   }, []);
 
   // --- Regression suite ---------------------------------------------------
-  const [regressionRecentRuns] = useState<RegressionRunSummary[]>([]);
+  // In-session recent-runs memory. Persisting these as MLflow Runs (the
+  // YUK-45 follow-up) is still pending — until then we keep the last few
+  // runs in component state so the user can see "I just ran 12 cases, 9
+  // passed" without leaving the playground. Lost on page reload, but
+  // good enough for the iteration loop.
+  const [regressionRecentRuns, setRegressionRecentRuns] = useState<RegressionRunSummary[]>([]);
   const [regressionInProgress, setRegressionInProgress] = useState<
     { current: number; total: number; passed: number; failed: number } | undefined
   >(undefined);
@@ -1821,6 +1862,7 @@ const PlaygroundPageImpl = () => {
     }
 
     const runId = createRequestId();
+    const startedAt = Date.now();
     setBatchRun({
       kind: 'regression_suite',
       run_id: runId,
@@ -1930,6 +1972,18 @@ const PlaygroundPageImpl = () => {
     // per-slot statuses in the navigator + the run completion are the real
     // signal now.
     setRegressionInProgress(undefined);
+    setRegressionRecentRuns((current) => [
+      {
+        parent_run_id: runId,
+        pass_count: passed,
+        fail_count: failed,
+        total_count: runnable.length,
+        pass_rate: runnable.length > 0 ? passed / runnable.length : 0,
+        started_at: startedAt,
+        ended_at: Date.now(),
+      },
+      ...current,
+    ].slice(0, 10));
   }, [batchRun, experimentId]);
 
   const selectedTraceInfo = useMemo(
@@ -2123,6 +2177,7 @@ const PlaygroundPageImpl = () => {
                 experimentId={experimentId}
               />
             )}
+            {activeBatch?.verdict && <VerdictBanner verdict={activeBatch.verdict} />}
             {isLoadingConfig ? (
               <div css={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spinner />
