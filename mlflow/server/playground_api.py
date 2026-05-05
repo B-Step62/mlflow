@@ -89,7 +89,21 @@ def create_playground_api_router(
         request_id = request.get("request_id")
         if request_id is not None and not isinstance(request_id, str):
             raise HTTPException(status_code=400, detail="`request_id` must be a string.")
-        await asyncio.to_thread(_ensure_agent_running, runtime, agent_url)
+        # If we manage the local agent subprocess, ensure it's healthy before
+        # POSTing — otherwise the POST blows up with a raw httpx.ConnectError.
+        # Returning a clean 502 lets the UI surface a real error message.
+        started = await asyncio.to_thread(_ensure_agent_running, runtime, agent_url)
+        if not started and not _is_agent_healthy_sync(agent_url):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Agent at {agent_url} is not reachable. Check that the "
+                    "agent process started successfully (look for errors in the "
+                    "playground server logs). Common causes: no @invoke() "
+                    "function found in the repo, an import error in the agent "
+                    "file, or the port is held by another process."
+                ),
+            )
         response_json, protocol = await _invoke_agent(
             agent_url=agent_url,
             messages=normalized_messages,
