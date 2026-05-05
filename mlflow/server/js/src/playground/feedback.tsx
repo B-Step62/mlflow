@@ -339,6 +339,7 @@ export type FeedbackCardCallbacks = {
   onHover: (feedbackId: string | null) => void;
   onDispatch: (feedback: PlaygroundFeedback) => void;
   onResolve: (feedback: PlaygroundFeedback) => void;
+  onOpenIssue?: (issueId: string) => void;
 };
 
 export const FeedbackRail = ({
@@ -405,9 +406,21 @@ export const FeedbackRail = ({
                 {feedback.aspect}
               </Tag>
               {dispatched && (
-                <Typography.Text size="sm" color="success">
+                <button
+                  type="button"
+                  onClick={() => callbacks.onOpenIssue?.(feedback.dispatched_issue_id as string)}
+                  css={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    color: theme.colors.green600,
+                    fontSize: theme.typography.fontSizeSm,
+                    textDecoration: 'underline',
+                  }}
+                >
                   Dispatched ✓ → {feedback.dispatched_issue_id}
-                </Typography.Text>
+                </button>
               )}
             </div>
             <Typography.Text

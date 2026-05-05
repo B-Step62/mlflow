@@ -121,6 +121,139 @@ def create_playground_api_router(
             media_type="text/event-stream",
         )
 
+    @router.get("/issues/{issue_id}")
+    async def get_issue(issue_id: str) -> dict[str, Any]:
+        """Light-weight wrapper around the tracking-store ``get_issue`` so
+        the cockpit doesn't have to chase MlflowClient initialisation."""
+        from mlflow.exceptions import MlflowException
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        try:
+            issue = await asyncio.to_thread(_get_store().get_issue, issue_id)
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        return issue.to_dictionary()
+
+    @router.post("/issues/{issue_id}/run-test")
+    async def run_test(issue_id: str) -> dict[str, Any]:
+        """Run the regression test for an Issue against the user's local
+        agent and, on green, transition the Issue to ``done`` (the
+        ``[I fixed this]`` flow described in design.md §6.5).
+
+        Body is currently empty — the agent URL comes from the runtime,
+        and everything else is resolved from the Issue + the regression
+        dataset row.
+        """
+        from mlflow.entities.issue import IssueStatus
+        from mlflow.exceptions import MlflowException
+        from mlflow.playground.regression_suite import get_or_create_regression_dataset
+        from mlflow.playground.test_runner import evaluate, normalize_agent_response
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        store = _get_store()
+        try:
+            issue = await asyncio.to_thread(store.get_issue, issue_id)
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+        if issue.status in (IssueStatus.PENDING, IssueStatus.RESOLVED):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Legacy detection-path issues aren't runnable through the "
+                    "playground; use the discovery flow instead."
+                ),
+            )
+
+        # Resolve the test row by issue_id (or test_case_id when present).
+        dataset = await asyncio.to_thread(
+            get_or_create_regression_dataset, str(issue.experiment_id)
+        )
+        df = await asyncio.to_thread(dataset.to_df)
+        rows = df.to_dict(orient="records") if not df.empty else []
+        match = None
+        for row in rows:
+            expectations = row.get("expectations") or {}
+            if (
+                issue.test_case_id
+                and expectations.get("test_case_id") == issue.test_case_id
+            ):
+                match = row
+                break
+            tags = row.get("tags") or {}
+            if tags.get("issue_id") == issue_id:
+                match = row
+                break
+        if match is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No regression-suite row found for issue {issue_id!r}. "
+                    "Has the test case been generated yet?"
+                ),
+            )
+
+        expectations = match.get("expectations") or {}
+        spec = expectations.get("test_spec") or {}
+        messages = (match.get("inputs") or {}).get("messages")
+        if not isinstance(messages, list) or not isinstance(spec, dict):
+            raise HTTPException(
+                status_code=500,
+                detail="Regression-suite row is malformed (missing inputs.messages or test_spec).",
+            )
+
+        # Hit the user's agent. Reuse the same invocation path the chat
+        # endpoint uses so protocol detection and payload shaping match.
+        try:
+            raw, _protocol = await _invoke_agent(
+                agent_url=runtime.agent_url,
+                messages=messages,
+                timeout_seconds=120.0,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=502, detail=f"Agent invocation failed: {exc}"
+            ) from exc
+
+        response = normalize_agent_response(raw)
+        verdict = await asyncio.to_thread(evaluate, spec, response)
+
+        new_status = issue.status
+        if verdict.passed and issue.status != IssueStatus.DONE:
+            # Transition through review if the issue was still in_progress;
+            # the state-machine guard requires that hop. todo issues skip
+            # straight via in_progress → review → done.
+            for target in (
+                IssueStatus.IN_PROGRESS,
+                IssueStatus.REVIEW,
+                IssueStatus.DONE,
+            ):
+                if issue.status == target:
+                    continue
+                try:
+                    issue = await asyncio.to_thread(
+                        store.transition_issue, issue_id, target, ""
+                    )
+                except MlflowException:
+                    # Skip illegal hops silently — happens when issue.status
+                    # is already past the target.
+                    pass
+            new_status = issue.status
+
+        return {
+            "passed": verdict.passed,
+            "reasons": list(verdict.reasons),
+            "strategy": verdict.strategy,
+            "judge_reasoning": verdict.judge_reasoning,
+            "issue_status": new_status.value if hasattr(new_status, "value") else str(new_status),
+            "agent_response_text": response.text,
+            "agent_tool_calls": response.tool_calls,
+        }
+
     @router.post("/issues/dispatch")
     async def dispatch_issue(request: dict[str, Any]) -> dict[str, Any]:
         rationale = request.get("rationale")
