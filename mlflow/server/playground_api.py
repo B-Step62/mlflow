@@ -1548,6 +1548,7 @@ def create_playground_api_router(
         from mlflow.playground.worker import (
             WorkerWorktree,
             create_worker_worktree,
+            dispatch_claude_fix,
             prune_worker_worktree,
         )
         from mlflow.tracking._tracking_service.utils import _get_store
@@ -1636,6 +1637,15 @@ def create_playground_api_router(
                 runtime.connections.pop(connection.connection_id, None)
             await asyncio.to_thread(prune_worker_worktree, runtime.repo_dir, issue_id, force=True)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        # Kick off the Claude dispatch in a daemon thread (YUK-51); the
+        # connection flips to ready/failed asynchronously.
+        dispatch_claude_fix(
+            runtime,
+            issue_id=issue_id,
+            connection_id=connection.connection_id,
+            worktree_path=worktree.worktree_path,
+        )
 
         return {
             "connection_id": connection.connection_id,

@@ -65,3 +65,170 @@ def test_prune_worker_worktree_idempotent_on_unknown_issue(tmp_path):
     _init_git_repo(tmp_path)
     # No worktree was ever created — pruning should be a no-op, not raise.
     prune_worker_worktree(tmp_path, "iss-never-existed")
+
+
+# ---------------------------------------------------------------------------
+# Claude dispatch (YUK-51)
+# ---------------------------------------------------------------------------
+
+
+def test_build_claude_fix_prompt_includes_issue_and_test(monkeypatch):
+    from unittest import mock
+
+    import pandas as pd
+
+    from mlflow.playground import worker
+
+    issue = mock.Mock(
+        name="bad-tone",
+        description="Tone too casual",
+        source_trace_id="tr-1",
+        test_case_id="tc-1",
+        experiment_id="0",
+    )
+    issue.name = "Tone too casual for compliance"
+    dataset = mock.Mock()
+    dataset.to_df.return_value = pd.DataFrame([
+        {
+            "inputs": {"messages": [{"role": "user", "content": "Hi"}]},
+            "expectations": {
+                "test_spec": {"strategy": "assertion", "assertions": ["formal tone"]},
+                "expected_response": "We use formal tone.",
+            },
+            "tags": {"issue_id": "iss-1"},
+        }
+    ])
+
+    with (
+        mock.patch(
+            "mlflow.tracking._tracking_service.utils._get_store",
+            return_value=mock.Mock(get_issue=mock.Mock(return_value=issue)),
+        ),
+        mock.patch(
+            "mlflow.playground.regression_suite.get_or_create_regression_dataset",
+            return_value=dataset,
+        ),
+    ):
+        prompt = worker.build_claude_fix_prompt("iss-1")
+
+    assert "iss-1" in prompt
+    assert "Tone too casual for compliance" in prompt
+    assert "formal tone" in prompt
+    assert "mlflow agent test run --issue iss-1" in prompt
+    assert "tr-1" in prompt
+
+
+def test_dispatch_claude_fix_marks_failed_when_claude_missing(tmp_path, monkeypatch):
+    from unittest import mock
+
+    from mlflow.playground import worker
+    from mlflow.playground.server import AgentConnection, PlaygroundRuntime, _new_connection_id
+
+    runtime = PlaygroundRuntime()
+    conn = AgentConnection(
+        connection_id=_new_connection_id(),
+        name="probe",
+        agent_url="",
+        status="pending",
+    )
+    runtime.connections[conn.connection_id] = conn
+
+    with (
+        mock.patch("mlflow.playground.worker.build_claude_fix_prompt", return_value="hi"),
+        mock.patch(
+            "mlflow.playground.worker.subprocess.run",
+            side_effect=FileNotFoundError("no claude"),
+        ),
+    ):
+        thread = worker.dispatch_claude_fix(
+            runtime,
+            issue_id="iss-1",
+            connection_id=conn.connection_id,
+            worktree_path=tmp_path,
+        )
+        thread.join(timeout=5.0)
+
+    assert conn.status == "failed"
+    assert "claude CLI not found" in (conn.status_message or "")
+
+
+def test_dispatch_claude_fix_marks_failed_when_test_still_red(tmp_path, monkeypatch):
+    from unittest import mock
+
+    from mlflow.playground import worker
+    from mlflow.playground.server import AgentConnection, PlaygroundRuntime, _new_connection_id
+
+    runtime = PlaygroundRuntime()
+    conn = AgentConnection(
+        connection_id=_new_connection_id(),
+        name="probe",
+        agent_url="",
+        status="pending",
+    )
+    runtime.connections[conn.connection_id] = conn
+
+    # First subprocess.run = claude (exits 0). Second = mlflow agent test run (exits 1).
+    claude_proc = mock.Mock(returncode=0)
+    test_proc = mock.Mock(returncode=1, stdout="assertion failed", stderr="")
+    with (
+        mock.patch("mlflow.playground.worker.build_claude_fix_prompt", return_value="hi"),
+        mock.patch(
+            "mlflow.playground.worker.subprocess.run",
+            side_effect=[claude_proc, test_proc],
+        ),
+    ):
+        thread = worker.dispatch_claude_fix(
+            runtime,
+            issue_id="iss-1",
+            connection_id=conn.connection_id,
+            worktree_path=tmp_path,
+        )
+        thread.join(timeout=5.0)
+
+    assert conn.status == "failed"
+    assert "still red" in (conn.status_message or "")
+
+
+def test_dispatch_claude_fix_happy_path(tmp_path, monkeypatch):
+    from unittest import mock
+
+    from mlflow.playground import worker
+    from mlflow.playground.server import AgentConnection, PlaygroundRuntime, _new_connection_id
+
+    runtime = PlaygroundRuntime()
+    conn = AgentConnection(
+        connection_id=_new_connection_id(),
+        name="probe",
+        agent_url="",
+        status="pending",
+    )
+    runtime.connections[conn.connection_id] = conn
+
+    claude_proc = mock.Mock(returncode=0)
+    test_proc = mock.Mock(returncode=0, stdout="PASS", stderr="")
+    agent_proc = mock.Mock()
+    store = mock.Mock(transition_issue=mock.Mock())
+
+    with (
+        mock.patch("mlflow.playground.worker.build_claude_fix_prompt", return_value="hi"),
+        mock.patch(
+            "mlflow.playground.worker.subprocess.run",
+            side_effect=[claude_proc, test_proc],
+        ),
+        mock.patch("mlflow.playground.server._launch_local_agent_process", return_value=agent_proc),
+        mock.patch("mlflow.playground.server._wait_for_agent_health", return_value=True),
+        mock.patch("mlflow.playground.worker._find_free_port", return_value=12345),
+        mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store),
+    ):
+        thread = worker.dispatch_claude_fix(
+            runtime,
+            issue_id="iss-1",
+            connection_id=conn.connection_id,
+            worktree_path=tmp_path,
+        )
+        thread.join(timeout=5.0)
+
+    assert conn.status == "ready"
+    assert conn.agent_url == "http://127.0.0.1:12345"
+    assert conn.process is agent_proc
+    store.transition_issue.assert_called_once()
