@@ -619,6 +619,124 @@ def test_probe_config_updates_main_connection_url():
     assert main["agent_url"] == "http://127.0.0.1:9888"
 
 
+# ---------------------------------------------------------------------------
+# Worker dispatch (Epic 8 / YUK-50)
+# ---------------------------------------------------------------------------
+
+
+def test_dispatch_worker_404_when_issue_unknown(tmp_path):
+    from mlflow.exceptions import MlflowException
+
+    with mock.patch("mlflow.server.playground_api._resolve_repo_dir", return_value=tmp_path):
+        client = create_test_client()
+    store = mock.Mock(get_issue=mock.Mock(side_effect=MlflowException("Issue not found")))
+    with mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store):
+        response = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-missing/dispatch-worker")
+    assert response.status_code == 404
+
+
+def test_dispatch_worker_400_when_no_repo_dir():
+    with mock.patch("mlflow.server.playground_api._resolve_repo_dir", return_value=None):
+        client = create_test_client()
+    response = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
+    assert response.status_code == 400
+    assert "agent repo" in response.json()["detail"]
+
+
+def test_dispatch_worker_409_when_issue_not_in_todo(tmp_path):
+    from mlflow.entities.issue import IssueStatus
+
+    with mock.patch("mlflow.server.playground_api._resolve_repo_dir", return_value=tmp_path):
+        client = create_test_client()
+    issue = mock.Mock(status=IssueStatus.IN_PROGRESS)
+    store = mock.Mock(get_issue=mock.Mock(return_value=issue))
+    with mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store):
+        response = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
+    assert response.status_code == 409
+    assert "todo" in response.json()["detail"]
+
+
+def test_dispatch_worker_happy_path(tmp_path):
+    from mlflow.entities.issue import IssueStatus
+    from mlflow.playground.worker import WorkerWorktree
+
+    with mock.patch("mlflow.server.playground_api._resolve_repo_dir", return_value=tmp_path):
+        client = create_test_client()
+
+    issue = mock.Mock(status=IssueStatus.TODO)
+    store = mock.Mock(
+        get_issue=mock.Mock(return_value=issue),
+        transition_issue=mock.Mock(),
+    )
+
+    fake_worktree = WorkerWorktree(
+        worktree_path=tmp_path / ".mlflow" / "worktrees" / "iss-x",
+        branch="worker/iss-x",
+        base_commit="abc123",
+        base_branch="agent-playground",
+    )
+
+    with (
+        mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store),
+        mock.patch(
+            "mlflow.playground.worker.create_worker_worktree", return_value=fake_worktree
+        ) as create,
+    ):
+        response = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["branch"] == "worker/iss-x"
+    assert body["base_commit"] == "abc123"
+    assert body["base_branch"] == "agent-playground"
+    assert body["connection_id"].startswith("conn-")
+    create.assert_called_once_with(tmp_path, "iss-x")
+
+    # Verify transition was called with TODO→IN_PROGRESS + assignee.
+    store.transition_issue.assert_called_once()
+    args, kwargs = store.transition_issue.call_args
+    assert args[0] == "iss-x"
+    assert args[1] == IssueStatus.IN_PROGRESS
+    assert args[2].startswith("conn-")  # assignee = connection_id
+
+    # Connection exists and is pending.
+    listing = client.get(_CONN_BASE).json()
+    workers = [c for c in listing["connections"] if c["source_issue_id"] == "iss-x"]
+    assert len(workers) == 1
+    assert workers[0]["status"] == "pending"
+    assert workers[0]["branch"] == "worker/iss-x"
+
+
+def test_dispatch_worker_409_when_active_worker_exists(tmp_path):
+    """A second dispatch for the same issue while the first is pending/ready
+    must be refused.
+    """
+    from mlflow.entities.issue import IssueStatus
+    from mlflow.playground.worker import WorkerWorktree
+
+    with mock.patch("mlflow.server.playground_api._resolve_repo_dir", return_value=tmp_path):
+        client = create_test_client()
+
+    issue = mock.Mock(status=IssueStatus.TODO)
+    store = mock.Mock(get_issue=mock.Mock(return_value=issue), transition_issue=mock.Mock())
+    fake_worktree = WorkerWorktree(
+        worktree_path=tmp_path / ".mlflow" / "worktrees" / "iss-x",
+        branch="worker/iss-x",
+        base_commit="abc123",
+        base_branch="agent-playground",
+    )
+    with (
+        mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store),
+        mock.patch("mlflow.playground.worker.create_worker_worktree", return_value=fake_worktree),
+    ):
+        first = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
+        second = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert "already has an active worker" in second.json()["detail"]
+
+
 @pytest.mark.parametrize("status", ["pending", "dead"])
 def test_health_poll_skips_pending_and_dead(status: str):
     from mlflow.playground.server import (
