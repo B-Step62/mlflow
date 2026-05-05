@@ -80,6 +80,40 @@ export const dispatchWorker = async (issueId: string): Promise<DispatchWorkerRes
   return (await response.json()) as DispatchWorkerResponse;
 };
 
+const _connectionAction = async (
+  connectionId: string,
+  action: 'accept' | 'rework' | 'discard',
+  body?: Record<string, unknown>,
+): Promise<unknown> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/agent-connections/${encodeURIComponent(connectionId)}/${action}`,
+    ),
+    {
+      method: 'POST',
+      headers: { ...getDefaultHeaders(document.cookie), 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`${action} failed (${response.status}): ${await response.text()}`);
+  }
+  return response.json();
+};
+
+export const acceptWorker = (connectionId: string) =>
+  _connectionAction(connectionId, 'accept') as Promise<{
+    merge_commit: string;
+    issue_id: string;
+    issue_status: string;
+  }>;
+
+export const reworkWorker = (connectionId: string, feedback: string) =>
+  _connectionAction(connectionId, 'rework', { feedback });
+
+export const discardWorker = (connectionId: string) =>
+  _connectionAction(connectionId, 'discard');
+
 export const fetchIssues = async (
   experimentId: string,
   state?: string,
@@ -329,6 +363,160 @@ const CopyFixPromptButton = ({
   );
 };
 
+// --- Worker review actions (Epic 8 / YUK-55) --------------------------------
+
+const WorkerReviewActions = ({
+  worker,
+  issue,
+  experimentId,
+  onChange,
+}: {
+  worker: AgentConnection;
+  issue: IssueDetail;
+  experimentId: string;
+  onChange: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [busy, setBusy] = useState<null | 'accept' | 'rework' | 'discard'>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reworkFeedback, setReworkFeedback] = useState('');
+  const [reworkOpen, setReworkOpen] = useState(false);
+
+  const playgroundHref = `/experiments/${encodeURIComponent(experimentId)}/playground?activate_for_issue=${encodeURIComponent(
+    issue.issue_id,
+  )}`;
+
+  const onAccept = useCallback(async () => {
+    setBusy('accept');
+    setError(null);
+    try {
+      await acceptWorker(worker.connection_id);
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [worker.connection_id, onChange]);
+
+  const onDiscard = useCallback(async () => {
+    setBusy('discard');
+    setError(null);
+    try {
+      await discardWorker(worker.connection_id);
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [worker.connection_id, onChange]);
+
+  const onRework = useCallback(async () => {
+    if (!reworkFeedback.trim()) {
+      setError('Provide feedback for the rework.');
+      return;
+    }
+    setBusy('rework');
+    setError(null);
+    try {
+      await reworkWorker(worker.connection_id, reworkFeedback);
+      setReworkOpen(false);
+      setReworkFeedback('');
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [worker.connection_id, reworkFeedback, onChange]);
+
+  return (
+    <div
+      css={{
+        borderTop: `1px solid ${theme.colors.border}`,
+        paddingTop: theme.spacing.md,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+      }}
+    >
+      <Typography.Text css={{ fontWeight: 600 }}>Worker ready for review</Typography.Text>
+      <Typography.Text color="secondary" size="sm">
+        {worker.name} (<code>{worker.branch}</code>) is up. Test it in the playground, then accept
+        to merge into the base agent branch, rework with feedback, or discard.
+      </Typography.Text>
+      <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+        <Button
+          componentId="mlflow.playground.issue-detail.test-in-playground"
+          type="primary"
+          href={playgroundHref}
+        >
+          Test in playground →
+        </Button>
+        <Button
+          componentId="mlflow.playground.issue-detail.accept-worker"
+          onClick={onAccept}
+          disabled={busy !== null}
+        >
+          {busy === 'accept' ? 'Accepting…' : 'Accept'}
+        </Button>
+        <Button
+          componentId="mlflow.playground.issue-detail.rework-worker"
+          onClick={() => setReworkOpen((open) => !open)}
+          disabled={busy !== null}
+        >
+          Rework…
+        </Button>
+        <Button
+          componentId="mlflow.playground.issue-detail.discard-worker"
+          danger
+          onClick={onDiscard}
+          disabled={busy !== null}
+        >
+          {busy === 'discard' ? 'Discarding…' : 'Discard'}
+        </Button>
+      </div>
+      {reworkOpen && (
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+          <textarea
+            value={reworkFeedback}
+            onChange={(e) => setReworkFeedback(e.target.value)}
+            rows={3}
+            placeholder="What should the next attempt do differently?"
+            css={{
+              fontFamily: 'inherit',
+              fontSize: theme.typography.fontSizeBase,
+              padding: theme.spacing.sm,
+              borderRadius: theme.borders.borderRadiusSm,
+              border: `1px solid ${theme.colors.border}`,
+            }}
+          />
+          <div>
+            <Button
+              componentId="mlflow.playground.issue-detail.rework-worker-submit"
+              type="primary"
+              onClick={onRework}
+              disabled={busy !== null}
+            >
+              {busy === 'rework' ? 'Sending…' : 'Send rework'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {error && (
+        <Alert
+          componentId="mlflow.playground.issue-detail.worker-action-error"
+          type="error"
+          message={error}
+          closable
+          onClose={() => setError(null)}
+        />
+      )}
+    </div>
+  );
+};
+
 // --- Worker section (Epic 8 / YUK-54) ---------------------------------------
 
 const findWorkerConnection = (
@@ -443,37 +631,9 @@ const WorkerSection = ({
     );
   }
 
-  // Worker ready — surface the deeplink to the playground.
+  // Worker ready — surface the deeplink + accept/rework/discard actions.
   if (worker && worker.status === 'ready') {
-    const playgroundHref = `/experiments/${encodeURIComponent(experimentId)}/playground?activate_for_issue=${encodeURIComponent(
-      issue.issue_id,
-    )}`;
-    return (
-      <div
-        css={{
-          borderTop: `1px solid ${theme.colors.border}`,
-          paddingTop: theme.spacing.md,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: theme.spacing.sm,
-        }}
-      >
-        <Typography.Text css={{ fontWeight: 600 }}>Worker ready for review</Typography.Text>
-        <Typography.Text color="secondary" size="sm">
-          {worker.name} (<code>{worker.branch}</code>) is up. Switch to it in the playground and
-          run a chat turn to verify the fix.
-        </Typography.Text>
-        <div>
-          <Button
-            componentId="mlflow.playground.issue-detail.test-in-playground"
-            type="primary"
-            href={playgroundHref}
-          >
-            Test in playground →
-          </Button>
-        </div>
-      </div>
-    );
+    return <WorkerReviewActions worker={worker} issue={issue} experimentId={experimentId} onChange={onDispatched} />;
   }
 
   // Worker failed.

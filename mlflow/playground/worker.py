@@ -398,12 +398,294 @@ def dispatch_claude_fix(
     return thread
 
 
+# ---------------------------------------------------------------------------
+# Accept / rework / discard (YUK-55)
+# ---------------------------------------------------------------------------
+
+
+class WorkerActionError(Exception):
+    """Raised by accept/rework/discard helpers with a user-facing message."""
+
+    def __init__(self, message: str, *, status_code: int = 400) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _terminate_connection_process(runtime: PlaygroundRuntime, connection_id: str) -> None:
+    """Kill the worker's agent subprocess (if we own one)."""
+    from mlflow.playground.server import _terminate_process
+
+    with runtime.connections_lock:
+        connection = runtime.connections.get(connection_id)
+        if connection is None:
+            return
+        process = connection.process
+        connection.process = None
+    if process is not None:
+        _terminate_process(process)
+
+
+def _bounce_main_connection(runtime: PlaygroundRuntime) -> None:
+    """Restart the main agent so it picks up freshly-merged code.
+
+    Called by accept after the worker branch is merged into base. We
+    terminate the existing agent_process and let `_ensure_agent_running`
+    spin up a fresh one on the same agent_url.
+    """
+    from mlflow.playground.server import _ensure_agent_running, _terminate_process
+
+    with runtime.process_lock:
+        if runtime.agent_process is not None:
+            _terminate_process(runtime.agent_process)
+            runtime.agent_process = None
+            runtime.managed_agent_url = None
+
+    main_url: str | None = None
+    with runtime.connections_lock:
+        for connection in runtime.connections.values():
+            if connection.name == "main":
+                main_url = connection.agent_url
+                break
+    if main_url:
+        _ensure_agent_running(runtime, main_url)
+
+
+def accept_worker_connection(runtime: PlaygroundRuntime, connection_id: str) -> dict:
+    """Merge worker branch into base, transition issue → done, prune worktree.
+
+    Returns the merge commit + new issue status. Raises WorkerActionError
+    on conflict / unexpected git state.
+    """
+    from mlflow.entities.issue import IssueStatus
+    from mlflow.exceptions import MlflowException
+    from mlflow.tracking._tracking_service.utils import _get_store
+
+    with runtime.connections_lock:
+        connection = runtime.connections.get(connection_id)
+        if connection is None:
+            raise WorkerActionError(f"Connection {connection_id} not found.", status_code=404)
+        if connection.status != "ready":
+            raise WorkerActionError(
+                f"Cannot accept: connection is in status {connection.status!r}, expected `ready`.",
+                status_code=409,
+            )
+        if not connection.source_issue_id or not connection.branch:
+            raise WorkerActionError(
+                "Connection is not a worker (missing source_issue_id or branch).",
+                status_code=400,
+            )
+
+    if runtime.repo_dir is None:
+        raise WorkerActionError("Playground has no repo_dir to merge into.", status_code=400)
+
+    # Attempt the merge into the currently checked-out base branch.
+    merge_proc = subprocess.run(
+        [
+            "git",
+            "merge",
+            "--no-ff",
+            "-m",
+            f"Accept worker fix for {connection.source_issue_id}",
+            connection.branch,
+        ],
+        cwd=runtime.repo_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if merge_proc.returncode != 0:
+        # Roll back the partial merge so the user's tree is clean.
+        subprocess.run(["git", "merge", "--abort"], cwd=runtime.repo_dir, check=False)
+        raise WorkerActionError(
+            f"Merge failed; resolve conflicts manually with git, then retry.\n"
+            f"{merge_proc.stdout}{merge_proc.stderr}",
+            status_code=409,
+        )
+
+    merge_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=runtime.repo_dir, text=True
+    ).strip()
+
+    # Transition issue → done.
+    try:
+        _get_store().transition_issue(connection.source_issue_id, IssueStatus.DONE, connection_id)
+    except MlflowException as exc:
+        _logger.exception("Issue transition to done failed for %s", connection.source_issue_id)
+        raise WorkerActionError(f"Issue transition failed: {exc}", status_code=500) from exc
+
+    # Append to regression suite (best-effort — same hook as the manual flow).
+    try:
+        from mlflow.playground.regression_suite import append_for_issue
+
+        issue = _get_store().get_issue(connection.source_issue_id)
+        append_for_issue(issue)
+    except Exception:
+        _logger.exception("Regression-suite append failed for %s", connection.source_issue_id)
+
+    # Tear down the worker's agent + drop connection + prune worktree.
+    _terminate_connection_process(runtime, connection_id)
+    with runtime.connections_lock:
+        runtime.connections.pop(connection_id, None)
+        if runtime.active_connection_id == connection_id:
+            runtime.active_connection_id = next(
+                (c.connection_id for c in runtime.connections.values() if c.name == "main"),
+                None,
+            )
+    prune_worker_worktree(runtime.repo_dir, connection.source_issue_id, force=True)
+
+    # Bounce main so it picks up the merged code.
+    _bounce_main_connection(runtime)
+
+    return {
+        "merge_commit": merge_commit,
+        "issue_id": connection.source_issue_id,
+        "issue_status": "done",
+    }
+
+
+def rework_worker_connection(
+    runtime: PlaygroundRuntime, connection_id: str, *, feedback: str
+) -> dict:
+    """Re-spawn Claude with feedback appended; reuse the same worktree."""
+    from mlflow.entities.issue import IssueStatus
+    from mlflow.exceptions import MlflowException
+    from mlflow.tracking._tracking_service.utils import _get_store
+
+    with runtime.connections_lock:
+        connection = runtime.connections.get(connection_id)
+        if connection is None:
+            raise WorkerActionError(f"Connection {connection_id} not found.", status_code=404)
+        if connection.status != "ready":
+            raise WorkerActionError(
+                f"Cannot rework: connection is in status {connection.status!r}, expected `ready`.",
+                status_code=409,
+            )
+        worktree_path = connection.repo_dir
+        issue_id = connection.source_issue_id
+
+    if not worktree_path or not issue_id:
+        raise WorkerActionError(
+            "Connection is missing worktree_path or source_issue_id.", status_code=400
+        )
+
+    _terminate_connection_process(runtime, connection_id)
+
+    with runtime.connections_lock:
+        connection = runtime.connections.get(connection_id)
+        if connection is None:
+            raise WorkerActionError(
+                f"Connection {connection_id} disappeared during rework.", status_code=404
+            )
+        connection.status = "pending"  # type: ignore[assignment]
+        connection.status_message = f"Re-running with feedback: {feedback[:120]}"
+        connection.agent_url = ""
+
+    try:
+        _get_store().transition_issue(issue_id, IssueStatus.IN_PROGRESS, connection_id)
+    except MlflowException:
+        _logger.exception("Failed to transition issue %s back to in_progress", issue_id)
+
+    # Wrap the feedback in a follow-up note that build_claude_fix_prompt
+    # itself doesn't see — we patch the prompt at dispatch time instead.
+    def _build_with_feedback(_issue_id: str = issue_id) -> str:
+        base_prompt = build_claude_fix_prompt(_issue_id)
+        return (
+            base_prompt
+            + "\n\n## Reviewer feedback on the previous attempt\n\n"
+            + feedback.strip()
+            + "\n\nAddress this feedback specifically in the next iteration."
+        )
+
+    # Dispatch from inside the worktree the previous attempt used. The
+    # commits Claude already made are still there.
+    import threading
+
+    def run() -> None:
+        prompt = _build_with_feedback()
+        from mlflow.playground import worker as _worker_mod
+
+        exit_code, claude_error = _worker_mod._run_claude(
+            worktree_path, prompt, worktree_path / ".mlflow" / "claude.log"
+        )
+        if exit_code is None:
+            _mark_connection(runtime, connection_id, status="failed", status_message=claude_error)
+            return
+        passed, output = _worker_mod._run_final_test(worktree_path, issue_id)
+        if not passed:
+            _mark_connection(
+                runtime,
+                connection_id,
+                status="failed",
+                status_message=f"Rework still failed:\n{output}",
+            )
+            return
+        port = _find_free_port()
+        agent_url = f"http://127.0.0.1:{port}"
+        from mlflow.playground.server import (
+            _launch_local_agent_process,
+            _wait_for_agent_health,
+        )
+
+        agent_proc = _launch_local_agent_process(worktree_path, agent_url)
+        if not _wait_for_agent_health(agent_url, timeout_seconds=AGENT_HEALTH_TIMEOUT_SECONDS):
+            _mark_connection(
+                runtime,
+                connection_id,
+                status="failed",
+                status_message="Worker agent unhealthy after rework",
+            )
+            return
+        _mark_connection(
+            runtime,
+            connection_id,
+            status="ready",
+            status_message=None,
+            agent_url=agent_url,
+            process=agent_proc,
+        )
+        try:
+            _get_store().transition_issue(issue_id, IssueStatus.REVIEW, connection_id)
+        except Exception:
+            _logger.exception("Issue transition to review failed for %s", issue_id)
+
+    thread = threading.Thread(target=run, daemon=True, name=f"worker-rework-{issue_id}")
+    thread.start()
+    return {"connection_id": connection_id, "status": "pending"}
+
+
+def discard_worker_connection(runtime: PlaygroundRuntime, connection_id: str) -> dict:
+    """Kill the worker, prune the worktree, drop the connection."""
+    with runtime.connections_lock:
+        connection = runtime.connections.get(connection_id)
+        if connection is None:
+            raise WorkerActionError(f"Connection {connection_id} not found.", status_code=404)
+        issue_id = connection.source_issue_id
+
+    _terminate_connection_process(runtime, connection_id)
+    with runtime.connections_lock:
+        runtime.connections.pop(connection_id, None)
+        if runtime.active_connection_id == connection_id:
+            runtime.active_connection_id = next(
+                (c.connection_id for c in runtime.connections.values() if c.name == "main"),
+                None,
+            )
+
+    if runtime.repo_dir is not None and issue_id:
+        prune_worker_worktree(runtime.repo_dir, issue_id, force=True)
+
+    return {"connection_id": connection_id, "discarded": True}
+
+
 __all__ = [
     "MAX_FIX_ATTEMPTS",
     "WORKER_BRANCH_PREFIX",
+    "WorkerActionError",
     "WorkerWorktree",
+    "accept_worker_connection",
     "build_claude_fix_prompt",
     "create_worker_worktree",
+    "discard_worker_connection",
     "dispatch_claude_fix",
     "prune_worker_worktree",
+    "rework_worker_connection",
 ]
