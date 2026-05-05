@@ -836,6 +836,12 @@ def create_playground_api_router(
                 "total_cases": total_cases,
             })
 
+            # Emit all `group_started` events sequentially in deterministic
+            # order so the navigator slot list is stable. The actual agent
+            # invocations + spec evaluation happen below in parallel; their
+            # `group_verdict` events stream back in completion order, which
+            # is the user's observable proxy for "how fast each group ran."
+            group_specs: list[tuple[int, list[Any], list[dict[str, Any]]]] = []
             for gi, (key, group_rows) in enumerate(groups_list):
                 messages = _json.loads(key)
                 # Pick the first non-empty rationale_summary as the group label;
@@ -866,70 +872,112 @@ def create_playground_api_router(
                     "case_count": len(group_rows),
                     "messages": messages,
                 })
+                group_specs.append((gi, messages, group_rows))
 
-                try:
-                    raw, _protocol = await _invoke_agent(
-                        agent_url=runtime.agent_url,
-                        messages=messages,
-                        timeout_seconds=120.0,
-                    )
-                except Exception as exc:
-                    yield _emit({
-                        "type": "group_error",
-                        "group_index": gi,
-                        "detail": f"Agent invocation failed: {exc}",
-                    })
-                    continue
+            # Bound the parallelism — local agents are usually single-process
+            # / single-port HTTP and stacking too many concurrent invocations
+            # against them will saturate the listener. 8 is a pragmatic
+            # default that handles typical 10-40 case suites without
+            # crushing a vanilla `mlflow agent playground` subprocess.
+            _REGRESSION_PARALLELISM = 8
+            sem = asyncio.Semaphore(_REGRESSION_PARALLELISM)
 
-                response = normalize_agent_response(raw)
+            queue: asyncio.Queue[Any] = asyncio.Queue()
+            sentinel = object()
 
-                verdicts: list[dict[str, Any]] = []
-                for row in group_rows:
-                    expectations = _coerce(row.get("expectations") or {})
-                    spec = expectations.get("test_spec") if isinstance(expectations, dict) else {}
-                    if not isinstance(spec, dict):
-                        spec = {}
-                    tags = _coerce(row.get("tags") or {})
-                    if not isinstance(tags, dict):
-                        tags = {}
-                    test_case_id = (
-                        expectations.get("test_case_id") if isinstance(expectations, dict) else None
-                    )
-                    rationale_summary = (
-                        expectations.get("rationale_summary")
-                        if isinstance(expectations, dict)
-                        else None
-                    )
+            async def run_one(gi: int, messages: list[Any], group_rows: list[dict[str, Any]]):
+                async with sem:
                     try:
-                        v = await asyncio.to_thread(evaluate, spec, response)
-                        verdicts.append({
-                            "test_case_id": test_case_id,
-                            "issue_id": tags.get("issue_id"),
-                            "rationale_summary": rationale_summary,
-                            "passed": v.passed,
-                            "reasons": list(v.reasons),
-                            "strategy": v.strategy,
-                        })
+                        raw, _protocol = await _invoke_agent(
+                            agent_url=runtime.agent_url,
+                            messages=messages,
+                            timeout_seconds=120.0,
+                        )
                     except Exception as exc:
-                        verdicts.append({
-                            "test_case_id": test_case_id,
-                            "issue_id": tags.get("issue_id"),
-                            "passed": False,
-                            "reasons": [f"Evaluator error: {exc}"],
-                            "strategy": "error",
-                        })
+                        await queue.put(_emit({
+                            "type": "group_error",
+                            "group_index": gi,
+                            "detail": f"Agent invocation failed: {exc}",
+                        }))
+                        return
 
-                yield _emit({
-                    "type": "group_verdict",
-                    "group_index": gi,
-                    "agent_response_text": response.text,
-                    "agent_tool_calls": response.tool_calls,
-                    "verdicts": verdicts,
-                    # Trace produced by this group's agent invocation, so the
-                    # playground can advance the Live Trace pane in lock-step
-                    # with the "Question m/N" navigator.
-                    "trace_id": _extract_trace_id(raw),
-                })
+                    response = normalize_agent_response(raw)
+
+                    verdicts: list[dict[str, Any]] = []
+                    for row in group_rows:
+                        expectations = _coerce(row.get("expectations") or {})
+                        spec = (
+                            expectations.get("test_spec") if isinstance(expectations, dict) else {}
+                        )
+                        if not isinstance(spec, dict):
+                            spec = {}
+                        tags = _coerce(row.get("tags") or {})
+                        if not isinstance(tags, dict):
+                            tags = {}
+                        test_case_id = (
+                            expectations.get("test_case_id")
+                            if isinstance(expectations, dict)
+                            else None
+                        )
+                        rationale_summary = (
+                            expectations.get("rationale_summary")
+                            if isinstance(expectations, dict)
+                            else None
+                        )
+                        try:
+                            v = await asyncio.to_thread(evaluate, spec, response)
+                            verdicts.append({
+                                "test_case_id": test_case_id,
+                                "issue_id": tags.get("issue_id"),
+                                "rationale_summary": rationale_summary,
+                                "passed": v.passed,
+                                "reasons": list(v.reasons),
+                                "strategy": v.strategy,
+                            })
+                        except Exception as exc:
+                            verdicts.append({
+                                "test_case_id": test_case_id,
+                                "issue_id": tags.get("issue_id"),
+                                "passed": False,
+                                "reasons": [f"Evaluator error: {exc}"],
+                                "strategy": "error",
+                            })
+
+                    await queue.put(_emit({
+                        "type": "group_verdict",
+                        "group_index": gi,
+                        "agent_response_text": response.text,
+                        "agent_tool_calls": response.tool_calls,
+                        "verdicts": verdicts,
+                        # Trace produced by this group's agent invocation, so the
+                        # playground can advance the Live Trace pane in lock-step
+                        # with the "Question m/N" navigator.
+                        "trace_id": _extract_trace_id(raw),
+                    }))
+
+            tasks = [
+                asyncio.create_task(run_one(gi, messages, group_rows))
+                for gi, messages, group_rows in group_specs
+            ]
+
+            async def _drain_when_done():
+                try:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                finally:
+                    await queue.put(sentinel)
+
+            drainer = asyncio.create_task(_drain_when_done())
+
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is sentinel:
+                        break
+                    yield event
+            finally:
+                # Make sure the drainer is awaited even if the client
+                # disconnects mid-stream, so we don't leave orphaned tasks.
+                await drainer
 
             yield _emit({"type": "summary", "total_groups": len(groups_list)})
 
