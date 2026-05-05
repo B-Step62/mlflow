@@ -235,6 +235,66 @@ def test_question_bank_delete_calls_storage_layer():
     m.assert_called_once_with("exp-1", "qb-1")
 
 
+def test_regression_runs_list_returns_shaped_rows():
+    client = create_test_client()
+    fake_run = mock.Mock(
+        info=mock.Mock(run_id="run-1", start_time=100, end_time=200),
+        data=mock.Mock(
+            metrics={"pass_count": 9.0, "fail_count": 3.0, "pass_rate": 0.75},
+            tags={"playground.agent_git_sha": "abc123def"},
+        ),
+    )
+    with mock.patch("mlflow.tracking.client.MlflowClient") as MlflowClientCls:
+        MlflowClientCls.return_value.search_runs.return_value = [fake_run]
+        response = client.get("/ajax-api/3.0/mlflow/playground/regression-suite/runs?experiment_id=exp-1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "runs": [
+            {
+                "run_id": "run-1",
+                "started_at": 100,
+                "ended_at": 200,
+                "pass_count": 9,
+                "fail_count": 3,
+                "total_count": 12,
+                "pass_rate": 0.75,
+                "agent_git_sha": "abc123def",
+            }
+        ]
+    }
+
+
+def test_regression_run_snapshot_returns_artifact():
+    import json as _json
+    import os as _os
+    import tempfile as _tempfile
+
+    client = create_test_client()
+    snapshot = {
+        "kind": "regression_suite",
+        "run_id": "run-1",
+        "summary": {"pass_count": 1, "fail_count": 0, "total_count": 1, "pass_rate": 1.0},
+        "conversations": [{"row_id": "group-0", "label": "x", "messages": [], "verdicts": []}],
+    }
+
+    def fake_download(run_id, path, tmpdir):
+        local = _os.path.join(tmpdir, "regression_run.json")
+        with open(local, "w") as f:
+            _json.dump(snapshot, f)
+        return local
+
+    with mock.patch("mlflow.tracking.client.MlflowClient") as MlflowClientCls:
+        MlflowClientCls.return_value.download_artifacts.side_effect = fake_download
+        response = client.get(
+            "/ajax-api/3.0/mlflow/playground/regression-suite/runs/run-1/snapshot?experiment_id=exp-1"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == snapshot
+
+
 def test_regression_case_patch_calls_storage_layer():
     client = create_test_client()
     with mock.patch("mlflow.playground.regression_suite.update_test_case") as m:
