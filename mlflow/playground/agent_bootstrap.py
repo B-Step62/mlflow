@@ -190,9 +190,13 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
-        "--no-reload",
+        "--reload",
         action="store_true",
-        help="Disable uvicorn auto-reload on agent file changes (default: reload on).",
+        help=(
+            "Enable uvicorn auto-reload on agent file changes (default: off; "
+            "experimental — known issue under `python -m` + spawn-style "
+            "multiprocessing where the worker re-runs the bootstrap script)."
+        ),
     )
     args = parser.parse_args()
 
@@ -205,21 +209,31 @@ def main() -> None:
     # subprocess argv.
     os.environ[_REPO_DIR_ENV] = str(repo_dir)
 
-    reload = not args.no_reload
-    # `reload_excludes` is only honored by watchfiles; statreload ignores
-    # it silently. Either way, scoping the watcher to `repo_dir` already
-    # avoids picking up MLflow's own source edits.
-    reload_excludes = (
-        [f"**/{name}/**" for name in EXCLUDED_DIR_NAMES] if reload else None
-    )
-    uvicorn.run(
-        "mlflow.playground.agent_bootstrap:app",
-        host=args.host,
-        port=args.port,
-        reload=reload,
-        reload_dirs=[str(repo_dir)] if reload else None,
-        reload_excludes=reload_excludes,
-    )
+    if args.reload:
+        # `reload_excludes` is only honored by watchfiles; statreload ignores
+        # it silently. Either way, scoping the watcher to `repo_dir` already
+        # avoids picking up MLflow's own source edits.
+        uvicorn.run(
+            "mlflow.playground.agent_bootstrap:app",
+            host=args.host,
+            port=args.port,
+            reload=True,
+            reload_dirs=[str(repo_dir)],
+            reload_excludes=[f"**/{name}/**" for name in EXCLUDED_DIR_NAMES],
+        )
+    else:
+        # No-reload path: build the app inline and hand it to uvicorn as an
+        # object (no import-string round trip → no spawn-child re-execution).
+        # This is the path that works reliably today; fall back here by default
+        # so the playground unblocks other development.
+        if app is None:
+            # Module-level `app` is None when the env var wasn't set at import
+            # time (i.e. when Python imported this module before main() ran).
+            # Build it now from the freshly-set env var.
+            inline_app = _build_app()
+        else:
+            inline_app = app
+        uvicorn.run(inline_app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
