@@ -823,7 +823,11 @@ const BatchNavigator = ({
         padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
         borderRadius: theme.borders.borderRadiusMd,
         border: `1px solid ${theme.colors.border}`,
-        backgroundColor: theme.colors.blue100,
+        // Sticks to backgroundPrimary so the navigator's text colors —
+        // especially the active-conversation label and status pill — stay
+        // legible. Earlier blue100 background was washing the secondary
+        // grays out into invisibility.
+        backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
       <Tooltip componentId="mlflow.playground.batch-nav.prev.tooltip" content="Previous question (←)">
@@ -835,7 +839,7 @@ const BatchNavigator = ({
           disabled={run.activeIndex === 0}
         />
       </Tooltip>
-      <Typography.Text css={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+      <Typography.Text css={{ fontWeight: 600, whiteSpace: 'nowrap', color: theme.colors.textPrimary }}>
         Question {run.activeIndex + 1} / {total}
       </Typography.Text>
       <Tooltip componentId="mlflow.playground.batch-nav.next.tooltip" content="Next question (→)">
@@ -847,10 +851,21 @@ const BatchNavigator = ({
           disabled={run.activeIndex === total - 1}
         />
       </Tooltip>
-      <Typography.Text size="sm" color="secondary" css={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={active?.label}>
+      <Typography.Text
+        size="sm"
+        css={{
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: theme.colors.textSecondary,
+        }}
+        title={active?.label}
+      >
         {active?.label}
       </Typography.Text>
-      <Typography.Text size="sm" css={{ color: statusColor }}>
+      <Typography.Text size="sm" css={{ color: statusColor, fontWeight: 600 }}>
         {statusLabel}
       </Typography.Text>
       {traceHref && (
