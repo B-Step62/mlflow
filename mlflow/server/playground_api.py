@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from mlflow.claude_code.playground_setup import DEFAULT_CONFIG_PATH
 from mlflow.playground.server import (
+    AgentConnection,
     PlaygroundRuntime,
     _demo_stream_response,
     _dispatch_feedback,
@@ -20,8 +22,11 @@ from mlflow.playground.server import (
     _is_agent_healthy_sync,
     _json_safe_load,
     _load_playground_config,
+    _new_connection_id,
     _normalize_agent_url,
     _resolve_repo_dir,
+    register_main_connection,
+    start_health_poll_thread,
 )
 from mlflow.tracing.constant import TraceMetadataKey
 from mlflow.tracking.client import MlflowClient
@@ -269,6 +274,10 @@ def create_playground_api_router(
         config_path=config_path,
         repo_dir=_resolve_repo_dir(config_path),
     )
+    # Epic 8 / YUK-47: register the launched agent as `main` and start the
+    # health-poll thread. Workers self-register later via `mlflow agent connect`.
+    register_main_connection(runtime)
+    start_health_poll_thread(runtime)
 
     @router.get("/config")
     async def get_config() -> dict[str, Any]:
@@ -711,9 +720,7 @@ def create_playground_api_router(
         }
 
     @router.patch("/regression-suite/cases/{test_case_id}")
-    async def update_regression_case(
-        test_case_id: str, request: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def update_regression_case(test_case_id: str, request: dict[str, Any]) -> dict[str, Any]:
         """Edit one test case in place. Body shape::
 
             {
@@ -746,9 +753,7 @@ def create_playground_api_router(
                 status_code=400, detail="`assertion` must be an object when provided."
             )
         if judge is not None and not isinstance(judge, dict):
-            raise HTTPException(
-                status_code=400, detail="`judge` must be an object when provided."
-            )
+            raise HTTPException(status_code=400, detail="`judge` must be an object when provided.")
         if assertion is not None and judge is not None:
             raise HTTPException(
                 status_code=400,
@@ -1408,5 +1413,92 @@ def create_playground_api_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Dispatch failed: {exc}") from exc
+
+    # ----- Agent connection registry (Epic 8 / YUK-47) -----------------------
+
+    @router.post("/agent-connections/register")
+    async def register_connection(request: dict[str, Any]) -> dict[str, Any]:
+        """Self-registration entry point for agents (workers + manual attaches).
+
+        The launched `main` agent is auto-registered at router construction;
+        workers register here via the `mlflow agent connect` CLI (YUK-48).
+        """
+        name = request.get("name")
+        agent_url_in = request.get("agent_url")
+        if not isinstance(name, str) or not name.strip():
+            raise HTTPException(status_code=400, detail="`name` is required.")
+        if not isinstance(agent_url_in, str) or not agent_url_in.strip():
+            raise HTTPException(status_code=400, detail="`agent_url` is required.")
+        repo_dir_in = request.get("repo_dir")
+        status_in = request.get("status") or "ready"
+        if status_in not in {"pending", "ready", "failed"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"`status` must be one of pending|ready|failed, got {status_in!r}.",
+            )
+        connection = AgentConnection(
+            connection_id=_new_connection_id(),
+            name=name.strip(),
+            agent_url=_normalize_agent_url(agent_url_in),
+            repo_dir=Path(repo_dir_in) if isinstance(repo_dir_in, str) and repo_dir_in else None,
+            source_issue_id=request.get("source_issue_id"),
+            branch=request.get("branch"),
+            base_commit=request.get("base_commit"),
+            status=status_in,
+            status_message=request.get("status_message"),
+            created_at_ms=int(time.time() * 1000),
+        )
+        with runtime.connections_lock:
+            runtime.connections[connection.connection_id] = connection
+        return connection.to_dict()
+
+    @router.get("/agent-connections")
+    async def list_connections() -> dict[str, Any]:
+        with runtime.connections_lock:
+            connections = [c.to_dict() for c in runtime.connections.values()]
+            active_id = runtime.active_connection_id
+        return {"connections": connections, "active_connection_id": active_id}
+
+    @router.get("/agent-connections/{connection_id}")
+    async def get_connection(connection_id: str) -> dict[str, Any]:
+        with runtime.connections_lock:
+            connection = runtime.connections.get(connection_id)
+        if connection is None:
+            raise HTTPException(status_code=404, detail=f"Connection {connection_id} not found.")
+        return connection.to_dict()
+
+    @router.delete("/agent-connections/{connection_id}")
+    async def deregister_connection(connection_id: str) -> dict[str, Any]:
+        with runtime.connections_lock:
+            connection = runtime.connections.pop(connection_id, None)
+            if runtime.active_connection_id == connection_id:
+                # If the active connection vanishes, fall back to main if it
+                # still exists; otherwise leave active unset.
+                runtime.active_connection_id = next(
+                    (c.connection_id for c in runtime.connections.values() if c.name == "main"),
+                    None,
+                )
+        if connection is None:
+            raise HTTPException(status_code=404, detail=f"Connection {connection_id} not found.")
+        return connection.to_dict()
+
+    @router.post("/agent-connections/{connection_id}/activate")
+    async def activate_connection(connection_id: str) -> dict[str, Any]:
+        with runtime.connections_lock:
+            connection = runtime.connections.get(connection_id)
+            if connection is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Connection {connection_id} not found."
+                )
+            if connection.status not in {"ready", "pending"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Connection {connection_id} is in status {connection.status!r}; "
+                        "only ready or pending connections can be activated."
+                    ),
+                )
+            runtime.active_connection_id = connection_id
+            return connection.to_dict()
 
     return router

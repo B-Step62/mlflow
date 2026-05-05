@@ -1,7 +1,14 @@
+import os
 from unittest import mock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+# Skip the background health-poll thread for unit tests — each test client
+# creates its own runtime, and the daemon threads outlive the test. The
+# health logic is tested separately via direct calls to `_poll_connection_health`.
+os.environ["MLFLOW_PLAYGROUND_DISABLE_HEALTH_POLL"] = "1"
 
 from mlflow.server.playground_api import create_playground_api_router
 
@@ -427,3 +434,173 @@ def test_list_issues_translates_mlflow_exception_to_400():
     assert response.status_code == 400
     assert "bad filter" in response.json()["detail"]
     store.search_issues.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Agent connection registry (Epic 8 / YUK-47)
+# ---------------------------------------------------------------------------
+
+_CONN_BASE = "/ajax-api/3.0/mlflow/playground/agent-connections"
+
+
+def test_main_connection_auto_registered_at_startup():
+    client = create_test_client()
+    response = client.get(_CONN_BASE)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["connections"]) == 1
+    main = body["connections"][0]
+    assert main["name"] == "main"
+    assert main["status"] == "ready"
+    assert body["active_connection_id"] == main["connection_id"]
+
+
+def test_register_connection_returns_id_and_appears_in_list():
+    client = create_test_client()
+    response = client.post(
+        f"{_CONN_BASE}/register",
+        json={
+            "name": "fix-iss-abc-1",
+            "agent_url": "http://127.0.0.1:9001",
+            "source_issue_id": "iss-abc",
+            "branch": "worker/iss-abc",
+            "base_commit": "deadbeef",
+            "status": "ready",
+        },
+    )
+    assert response.status_code == 200
+    created = response.json()
+    assert created["name"] == "fix-iss-abc-1"
+    assert created["source_issue_id"] == "iss-abc"
+    assert created["connection_id"].startswith("conn-")
+
+    listing = client.get(_CONN_BASE).json()
+    names = {c["name"] for c in listing["connections"]}
+    assert names == {"main", "fix-iss-abc-1"}
+
+
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [
+        ({"name": " ", "agent_url": "http://a"}, "blank name"),
+        ({"name": "x", "agent_url": ""}, "blank agent_url"),
+        ({"name": "x", "agent_url": "http://a", "status": "weird"}, "invalid status"),
+    ],
+)
+def test_register_rejects_bad_payload(payload: dict, reason: str):
+    client = create_test_client()
+    response = client.post(f"{_CONN_BASE}/register", json=payload)
+    assert response.status_code == 400
+
+
+def test_get_connection_returns_404_for_unknown():
+    client = create_test_client()
+    response = client.get(f"{_CONN_BASE}/conn-nonexistent")
+    assert response.status_code == 404
+
+
+def test_delete_connection_falls_back_active_to_main():
+    client = create_test_client()
+    main_id = client.get(_CONN_BASE).json()["active_connection_id"]
+    new_id = client.post(
+        f"{_CONN_BASE}/register",
+        json={"name": "alt", "agent_url": "http://127.0.0.1:9100"},
+    ).json()["connection_id"]
+    activated = client.post(f"{_CONN_BASE}/{new_id}/activate")
+    assert activated.status_code == 200
+    assert client.get(_CONN_BASE).json()["active_connection_id"] == new_id
+
+    deleted = client.delete(f"{_CONN_BASE}/{new_id}")
+    assert deleted.status_code == 200
+    assert client.get(_CONN_BASE).json()["active_connection_id"] == main_id
+
+
+def test_activate_rejects_non_ready_connection():
+    client = create_test_client()
+    failed = client.post(
+        f"{_CONN_BASE}/register",
+        json={"name": "ghost", "agent_url": "http://127.0.0.1:65501", "status": "failed"},
+    ).json()
+    activate = client.post(f"{_CONN_BASE}/{failed['connection_id']}/activate")
+    assert activate.status_code == 409
+
+
+def test_health_poll_marks_connection_dead_after_threshold():
+    from mlflow.playground.server import (
+        HEALTH_FAILURE_THRESHOLD,
+        AgentConnection,
+        PlaygroundRuntime,
+        _new_connection_id,
+        _poll_connection_health,
+        _prune_dead_connections,
+    )
+
+    runtime = PlaygroundRuntime(agent_url="http://127.0.0.1:65530")
+    conn = AgentConnection(
+        connection_id=_new_connection_id(),
+        name="probe",
+        agent_url="http://127.0.0.1:65530",
+        status="ready",
+    )
+    runtime.connections[conn.connection_id] = conn
+
+    with mock.patch("mlflow.playground.server._is_agent_healthy_sync", return_value=False) as hc:
+        for _ in range(HEALTH_FAILURE_THRESHOLD):
+            _poll_connection_health(runtime, conn)
+
+    assert hc.call_count == HEALTH_FAILURE_THRESHOLD
+    assert conn.status == "dead"
+    _prune_dead_connections(runtime)
+    assert conn.connection_id not in runtime.connections
+
+
+def test_health_poll_resets_failure_count_on_recovery():
+    from mlflow.playground.server import (
+        AgentConnection,
+        PlaygroundRuntime,
+        _new_connection_id,
+        _poll_connection_health,
+    )
+
+    runtime = PlaygroundRuntime(agent_url="http://127.0.0.1:65540")
+    conn = AgentConnection(
+        connection_id=_new_connection_id(),
+        name="probe",
+        agent_url="http://127.0.0.1:65540",
+        status="ready",
+    )
+    runtime.connections[conn.connection_id] = conn
+
+    with mock.patch("mlflow.playground.server._is_agent_healthy_sync", return_value=False):
+        _poll_connection_health(runtime, conn)
+        _poll_connection_health(runtime, conn)
+    assert conn.consecutive_health_failures == 2
+
+    with mock.patch("mlflow.playground.server._is_agent_healthy_sync", return_value=True):
+        _poll_connection_health(runtime, conn)
+    assert conn.consecutive_health_failures == 0
+    assert conn.status == "ready"
+
+
+@pytest.mark.parametrize("status", ["pending", "dead"])
+def test_health_poll_skips_pending_and_dead(status: str):
+    from mlflow.playground.server import (
+        AgentConnection,
+        PlaygroundRuntime,
+        _new_connection_id,
+        _poll_connection_health,
+    )
+
+    runtime = PlaygroundRuntime(agent_url="http://127.0.0.1:65550")
+    conn = AgentConnection(
+        connection_id=_new_connection_id(),
+        name="probe",
+        agent_url="http://127.0.0.1:65550",
+        status=status,
+    )
+    runtime.connections[conn.connection_id] = conn
+
+    with mock.patch("mlflow.playground.server._is_agent_healthy_sync") as hc:
+        _poll_connection_health(runtime, conn)
+
+    hc.assert_not_called()
