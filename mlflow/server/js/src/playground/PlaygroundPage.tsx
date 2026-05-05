@@ -878,6 +878,211 @@ const buildBatchFixPrompt = (args: {
   return lines.join('\n');
 };
 
+/**
+ * Build a multi-fix prompt covering every failed verdict across the batch
+ * run. Uses the same anti-overfitting framing as the single-test prompt
+ * but adds explicit per-fix-commit discipline so the user can review each
+ * change in isolation.
+ */
+const buildBatchFixAllPrompt = (
+  failures: { verdict: BannerVerdict; question: string; agentResponse: string }[],
+): string => {
+  const lines: string[] = [];
+  lines.push(`# Fix ${failures.length} failing regression tests`);
+  lines.push('');
+  lines.push(
+    `The MLflow Agent Playground just ran ${failures.length} regression test${
+      failures.length === 1 ? '' : 's'
+    } that failed. Each is listed below in order. Treat each as a SYMPTOM of a separate behaviour gap; ` +
+      'fix them one at a time, commit between fixes, verify before moving on.',
+  );
+  lines.push('');
+  lines.push('## How to work through these');
+  lines.push(
+    '1. Pick the first failure. Skim its question, the agent response, and the failure reasons. ' +
+      'Articulate the underlying behaviour gap in one or two sentences (general terms, not "for this exact question").',
+  );
+  lines.push(
+    "2. Decide on the root-cause layer (prompt / instructions / tools / retrieval / reasoning / training data). " +
+      'Touch the layer that owns the gap; do NOT slap a downstream bandaid.',
+  );
+  lines.push('3. Implement the fix.');
+  lines.push(
+    '4. **Commit.** Use a focused message that names the behaviour change, e.g. ' +
+      "`fix: agent now cites refund policy §4.2`. Do NOT bundle multiple fixes into one commit — each one should be reviewable on its own.",
+  );
+  lines.push(
+    '5. Verify with the test row\'s verify command (shown per failure below) before moving to the next failure. ' +
+      'If you broke a previously-passing test along the way, fix that first and commit it separately.',
+  );
+  lines.push('6. Repeat for the next failure. Stop when all of them pass.');
+  lines.push('');
+  lines.push('## Hard rules — do not do these');
+  lines.push('- Do NOT special-case a question, phrasing, or assertion text.');
+  lines.push('- Do NOT add `if "<keyword>" in question:` branches.');
+  lines.push('- Do NOT hardcode the expected response or its keywords into the agent.');
+  lines.push('- Do NOT post-process the output to inject missing tokens.');
+  lines.push('- Do NOT modify the test rows or their specs.');
+  lines.push('- Do NOT bundle multiple fixes into one commit.');
+  lines.push('');
+  lines.push('## Generalisation check before each commit');
+  lines.push(
+    'Mentally run two paraphrased versions of the failing question through your fix. If either still fails, ' +
+      'your fix is too narrow — keep going. Aim for changes a future you would describe as ' +
+      "'taught the agent X', not 'patched test Y'.",
+  );
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+
+  failures.forEach((f, i) => {
+    const { verdict, question, agentResponse } = f;
+    lines.push(`## Failure ${i + 1} of ${failures.length}`);
+    if (verdict.rationale_summary) {
+      lines.push(`**Test:** ${verdict.rationale_summary}`);
+    }
+    if (verdict.issue_id) {
+      lines.push(`**Issue:** \`${verdict.issue_id}\``);
+    }
+    if (verdict.test_case_id) {
+      lines.push(`**Test case:** \`${verdict.test_case_id}\``);
+    }
+    lines.push('');
+    lines.push('### Question the agent was asked');
+    lines.push(question || '(no user message in prefix)');
+    lines.push('');
+    lines.push('### What the agent said this run');
+    lines.push('```');
+    lines.push(agentResponse || '(no response)');
+    lines.push('```');
+    lines.push('');
+    lines.push(`### Why this run failed (${verdict.strategy})`);
+    if (verdict.reasons.length === 0) {
+      lines.push('(no reasons recorded)');
+    } else {
+      for (const reason of verdict.reasons) {
+        lines.push(`- ${reason}`);
+      }
+    }
+    lines.push('');
+    lines.push('### Verify after your fix');
+    if (verdict.issue_id) {
+      lines.push('```bash');
+      lines.push(`mlflow agent test run --issue ${verdict.issue_id}`);
+      lines.push('```');
+    } else {
+      lines.push('Re-run the regression suite from the playground after the commit lands.');
+    }
+    lines.push('');
+    lines.push(`### Commit message suggestion`);
+    lines.push(`\`fix: ${verdict.rationale_summary || `address failing test ${verdict.test_case_id ?? ''}`.trim()}\``);
+    lines.push('');
+    if (i < failures.length - 1) {
+      lines.push('---');
+      lines.push('');
+    }
+  });
+
+  return lines.join('\n');
+};
+
+type ConvForBanner = {
+  messages: { role: string; content: string }[];
+  label: string;
+  verdicts?: BannerVerdict[];
+};
+
+const collectFailures = (
+  conversations: ConvForBanner[],
+): { verdict: BannerVerdict; question: string; agentResponse: string }[] => {
+  const out: { verdict: BannerVerdict; question: string; agentResponse: string }[] = [];
+  for (const conv of conversations) {
+    const verdicts = conv.verdicts ?? [];
+    const failed = verdicts.filter((v) => !v.passed);
+    if (failed.length === 0) continue;
+    const question = conv.messages.find((m) => m.role === 'user')?.content ?? conv.label ?? '';
+    const agentResponse = [...conv.messages].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+    for (const verdict of failed) {
+      out.push({ verdict, question, agentResponse });
+    }
+  }
+  return out;
+};
+
+/**
+ * Top-of-thread banner that summarises the regression batch's failure
+ * count and offers a "Fix all" button. Shows only while the batch is a
+ * regression-suite run that has at least one failed verdict — otherwise
+ * silent.
+ */
+const BatchFailuresBanner = ({ conversations }: { conversations: ConvForBanner[] }) => {
+  const { theme } = useDesignSystemTheme();
+  const failures = useMemo(() => collectFailures(conversations), [conversations]);
+  if (failures.length === 0) return null;
+  const slotsAffected = new Set(
+    conversations
+      .filter((c) => (c.verdicts ?? []).some((v) => !v.passed))
+      .map((c) => c.label),
+  ).size;
+  return (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing.sm,
+        padding: theme.spacing.sm,
+        borderRadius: theme.borders.borderRadiusMd,
+        border: `1px solid ${theme.colors.red400}`,
+        backgroundColor: 'rgba(255, 224, 224, 0.45)',
+      }}
+    >
+      <Typography.Text css={{ color: theme.colors.textValidationDanger, fontWeight: 600 }}>
+        {failures.length} failure{failures.length === 1 ? '' : 's'}
+      </Typography.Text>
+      <Typography.Text size="sm" color="secondary">
+        across {slotsAffected} conversation{slotsAffected === 1 ? '' : 's'}
+      </Typography.Text>
+      <div css={{ marginLeft: 'auto' }}>
+        <FixAllFailuresButton failures={failures} />
+      </div>
+    </div>
+  );
+};
+
+const FixAllFailuresButton = ({
+  failures,
+}: {
+  failures: { verdict: BannerVerdict; question: string; agentResponse: string }[];
+}) => {
+  const [copied, setCopied] = useState(false);
+  const onClick = useCallback(async () => {
+    const prompt = buildBatchFixAllPrompt(failures);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Could not copy to clipboard',
+        description: e instanceof Error ? e.message : String(e),
+        placement: 'topRight',
+      });
+    }
+  }, [failures]);
+  return (
+    <Button
+      componentId="mlflow.playground.regression.fix-all-failures"
+      type="primary"
+      size="small"
+      icon={copied ? <CheckIcon /> : <CopyIcon />}
+      onClick={onClick}
+    >
+      {copied ? `Copied prompt for ${failures.length}` : `Fix all (${failures.length})`}
+    </Button>
+  );
+};
+
 const FixFailedTestButton = ({
   verdict,
   question,
@@ -1500,6 +1705,17 @@ const PlaygroundPageImpl = () => {
         });
       });
       Utils.closeGlobalNotification(progressKey);
+      // Surface the test run's trace in the live trace pane, and pop the
+      // Trace accordion section open so the user sees it without a click.
+      if (verdict.trace_id) {
+        setManualTraceId(verdict.trace_id);
+        setOpenSections((prev) => {
+          if (prev.has('trace')) return prev;
+          const next = new Set(prev);
+          next.add('trace');
+          return next;
+        });
+      }
       Utils.displayGlobalNotification({
         severity: verdict.passed ? 'success' : 'warning',
         message: verdict.passed ? `Test passed — ${issueId}` : `Test failed — ${issueId}`,
@@ -1690,9 +1906,16 @@ const PlaygroundPageImpl = () => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamingText]);
 
+  // Out-of-band trace id (e.g. set by a regression test run from the
+  // feedback rail). Takes precedence over the message-derived trace id so
+  // the user can inspect the test run's spans without sending a new chat
+  // turn. Cleared on the next chat send so the chat path resumes control.
+  const [manualTraceId, setManualTraceId] = useState<string | undefined>(undefined);
+
   // Walk back through messages and pick the most recent one whose requestId
   // has a resolved trace. This is what drives the right-pane live trace view.
   const latestTraceId = useMemo(() => {
+    if (manualTraceId) return manualTraceId;
     for (let i = messages.length - 1; i >= 0; i--) {
       const requestId = messages[i].requestId;
       if (requestId && traceIdsByRequestId[requestId]) {
@@ -1700,7 +1923,7 @@ const PlaygroundPageImpl = () => {
       }
     }
     return undefined;
-  }, [messages, traceIdsByRequestId]);
+  }, [manualTraceId, messages, traceIdsByRequestId]);
 
   // Live-poll the latest trace's span tree so the inline panel grows as the
   // agent runs. Polls until the trace's `state` finalizes (OK / ERROR) or until
@@ -1780,6 +2003,11 @@ const PlaygroundPageImpl = () => {
     if (!content || isSubmitting) {
       return;
     }
+
+    // Hand control of the live trace pane back to the chat path. Any trace
+    // the user pinned via a regression-test run gets superseded by the new
+    // turn's trace as soon as it lands.
+    setManualTraceId(undefined);
 
     const requestId = createRequestId();
     // Mint a session id on the first send of a fresh thread; subsequent sends
@@ -2404,6 +2632,7 @@ const PlaygroundPageImpl = () => {
                 experimentId={experimentId}
               />
             )}
+            {batchRun?.kind === 'regression_suite' && <BatchFailuresBanner conversations={batchRun.conversations} />}
             {activeBatch?.verdicts && activeBatch.verdicts.length > 0 && (
               <VerdictStack
                 verdicts={activeBatch.verdicts}
