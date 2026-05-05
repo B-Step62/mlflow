@@ -450,12 +450,35 @@ async def _invoke_agent(
             {"playground.request_id": request_id}
         )
 
-    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-        response = await client.post(
-            f"{agent_url}/invocations",
-            headers=headers,
-            json=payload,
-        )
+    async def _post() -> httpx.Response:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            return await client.post(
+                f"{agent_url}/invocations",
+                headers=headers,
+                json=payload,
+            )
+
+    try:
+        response = await _post()
+    except httpx.ConnectError:
+        # The agent's uvicorn worker briefly unbinds the socket during a
+        # hot-reload cycle (or hasn't finished binding on cold start). Wait
+        # for /health to come back and retry once before giving up.
+        if not await asyncio.to_thread(_wait_for_agent_health, agent_url, 20.0):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Agent at {agent_url} did not come back online after "
+                    "20 seconds; check the agent process logs."
+                ),
+            )
+        try:
+            response = await _post()
+        except httpx.ConnectError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Agent connection failed after reload retry: {exc}",
+            ) from exc
 
     if not response.is_success:
         raise HTTPException(
