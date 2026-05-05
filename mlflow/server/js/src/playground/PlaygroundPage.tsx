@@ -40,7 +40,20 @@ import { FormattedMessage } from 'react-intl';
 
 import ErrorUtils from '../common/utils/ErrorUtils';
 import { withErrorBoundary } from '../common/utils/withErrorBoundary';
-import { Alert, Button, Input, Spinner, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  Alert,
+  Button,
+  DagIcon,
+  Input,
+  MegaphoneIcon,
+  Notification,
+  SpeechBubbleIcon,
+  Spinner,
+  Tooltip,
+  TrashIcon,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import type { ModelTraceInfoV3 } from '@databricks/web-shared/model-trace-explorer';
 import {
   isV3ModelTraceInfo,
@@ -58,7 +71,6 @@ import {
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
 import { useParams } from '../common/utils/RoutingUtils';
 import {
-  DispatchModal,
   FeedbackComposer,
   FeedbackRail,
   FloatingAnnotateButton,
@@ -789,9 +801,7 @@ const PlaygroundPageImpl = () => {
         try {
           const resolved = await lookupTraceIdByRequestId(experimentId, requestId, controller.signal);
           if (resolved) {
-            setTraceIdsByRequestId((current) =>
-              current[requestId] ? current : { ...current, [requestId]: resolved },
-            );
+            setTraceIdsByRequestId((current) => (current[requestId] ? current : { ...current, [requestId]: resolved }));
           }
         } finally {
           traceLookupAbortersRef.current.delete(controller);
@@ -958,7 +968,7 @@ const PlaygroundPageImpl = () => {
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-            borderRadius: theme.borders.borderRadiusLg,
+            borderRadius: theme.borders.borderRadiusMd,
             border: `1px solid ${theme.colors.border}`,
             backgroundColor: theme.colors.backgroundSecondary,
             overflow: 'hidden',
@@ -975,22 +985,27 @@ const PlaygroundPageImpl = () => {
               backgroundColor: theme.colors.blue100,
             }}
           >
-            <div>
-              <Typography.Text css={{ display: 'block', fontWeight: 700 }}>Chat Thread</Typography.Text>
-              <Typography.Text color="secondary">
-                Each turn streams into the right pane as the agent runs.
-              </Typography.Text>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <SpeechBubbleIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
+              <div>
+                <Typography.Text css={{ display: 'block', fontWeight: 700 }}>Conversation</Typography.Text>
+                <Typography.Text color="secondary">
+                  Each turn streams into the right pane as the agent runs.
+                </Typography.Text>
+              </div>
             </div>
-            <Button
-              componentId="mlflow.playground.clear-thread"
-              onClick={() => {
-                setMessages([]);
-                setStreamingText('');
-              }}
-              disabled={messages.length === 0 && !streamingText}
-            >
-              Clear thread
-            </Button>
+            <Tooltip componentId="mlflow.playground.clear-thread.tooltip" content="Clear conversation">
+              <Button
+                componentId="mlflow.playground.clear-thread"
+                icon={<TrashIcon />}
+                onClick={() => {
+                  setMessages([]);
+                  setStreamingText('');
+                }}
+                disabled={messages.length === 0 && !streamingText}
+                aria-label="Clear conversation"
+              />
+            </Tooltip>
           </div>
 
           <div
@@ -1004,13 +1019,24 @@ const PlaygroundPageImpl = () => {
             }}
           >
             {isLoadingConfig ? (
-              <div css={{ display: 'flex', justifyContent: 'center', paddingTop: theme.spacing.xl }}>
+              <div css={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spinner />
               </div>
             ) : messages.length === 0 && !streamingText ? (
-              <Typography.Text color="secondary">
-                Send a turn to start the session. The right pane will fill with the live trace.
-              </Typography.Text>
+              <div
+                css={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  padding: theme.spacing.lg,
+                }}
+              >
+                <Typography.Text color="secondary">
+                  Send a turn to start the session. The right pane will fill with the live trace.
+                </Typography.Text>
+              </div>
             ) : (
               messages.map((message, index) => (
                 <div
@@ -1038,11 +1064,10 @@ const PlaygroundPageImpl = () => {
                         : undefined
                     }
                     css={{
-                      borderRadius: theme.borders.borderRadiusLg,
+                      borderRadius: theme.borders.borderRadiusMd,
                       padding: theme.spacing.md,
                       border: `1px solid ${message.role === 'user' ? theme.colors.blue400 : theme.colors.border}`,
-                      backgroundColor:
-                        message.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundPrimary,
+                      backgroundColor: message.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundPrimary,
                       whiteSpace: 'pre-wrap',
                       lineHeight: 1.6,
                     }}
@@ -1064,7 +1089,7 @@ const PlaygroundPageImpl = () => {
                 </Typography.Text>
                 <div
                   css={{
-                    borderRadius: theme.borders.borderRadiusLg,
+                    borderRadius: theme.borders.borderRadiusMd,
                     padding: theme.spacing.md,
                     border: `1px solid ${theme.colors.border}`,
                     backgroundColor: theme.colors.backgroundPrimary,
@@ -1087,7 +1112,7 @@ const PlaygroundPageImpl = () => {
             css={{
               borderTop: `1px solid ${theme.colors.border}`,
               padding: theme.spacing.lg,
-              backgroundColor: theme.colors.backgroundPrimary,
+              backgroundColor: theme.colors.backgroundSecondary,
             }}
           >
             <Input.TextArea
@@ -1131,7 +1156,7 @@ const PlaygroundPageImpl = () => {
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-            borderRadius: theme.borders.borderRadiusLg,
+            borderRadius: theme.borders.borderRadiusMd,
             border: `1px solid ${theme.colors.border}`,
             backgroundColor: theme.colors.backgroundPrimary,
             overflow: 'hidden',
@@ -1148,7 +1173,10 @@ const PlaygroundPageImpl = () => {
               backgroundColor: theme.colors.blue100,
             }}
           >
-            <Typography.Text css={{ fontWeight: 700 }}>Feedback</Typography.Text>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <MegaphoneIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
+              <Typography.Text css={{ fontWeight: 700 }}>Feedback</Typography.Text>
+            </div>
             <Typography.Text size="sm" color="secondary">
               {feedbacks.filter((f) => !f.resolved).length} active
             </Typography.Text>
@@ -1194,7 +1222,10 @@ const PlaygroundPageImpl = () => {
                 backgroundColor: theme.colors.blue100,
               }}
             >
-              <Typography.Text css={{ fontWeight: 700, flexShrink: 0 }}>Live Trace</Typography.Text>
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexShrink: 0 }}>
+                <DagIcon css={{ fontSize: theme.typography.fontSizeBase, color: theme.colors.textSecondary }} />
+                <Typography.Text css={{ fontWeight: 700 }}>Live Trace</Typography.Text>
+              </div>
               {latestTraceId && (
                 <Typography.Text
                   color="secondary"

@@ -365,9 +365,15 @@ export const FeedbackRail = ({
     return (
       <div
         css={{
+          height: '100%',
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           padding: theme.spacing.md,
           color: theme.colors.textSecondary,
           fontSize: theme.typography.fontSizeSm,
+          textAlign: 'center',
         }}
       >
         Select text in any assistant reply and click 💬 to leave feedback.
