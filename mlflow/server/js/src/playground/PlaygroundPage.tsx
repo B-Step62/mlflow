@@ -725,7 +725,10 @@ const QuestionChip = ({
             padding: 0,
             cursor: disabled ? 'default' : 'pointer',
             fontSize: theme.typography.fontSizeSm,
-            color: theme.colors.actionPrimaryTextDefault,
+            // textPrimary contrasts cleanly against the chip's
+            // backgroundPrimary; actionPrimaryTextDefault was rendering as
+            // near-white in this theme so the chip looked empty.
+            color: theme.colors.textPrimary,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
