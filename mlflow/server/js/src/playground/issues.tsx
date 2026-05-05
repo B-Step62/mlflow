@@ -73,22 +73,215 @@ export const fetchIssueTestCase = async (issueId: string): Promise<TestCaseRow |
   return (await response.json()) as TestCaseRow;
 };
 
-export const runIssueTest = async (issueId: string): Promise<RunTestVerdict> => {
+export type RunTestProgress = {
+  stage: 'loading' | 'replaying' | 'evaluating';
+  message: string;
+};
+
+/**
+ * Stream the regression test run as Server-Sent Events.
+ *
+ * Yields stage-level milestones (`loading` → `replaying` → `evaluating`) via
+ * `onProgress`, then resolves with the final verdict. On any server-emitted
+ * `error` event the promise rejects with an Error whose message includes the
+ * stage that failed.
+ *
+ * Server format: each event is a `data: {json}\n\n` line where `json.type` is
+ * one of `"progress"` | `"verdict"` | `"error"`. We deliberately don't use
+ * EventSource because it would require the playground UI to know the absolute
+ * URL up-front (it can't take cookies/headers cleanly), and the existing chat
+ * stream already uses fetch + ReadableStream the same way.
+ */
+export const runIssueTest = async (
+  issueId: string,
+  onProgress?: (progress: RunTestProgress) => void,
+): Promise<RunTestVerdict> => {
   const response = await fetch(
-    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/run-test`),
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getDefaultHeaders(document.cookie),
-      },
-      body: JSON.stringify({}),
-    },
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/run-test/stream`),
+    { headers: getDefaultHeaders(document.cookie) },
   );
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
     throw new Error(`Test run failed (${response.status}): ${await response.text()}`);
   }
-  return (await response.json()) as RunTestVerdict;
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let verdict: RunTestVerdict | null = null;
+
+  // Pull `data: {json}\n\n` frames out of the buffer; the `\n\n` separator is
+  // the SSE message boundary.
+  const drainFrames = (input: string): { remaining: string; events: string[] } => {
+    const events: string[] = [];
+    let remaining = input;
+    while (true) {
+      const idx = remaining.indexOf('\n\n');
+      if (idx < 0) break;
+      events.push(remaining.slice(0, idx));
+      remaining = remaining.slice(idx + 2);
+    }
+    return { remaining, events };
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { remaining, events } = drainFrames(buffer);
+    buffer = remaining;
+    for (const frame of events) {
+      const line = frame
+        .split('\n')
+        .find((l) => l.startsWith('data:'))
+        ?.slice('data:'.length)
+        .trim();
+      if (!line) continue;
+      const event = JSON.parse(line) as
+        | { type: 'progress'; stage: RunTestProgress['stage']; message: string }
+        | ({ type: 'verdict' } & RunTestVerdict)
+        | { type: 'error'; stage: string; detail: string };
+      if (event.type === 'progress') {
+        onProgress?.({ stage: event.stage, message: event.message });
+      } else if (event.type === 'verdict') {
+        const { type: _t, ...rest } = event;
+        verdict = rest as RunTestVerdict;
+      } else if (event.type === 'error') {
+        throw new Error(`[${event.stage}] ${event.detail}`);
+      }
+    }
+  }
+
+  if (!verdict) {
+    throw new Error('Test run ended without a verdict event.');
+  }
+  return verdict;
+};
+
+// --- Fix-prompt builder ------------------------------------------------------
+
+/**
+ * Build a markdown prompt the user can paste into a local Claude Code session
+ * to fix the failing test. Includes the goal, the conversation, the test spec
+ * (so Claude sees the assertions / judge criteria), and the verdict's specific
+ * failures (so Claude knows exactly what to address). Closes with the verify
+ * command the user runs locally to confirm the fix.
+ */
+export const buildFixPrompt = (
+  issue: IssueDetail,
+  testCase: TestCaseRow | null,
+  verdict: RunTestVerdict | null,
+): string => {
+  const lines: string[] = [];
+  lines.push(`# Fix MLflow Agent Playground Issue ${issue.issue_id}`);
+  lines.push('');
+  lines.push(`**Title:** ${issue.name}`);
+  if (issue.source_trace_id) {
+    lines.push(`**Trace:** \`${issue.source_trace_id}\``);
+  }
+  if (issue.test_case_id) {
+    lines.push(`**Test case:** \`${issue.test_case_id}\``);
+  }
+  lines.push('');
+  lines.push('## What went wrong');
+  lines.push(issue.description.trim() || '(no rationale recorded)');
+  lines.push('');
+
+  if (verdict) {
+    lines.push(`## Latest test verdict (${verdict.strategy})`);
+    lines.push(verdict.passed ? 'PASS' : 'FAIL');
+    for (const reason of verdict.reasons) {
+      lines.push(`- ${reason}`);
+    }
+    if (verdict.judge_reasoning) {
+      lines.push('');
+      lines.push(`Judge reasoning: ${verdict.judge_reasoning}`);
+    }
+    if (verdict.agent_response_text) {
+      lines.push('');
+      lines.push('### What the agent said this run');
+      lines.push('```');
+      lines.push(verdict.agent_response_text);
+      lines.push('```');
+    }
+    if (verdict.agent_tool_calls.length > 0) {
+      lines.push(`Tool calls observed: ${verdict.agent_tool_calls.join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  if (testCase) {
+    lines.push('## Test spec the agent must satisfy');
+    lines.push('```json');
+    lines.push(JSON.stringify(testCase.test_spec, null, 2));
+    lines.push('```');
+    if (testCase.expected_response) {
+      lines.push('');
+      lines.push(`Expected response (reference): ${testCase.expected_response}`);
+    }
+    lines.push('');
+    lines.push('## Conversation prefix to replay');
+    lines.push('```json');
+    lines.push(JSON.stringify(testCase.messages, null, 2));
+    lines.push('```');
+    lines.push('');
+  }
+
+  lines.push('## Your job');
+  lines.push(
+    'Find and fix the agent code in this repo so that re-running the test below passes. ' +
+      'Touch only the agent under development; do NOT modify the test row itself ' +
+      '(MLflow regenerates it from the original feedback if you delete it).',
+  );
+  lines.push('');
+  lines.push('## Verify');
+  lines.push('```bash');
+  lines.push(`mlflow agent test run --issue ${issue.issue_id}`);
+  lines.push('```');
+  lines.push('Exit code 0 = pass. Iterate until it passes, then return to the playground and click "I fixed this".');
+  return lines.join('\n');
+};
+
+const CopyFixPromptButton = ({
+  issue,
+  testCase,
+  verdict,
+}: {
+  issue: IssueDetail;
+  testCase: TestCaseRow | null;
+  verdict: RunTestVerdict | null;
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onCopy = useCallback(async () => {
+    const prompt = buildFixPrompt(issue, testCase, verdict);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setError(null);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [issue, testCase, verdict]);
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <Button
+        componentId="mlflow.playground.issue-detail.copy-fix-prompt"
+        type="tertiary"
+        size="small"
+        onClick={onCopy}
+      >
+        {copied ? '✓ Copied — paste into Claude Code' : '📋 Copy fix prompt for Claude Code'}
+      </Button>
+      {error && (
+        <Typography.Text size="sm" color="error">
+          Could not copy to clipboard: {error}
+        </Typography.Text>
+      )}
+    </div>
+  );
 };
 
 // --- Drawer -----------------------------------------------------------------
@@ -284,6 +477,23 @@ export const IssueDetailDrawer = ({
                   </Button>
                 </div>
                 {verdict && <VerdictView verdict={verdict} />}
+                {verdict && !verdict.passed && (
+                  <div
+                    css={{
+                      borderTop: `1px solid ${theme.colors.border}`,
+                      paddingTop: theme.spacing.sm,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: theme.spacing.xs,
+                    }}
+                  >
+                    <Typography.Text size="sm" color="secondary">
+                      Need a hand fixing this? Copy a ready-made prompt and paste it into a local Claude Code session —
+                      it includes the test spec, the conversation prefix, and what just failed.
+                    </Typography.Text>
+                    <CopyFixPromptButton issue={issue} testCase={testCase} verdict={verdict} />
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -311,11 +521,8 @@ const TestCasePanel = ({ testCase }: { testCase: TestCaseRow | null }) => {
     );
   }
   const strategy = testCase.test_spec.strategy ?? 'assertion';
-  const assertions = Array.isArray(testCase.test_spec.assertions)
-    ? (testCase.test_spec.assertions as string[])
-    : [];
-  const judgePrompt =
-    typeof testCase.test_spec.judge_prompt === 'string' ? testCase.test_spec.judge_prompt : '';
+  const assertions = Array.isArray(testCase.test_spec.assertions) ? (testCase.test_spec.assertions as string[]) : [];
+  const judgePrompt = typeof testCase.test_spec.judge_prompt === 'string' ? testCase.test_spec.judge_prompt : '';
   return (
     <div
       css={{
@@ -351,8 +558,7 @@ const TestCasePanel = ({ testCase }: { testCase: TestCaseRow | null }) => {
                 border: `1px solid ${theme.colors.border}`,
                 borderRadius: theme.borders.borderRadiusMd,
                 padding: theme.spacing.sm,
-                backgroundColor:
-                  msg.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundSecondary,
+                backgroundColor: msg.role === 'user' ? theme.colors.blue100 : theme.colors.backgroundSecondary,
               }}
             >
               <Typography.Text size="sm" color="secondary" css={{ display: 'block' }}>
