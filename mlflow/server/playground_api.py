@@ -774,6 +774,8 @@ def create_playground_api_router(
 
         Stream events (each is one ``data: <json>\\n\\n`` line):
 
+          * ``{type: "run_started", run_id}`` — parent MLflow Run created;
+            client uses this to link the in-flight UI to the persisted run.
           * ``{type: "started", total_groups, total_cases}``
           * ``{type: "group_started", group_index, label, case_count, messages}``
           * ``{type: "group_verdict", group_index, agent_response_text,``
@@ -781,11 +783,22 @@ def create_playground_api_router(
             ``{test_case_id, issue_id, rationale_summary, passed, reasons, strategy}``.
           * ``{type: "group_error", group_index, detail}`` — the group's
             agent invocation failed; following groups still run.
-          * ``{type: "summary", total_groups, ...}``
+          * ``{type: "summary", total_groups, run_id}`` — terminator; carries
+            the run id again so a late-binding client can still pick it up.
+
+        Persistence: the entire run is wrapped in an MLflow Run tagged with
+        ``playground.run_kind = "regression_suite"`` and a JSON artifact
+        ``regression_run.json`` carrying the full conversations + verdicts
+        snapshot. Recent-runs UI reads this back to rehydrate the navigator.
         """
         import json as _json
+        import time as _time
 
-        from mlflow.playground.regression_suite import get_or_create_regression_dataset
+        import mlflow as _mlflow
+        from mlflow.playground.regression_suite import (
+            get_or_create_regression_dataset,
+            regression_dataset_name,
+        )
         from mlflow.playground.test_runner import evaluate, normalize_agent_response
 
         async def _events():
@@ -802,6 +815,33 @@ def create_playground_api_router(
                     except (ValueError, TypeError):
                         return v
                 return v
+
+            # Create the parent MLflow Run upfront so the client knows the
+            # run_id from the very first event. Materialise it via a
+            # context-manager `start_run` that auto-ends; we then re-enter
+            # later with `start_run(run_id=...)` to log metrics + artifact
+            # once the work completes. Avoids leaving a zombie active run if
+            # the SSE client disconnects mid-stream.
+            started_at = _time.time()
+            try:
+                with _mlflow.start_run(
+                    experiment_id=experiment_id,
+                    run_name=f"regression run @ {_time.strftime('%H:%M:%S')}",
+                    tags={
+                        "playground.run_kind": "regression_suite",
+                        "playground.regression_dataset": regression_dataset_name(experiment_id),
+                    },
+                ) as parent_run:
+                    parent_run_id = parent_run.info.run_id
+            except Exception as exc:
+                yield _emit({
+                    "type": "group_error",
+                    "group_index": -1,
+                    "detail": f"Could not create MLflow run: {exc}",
+                })
+                return
+
+            yield _emit({"type": "run_started", "run_id": parent_run_id})
 
             try:
                 dataset = await asyncio.to_thread(get_or_create_regression_dataset, experiment_id)
@@ -835,6 +875,14 @@ def create_playground_api_router(
                 "total_groups": len(groups_list),
                 "total_cases": total_cases,
             })
+
+            # `snapshot_slots[gi]` mirrors the in-memory `BatchConversation`
+            # shape on the client; we write the whole list as a JSON
+            # artifact when the run finishes so the playground can rehydrate
+            # the navigator from it later. Pre-allocated by group_index so
+            # the parallel run_one tasks can mutate independent slots without
+            # locking.
+            snapshot_slots: list[dict[str, Any]] = []
 
             # Emit all `group_started` events sequentially in deterministic
             # order so the navigator slot list is stable. The actual agent
@@ -873,6 +921,13 @@ def create_playground_api_router(
                     "messages": messages,
                 })
                 group_specs.append((gi, messages, group_rows))
+                snapshot_slots.append({
+                    "row_id": f"group-{gi}",
+                    "label": label,
+                    "messages": list(messages),
+                    "status": "pending",
+                    "verdicts": [],
+                })
 
             # Bound the parallelism — local agents are usually single-process
             # / single-port HTTP and stacking too many concurrent invocations
@@ -894,6 +949,8 @@ def create_playground_api_router(
                             timeout_seconds=120.0,
                         )
                     except Exception as exc:
+                        snapshot_slots[gi]["status"] = "failed"
+                        snapshot_slots[gi]["error"] = f"Agent invocation failed: {exc}"
                         await queue.put(_emit({
                             "type": "group_error",
                             "group_index": gi,
@@ -943,6 +1000,16 @@ def create_playground_api_router(
                                 "strategy": "error",
                             })
 
+                    trace_id = _extract_trace_id(raw)
+                    snapshot_slots[gi]["status"] = "done"
+                    snapshot_slots[gi]["messages"] = [
+                        *snapshot_slots[gi]["messages"],
+                        {"role": "assistant", "content": response.text or ""},
+                    ]
+                    snapshot_slots[gi]["verdicts"] = verdicts
+                    if trace_id:
+                        snapshot_slots[gi]["trace_id"] = trace_id
+
                     await queue.put(_emit({
                         "type": "group_verdict",
                         "group_index": gi,
@@ -952,7 +1019,7 @@ def create_playground_api_router(
                         # Trace produced by this group's agent invocation, so the
                         # playground can advance the Live Trace pane in lock-step
                         # with the "Question m/N" navigator.
-                        "trace_id": _extract_trace_id(raw),
+                        "trace_id": trace_id,
                     }))
 
             tasks = [
@@ -979,9 +1046,132 @@ def create_playground_api_router(
                 # disconnects mid-stream, so we don't leave orphaned tasks.
                 await drainer
 
-            yield _emit({"type": "summary", "total_groups": len(groups_list)})
+            # Finalise the parent run — log summary metrics + the JSON
+            # snapshot artifact. `start_run(run_id=...)` re-enters the run
+            # we created earlier; the context manager auto-ends it. Done in
+            # a worker thread to avoid blocking the SSE generator (sqlite
+            # writes + artifact upload).
+            ended_at = _time.time()
+            pass_count = sum(
+                1 for s in snapshot_slots for v in s.get("verdicts", []) if v.get("passed")
+            )
+            fail_count = sum(
+                1 for s in snapshot_slots for v in s.get("verdicts", []) if not v.get("passed")
+            )
+            total_count = pass_count + fail_count
+            pass_rate = (pass_count / total_count) if total_count > 0 else 0.0
+
+            snapshot = {
+                "kind": "regression_suite",
+                "run_id": parent_run_id,
+                "experiment_id": experiment_id,
+                "started_at_ms": int(started_at * 1000),
+                "ended_at_ms": int(ended_at * 1000),
+                "summary": {
+                    "pass_count": pass_count,
+                    "fail_count": fail_count,
+                    "total_count": total_count,
+                    "pass_rate": pass_rate,
+                },
+                "conversations": snapshot_slots,
+            }
+
+            def _finalise() -> None:
+                with _mlflow.start_run(run_id=parent_run_id):
+                    _mlflow.log_metric("pass_count", pass_count)
+                    _mlflow.log_metric("fail_count", fail_count)
+                    _mlflow.log_metric("pass_rate", pass_rate)
+                    _mlflow.log_metric("total_duration_ms", int((ended_at - started_at) * 1000))
+                    _mlflow.log_dict(snapshot, "regression_run.json")
+
+            try:
+                await asyncio.to_thread(_finalise)
+            except Exception:
+                # Don't fail the SSE response if the artifact write tripped —
+                # the user already saw the verdicts, and the recent-runs row
+                # will simply not be rehydratable. Log nothing here; the
+                # playground server's stderr will show MLflow's own message.
+                pass
+
+            yield _emit({
+                "type": "summary",
+                "total_groups": len(groups_list),
+                "run_id": parent_run_id,
+            })
 
         return StreamingResponse(_events(), media_type="text/event-stream")
+
+    @router.get("/regression-suite/runs")
+    async def list_regression_runs(experiment_id: str, limit: int = 10) -> dict[str, Any]:
+        """Recent regression-suite runs for the given experiment, newest
+        first. Backed by `MlflowClient.search_runs` filtered by the
+        `playground.run_kind` tag, so this list is the authoritative
+        cross-session record.
+        """
+        from mlflow.tracking.client import MlflowClient
+
+        try:
+            client = MlflowClient()
+            runs = await asyncio.to_thread(
+                client.search_runs,
+                experiment_ids=[experiment_id],
+                filter_string='tags."playground.run_kind" = "regression_suite"',
+                order_by=["attributes.start_time DESC"],
+                max_results=max(1, min(limit, 50)),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        out: list[dict[str, Any]] = []
+        for r in runs:
+            metrics = r.data.metrics or {}
+            tags = r.data.tags or {}
+            pass_count = int(metrics.get("pass_count", 0))
+            fail_count = int(metrics.get("fail_count", 0))
+            out.append({
+                "run_id": r.info.run_id,
+                "started_at": r.info.start_time,
+                "ended_at": r.info.end_time,
+                "pass_count": pass_count,
+                "fail_count": fail_count,
+                "total_count": pass_count + fail_count,
+                "pass_rate": float(metrics.get("pass_rate", 0.0)),
+                "agent_git_sha": tags.get("playground.agent_git_sha", ""),
+            })
+        return {"runs": out}
+
+    @router.get("/regression-suite/runs/{run_id}/snapshot")
+    async def get_regression_run_snapshot(run_id: str, experiment_id: str) -> dict[str, Any]:
+        """Fetch the `regression_run.json` artifact for a finished
+        regression-suite run. Lets the cockpit rehydrate the navigator
+        + verdict banners exactly as they were when the run completed.
+        """
+        import json as _json
+        import tempfile as _tempfile
+
+        from mlflow.tracking.client import MlflowClient
+
+        # `experiment_id` arrives via query string for symmetry with the
+        # other regression-suite endpoints; not actually used here because
+        # MLflow's artifact API resolves by run_id alone, but keeping it in
+        # the URL means the client can stay generic over the experiment.
+        del experiment_id
+
+        client = MlflowClient()
+        try:
+            with _tempfile.TemporaryDirectory() as tmpdir:
+                local = await asyncio.to_thread(
+                    client.download_artifacts, run_id, "regression_run.json", tmpdir
+                )
+                with open(local) as f:
+                    return _json.load(f)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No regression_run.json artifact on run {run_id!r}.",
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.get("/issues/{issue_id}/run-test/stream")
     async def run_test_stream(issue_id: str) -> StreamingResponse:

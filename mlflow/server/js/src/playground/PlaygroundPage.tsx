@@ -95,8 +95,11 @@ import {
 import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
 import {
   fetchRegressionCases,
+  fetchRegressionRunSnapshot,
+  fetchRegressionRuns,
   RegressionTestsPanel,
   type RegressionCase as RegressionCaseT,
+  type RegressionRunSnapshot,
   type RegressionRunSummary,
 } from './regression';
 import { SessionHistoryMenu, type ResumedSession } from './sessions';
@@ -1585,12 +1588,25 @@ const PlaygroundPageImpl = () => {
   }, []);
 
   // --- Regression suite ---------------------------------------------------
-  // In-session recent-runs memory. Persisting these as MLflow Runs (the
-  // YUK-45 follow-up) is still pending — until then we keep the last few
-  // runs in component state so the user can see "I just ran 12 cases, 9
-  // passed" without leaving the playground. Lost on page reload, but
-  // good enough for the iteration loop.
+  // Recent runs are server-backed: each finished run is persisted as an
+  // MLflow Run tagged `playground.run_kind=regression_suite` with summary
+  // metrics + a `regression_run.json` artifact for navigator rehydrate.
+  // We refetch on mount and after every run completes so the list survives
+  // page reload and is ordered by the tracking server, not client memory.
   const [regressionRecentRuns, setRegressionRecentRuns] = useState<RegressionRunSummary[]>([]);
+  const reloadRegressionRecentRuns = useCallback(() => {
+    if (!experimentId) return;
+    fetchRegressionRuns(experimentId, 10)
+      .then(setRegressionRecentRuns)
+      .catch(() => {
+        // Silent — same rationale as case-count reload. The Tests panel
+        // simply shows "No runs yet." when fetch fails; surfacing every
+        // tracking-server hiccup as a toast would be too noisy.
+      });
+  }, [experimentId]);
+  useEffect(() => {
+    reloadRegressionRecentRuns();
+  }, [reloadRegressionRecentRuns]);
   const [regressionInProgress, setRegressionInProgress] = useState<
     { current: number; total: number; passed: number; failed: number } | undefined
   >(undefined);
@@ -2275,12 +2291,14 @@ const PlaygroundPageImpl = () => {
   // verdict on the slot).
   const runRegressionSuite = useCallback(async () => {
     if (!experimentId || batchRun !== null) return;
-    const runId = createRequestId();
-    const startedAt = Date.now();
-
-    setBatchRun({ kind: 'regression_suite', run_id: runId, activeIndex: 0, conversations: [] });
+    // The slot's `run_id` is filled in from the server's `run_started`
+    // event (the parent MLflow Run id). We seed an empty placeholder so
+    // the BatchRunState shape stays narrow during the brief window
+    // between fetch start and the first SSE frame.
+    setBatchRun({ kind: 'regression_suite', run_id: '', activeIndex: 0, conversations: [] });
     setRegressionInProgress({ current: 0, total: 0, passed: 0, failed: 0 });
 
+    type RunStarted = { type: 'run_started'; run_id: string };
     type GroupStarted = {
       type: 'group_started';
       group_index: number;
@@ -2301,8 +2319,8 @@ const PlaygroundPageImpl = () => {
     };
     type GroupError = { type: 'group_error'; group_index: number; detail: string };
     type Started = { type: 'started'; total_groups: number; total_cases: number };
-    type Summary = { type: 'summary'; total_groups: number };
-    type GroupedEvent = GroupStarted | GroupVerdict | GroupError | Started | Summary;
+    type Summary = { type: 'summary'; total_groups: number; run_id?: string };
+    type GroupedEvent = RunStarted | GroupStarted | GroupVerdict | GroupError | Started | Summary;
 
     let response: Response;
     try {
@@ -2344,6 +2362,10 @@ const PlaygroundPageImpl = () => {
     let failedCases = 0;
 
     const handleEvent = (event: GroupedEvent) => {
+      if (event.type === 'run_started') {
+        setBatchRun((current) => (current ? { ...current, run_id: event.run_id } : current));
+        return;
+      }
       if (event.type === 'started') {
         totalCases = event.total_cases;
         setRegressionInProgress({ current: 0, total: event.total_cases, passed: 0, failed: 0 });
@@ -2439,22 +2461,58 @@ const PlaygroundPageImpl = () => {
     }
 
     setRegressionInProgress(undefined);
-    setRegressionRecentRuns((current) =>
-      [
-        {
-          parent_run_id: runId,
-          pass_count: passedCases,
-          fail_count: failedCases,
-          total_count: totalCases,
-          pass_rate: totalCases > 0 ? passedCases / totalCases : 0,
-          started_at: startedAt,
-          ended_at: Date.now(),
-        },
-        ...current,
-      ].slice(0, 10),
-    );
-    void doneGroups; // accumulator kept for future "groups completed" debugging
-  }, [batchRun, experimentId]);
+    // Server-side `_finalise` has logged metrics + the snapshot artifact
+    // by the time the SSE stream closes; reload the recent-runs list so
+    // the new row appears with its server-assigned id.
+    reloadRegressionRecentRuns();
+    void doneGroups;
+    void passedCases;
+    void failedCases;
+    void totalCases;
+  }, [batchRun, experimentId, reloadRegressionRecentRuns]);
+
+  // Click a row in "Recent runs" → fetch the persisted snapshot and rehydrate
+  // the batch navigator. This is the cross-session counterpart of
+  // `runRegressionSuite`: same UI surface (paged conversations, verdict
+  // banners, trace links), data sourced from `regression_run.json` artifact.
+  const onSelectRecentRun = useCallback(
+    async (runId: string) => {
+      if (!experimentId || batchRun !== null) return;
+      let snapshot: RegressionRunSnapshot;
+      try {
+        snapshot = await fetchRegressionRunSnapshot(experimentId, runId);
+      } catch (err) {
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Could not load past run',
+          description: err instanceof Error ? err.message : String(err),
+          placement: 'topRight',
+        });
+        return;
+      }
+      const conversations: BatchConversation[] = snapshot.conversations.map((slot) => ({
+        row_id: slot.row_id,
+        label: slot.label,
+        messages: slot.messages.map((m) => ({
+          id: createMessageId(m.role),
+          role: m.role as PlaygroundMessage['role'],
+          content: m.content,
+        })),
+        streamingText: '',
+        status: slot.status,
+        trace_id: slot.trace_id,
+        error: slot.error,
+        verdicts: slot.verdicts,
+      }));
+      setBatchRun({
+        kind: 'regression_suite',
+        run_id: snapshot.run_id,
+        activeIndex: 0,
+        conversations,
+      });
+    },
+    [batchRun, experimentId],
+  );
 
   const selectedTraceInfo = useMemo(
     () =>
@@ -2929,6 +2987,7 @@ const PlaygroundPageImpl = () => {
               canRun
               onRunSuite={() => void runRegressionSuite()}
               onCasesChanged={reloadRegressionCount}
+              onSelectRun={(runId) => void onSelectRecentRun(runId)}
             />
           </CollapsibleSection>
 

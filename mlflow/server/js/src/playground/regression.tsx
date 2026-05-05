@@ -47,6 +47,7 @@ export const RegressionTestsPanel = ({
   canRun,
   onRunSuite,
   onCasesChanged,
+  onSelectRun,
 }: {
   experimentId: string | undefined;
   testCount: number;
@@ -58,6 +59,10 @@ export const RegressionTestsPanel = ({
   // edits later). Parent uses this to reload its case count so the
   // panel header stays in sync without polling.
   onCasesChanged?: () => void;
+  // Clicking a recent-run row calls this with the run id; parent fetches
+  // the snapshot and rehydrates the navigator. Optional so callers that
+  // only want display can omit it.
+  onSelectRun?: (runId: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const disabled = !canRun || testCount === 0;
@@ -126,7 +131,14 @@ export const RegressionTestsPanel = ({
               No runs yet.
             </Typography.Text>
           ) : (
-            recentRuns.map((run) => <RecentRunRow key={run.parent_run_id} run={run} experimentId={experimentId} />)
+            recentRuns.map((run) => (
+              <RecentRunRow
+                key={run.parent_run_id}
+                run={run}
+                experimentId={experimentId}
+                onSelectRun={onSelectRun}
+              />
+            ))
           )}
         </div>
 
@@ -188,7 +200,15 @@ const ProgressStrip = ({
   );
 };
 
-const RecentRunRow = ({ run, experimentId }: { run: RegressionRunSummary; experimentId: string | undefined }) => {
+const RecentRunRow = ({
+  run,
+  experimentId,
+  onSelectRun,
+}: {
+  run: RegressionRunSummary;
+  experimentId: string | undefined;
+  onSelectRun?: (runId: string) => void;
+}) => {
   const { theme } = useDesignSystemTheme();
   const allPassed = run.fail_count === 0;
   const ts = new Date(run.started_at).toLocaleString(undefined, {
@@ -197,12 +217,26 @@ const RecentRunRow = ({ run, experimentId }: { run: RegressionRunSummary; experi
     hour: '2-digit',
     minute: '2-digit',
   });
-  const href = experimentId ? `/#/experiments/${experimentId}/runs/${run.parent_run_id}` : undefined;
+  // Click rehydrates the in-cockpit batch navigator from the persisted JSON
+  // artifact. The "open run page in new tab" escape hatch hangs off the
+  // dedicated icon button so the row click stays unambiguous.
+  const handleClick = () => onSelectRun?.(run.parent_run_id);
+  const runHref = experimentId ? `/#/experiments/${experimentId}/runs/${run.parent_run_id}` : undefined;
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
+    <div
+      role={onSelectRun ? 'button' : undefined}
+      tabIndex={onSelectRun ? 0 : undefined}
+      onClick={onSelectRun ? handleClick : undefined}
+      onKeyDown={
+        onSelectRun
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick();
+              }
+            }
+          : undefined
+      }
       css={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -211,9 +245,8 @@ const RecentRunRow = ({ run, experimentId }: { run: RegressionRunSummary; experi
         padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
         borderRadius: theme.borders.borderRadiusMd,
         border: `1px solid ${theme.colors.border}`,
-        textDecoration: 'none',
-        color: 'inherit',
-        ':hover': { backgroundColor: theme.colors.backgroundSecondary },
+        cursor: onSelectRun ? 'pointer' : 'default',
+        ':hover': onSelectRun ? { backgroundColor: theme.colors.backgroundSecondary } : undefined,
       }}
     >
       <div css={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -226,10 +259,29 @@ const RecentRunRow = ({ run, experimentId }: { run: RegressionRunSummary; experi
           )}
         </Typography.Text>
       </div>
-      <Typography.Text size="sm" color={allPassed ? 'success' : 'warning'}>
-        {run.pass_count}/{run.total_count} {allPassed ? '✓' : '⚠'}
-      </Typography.Text>
-    </a>
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+        <Typography.Text size="sm" color={allPassed ? 'success' : 'warning'}>
+          {run.pass_count}/{run.total_count} {allPassed ? '✓' : '⚠'}
+        </Typography.Text>
+        {runHref && (
+          <Tooltip
+            componentId="mlflow.playground.regression.recent-run.open-run.tooltip"
+            content="Open MLflow run in new tab"
+          >
+            <Button
+              componentId="mlflow.playground.regression.recent-run.open-run"
+              size="small"
+              icon={<NewWindowIcon />}
+              aria-label="Open MLflow run"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(runHref, '_blank', 'noreferrer');
+              }}
+            />
+          </Tooltip>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -290,6 +342,96 @@ export const updateRegressionCase = async (
   if (!response.ok) {
     throw new Error(`Update failed (${response.status}): ${await response.text()}`);
   }
+};
+
+/**
+ * Fetch the recent regression-suite runs for an experiment. Newest first.
+ * Backed server-side by `MlflowClient.search_runs` filtered by the
+ * `playground.run_kind` tag — this is the cross-session source of truth
+ * for the panel's "Recent runs" section (replaces the old in-session
+ * component-state list).
+ */
+export const fetchRegressionRuns = async (
+  experimentId: string,
+  limit = 10,
+): Promise<RegressionRunSummary[]> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/regression-suite/runs?experiment_id=${encodeURIComponent(experimentId)}&limit=${limit}`,
+    ),
+    { headers: getDefaultHeaders(document.cookie) },
+  );
+  if (!response.ok) {
+    throw new Error(`List runs failed (${response.status}): ${await response.text()}`);
+  }
+  const body = (await response.json()) as { runs?: RegressionRunRow[] };
+  return (body.runs ?? []).map((r) => ({
+    parent_run_id: r.run_id,
+    agent_git_sha: r.agent_git_sha || undefined,
+    pass_count: r.pass_count,
+    fail_count: r.fail_count,
+    total_count: r.total_count,
+    pass_rate: r.pass_rate,
+    started_at: r.started_at,
+    ended_at: r.ended_at,
+  }));
+};
+
+type RegressionRunRow = {
+  run_id: string;
+  started_at: number;
+  ended_at?: number;
+  pass_count: number;
+  fail_count: number;
+  total_count: number;
+  pass_rate: number;
+  agent_git_sha?: string;
+};
+
+export type RegressionRunSnapshot = {
+  kind: 'regression_suite';
+  run_id: string;
+  experiment_id: string;
+  started_at_ms: number;
+  ended_at_ms: number;
+  summary: { pass_count: number; fail_count: number; total_count: number; pass_rate: number };
+  conversations: Array<{
+    row_id: string;
+    label: string;
+    messages: { role: string; content: string }[];
+    status: 'pending' | 'streaming' | 'done' | 'failed';
+    trace_id?: string;
+    error?: string;
+    verdicts: Array<{
+      test_case_id?: string;
+      issue_id?: string;
+      rationale_summary?: string;
+      passed: boolean;
+      reasons: string[];
+      strategy: string;
+    }>;
+  }>;
+};
+
+/**
+ * Fetch the persisted JSON snapshot of a finished regression-suite run.
+ * The cockpit feeds this into `setBatchRun(...)` to rehydrate the paged
+ * navigator + verdict banners exactly as they were when the run finished.
+ */
+export const fetchRegressionRunSnapshot = async (
+  experimentId: string,
+  runId: string,
+): Promise<RegressionRunSnapshot> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/regression-suite/runs/${encodeURIComponent(runId)}/snapshot?experiment_id=${encodeURIComponent(experimentId)}`,
+    ),
+    { headers: getDefaultHeaders(document.cookie) },
+  );
+  if (!response.ok) {
+    throw new Error(`Snapshot fetch failed (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as RegressionRunSnapshot;
 };
 
 /** Remove a single test case from the regression suite. Idempotent. */
