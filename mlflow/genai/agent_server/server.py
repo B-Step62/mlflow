@@ -596,21 +596,28 @@ def enable_hot_reload(
         ]
         if not relevant:
             return
-        logger.info("[hot-reload] %d file(s) changed; reloading agent", len(relevant))
+        print(
+            f"[hot-reload] {len(relevant)} file(s) changed; reloading agent",
+            flush=True,
+        )
         try:
             _evict_modules()
             on_change()
-            logger.info("[hot-reload] reloaded successfully")
-        except Exception:
-            logger.exception("[hot-reload] reload failed; keeping previous agent")
+            print("[hot-reload] reloaded successfully", flush=True)
+        except Exception as exc:
+            # Visible to the user (no relying on log config) plus full stack
+            # trace via the logger so devs can debug if they want.
+            print(f"[hot-reload] reload failed; keeping previous agent: {exc}", flush=True)
+            logger.exception("[hot-reload] reload failed")
 
     def _watch_loop() -> None:
         try:
             from watchfiles import watch
         except ImportError:
-            logger.warning(
+            print(
                 "[hot-reload] `watchfiles` is not installed; hot reload disabled. "
-                "Install `uvicorn[standard]` for hot reload support."
+                "Install with `pip install watchfiles` (or `uv add watchfiles`).",
+                flush=True,
             )
             return
         for changes in watch(str(watch_path)):
@@ -618,5 +625,5 @@ def enable_hot_reload(
 
     thread = threading.Thread(target=_watch_loop, daemon=True, name="agent-hot-reload")
     thread.start()
-    logger.info("[hot-reload] watching %s for .py changes", watch_path)
+    print(f"[hot-reload] watching {watch_path} for .py changes", flush=True)
     return thread
