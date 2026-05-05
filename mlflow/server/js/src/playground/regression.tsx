@@ -13,6 +13,7 @@ import {
   Drawer,
   NewWindowIcon,
   Spinner,
+  Tooltip,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -306,14 +307,18 @@ const PastRunsDrawer = ({
       >
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, height: '100%' }}>
           <div css={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              componentId="mlflow.playground.regression.past-runs.open-window"
-              icon={<NewWindowIcon />}
-              onClick={() => window.open(fullUrl, '_blank', 'noopener,noreferrer')}
-              disabled={!experimentId}
+            <Tooltip
+              componentId="mlflow.playground.regression.past-runs.open-window.tooltip"
+              content="Open in new window"
             >
-              Open in new window
-            </Button>
+              <Button
+                componentId="mlflow.playground.regression.past-runs.open-window"
+                icon={<NewWindowIcon />}
+                onClick={() => window.open(fullUrl, '_blank', 'noopener,noreferrer')}
+                disabled={!experimentId}
+                aria-label="Open in new window"
+              />
+            </Tooltip>
           </div>
 
           {loading && (
@@ -476,14 +481,18 @@ const BrowseSuiteDrawer = ({
             <Typography.Text color="secondary">
               {loading ? 'Loading…' : `${cases.length} test ${cases.length === 1 ? 'case' : 'cases'}`}
             </Typography.Text>
-            <Button
-              componentId="mlflow.playground.regression.browse-suite.open-window"
-              icon={<NewWindowIcon />}
-              onClick={() => window.open(fullUrl, '_blank', 'noopener,noreferrer')}
-              disabled={!experimentId}
+            <Tooltip
+              componentId="mlflow.playground.regression.browse-suite.open-window.tooltip"
+              content="Open raw dataset view in new window"
             >
-              Raw dataset view
-            </Button>
+              <Button
+                componentId="mlflow.playground.regression.browse-suite.open-window"
+                icon={<NewWindowIcon />}
+                onClick={() => window.open(fullUrl, '_blank', 'noopener,noreferrer')}
+                disabled={!experimentId}
+                aria-label="Open raw dataset view in new window"
+              />
+            </Tooltip>
           </div>
 
           {loading && (
