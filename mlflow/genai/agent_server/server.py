@@ -5,10 +5,7 @@ import json
 import logging
 import os
 import posixpath
-import sys
-import threading
-from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Iterable, Literal, ParamSpec, TypeVar
+from typing import Any, AsyncGenerator, Callable, Literal, ParamSpec, TypeVar
 
 import httpx
 import uvicorn
@@ -27,20 +24,33 @@ RETURN_TRACE_HEADER = "x-mlflow-return-trace-id"
 # JSON-encoded {key: value} dict applied to the active trace as tags. Lets the
 # caller correlate later via search_traces (e.g. tags.playground.request_id).
 TRACE_TAGS_HEADER = "x-mlflow-trace-tags"
+# JSON-encoded {key: value} dict applied to the active trace as metadata.
+# Use this for MLflow's standard session/user keys (mlflow.trace.session,
+# mlflow.trace.user) — metadata is the documented home for those, and search
+# filters spell them as `metadata.\`mlflow.trace.session\` = '...'`.
+TRACE_METADATA_HEADER = "x-mlflow-trace-metadata"
 
 
-def _extract_trace_tags_from_headers() -> dict[str, str]:
-    raw = get_request_headers().get(TRACE_TAGS_HEADER)
+def _extract_json_dict_header(header_name: str) -> dict[str, str]:
+    raw = get_request_headers().get(header_name)
     if not raw:
         return {}
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        logger.warning("Ignoring malformed %s header: %r", TRACE_TAGS_HEADER, raw)
+        logger.warning("Ignoring malformed %s header: %r", header_name, raw)
         return {}
     if not isinstance(parsed, dict):
         return {}
     return {str(k): str(v) for k, v in parsed.items() if v is not None}
+
+
+def _extract_trace_tags_from_headers() -> dict[str, str]:
+    return _extract_json_dict_header(TRACE_TAGS_HEADER)
+
+
+def _extract_trace_metadata_from_headers() -> dict[str, str]:
+    return _extract_json_dict_header(TRACE_METADATA_HEADER)
 
 
 def _persist_trace_in_progress(trace_id: str, tags: dict[str, str]) -> None:
@@ -367,6 +377,9 @@ class AgentServer:
                 if trace_tags:
                     mlflow.update_current_trace(tags=trace_tags)
                     _persist_trace_in_progress(span.trace_id, trace_tags)
+                trace_metadata = _extract_trace_metadata_from_headers()
+                if trace_metadata:
+                    mlflow.update_current_trace(metadata=trace_metadata)
                 span.set_inputs(request)
                 if inspect.iscoroutinefunction(func):
                     result = await func(request)
@@ -412,6 +425,9 @@ class AgentServer:
                 if trace_tags:
                     mlflow.update_current_trace(tags=trace_tags)
                     _persist_trace_in_progress(span.trace_id, trace_tags)
+                trace_metadata = _extract_trace_metadata_from_headers()
+                if trace_metadata:
+                    mlflow.update_current_trace(metadata=trace_metadata)
                 span.set_inputs(request)
                 if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
                     async for chunk in func(request):
@@ -493,137 +509,3 @@ class AgentServer:
             app_import_string, host=host, port=args.port, workers=args.workers, reload=args.reload
         )
 
-
-# Default subdirectory names skipped by the hot-reload watcher. The user's
-# agent module almost never lives in any of these, and they tend to contain
-# huge numbers of `.py` files that would otherwise spam the watcher.
-EXCLUDED_RELOAD_DIRS = frozenset(
-    {
-        ".git",
-        ".hg",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".tox",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-        "env",
-        "node_modules",
-        "site-packages",
-        "tests",
-        "venv",
-    }
-)
-
-
-def enable_hot_reload(
-    watch_dir: str | Path,
-    *,
-    on_change: Callable[[], None],
-    excluded_dir_names: Iterable[str] = EXCLUDED_RELOAD_DIRS,
-) -> threading.Thread:
-    """Hot-reload the user's agent module(s) on file changes — in-process.
-
-    Spawns a daemon thread that uses ``watchfiles`` to watch ``watch_dir``
-    for ``.py`` changes. On each batch of changes:
-
-    1. Pops cached modules from ``sys.modules`` whose source file lives
-       under ``watch_dir`` (skipping anything inside ``excluded_dir_names``).
-    2. Resets the module-level ``_invoke_function`` / ``_stream_function``
-       globals so the ``@invoke()`` / ``@stream()`` one-time-guard checks
-       don't reject re-registration.
-    3. Calls ``on_change()`` — caller-supplied logic that re-imports
-       whatever module(s) re-register the handlers (typically the
-       playground's ``discover_agent(repo_dir)``).
-
-    Exceptions from ``on_change`` are logged but do not kill the watcher,
-    so a saved syntax error doesn't break the playground — the next valid
-    save recovers.
-
-    The agent's HTTP socket stays bound the entire time. Request handlers
-    re-read ``_invoke_function`` per request (see ``_handle_invoke_request``
-    above), so the swap is atomic from the request's perspective: in-flight
-    requests finish on the function reference they captured, and the next
-    request gets the new function.
-
-    Args:
-        watch_dir: Repo directory to watch for ``.py`` edits.
-        on_change: No-arg callable invoked after the module cache is cleared.
-            Should re-import whatever populates ``_invoke_function`` /
-            ``_stream_function``.
-        excluded_dir_names: Directory basenames to skip in the watcher.
-            Defaults to ``EXCLUDED_RELOAD_DIRS``.
-
-    Returns:
-        The watcher daemon thread (already started).
-    """
-    watch_path = Path(watch_dir).resolve()
-    excluded = frozenset(excluded_dir_names)
-
-    def _is_excluded(path: Path) -> bool:
-        try:
-            relative = path.resolve().relative_to(watch_path)
-        except ValueError:
-            return True
-        return any(part in excluded for part in relative.parts)
-
-    def _evict_modules() -> None:
-        global _invoke_function, _stream_function
-        for name, mod in list(sys.modules.items()):
-            mod_file = getattr(mod, "__file__", None)
-            if not mod_file:
-                continue
-            try:
-                mod_path = Path(mod_file).resolve()
-            except (OSError, ValueError):
-                continue
-            try:
-                mod_path.relative_to(watch_path)
-            except ValueError:
-                continue
-            if _is_excluded(mod_path):
-                continue
-            del sys.modules[name]
-        _invoke_function = None
-        _stream_function = None
-
-    def _on_changes(changes) -> None:
-        relevant = [
-            path for _change_type, path in changes
-            if path.endswith(".py") and not _is_excluded(Path(path))
-        ]
-        if not relevant:
-            return
-        print(
-            f"[hot-reload] {len(relevant)} file(s) changed; reloading agent",
-            flush=True,
-        )
-        try:
-            _evict_modules()
-            on_change()
-            print("[hot-reload] reloaded successfully", flush=True)
-        except Exception as exc:
-            # Visible to the user (no relying on log config) plus full stack
-            # trace via the logger so devs can debug if they want.
-            print(f"[hot-reload] reload failed; keeping previous agent: {exc}", flush=True)
-            logger.exception("[hot-reload] reload failed")
-
-    def _watch_loop() -> None:
-        try:
-            from watchfiles import watch
-        except ImportError:
-            print(
-                "[hot-reload] `watchfiles` is not installed; hot reload disabled. "
-                "Install with `pip install watchfiles` (or `uv add watchfiles`).",
-                flush=True,
-            )
-            return
-        for changes in watch(str(watch_path)):
-            _on_changes(changes)
-
-    thread = threading.Thread(target=_watch_loop, daemon=True, name="agent-hot-reload")
-    thread.start()
-    print(f"[hot-reload] watching {watch_path} for .py changes", flush=True)
-    return thread
