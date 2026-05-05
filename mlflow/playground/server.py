@@ -364,7 +364,12 @@ def _launch_local_agent_process(repo_dir: Path, agent_url: str) -> subprocess.Po
         "--port",
         str(port),
     ]
-    return subprocess.Popen(command, cwd=repo_dir)
+    # Force synchronous trace logging in the agent so each turn's spans land in
+    # the tracking store immediately. Async batching (the default) defers export
+    # by up to 5s, which makes the playground's live trace pane feel laggy and
+    # hides in-progress spans during a turn.
+    env = {**os.environ, "MLFLOW_ENABLE_ASYNC_TRACE_LOGGING": "false"}
+    return subprocess.Popen(command, cwd=repo_dir, env=env)
 
 
 def _wait_for_agent_health(agent_url: str, timeout_seconds: float = 20.0) -> bool:
