@@ -10,9 +10,13 @@ import { useEffect, useState } from 'react';
 
 import {
   Button,
+  CloseSmallIcon,
   Drawer,
   GearIcon,
+  Input,
+  Modal,
   NewWindowIcon,
+  PencilIcon,
   Spinner,
   Tooltip,
   TrashIcon,
@@ -257,6 +261,38 @@ export type RegressionCase = {
   promoted: boolean;
 };
 
+export type AssertionUpdate = {
+  must_contain?: string[];
+  must_not_contain?: string[];
+  must_call_tool?: string[];
+  must_not_call_tool?: string[];
+};
+
+export type JudgeUpdate = {
+  criteria: string;
+  expected_response?: string | null;
+};
+
+/** Edit one test case in place. Server preserves test_case_id + tags;
+ * any field passed as `undefined` keeps its current value. */
+export const updateRegressionCase = async (
+  experimentId: string,
+  testCaseId: string,
+  payload: { question?: string; assertion?: AssertionUpdate; judge?: JudgeUpdate },
+): Promise<void> => {
+  const response = await fetch(
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/regression-suite/cases/${encodeURIComponent(testCaseId)}`),
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
+      body: JSON.stringify({ experiment_id: experimentId, ...payload }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Update failed (${response.status}): ${await response.text()}`);
+  }
+};
+
 /** Remove a single test case from the regression suite. Idempotent. */
 export const deleteRegressionCase = async (experimentId: string, testCaseId: string): Promise<void> => {
   const response = await fetch(
@@ -308,6 +344,7 @@ const BrowseSuiteDrawer = ({
   const [cases, setCases] = useState<RegressionCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<RegressionCase | null>(null);
 
   useEffect(() => {
     if (!open || !experimentId) return;
@@ -376,6 +413,11 @@ const BrowseSuiteDrawer = ({
                 <RegressionCaseRow
                   key={tc.test_case_id ?? `case-${idx}`}
                   case_={tc}
+                  onEdit={
+                    experimentId && tc.test_case_id
+                      ? () => setEditTarget(tc)
+                      : undefined
+                  }
                   onDelete={
                     experimentId && tc.test_case_id
                       ? async () => {
@@ -405,6 +447,23 @@ const BrowseSuiteDrawer = ({
           )}
         </div>
       </Drawer.Content>
+      {editTarget && experimentId && (
+        <EditCaseModal
+          case_={editTarget}
+          experimentId={experimentId}
+          onClose={() => setEditTarget(null)}
+          onSaved={async () => {
+            setEditTarget(null);
+            try {
+              const fresh = await fetchRegressionCases(experimentId);
+              setCases(fresh);
+              onCasesChanged?.();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            }
+          }}
+        />
+      )}
     </Drawer.Root>
   );
 };
@@ -417,7 +476,15 @@ const BrowseSuiteDrawer = ({
  * chips, prose criteria render as italic text, expected responses render
  * as preformatted text.
  */
-const RegressionCaseRow = ({ case_, onDelete }: { case_: RegressionCase; onDelete?: () => void }) => {
+const RegressionCaseRow = ({
+  case_,
+  onEdit,
+  onDelete,
+}: {
+  case_: RegressionCase;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) => {
   const { theme } = useDesignSystemTheme();
   const sentences = buildAssertionSentences(case_);
 
@@ -433,10 +500,24 @@ const RegressionCaseRow = ({ case_, onDelete }: { case_: RegressionCase; onDelet
         backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <div css={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.sm }}>
+      <div css={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.xs }}>
         <Typography.Text css={{ whiteSpace: 'pre-wrap', flex: 1, minWidth: 0 }}>
           {case_.input_question || <em>(no user message in prefix)</em>}
         </Typography.Text>
+        {onEdit && (
+          <Tooltip
+            componentId="mlflow.playground.regression.case-row.edit.tooltip"
+            content="Edit test case"
+          >
+            <Button
+              componentId="mlflow.playground.regression.case-row.edit"
+              size="small"
+              icon={<PencilIcon />}
+              aria-label="Edit test case"
+              onClick={onEdit}
+            />
+          </Tooltip>
+        )}
         {onDelete && (
           <Tooltip
             componentId="mlflow.playground.regression.case-row.delete.tooltip"
@@ -531,6 +612,233 @@ const AssertionSentence = ({ sentence }: { sentence: AssertionSentence }) => {
           “{sentence.prose}”
         </Typography.Text>
       )}
+    </div>
+  );
+};
+
+/**
+ * Editor for one regression test case. Hosted by the Browse-suite drawer
+ * (pencil icon → modal). Strategy is fixed at the case's current value
+ * (assertion / judge) — switching strategies isn't supported here; delete
+ * the case and re-dispatch from feedback if you need that. Within the
+ * current strategy you can edit:
+ *
+ *   - The user-visible question (rewrites the last user message in the
+ *     conversation prefix).
+ *   - For assertion: each of the four keyword lists.
+ *   - For judge: the criteria and expected response.
+ *
+ * Changes are atomic from the cockpit's POV: the server does delete-then-
+ * insert preserving test_case_id + tags so external lineage links don't
+ * break.
+ */
+const EditCaseModal = ({
+  case_,
+  experimentId,
+  onClose,
+  onSaved,
+}: {
+  case_: RegressionCase;
+  experimentId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [question, setQuestion] = useState(case_.input_question);
+  const [mustContain, setMustContain] = useState<string[]>(case_.assertion?.must_contain ?? []);
+  const [mustNotContain, setMustNotContain] = useState<string[]>(case_.assertion?.must_not_contain ?? []);
+  const [mustCallTool, setMustCallTool] = useState<string[]>(case_.assertion?.must_call_tool ?? []);
+  const [mustNotCallTool, setMustNotCallTool] = useState<string[]>(case_.assertion?.must_not_call_tool ?? []);
+  const [judgeCriteria, setJudgeCriteria] = useState(case_.judge?.criteria ?? '');
+  const [judgeExpected, setJudgeExpected] = useState(case_.judge?.expected_response ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSave = async () => {
+    if (!case_.test_case_id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const payload: { question?: string; assertion?: AssertionUpdate; judge?: JudgeUpdate } = {
+        question,
+      };
+      if (case_.strategy === 'assertion') {
+        payload.assertion = {
+          must_contain: mustContain,
+          must_not_contain: mustNotContain,
+          must_call_tool: mustCallTool,
+          must_not_call_tool: mustNotCallTool,
+        };
+      } else if (case_.strategy === 'judge') {
+        payload.judge = {
+          criteria: judgeCriteria,
+          expected_response: judgeExpected || null,
+        };
+      }
+      await updateRegressionCase(experimentId, case_.test_case_id, payload);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      componentId="mlflow.playground.regression.edit-case.modal"
+      title="Edit test case"
+      visible
+      onCancel={onClose}
+      onOk={onSave}
+      okText={saving ? 'Saving…' : 'Save'}
+      cancelText="Cancel"
+      okButtonProps={{ disabled: saving }}
+      size="wide"
+    >
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+          <Typography.Text css={{ fontWeight: 600 }}>Question</Typography.Text>
+          <Input.TextArea
+            componentId="mlflow.playground.regression.edit-case.question"
+            value={question}
+            autoSize={{ minRows: 2, maxRows: 6 }}
+            onChange={(e) => setQuestion(e.target.value)}
+          />
+        </div>
+
+        {case_.strategy === 'assertion' && (
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            <ChipListEditor label="Answer must contain" values={mustContain} onChange={setMustContain} />
+            <ChipListEditor
+              label="Answer must NOT contain"
+              values={mustNotContain}
+              onChange={setMustNotContain}
+            />
+            <ChipListEditor
+              label="Answer must call tool"
+              values={mustCallTool}
+              onChange={setMustCallTool}
+            />
+            <ChipListEditor
+              label="Answer must NOT call tool"
+              values={mustNotCallTool}
+              onChange={setMustNotCallTool}
+            />
+          </div>
+        )}
+
+        {case_.strategy === 'judge' && (
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+              <Typography.Text css={{ fontWeight: 600 }}>Judge criteria</Typography.Text>
+              <Input.TextArea
+                componentId="mlflow.playground.regression.edit-case.criteria"
+                value={judgeCriteria}
+                autoSize={{ minRows: 2, maxRows: 6 }}
+                onChange={(e) => setJudgeCriteria(e.target.value)}
+              />
+            </div>
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+              <Typography.Text css={{ fontWeight: 600 }}>Expected response (optional)</Typography.Text>
+              <Input.TextArea
+                componentId="mlflow.playground.regression.edit-case.expected"
+                value={judgeExpected}
+                autoSize={{ minRows: 2, maxRows: 6 }}
+                onChange={(e) => setJudgeExpected(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+
+        {error && <Typography.Text color="error">{error}</Typography.Text>}
+      </div>
+    </Modal>
+  );
+};
+
+const ChipListEditor = ({
+  label,
+  values,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  onChange: (next: string[]) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    onChange([...values, trimmed]);
+    setDraft('');
+  };
+  const remove = (idx: number) => onChange(values.filter((_, i) => i !== idx));
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+      <Typography.Text size="sm" color="secondary" css={{ fontWeight: 600 }}>
+        {label}
+      </Typography.Text>
+      {values.length > 0 && (
+        <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs }}>
+          {values.map((v, i) => (
+            <span
+              key={`${v}-${i}`}
+              css={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 2,
+                padding: `2px ${theme.spacing.xs}px`,
+                borderRadius: theme.borders.borderRadiusSm,
+                backgroundColor: theme.colors.backgroundSecondary,
+                fontFamily: 'monospace',
+                fontSize: theme.typography.fontSizeSm,
+              }}
+            >
+              {v}
+              <button
+                type="button"
+                aria-label={`Remove ${v}`}
+                onClick={() => remove(i)}
+                css={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  color: theme.colors.textSecondary,
+                  ':hover': { color: theme.colors.textPrimary },
+                }}
+              >
+                <CloseSmallIcon />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+        <Input
+          componentId={`mlflow.playground.regression.edit-case.chip-input.${label}`}
+          value={draft}
+          placeholder={`Add a value…`}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+          css={{ flex: 1 }}
+        />
+        <Button
+          componentId={`mlflow.playground.regression.edit-case.chip-add.${label}`}
+          onClick={add}
+          disabled={!draft.trim()}
+        >
+          Add
+        </Button>
+      </div>
     </div>
   );
 };

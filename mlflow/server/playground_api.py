@@ -683,6 +683,66 @@ def create_playground_api_router(
             "agent_tool_calls": response.tool_calls,
         }
 
+    @router.patch("/regression-suite/cases/{test_case_id}")
+    async def update_regression_case(
+        test_case_id: str, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Edit one test case in place. Body shape::
+
+            {
+              "experiment_id": "...",
+              "question": "<new user message>",     # optional
+              "assertion": { must_contain, must_not_contain,
+                              must_call_tool, must_not_call_tool },  # optional
+              "judge": { "criteria": "...", "expected_response": "..." }  # optional
+            }
+
+        Omitted fields keep their current values. Supplying ``assertion``
+        flips the strategy to "assertion" (and clears any judge spec);
+        supplying ``judge`` does the inverse. Both at once is rejected.
+        """
+        experiment_id = request.get("experiment_id")
+        question = request.get("question")
+        assertion = request.get("assertion")
+        judge = request.get("judge")
+
+        if not isinstance(experiment_id, str) or not experiment_id:
+            raise HTTPException(
+                status_code=400, detail="`experiment_id` must be a non-empty string."
+            )
+        if question is not None and not isinstance(question, str):
+            raise HTTPException(
+                status_code=400, detail="`question` must be a string when provided."
+            )
+        if assertion is not None and not isinstance(assertion, dict):
+            raise HTTPException(
+                status_code=400, detail="`assertion` must be an object when provided."
+            )
+        if judge is not None and not isinstance(judge, dict):
+            raise HTTPException(
+                status_code=400, detail="`judge` must be an object when provided."
+            )
+        if assertion is not None and judge is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Pass either `assertion` or `judge`, not both.",
+            )
+
+        from mlflow.playground.regression_suite import update_test_case
+
+        try:
+            await asyncio.to_thread(
+                update_test_case,
+                experiment_id,
+                test_case_id,
+                question=question,
+                assertion=assertion,
+                judge=judge,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"updated": test_case_id}
+
     @router.delete("/regression-suite/cases/{test_case_id}")
     async def delete_regression_case(test_case_id: str, experiment_id: str) -> dict[str, Any]:
         """Remove one test case from the regression suite. Idempotent — a
