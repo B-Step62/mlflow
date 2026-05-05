@@ -7,7 +7,6 @@
  * surface that drives transitions / re-runs.
  */
 
-import type { ComponentType } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -38,13 +37,16 @@ const COLUMN_LABEL: Record<ColumnStatus, string> = {
   rejected: 'Rejected',
 };
 
-const COLUMN_ICON: Record<ColumnStatus, ComponentType<{ css?: unknown }>> = {
+// Icon components are forward-ref shapes typed against `IconProps` from the
+// design system; let TS infer the record value type so the strict prop shape
+// doesn't get widened to something incompatible.
+const COLUMN_ICON = {
   todo: CircleOutlineIcon,
   in_progress: LoopIcon,
   review: VisibleIcon,
   done: CheckCircleIcon,
   rejected: CircleOffIcon,
-};
+} satisfies Record<ColumnStatus, unknown>;
 
 const formatRelativeTime = (timestampMs?: number): string => {
   if (!timestampMs) return '';
