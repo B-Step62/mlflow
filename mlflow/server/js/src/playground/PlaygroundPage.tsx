@@ -12,6 +12,7 @@ import {
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorerViewStateContext';
 import { TimelineTree } from '../shared/web-shared/model-trace-explorer/timeline-tree/TimelineTree';
 import { ModelTraceExplorerContentTab } from '../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerContentTab';
+import { ModelTraceExplorerChatTab } from '../shared/web-shared/model-trace-explorer/right-pane/ModelTraceExplorerChatTab';
 import { ModelTraceHeaderStatusTag } from '../shared/web-shared/model-trace-explorer/ModelTraceHeaderStatusTag';
 import {
   ModelTraceExplorerCostHoverCard,
@@ -318,12 +319,19 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
     return { traceStartTime: rootNode.start, traceEndTime: rootNode.end };
   }, [rootNode]);
 
+  // Mirror what the regular right-pane does: when the selected span has
+  // structured chat messages (i.e. it's a chat-completion call with messages /
+  // tool calls), prefer the Chat tab — it renders the conversation as bubbles
+  // with tool-call expansions, which is much friendlier than the raw I/O JSON.
+  // Fall back to the I/O renderer for any other span type.
+  const hasChatMessages = Boolean(selectedNode?.chatMessages?.length);
+
   return (
     <div css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <PlaygroundTraceHeaderPills traceInfo={trace.info} />
       <div
         css={{
-          flex: '1 1 55%',
+          flex: '1 1 35%',
           minHeight: 0,
           overflow: 'auto',
           display: 'flex',
@@ -344,15 +352,27 @@ const PlaygroundTracePaneBody = ({ trace }: { trace: ModelTrace }) => {
       </div>
       <div
         css={{
-          flex: '1 1 45%',
+          flex: '1 1 65%',
           minHeight: 0,
           borderTop: `1px solid ${theme.colors.border}`,
           backgroundColor: 'rgba(255,255,255,0.96)',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'auto',
         }}
       >
-        <ModelTraceExplorerContentTab activeSpan={selectedNode} searchFilter="" activeMatch={matchData.match} />
+        {hasChatMessages && selectedNode ? (
+          <ModelTraceExplorerChatTab
+            chatMessages={selectedNode.chatMessages!}
+            chatTools={selectedNode.chatTools}
+          />
+        ) : (
+          <ModelTraceExplorerContentTab
+            activeSpan={selectedNode}
+            searchFilter=""
+            activeMatch={matchData.match}
+          />
+        )}
       </div>
     </div>
   );
