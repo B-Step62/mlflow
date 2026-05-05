@@ -59,12 +59,15 @@ import {
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
 import { useParams } from '../common/utils/RoutingUtils';
 import {
+  DispatchModal,
   FeedbackComposer,
   FeedbackRail,
   FloatingAnnotateButton,
+  dispatchFeedback,
   feedbacksFromTraceAssessments,
   persistFeedback,
   resolveAnchorOffsets,
+  tagFeedbackWithIssueId,
   useChatSelection,
   type AssistantMessageAnchor,
   type PlaygroundFeedback,
@@ -546,6 +549,88 @@ const PlaygroundPageImpl = () => {
       prev.map((f) => (f.assessment_id === feedback.assessment_id ? { ...f, resolved: true } : f)),
     );
   }, []);
+
+  // --- Dispatch flow (Epic 5) ---------------------------------------------
+  const [dispatchTarget, setDispatchTarget] = useState<PlaygroundFeedback | null>(null);
+  const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
+
+  /**
+   * Build the conversation prefix for the dispatch payload by walking
+   * `messages` up to (but not including) the assistant message that the
+   * feedback is anchored to. The trace generator wants {role, content}
+   * pairs, so we drop client-only fields like requestId / traceId.
+   */
+  const buildDispatchPayload = useCallback(
+    (
+      feedback: PlaygroundFeedback,
+      overrides: { rationale: string; aspect: string; expected_output?: string },
+    ): {
+      rationale: string;
+      failing_assistant_message: string;
+      conversation_prefix: Array<{ role: string; content: string }>;
+      expected_response?: string;
+      aspect?: string;
+      experiment_id?: string;
+      source_trace_id?: string;
+      source_feedback_id?: string;
+    } | null => {
+      const targetIndex = messages.findIndex((m) => m.id === feedback.anchor.message_id);
+      if (targetIndex < 0) return null;
+      const failing = messages[targetIndex];
+      const prefix = messages.slice(0, targetIndex).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      return {
+        rationale: overrides.rationale,
+        failing_assistant_message: failing.content,
+        conversation_prefix: prefix,
+        expected_response: overrides.expected_output,
+        aspect: overrides.aspect,
+        experiment_id: experimentId,
+        source_trace_id: feedback.trace_id,
+        source_feedback_id: feedback.assessment_id,
+      };
+    },
+    [messages, experimentId],
+  );
+
+  const confirmDispatch = useCallback(
+    async (overrides: { rationale: string; aspect: string; expected_output?: string }) => {
+      if (!dispatchTarget) return;
+      const payload = buildDispatchPayload(dispatchTarget, overrides);
+      if (!payload) {
+        setError('Cannot dispatch: the assistant message this feedback is anchored to was not found.');
+        setDispatchTarget(null);
+        return;
+      }
+      setDispatchSubmitting(true);
+      try {
+        const result = await dispatchFeedback(payload);
+        setFeedbacks((prev) =>
+          prev.map((f) =>
+            f.assessment_id === dispatchTarget.assessment_id
+              ? {
+                  ...f,
+                  dispatched_issue_id: result.issue_id,
+                  rationale: overrides.rationale,
+                  aspect: overrides.aspect,
+                  expected_output: overrides.expected_output,
+                }
+              : f,
+          ),
+        );
+        // Best-effort: stamp the assessment so the dispatched link survives a reload.
+        void tagFeedbackWithIssueId(dispatchTarget.trace_id, dispatchTarget.assessment_id, result.issue_id);
+        setDispatchTarget(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setDispatchSubmitting(false);
+      }
+    },
+    [dispatchTarget, buildDispatchPayload],
+  );
 
   useEffect(() => {
     const aborters = traceLookupAbortersRef.current;
@@ -1071,9 +1156,7 @@ const PlaygroundPageImpl = () => {
               flashedId={flashedFeedback}
               callbacks={{
                 onHover: handleFeedbackHover,
-                onDispatch: () => {
-                  setError('Dispatch flow lands in the next commit (YUK-21/22 wire-up).');
-                },
+                onDispatch: (feedback) => setDispatchTarget(feedback),
                 onResolve: resolveFeedback,
               }}
             />
@@ -1159,6 +1242,14 @@ const PlaygroundPageImpl = () => {
           setComposerSelection(null);
         }}
         onSubmit={submitFeedback}
+      />
+
+      <DispatchModal
+        feedback={dispatchTarget}
+        visible={!!dispatchTarget}
+        isSubmitting={dispatchSubmitting}
+        onCancel={() => setDispatchTarget(null)}
+        onConfirm={confirmDispatch}
       />
 
       {/* Full-trace drawer: opens on demand for the full explorer experience
