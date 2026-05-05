@@ -44,7 +44,6 @@ import { withErrorBoundary } from '../common/utils/withErrorBoundary';
 import {
   Alert,
   Button,
-  ChevronDownIcon,
   ChevronRightIcon,
   DagIcon,
   Input,
@@ -467,11 +466,18 @@ const ThinkingDots = () => {
  * sibling open sections in the same flex parent share that space. When
  * collapsed, the section shrinks to just the header row.
  *
+ * Animation is pure CSS via the grid-template-rows `0fr ↔ 1fr` trick —
+ * no JS height measuring, no max-height hack. The body stays mounted
+ * while collapsed (just clipped to zero height) so screen-readers and
+ * scroll positions survive. Chevron rotates 0° ↔ 90° in lockstep.
+ *
  * Why inline rather than a shared component: the right pane is the only
  * accordion in the playground today, and the styling matches the existing
  * pane chrome (blue100 header, secondary border). If a second consumer
  * appears, this is small enough to extract.
  */
+const SECTION_ANIMATION_MS = 200;
+
 const CollapsibleSection = ({
   id,
   title,
@@ -495,9 +501,12 @@ const CollapsibleSection = ({
       css={{
         display: 'flex',
         flexDirection: 'column',
+        // Animate the section's own flex weight so an opening section grows
+        // and a closing one shrinks alongside the body's height transition.
         flex: open ? 1 : '0 0 auto',
         minHeight: 0,
         borderBottom: `1px solid ${theme.colors.border}`,
+        transition: `flex ${SECTION_ANIMATION_MS}ms ease`,
         ':last-of-type': { borderBottom: 'none' },
       }}
     >
@@ -521,7 +530,12 @@ const CollapsibleSection = ({
         }}
       >
         <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
-          {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          <ChevronRightIcon
+            css={{
+              transition: `transform ${SECTION_ANIMATION_MS}ms ease`,
+              transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+            }}
+          />
           {icon}
           <Typography.Text css={{ fontWeight: 700 }}>{title}</Typography.Text>
         </div>
@@ -536,14 +550,36 @@ const CollapsibleSection = ({
           </div>
         )}
       </button>
-      {open && (
-        <div
-          id={`mlflow-playground-section-${id}`}
-          css={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}
-        >
-          {children}
+      {/*
+        grid-template-rows trick: an open section is `1fr` and a closed one
+        is `0fr`. Since `fr` units are interpolatable, the height transitions
+        smoothly. The inner grid item must `overflow: hidden` so the content
+        clips during the animation rather than spilling out of the header.
+      */}
+      <div
+        id={`mlflow-playground-section-${id}`}
+        aria-hidden={!open}
+        css={{
+          display: 'grid',
+          gridTemplateRows: open ? '1fr' : '0fr',
+          minHeight: 0,
+          transition: `grid-template-rows ${SECTION_ANIMATION_MS}ms ease`,
+        }}
+      >
+        <div css={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div
+            css={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'auto',
+            }}
+          >
+            {children}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
