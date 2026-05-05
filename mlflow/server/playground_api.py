@@ -925,6 +925,10 @@ def create_playground_api_router(
                     "agent_response_text": response.text,
                     "agent_tool_calls": response.tool_calls,
                     "verdicts": verdicts,
+                    # Trace produced by this group's agent invocation, so the
+                    # playground can advance the Live Trace pane in lock-step
+                    # with the "Question m/N" navigator.
+                    "trace_id": _extract_trace_id(raw),
                 })
 
             yield _emit({"type": "summary", "total_groups": len(groups_list)})

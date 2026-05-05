@@ -2294,6 +2294,9 @@ const PlaygroundPageImpl = () => {
       agent_response_text: string;
       agent_tool_calls: unknown;
       verdicts: BatchVerdict[];
+      // Trace produced by this group's agent invocation. The Live Trace
+      // pane follows whichever group is currently active in the navigator.
+      trace_id?: string | null;
     };
     type GroupError = { type: 'group_error'; group_index: number; detail: string };
     type Started = { type: 'started'; total_groups: number; total_cases: number };
@@ -2392,6 +2395,7 @@ const PlaygroundPageImpl = () => {
               },
             ],
             verdicts: event.verdicts,
+            trace_id: event.trace_id ?? undefined,
           };
           return { ...current, conversations: next };
         });
