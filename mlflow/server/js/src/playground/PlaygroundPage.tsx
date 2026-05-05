@@ -2503,6 +2503,7 @@ const PlaygroundPageImpl = () => {
               inProgress={regressionInProgress}
               canRun
               onRunSuite={() => void runRegressionSuite()}
+              onCasesChanged={reloadRegressionCount}
             />
           </CollapsibleSection>
 

@@ -235,6 +235,18 @@ def test_question_bank_delete_calls_storage_layer():
     m.assert_called_once_with("exp-1", "qb-1")
 
 
+def test_regression_case_delete_calls_storage_layer():
+    client = create_test_client()
+    with mock.patch("mlflow.playground.regression_suite.delete_test_case") as m:
+        response = client.delete(
+            "/ajax-api/3.0/mlflow/playground/regression-suite/cases/tc-1?experiment_id=exp-1"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "tc-1"}
+    m.assert_called_once_with("exp-1", "tc-1")
+
+
 def test_get_test_case_returns_404_when_no_matching_row():
     import pandas as pd
 

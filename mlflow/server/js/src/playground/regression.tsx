@@ -14,6 +14,7 @@ import {
   NewWindowIcon,
   Spinner,
   Tooltip,
+  TrashIcon,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -41,6 +42,7 @@ export const RegressionTestsPanel = ({
   inProgress,
   canRun,
   onRunSuite,
+  onCasesChanged,
 }: {
   experimentId: string | undefined;
   testCount: number;
@@ -48,6 +50,10 @@ export const RegressionTestsPanel = ({
   inProgress?: { current: number; total: number; passed: number; failed: number };
   canRun: boolean;
   onRunSuite: () => void;
+  // Called whenever the drawer mutates the suite (delete a case today;
+  // edits later). Parent uses this to reload its case count so the
+  // panel header stays in sync without polling.
+  onCasesChanged?: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const disabled = !canRun || testCount === 0;
@@ -134,6 +140,7 @@ export const RegressionTestsPanel = ({
       <BrowseSuiteDrawer
         open={browseSuiteOpen}
         onClose={() => setBrowseSuiteOpen(false)}
+        onCasesChanged={onCasesChanged}
         experimentId={experimentId}
       />
     </>
@@ -422,6 +429,22 @@ export type RegressionCase = {
   promoted: boolean;
 };
 
+/** Remove a single test case from the regression suite. Idempotent. */
+export const deleteRegressionCase = async (experimentId: string, testCaseId: string): Promise<void> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/regression-suite/cases/${encodeURIComponent(testCaseId)}?experiment_id=${encodeURIComponent(experimentId)}`,
+    ),
+    {
+      method: 'DELETE',
+      headers: getDefaultHeaders(document.cookie),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Delete failed (${response.status}): ${await response.text()}`);
+  }
+};
+
 /**
  * Fetch the cockpit-shaped regression-suite cases for an experiment. Used
  * by the Browse-suite drawer (renders one row per case) and by the
@@ -446,10 +469,12 @@ const BrowseSuiteDrawer = ({
   open,
   onClose,
   experimentId,
+  onCasesChanged,
 }: {
   open: boolean;
   onClose: () => void;
   experimentId: string | undefined;
+  onCasesChanged?: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [cases, setCases] = useState<RegressionCase[]>([]);
@@ -520,7 +545,33 @@ const BrowseSuiteDrawer = ({
           {!loading && !error && cases.length > 0 && (
             <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, overflow: 'auto' }}>
               {cases.map((tc, idx) => (
-                <RegressionCaseRow key={tc.test_case_id ?? `case-${idx}`} case_={tc} />
+                <RegressionCaseRow
+                  key={tc.test_case_id ?? `case-${idx}`}
+                  case_={tc}
+                  onDelete={
+                    experimentId && tc.test_case_id
+                      ? async () => {
+                          const idToDelete = tc.test_case_id as string;
+                          // Optimistic remove so the row disappears immediately;
+                          // restore it if the request fails.
+                          setCases((prev) => prev.filter((c) => c.test_case_id !== idToDelete));
+                          try {
+                            await deleteRegressionCase(experimentId, idToDelete);
+                            onCasesChanged?.();
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : String(e));
+                            // Reload from the server to reconcile.
+                            try {
+                              const fresh = await fetchRegressionCases(experimentId);
+                              setCases(fresh);
+                            } catch {
+                              /* surfaced via the error banner */
+                            }
+                          }
+                        }
+                      : undefined
+                  }
+                />
               ))}
             </div>
           )}
@@ -538,7 +589,7 @@ const BrowseSuiteDrawer = ({
  * chips, prose criteria render as italic text, expected responses render
  * as preformatted text.
  */
-const RegressionCaseRow = ({ case_ }: { case_: RegressionCase }) => {
+const RegressionCaseRow = ({ case_, onDelete }: { case_: RegressionCase; onDelete?: () => void }) => {
   const { theme } = useDesignSystemTheme();
   const sentences = buildAssertionSentences(case_);
 
@@ -554,9 +605,25 @@ const RegressionCaseRow = ({ case_ }: { case_: RegressionCase }) => {
         backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <Typography.Text css={{ whiteSpace: 'pre-wrap' }}>
-        {case_.input_question || <em>(no user message in prefix)</em>}
-      </Typography.Text>
+      <div css={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.sm }}>
+        <Typography.Text css={{ whiteSpace: 'pre-wrap', flex: 1, minWidth: 0 }}>
+          {case_.input_question || <em>(no user message in prefix)</em>}
+        </Typography.Text>
+        {onDelete && (
+          <Tooltip
+            componentId="mlflow.playground.regression.case-row.delete.tooltip"
+            content="Remove from suite"
+          >
+            <Button
+              componentId="mlflow.playground.regression.case-row.delete"
+              size="small"
+              icon={<TrashIcon />}
+              aria-label="Remove from suite"
+              onClick={onDelete}
+            />
+          </Tooltip>
+        )}
+      </div>
       {sentences.length === 0 ? (
         <Typography.Text size="sm" color="secondary">
           (no conditions — likely malformed spec)

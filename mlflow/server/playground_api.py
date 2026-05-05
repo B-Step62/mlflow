@@ -683,6 +683,19 @@ def create_playground_api_router(
             "agent_tool_calls": response.tool_calls,
         }
 
+    @router.delete("/regression-suite/cases/{test_case_id}")
+    async def delete_regression_case(test_case_id: str, experiment_id: str) -> dict[str, Any]:
+        """Remove one test case from the regression suite. Idempotent — a
+        double-click in the UI shouldn't 404.
+        """
+        from mlflow.playground.regression_suite import delete_test_case
+
+        try:
+            await asyncio.to_thread(delete_test_case, experiment_id, test_case_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"deleted": test_case_id}
+
     @router.get("/regression-suite/run-grouped/stream")
     async def run_regression_suite_grouped_stream(experiment_id: str) -> StreamingResponse:
         """Run the entire regression suite, grouping cases by their input

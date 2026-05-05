@@ -52,9 +52,54 @@ def append_test_case(
     return dataset
 
 
+def delete_test_case(experiment_id: str, test_case_id: str) -> None:
+    """Remove one test case by ``test_case_id``. No-op if it doesn't exist —
+    matches HTTP DELETE semantics so a double-click in the UI doesn't error.
+
+    Resolves ``test_case_id`` (stored in ``expectations``) to one or more
+    ``dataset_record_id`` values, then calls ``delete_records`` which works
+    in record-id space. Multiple matches are rare but possible if a case
+    was re-dispatched and we want to keep the API forgiving — delete all
+    rows that claim the same ``test_case_id``.
+    """
+    import json
+
+    try:
+        dataset = get_dataset(name=regression_dataset_name(experiment_id))
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return
+        raise
+
+    df = dataset.to_df()
+    if df.empty:
+        return
+
+    def _coerce(v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return v
+        return v
+
+    record_ids: list[str] = []
+    for row in df.to_dict(orient="records"):
+        expectations = _coerce(row.get("expectations") or {})
+        if not isinstance(expectations, dict):
+            continue
+        if expectations.get("test_case_id") == test_case_id:
+            rid = row.get("dataset_record_id")
+            if rid:
+                record_ids.append(rid)
+    if record_ids:
+        dataset.delete_records(record_ids)
+
+
 __all__ = [
     "REGRESSION_DATASET_PREFIX",
     "append_test_case",
+    "delete_test_case",
     "get_or_create_regression_dataset",
     "regression_dataset_name",
 ]
