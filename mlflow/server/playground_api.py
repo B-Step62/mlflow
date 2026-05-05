@@ -279,14 +279,35 @@ def create_playground_api_router(
     register_main_connection(runtime)
     start_health_poll_thread(runtime)
 
+    def _active_agent_url() -> str:
+        """Return the URL of the active connection (or runtime default)."""
+        with runtime.connections_lock:
+            active_id = runtime.active_connection_id
+            if active_id and active_id in runtime.connections:
+                return runtime.connections[active_id].agent_url
+        return runtime.agent_url
+
+    def _update_main_agent_url(agent_url: str) -> None:
+        """/config POST swaps the main agent — keep registry in sync."""
+        runtime.agent_url = agent_url
+        with runtime.connections_lock:
+            for connection in runtime.connections.values():
+                if connection.name == "main":
+                    connection.agent_url = agent_url
+                    connection.consecutive_health_failures = 0
+                    if connection.status == "dead":
+                        connection.status = "ready"
+                    break
+
     @router.get("/config")
     async def get_config() -> dict[str, Any]:
-        await asyncio.to_thread(_ensure_agent_running, runtime, runtime.agent_url)
+        agent_url = _active_agent_url()
+        await asyncio.to_thread(_ensure_agent_running, runtime, agent_url)
         config = _load_playground_config(runtime.config_path)
         return {
             **config,
-            "agent_url": runtime.agent_url,
-            "agent_connected": _is_agent_healthy_sync(runtime.agent_url),
+            "agent_url": agent_url,
+            "agent_connected": _is_agent_healthy_sync(agent_url),
         }
 
     @router.post("/config")
@@ -297,7 +318,7 @@ def create_playground_api_router(
         if not _is_agent_healthy_sync(agent_url):
             raise HTTPException(status_code=502, detail="Agent health check failed.")
 
-        runtime.agent_url = agent_url
+        _update_main_agent_url(agent_url)
         return {"connected": True, "agent_url": agent_url}
 
     @router.post("/chat")
@@ -316,7 +337,7 @@ def create_playground_api_router(
                 raise HTTPException(status_code=400, detail="Message content must be a string.")
             normalized_messages.append({"role": role, "content": content})
 
-        agent_url = _normalize_agent_url(request.get("agent_url") or runtime.agent_url)
+        agent_url = _normalize_agent_url(request.get("agent_url") or _active_agent_url())
         request_id = request.get("request_id")
         if request_id is not None and not isinstance(request_id, str):
             raise HTTPException(status_code=400, detail="`request_id` must be a string.")
@@ -345,7 +366,6 @@ def create_playground_api_router(
             request_id=request_id,
             session_id=session_id,
         )
-        runtime.agent_url = agent_url
 
         assistant_text = _extract_assistant_text(response_json)
         trace_id = _extract_trace_id(response_json)
@@ -359,6 +379,16 @@ def create_playground_api_router(
                 )
             except Exception:
                 tool_calls = []
+
+        # Whoever owns the active connection — `main` or a worker — should
+        # see its agent_url reflect what `/chat` actually hit, in case the
+        # caller passed an explicit override.
+        with runtime.connections_lock:
+            active_id = runtime.active_connection_id
+            if active_id and active_id in runtime.connections:
+                runtime.connections[active_id].agent_url = agent_url
+            if runtime.connections.get(active_id) and runtime.connections[active_id].name == "main":
+                runtime.agent_url = agent_url
 
         return StreamingResponse(
             _demo_stream_response(
@@ -673,7 +703,7 @@ def create_playground_api_router(
         # endpoint uses so protocol detection and payload shaping match.
         try:
             raw, _protocol = await _invoke_agent(
-                agent_url=runtime.agent_url,
+                agent_url=_active_agent_url(),
                 messages=messages,
                 timeout_seconds=120.0,
             )
@@ -990,7 +1020,7 @@ def create_playground_api_router(
                     group_request_id = f"reg-{parent_run_id}-{gi}-{_uuid.uuid4().hex[:8]}"
                     try:
                         raw, _protocol = await _invoke_agent(
-                            agent_url=runtime.agent_url,
+                            agent_url=_active_agent_url(),
                             messages=messages,
                             timeout_seconds=120.0,
                             request_id=group_request_id,
@@ -1324,7 +1354,7 @@ def create_playground_api_router(
 
             try:
                 raw, _protocol = await _invoke_agent(
-                    agent_url=runtime.agent_url,
+                    agent_url=_active_agent_url(),
                     messages=messages,
                     timeout_seconds=120.0,
                 )
