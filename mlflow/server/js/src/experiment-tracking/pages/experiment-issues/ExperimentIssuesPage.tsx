@@ -30,6 +30,7 @@ const ExperimentIssuesPageImpl = () => {
         visible={!!openIssueId}
         onClose={() => setOpenIssueId(null)}
         onIssueUpdated={() => setRefreshKey((n) => n + 1)}
+        experimentId={experimentId}
       />
     </>
   );
