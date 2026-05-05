@@ -52,6 +52,7 @@ import {
   Input,
   MegaphoneIcon,
   PlayIcon,
+  SendIcon,
   SpeechBubbleIcon,
   Spinner,
   Tooltip,
@@ -2075,35 +2076,45 @@ const PlaygroundPageImpl = () => {
               }}
               onRunAll={() => void runAllQuestions()}
             />
-            <Input.TextArea
-              componentId="mlflow.playground.composer"
-              autoSize={{ minRows: 2, maxRows: 8 }}
-              placeholder="Ask the agent something. Press Enter to send, Shift+Enter for a newline."
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendMessage();
-                }
-              }}
-            />
-            <div
-              css={{
-                marginTop: theme.spacing.sm,
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-              }}
-            >
-              <Button
-                componentId="mlflow.playground.send"
-                type="primary"
-                onClick={() => void sendMessage()}
-                disabled={!draft.trim() || isSubmitting}
+            {/* Send button is inlined into the bottom-right corner of the
+                textarea via absolute positioning. The textarea owns its own
+                padding (antd default), so we add a small right-margin via
+                paddingRight on the inner styles to keep text from running
+                under the button. */}
+            <div css={{ position: 'relative' }}>
+              <Input.TextArea
+                componentId="mlflow.playground.composer"
+                autoSize={{ minRows: 2, maxRows: 8 }}
+                placeholder="Ask the agent something. Press Enter to send, Shift+Enter for a newline."
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+                css={{ paddingRight: 44 }}
+              />
+              <Tooltip
+                componentId="mlflow.playground.send.tooltip"
+                content={isSubmitting ? 'Sending…' : 'Send (Enter)'}
               >
-                {isSubmitting ? <Spinner size="small" /> : 'Send'}
-              </Button>
+                <Button
+                  componentId="mlflow.playground.send"
+                  type="primary"
+                  size="small"
+                  icon={isSubmitting ? <Spinner size="small" /> : <SendIcon />}
+                  aria-label="Send"
+                  onClick={() => void sendMessage()}
+                  disabled={!draft.trim() || isSubmitting}
+                  css={{
+                    position: 'absolute',
+                    right: theme.spacing.xs,
+                    bottom: theme.spacing.xs,
+                  }}
+                />
+              </Tooltip>
             </div>
           </div>
         </section>
