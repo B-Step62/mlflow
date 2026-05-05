@@ -440,6 +440,7 @@ async def _invoke_agent(
     messages: list[dict[str, str]],
     timeout_seconds: float,
     request_id: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     protocol = await _detect_protocol(agent_url, timeout_seconds)
     payload = _build_agent_payload(messages, protocol)
@@ -448,6 +449,13 @@ async def _invoke_agent(
     if request_id:
         headers["x-mlflow-trace-tags"] = json.dumps(
             {"playground.request_id": request_id}
+        )
+    if session_id:
+        # Standard MLflow session key — search filters spell it as
+        # `metadata.`mlflow.trace.session` = '<id>'`. Sent as metadata
+        # (not a tag) per the agent server's documented convention.
+        headers["x-mlflow-trace-metadata"] = json.dumps(
+            {"mlflow.trace.session": session_id}
         )
 
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
