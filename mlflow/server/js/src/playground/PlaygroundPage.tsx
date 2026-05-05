@@ -78,7 +78,7 @@ import {
   getAjaxUrl,
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
-import { useParams } from '../common/utils/RoutingUtils';
+import { useParams, useSearchParams } from '../common/utils/RoutingUtils';
 import {
   FloatingAnnotateButton,
   InlineCommentMarks,
@@ -94,6 +94,7 @@ import {
   type FeedbackVerdict,
   type PlaygroundFeedback,
 } from './feedback';
+import { ConnectionPicker, useConnections } from './connections';
 import {
   IssueDetailDrawer,
   fetchIssues,
@@ -1767,6 +1768,40 @@ const PlaygroundPageImpl = () => {
     void reloadTasks();
   }, [reloadTasks]);
 
+  // Connection registry (Epic 8). Polls /agent-connections for the picker
+  // dropdown; YUK-53 layers a notification on top of the same poll.
+  const {
+    connections,
+    activeConnectionId,
+    activate: activateConnection,
+  } = useConnections();
+
+  // ?activate_for_issue=X deeplink — when the kanban "Test in playground →"
+  // button routes here, find the matching ready worker and activate it.
+  // Strips the param so the user can refresh without re-triggering.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [deeplinkBanner, setDeeplinkBanner] = useState<string | null>(null);
+  const deeplinkProcessedRef = useRef(false);
+  useEffect(() => {
+    const issueId = searchParams.get('activate_for_issue');
+    if (!issueId || deeplinkProcessedRef.current || connections.length === 0) return;
+    deeplinkProcessedRef.current = true;
+    const match = connections.find(
+      (c) => c.source_issue_id === issueId && c.status === 'ready',
+    );
+    const next = new URLSearchParams(searchParams);
+    next.delete('activate_for_issue');
+    setSearchParams(next, { replace: true });
+    if (match) {
+      void activateConnection(match.connection_id);
+      setDeeplinkBanner(
+        `Switched to ${match.name}. Send a message to test the worker's fix.`,
+      );
+    } else {
+      setDeeplinkBanner(`No worker is ready for issue ${issueId} yet.`);
+    }
+  }, [searchParams, connections, activateConnection, setSearchParams]);
+
   // --- Inline test-run -----------------------------------------------------
   // Run the regression test for a dispatched issue straight from the inline
   // popover so the user doesn't have to open the detail drawer. The verdict
@@ -2832,25 +2867,27 @@ const PlaygroundPageImpl = () => {
           <Typography.Title level={2} withoutMargins>
             Agent Playground
           </Typography.Title>
-          <span
-            title={config?.agent_connected ? 'Agent connected' : 'Agent disconnected'}
-            css={{
-              display: 'inline-block',
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              backgroundColor: config?.agent_connected ? theme.colors.green500 : theme.colors.grey400,
-            }}
+          <ConnectionPicker
+            connections={connections}
+            activeConnectionId={activeConnectionId}
+            onActivate={(id) => void activateConnection(id)}
           />
-          <Typography.Text color="secondary" size="sm">
-            {config?.agent_connected ? 'Connected' : 'Waiting for agent'}
-          </Typography.Text>
         </div>
         <Typography.Text color="secondary" css={{ maxWidth: 760 }}>
           Chat with a local `@invoke` agent, watch the real MLflow trace stream in for each turn, and leave feedback
           from the built-in assessments pane.
         </Typography.Text>
       </div>
+
+      {deeplinkBanner && (
+        <Alert
+          componentId="mlflow.playground.deeplink-banner"
+          type="info"
+          message={deeplinkBanner}
+          closable
+          onClose={() => setDeeplinkBanner(null)}
+        />
+      )}
 
       {error && (
         <Alert
