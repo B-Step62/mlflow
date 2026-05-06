@@ -112,24 +112,47 @@ Return JSON matching the schema.
 """
 
 
+_DEFAULT_DATABRICKS_ENDPOINT = "databricks-claude-sonnet-4-5"
+
+
 def _default_llm_call(prompt: str) -> str:
-    """Invoke the Databricks managed judge model for test-case generation.
+    """Invoke a Databricks model-serving endpoint via its OpenAI-compatible API.
 
-    Routes through ``invoke_model_without_tracing`` with
-    ``model_uri="databricks"`` — Databricks workspace auth is picked up
-    from ``MLFLOW_TRACKING_URI=databricks`` / the workspace's PAT, so no
-    raw provider API key is needed. The Databricks managed-judge path
-    doesn't honor ``response_format``, so the prompt explicitly asks for
-    JSON matching the schema and we parse it via
-    ``_LLMTestCase.model_validate_json(...)``.
+    Databricks model serving exposes every endpoint at
+    ``<DATABRICKS_HOST>/serving-endpoints`` with an OpenAI-shaped
+    chat-completions surface, so we just point the OpenAI client at it
+    and pass the workspace PAT as the API key. No special MLflow judge
+    adapter, no `databricks-agents` dependency.
+
+    Configuration (all from env):
+      * ``DATABRICKS_HOST`` — workspace URL.
+      * ``DATABRICKS_TOKEN`` — personal access token.
+      * ``MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT`` — endpoint name (optional;
+        defaults to ``databricks-claude-sonnet-4-5``).
+
+    The prompt asks the model to return JSON matching the schema; we
+    parse it via ``_LLMTestCase.model_validate_json(...)`` downstream.
     """
-    from mlflow.genai.simulators.utils import invoke_model_without_tracing
-    from mlflow.types.llm import ChatMessage
+    import os
 
-    return invoke_model_without_tracing(
-        model_uri="databricks",
-        messages=[ChatMessage(role="user", content=prompt)],
+    host = os.environ.get("DATABRICKS_HOST", "").rstrip("/")
+    token = os.environ.get("DATABRICKS_TOKEN", "")
+    if not host or not token:
+        raise RuntimeError(
+            "Test-case generation needs Databricks workspace credentials. "
+            "Set DATABRICKS_HOST (workspace URL) and DATABRICKS_TOKEN (PAT) "
+            "in the environment running `mlflow agent playground`, then retry."
+        )
+    endpoint = os.environ.get("MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT", _DEFAULT_DATABRICKS_ENDPOINT)
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=token, base_url=f"{host}/serving-endpoints")
+    response = client.chat.completions.create(
+        model=endpoint,
+        messages=[{"role": "user", "content": prompt}],
     )
+    return response.choices[0].message.content or ""
 
 
 class TestCaseGenerator:
