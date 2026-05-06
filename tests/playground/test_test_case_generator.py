@@ -207,7 +207,7 @@ def test_default_llm_call_uses_databricks_serving_endpoint(monkeypatch):
         base_url="https://example.cloud.databricks.com/serving-endpoints",
     )
     create_call = fake_client.chat.completions.create.call_args
-    assert create_call.kwargs["model"] == "databricks-claude-sonnet-4-5"
+    assert create_call.kwargs["model"] == "databricks-gpt-5-4"
     assert create_call.kwargs["messages"] == [{"role": "user", "content": "hello world"}]
 
 
