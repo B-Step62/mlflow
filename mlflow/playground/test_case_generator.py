@@ -112,7 +112,7 @@ Return JSON matching the schema.
 """
 
 
-_DEFAULT_DATABRICKS_ENDPOINT = "databricks-claude-sonnet-4-5"
+_DEFAULT_DATABRICKS_ENDPOINT = "databricks-gpt-5-4"
 
 
 def _default_llm_call(prompt: str) -> str:
@@ -128,7 +128,7 @@ def _default_llm_call(prompt: str) -> str:
       * ``DATABRICKS_HOST`` — workspace URL.
       * ``DATABRICKS_TOKEN`` — personal access token.
       * ``MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT`` — endpoint name (optional;
-        defaults to ``databricks-claude-sonnet-4-5``).
+        defaults to ``databricks-gpt-5-4``).
 
     The prompt asks the model to return JSON matching the schema; we
     parse it via ``_LLMTestCase.model_validate_json(...)`` downstream.
