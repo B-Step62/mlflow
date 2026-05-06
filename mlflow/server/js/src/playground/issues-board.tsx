@@ -57,7 +57,7 @@ const formatRelativeTime = (timestampMs?: number): string => {
   return `${Math.floor(diffSec / 86_400)}d ago`;
 };
 
-const shortenId = (issueId: string): string => {
+export const shortenId = (issueId: string): string => {
   // Compact display for the top-left of each card. ``iss-f2c123abc...`` →
   // ``iss-f2c``; the full id is still visible in the detail drawer.
   const stripped = issueId.startsWith('iss-') ? issueId.slice(4) : issueId;
@@ -72,8 +72,26 @@ const STATUS_ICON_COLOR: Record<ColumnStatus, (theme: any) => string> = {
   rejected: (t) => t.colors.red500,
 };
 
-const resolveStatus = (status: string): ColumnStatus =>
+export const resolveIssueStatus = (status: string): ColumnStatus =>
   (COLUMN_ORDER as readonly string[]).includes(status) ? (status as ColumnStatus) : 'todo';
+
+const resolveStatus = resolveIssueStatus;
+
+/**
+ * Render the same status icon (and color) the kanban board uses, for
+ * compact summary surfaces (e.g. the playground's right-pane Tasks list)
+ * that want visual parity without re-deriving the icon mapping.
+ */
+export const IssueStatusIcon = ({ status }: { status: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const resolved = resolveIssueStatus(status);
+  const Icon = COLUMN_ICON[resolved];
+  return (
+    <span css={{ color: STATUS_ICON_COLOR[resolved](theme), display: 'inline-flex' }}>
+      <Icon />
+    </span>
+  );
+};
 
 const IssueCard = ({
   issue,
