@@ -987,7 +987,12 @@ def serve(
             host=host,
             port=port,
             static_prefix=None,
-            workers=None,
+            # Force a single uvicorn worker. The Epic 8 agent-connection
+            # registry lives in-process on the FastAPI app's PlaygroundRuntime,
+            # so multiple workers each get their own registry and `/agent-
+            # connections` polls land on the wrong one. Single-user dev tool
+            # — no need for parallel workers anyway.
+            workers=1,
             gunicorn_opts=None,
             waitress_opts=None,
             expose_prometheus=None,
