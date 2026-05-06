@@ -1,16 +1,19 @@
 /**
- * Feedback / annotation rail for the agent playground (Epic 4).
+ * Feedback / annotation system for the agent playground.
  *
- * Implements YUK-17 (anchor + selection capture), YUK-18 (composer popover),
- * YUK-19 (sidebar rail), and the YUK-20 round-trip through the trace
- * assessments API. Feedback is stored as a Feedback assessment on the
- * source trace with `metadata.anchor` carrying the JSON-serialized text
- * range so the cockpit can re-resolve it on reload.
+ * Comments are stored as Feedback assessments on the source trace with
+ * `metadata.anchor` carrying the serialized text range. They render as
+ * inline highlights on the assistant message (Google-Docs style); the
+ * `InlineCommentPopover` handles both create (from a floating selection
+ * trigger) and view (from a click on an existing highlight). Saving a
+ * comment auto-creates the corresponding Issue + regression test case;
+ * "Dispatch" is no longer a user-facing step. (YUK-57)
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { Button, Input, Modal, Tag, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Button, CloseIcon, Input, Typography, useDesignSystemTheme } from '@databricks/design-system';
 
 import {
   getAjaxUrl,
@@ -40,6 +43,12 @@ export type AssistantMessageAnchor = {
 export const ASPECT_OPTIONS = ['quality', 'safety', 'groundedness', 'tone'] as const;
 export type Aspect = (typeof ASPECT_OPTIONS)[number] | string;
 
+export type FeedbackVerdict = {
+  passed: boolean;
+  trace_id?: string;
+  reasons?: string[];
+};
+
 export type PlaygroundFeedback = {
   assessment_id: string; // server-generated once persisted, optimistic id before
   trace_id: string;
@@ -47,11 +56,14 @@ export type PlaygroundFeedback = {
   aspect: Aspect;
   expected_output?: string;
   anchor: AssistantMessageAnchor;
-  // Set once a Dispatch creates the corresponding Issue.
+  // Set once saving completes — auto-dispatched alongside persistFeedback.
   dispatched_issue_id?: string;
   // UI-only state; not persisted.
   resolved?: boolean;
   pending?: boolean;
+  // Last regression-test verdict for this feedback's issue, populated when
+  // the user runs the test from the inline popover. Drives highlight color.
+  latestVerdict?: FeedbackVerdict;
 };
 
 // --- Selection capture -------------------------------------------------------
@@ -193,311 +205,6 @@ export const FloatingAnnotateButton = ({
     >
       💬 Comment
     </button>
-  );
-};
-
-// --- Composer popover --------------------------------------------------------
-
-export const FeedbackComposer = ({
-  selection,
-  visible,
-  onCancel,
-  onSubmit,
-}: {
-  selection: ActiveSelection | null;
-  visible: boolean;
-  onCancel: () => void;
-  onSubmit: (input: {
-    rationale: string;
-    aspect: Aspect;
-    expected_output?: string;
-    anchor: AssistantMessageAnchor;
-  }) => Promise<void> | void;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const [rationale, setRationale] = useState('');
-  const [aspect, setAspect] = useState<Aspect>('quality');
-  const [expectedOutput, setExpectedOutput] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  useEffect(() => {
-    if (visible) {
-      // Reset every time the composer reopens for a new selection.
-      setRationale('');
-      setAspect('quality');
-      setExpectedOutput('');
-      setSubmitting(false);
-    }
-  }, [visible, selection?.start, selection?.end, selection?.message_id]);
-
-  useLayoutEffect(() => {
-    if (visible) {
-      // Defer focus a tick so Modal's transition doesn't steal it back.
-      const t = setTimeout(() => textareaRef.current?.focus(), 50);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [visible]);
-
-  const submit = async () => {
-    if (!selection || !rationale.trim()) return;
-    setSubmitting(true);
-    try {
-      await onSubmit({
-        rationale: rationale.trim(),
-        aspect,
-        expected_output: expectedOutput.trim() || undefined,
-        anchor: {
-          message_id: selection.message_id,
-          trace_id: selection.trace_id,
-          start: selection.start,
-          end: selection.end,
-          selected_text: selection.selected_text,
-          prefix: selection.prefix,
-          suffix: selection.suffix,
-        },
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal
-      componentId="mlflow.playground.feedback.composer"
-      visible={visible}
-      title="Leave feedback"
-      onCancel={onCancel}
-      okText="Save"
-      cancelText="Cancel"
-      onOk={submit}
-      okButtonProps={{
-        disabled: !rationale.trim() || submitting,
-        loading: submitting,
-      }}
-    >
-      {selection && (
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-          <div
-            css={{
-              padding: theme.spacing.sm,
-              borderLeft: `3px solid ${theme.colors.blue400}`,
-              backgroundColor: 'rgba(238,244,255,0.6)',
-              fontStyle: 'italic',
-              maxHeight: 96,
-              overflow: 'auto',
-            }}
-          >
-            "{selection.selected_text}"
-          </div>
-          <div>
-            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>Aspect</Typography.Text>
-            <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
-              {ASPECT_OPTIONS.map((option) => (
-                <Tag
-                  key={option}
-                  componentId="mlflow.playground.feedback.aspect-chip"
-                  color={aspect === option ? 'indigo' : 'default'}
-                  onClick={() => setAspect(option)}
-                  css={{ cursor: 'pointer' }}
-                >
-                  {option}
-                </Tag>
-              ))}
-            </div>
-          </div>
-          <div>
-            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-              What's wrong? (required)
-            </Typography.Text>
-            <Input.TextArea
-              componentId="mlflow.playground.feedback.rationale"
-              ref={textareaRef as never}
-              value={rationale}
-              onChange={(e) => setRationale(e.target.value)}
-              autoSize={{ minRows: 3, maxRows: 8 }}
-              placeholder="Describe the problem. e.g. 'tone is too casual for support'"
-            />
-          </div>
-          <div>
-            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-              Expected response (optional)
-            </Typography.Text>
-            <Input.TextArea
-              componentId="mlflow.playground.feedback.expected"
-              value={expectedOutput}
-              onChange={(e) => setExpectedOutput(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 6 }}
-              placeholder="Optional: what should the assistant have said?"
-            />
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-};
-
-// --- Sidebar rail ------------------------------------------------------------
-
-export type FeedbackCardCallbacks = {
-  onHover: (feedbackId: string | null) => void;
-  onDispatch: (feedback: PlaygroundFeedback) => void;
-  onResolve: (feedback: PlaygroundFeedback) => void;
-  onOpenIssue?: (issueId: string) => void;
-  // Run the regression test for a dispatched feedback's issue. Only shown when
-  // `feedback.dispatched_issue_id` is set. The page wires this to
-  // `runIssueTest(issueId)` and surfaces the verdict via a top-right toast.
-  onRunTest?: (feedback: PlaygroundFeedback) => void;
-  // Set of dispatched-issue ids whose test run is currently in flight; the
-  // matching feedback card shows a spinner instead of the "Test" button.
-  runningTestIssueIds?: Set<string>;
-  // Set of feedback assessment ids whose dispatch is currently in flight.
-  // Drives the [Dispatch] button's loading spinner.
-  dispatchingIds?: Set<string>;
-};
-
-export const FeedbackRail = ({
-  feedbacks,
-  hoveredId,
-  flashedId,
-  callbacks,
-}: {
-  feedbacks: PlaygroundFeedback[];
-  hoveredId: string | null;
-  flashedId: string | null;
-  callbacks: FeedbackCardCallbacks;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const visible = feedbacks.filter((f) => !f.resolved);
-
-  if (visible.length === 0) {
-    return (
-      <div
-        css={{
-          height: '100%',
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: theme.spacing.md,
-          color: theme.colors.textSecondary,
-          fontSize: theme.typography.fontSizeSm,
-          textAlign: 'center',
-        }}
-      >
-        Select text in any assistant reply and click 💬 to leave feedback.
-      </div>
-    );
-  }
-
-  return (
-    <div
-      css={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.sm,
-        padding: theme.spacing.md,
-        overflowY: 'auto',
-      }}
-    >
-      {visible.map((feedback) => {
-        const flashing = flashedId === feedback.assessment_id;
-        const dispatched = !!feedback.dispatched_issue_id;
-        return (
-          <div
-            key={feedback.assessment_id}
-            data-mlflow-feedback-card={feedback.assessment_id}
-            onMouseEnter={() => callbacks.onHover(feedback.assessment_id)}
-            onMouseLeave={() => callbacks.onHover(null)}
-            css={{
-              border: `1px solid ${hoveredId === feedback.assessment_id ? theme.colors.blue400 : theme.colors.border}`,
-              borderRadius: theme.borders.borderRadiusMd,
-              padding: theme.spacing.sm,
-              backgroundColor: flashing ? 'rgba(255, 244, 200, 0.85)' : 'rgba(255,255,255,0.96)',
-              transition: 'background-color 0.18s ease, border-color 0.12s ease',
-              opacity: feedback.pending ? 0.6 : 1,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: theme.spacing.xs,
-            }}
-          >
-            <div css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.xs }}>
-              <Tag componentId="mlflow.playground.feedback.aspect-tag" color="indigo">
-                {feedback.aspect}
-              </Tag>
-              {dispatched && (
-                <button
-                  type="button"
-                  onClick={() => callbacks.onOpenIssue?.(feedback.dispatched_issue_id as string)}
-                  css={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    color: theme.colors.green600,
-                    fontSize: theme.typography.fontSizeSm,
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Dispatched ✓ → {feedback.dispatched_issue_id}
-                </button>
-              )}
-            </div>
-            <Typography.Text
-              size="sm"
-              color="secondary"
-              css={{
-                fontStyle: 'italic',
-                borderLeft: `2px solid ${theme.colors.border}`,
-                paddingLeft: theme.spacing.xs,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              "{feedback.anchor.selected_text}"
-            </Typography.Text>
-            <Typography.Text>{feedback.rationale}</Typography.Text>
-            {feedback.expected_output && (
-              <Typography.Text size="sm" color="secondary">
-                expected: "{feedback.expected_output}"
-              </Typography.Text>
-            )}
-            <div css={{ display: 'flex', gap: theme.spacing.xs, marginTop: theme.spacing.xs }}>
-              <Button
-                componentId="mlflow.playground.feedback.dispatch"
-                type="primary"
-                size="small"
-                disabled={!feedback.rationale.trim() || dispatched || feedback.pending}
-                loading={callbacks.dispatchingIds?.has(feedback.assessment_id)}
-                onClick={() => callbacks.onDispatch(feedback)}
-              >
-                {dispatched ? 'Dispatched' : 'Dispatch'}
-              </Button>
-              {dispatched && callbacks.onRunTest && (
-                <Button
-                  componentId="mlflow.playground.feedback.run-test"
-                  size="small"
-                  loading={callbacks.runningTestIssueIds?.has(feedback.dispatched_issue_id as string)}
-                  onClick={() => callbacks.onRunTest?.(feedback)}
-                >
-                  Test
-                </Button>
-              )}
-              <Button
-                componentId="mlflow.playground.feedback.resolve"
-                size="small"
-                disabled={feedback.pending}
-                onClick={() => callbacks.onResolve(feedback)}
-              >
-                Resolve
-              </Button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 };
 
@@ -661,115 +368,6 @@ export const tagFeedbackWithIssueId = async (traceId: string, assessmentId: stri
   }
 };
 
-export const DispatchModal = ({
-  feedback,
-  visible,
-  isSubmitting,
-  onCancel,
-  onConfirm,
-}: {
-  feedback: PlaygroundFeedback | null;
-  visible: boolean;
-  isSubmitting: boolean;
-  onCancel: () => void;
-  onConfirm: (overrides: { rationale: string; aspect: string; expected_output?: string }) => void;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const [rationale, setRationale] = useState('');
-  const [aspect, setAspect] = useState<Aspect>('quality');
-  const [expectedOutput, setExpectedOutput] = useState('');
-
-  useEffect(() => {
-    if (visible && feedback) {
-      setRationale(feedback.rationale);
-      setAspect(feedback.aspect);
-      setExpectedOutput(feedback.expected_output ?? '');
-    }
-  }, [visible, feedback]);
-
-  return (
-    <Modal
-      componentId="mlflow.playground.feedback.dispatch-modal"
-      visible={visible}
-      title="Dispatch as Issue"
-      okText="Create Issue"
-      cancelText="Cancel"
-      onCancel={onCancel}
-      onOk={() =>
-        onConfirm({
-          rationale: rationale.trim(),
-          aspect,
-          expected_output: expectedOutput.trim() || undefined,
-        })
-      }
-      okButtonProps={{
-        disabled: !rationale.trim() || isSubmitting,
-        loading: isSubmitting,
-      }}
-    >
-      {feedback && (
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-          <Typography.Text color="secondary" size="sm">
-            We'll generate a runnable test from this feedback, store it in this experiment's regression dataset, and
-            create an Issue at state=todo with `source_trace_id` set to{' '}
-            <code css={{ fontFamily: 'monospace' }}>{feedback.trace_id}</code>.
-          </Typography.Text>
-          <div
-            css={{
-              padding: theme.spacing.sm,
-              borderLeft: `3px solid ${theme.colors.blue400}`,
-              backgroundColor: 'rgba(238,244,255,0.6)',
-              fontStyle: 'italic',
-              maxHeight: 96,
-              overflow: 'auto',
-            }}
-          >
-            "{feedback.anchor.selected_text}"
-          </div>
-          <div>
-            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>Aspect</Typography.Text>
-            <div css={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
-              {ASPECT_OPTIONS.map((option) => (
-                <Tag
-                  key={option}
-                  componentId="mlflow.playground.feedback.dispatch-aspect-chip"
-                  color={aspect === option ? 'indigo' : 'default'}
-                  onClick={() => setAspect(option)}
-                  css={{ cursor: 'pointer' }}
-                >
-                  {option}
-                </Tag>
-              ))}
-            </div>
-          </div>
-          <div>
-            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-              Rationale (drives the generated test)
-            </Typography.Text>
-            <Input.TextArea
-              componentId="mlflow.playground.feedback.dispatch-rationale"
-              value={rationale}
-              onChange={(e) => setRationale(e.target.value)}
-              autoSize={{ minRows: 3, maxRows: 8 }}
-            />
-          </div>
-          <div>
-            <Typography.Text css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-              Expected response (optional)
-            </Typography.Text>
-            <Input.TextArea
-              componentId="mlflow.playground.feedback.dispatch-expected"
-              value={expectedOutput}
-              onChange={(e) => setExpectedOutput(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 6 }}
-            />
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-};
-
 // --- Anchor highlight helpers ------------------------------------------------
 
 /**
@@ -795,3 +393,520 @@ export const resolveAnchorOffsets = (
   }
   return null;
 };
+
+// --- Inline highlight rendering ---------------------------------------------
+
+const HIGHLIGHT_ATTR = 'data-mlflow-feedback-mark';
+
+const verdictTone = (feedback: PlaygroundFeedback): 'failing' | 'passing' | 'neutral' | 'resolved' => {
+  if (feedback.resolved) return 'resolved';
+  if (!feedback.latestVerdict) return 'neutral';
+  return feedback.latestVerdict.passed ? 'passing' : 'failing';
+};
+
+type MarkStyle = { background: string; underline: string };
+
+const markStyle = (tone: ReturnType<typeof verdictTone>): MarkStyle => {
+  switch (tone) {
+    case 'failing':
+      return { background: 'rgba(255, 224, 224, 0.7)', underline: '#d32f2f' };
+    case 'passing':
+      return { background: 'rgba(220, 245, 220, 0.7)', underline: '#2e7d32' };
+    case 'resolved':
+      return { background: 'transparent', underline: 'rgba(120,120,120,0.5)' };
+    default:
+      return { background: 'rgba(245, 235, 200, 0.65)', underline: '#a07000' };
+  }
+};
+
+/**
+ * Walk the children of `container` and surround the text range
+ * `[start, end)` with a `<mark>` element. The walk is offset-based against
+ * `container.textContent`, so it works through markdown-rendered DOM trees
+ * (paragraphs, lists, code spans). Returns the mark element on success.
+ *
+ * Multi-text-node ranges are wrapped with multiple sibling `<mark>` tags
+ * carrying the same feedback id — clicking any of them opens the same
+ * popover. This avoids reparenting markdown structures.
+ */
+const wrapRange = (container: HTMLElement, start: number, end: number, feedbackId: string, style: MarkStyle): void => {
+  if (end <= start) return;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      // Skip whitespace-only nodes that markdown adds between blocks; they
+      // would mis-align our offsets vs `textContent` (which preserves them).
+      // We do NOT filter them out — `textContent` includes these characters,
+      // so our offset accounting must include them too.
+      void node;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  let acc = 0;
+  const wraps: Array<{ node: Text; from: number; to: number }> = [];
+  let current: Node | null = walker.nextNode();
+  while (current) {
+    const node = current as Text;
+    const text = node.data;
+    const len = text.length;
+    const nodeStart = acc;
+    const nodeEnd = acc + len;
+    // Clamp the global range against this node's bounds.
+    const wrapFrom = Math.max(0, start - nodeStart);
+    const wrapTo = Math.min(len, end - nodeStart);
+    if (wrapTo > wrapFrom && nodeEnd > start && nodeStart < end) {
+      wraps.push({ node, from: wrapFrom, to: wrapTo });
+    }
+    acc = nodeEnd;
+    if (acc >= end) break;
+    current = walker.nextNode();
+  }
+
+  for (const { node, from, to } of wraps) {
+    // Split the text node so the wrapped portion is its own node.
+    const before = from > 0 ? node.splitText(from) : node;
+    if (to - from < before.data.length) {
+      before.splitText(to - from);
+    }
+    const mark = document.createElement('mark');
+    mark.setAttribute(HIGHLIGHT_ATTR, feedbackId);
+    mark.style.backgroundColor = style.background;
+    mark.style.borderBottom = `2px solid ${style.underline}`;
+    mark.style.borderRadius = '2px';
+    mark.style.padding = '0 1px';
+    mark.style.cursor = 'pointer';
+    before.parentNode?.insertBefore(mark, before);
+    mark.appendChild(before);
+  }
+};
+
+const stripExistingMarks = (container: HTMLElement): void => {
+  const marks = container.querySelectorAll(`mark[${HIGHLIGHT_ATTR}]`);
+  marks.forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+    parent.normalize();
+  });
+};
+
+export type InlineCommentClick = {
+  feedback: PlaygroundFeedback;
+  rect: DOMRect;
+};
+
+/**
+ * Wraps an assistant message's rendered content and overlays clickable
+ * highlights for each feedback whose anchor falls inside the message. Acts
+ * as a transparent passthrough (renders children inside a single `<div>` so
+ * the parent's CSS / data-attributes still apply).
+ *
+ * Re-runs after every render: existing marks are stripped first so React
+ * re-renders of the markdown body don't double-wrap.
+ */
+export const InlineCommentMarks = ({
+  feedbacks,
+  onClickMark,
+  children,
+}: {
+  feedbacks: PlaygroundFeedback[];
+  onClickMark: (click: InlineCommentClick) => void;
+  children: ReactNode;
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Stable source for the click handler — the rendered <mark> nodes look up
+  // by feedback id, which matches the latest list at click time.
+  const feedbacksRef = useRef(feedbacks);
+  feedbacksRef.current = feedbacks;
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    stripExistingMarks(container);
+    // Sort by start so nested splits proceed left-to-right; subsequent wraps
+    // walk a tree where earlier ranges are already isolated into their own
+    // text nodes, which keeps offset math correct.
+    const sorted = [...feedbacks].sort((a, b) => a.anchor.start - b.anchor.start);
+    for (const feedback of sorted) {
+      const offsets = resolveAnchorOffsets(container, feedback.anchor);
+      if (!offsets) continue;
+      wrapRange(container, offsets.start, offsets.end, feedback.assessment_id, markStyle(verdictTone(feedback)));
+    }
+    return () => {
+      // Best-effort cleanup if the component unmounts mid-paint.
+      stripExistingMarks(container);
+    };
+  });
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const mark = target.closest(`mark[${HIGHLIGHT_ATTR}]`) as HTMLElement | null;
+      if (!mark) return;
+      const id = mark.getAttribute(HIGHLIGHT_ATTR);
+      if (!id) return;
+      const feedback = feedbacksRef.current.find((f) => f.assessment_id === id);
+      if (!feedback) return;
+      event.stopPropagation();
+      onClickMark({ feedback, rect: mark.getBoundingClientRect() });
+    },
+    [onClickMark],
+  );
+
+  return (
+    <div ref={containerRef} onClick={handleClick}>
+      {children}
+    </div>
+  );
+};
+
+// --- Inline comment popover -------------------------------------------------
+
+export type InlineCommentDraft = {
+  rationale: string;
+  aspect: Aspect;
+  expected_output?: string;
+  anchor: AssistantMessageAnchor;
+};
+
+export type InlineCommentSubmit = (draft: InlineCommentDraft) => Promise<void> | void;
+
+export type PopoverAnchor = { rect: DOMRect };
+
+const POPOVER_WIDTH = 360;
+const POPOVER_OFFSET = 8;
+
+const computePopoverPosition = (rect: DOMRect): { top: number; left: number } => {
+  const desiredLeft = rect.left;
+  const left = Math.max(8, Math.min(window.innerWidth - POPOVER_WIDTH - 8, desiredLeft));
+  // Prefer placing above the highlight; fall back to below if too close to top.
+  const aboveTop = rect.top - POPOVER_OFFSET;
+  const belowTop = rect.bottom + POPOVER_OFFSET;
+  const top = aboveTop > 220 ? aboveTop : belowTop;
+  return { top, left };
+};
+
+const StatusPill = ({ feedback }: { feedback: PlaygroundFeedback }) => {
+  const { theme } = useDesignSystemTheme();
+  const tone = verdictTone(feedback);
+  const hasTest = !!feedback.dispatched_issue_id;
+  const baseLabel = hasTest ? 'No test run yet' : 'No test yet';
+  const map: Record<typeof tone, { label: string; bg: string; fg: string }> = {
+    neutral: { label: baseLabel, bg: 'rgba(245, 235, 200, 0.6)', fg: theme.colors.textSecondary },
+    failing: { label: 'Failing', bg: 'rgba(255, 224, 224, 0.8)', fg: theme.colors.red700 },
+    passing: { label: 'Passing', bg: 'rgba(220, 245, 220, 0.8)', fg: theme.colors.green700 },
+    resolved: { label: 'Resolved', bg: theme.colors.backgroundSecondary, fg: theme.colors.textSecondary },
+  };
+  const entry = map[tone];
+  return (
+    <span
+      css={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: theme.spacing.xs,
+        padding: `2px ${theme.spacing.sm}px`,
+        borderRadius: 999,
+        fontSize: theme.typography.fontSizeSm,
+        fontWeight: 500,
+        backgroundColor: entry.bg,
+        color: entry.fg,
+      }}
+    >
+      {entry.label}
+    </span>
+  );
+};
+
+/**
+ * Single floating popover that handles both creating a new comment (anchored
+ * at the active text selection) and viewing / acting on an existing comment
+ * (anchored at the clicked highlight). The popover positions itself in
+ * viewport coords; the parent owns its open/close state via `mode`.
+ */
+export const InlineCommentPopover = ({
+  mode,
+  selection,
+  feedback,
+  rect,
+  onClose,
+  onSubmit,
+  onFixIt,
+  onRunTest,
+  onResolve,
+  onDelete,
+  onOpenIssue,
+  isSubmitting,
+  isFixing,
+  isRunning,
+}: {
+  mode: 'create' | 'view';
+  selection?: ActiveSelection | null;
+  feedback?: PlaygroundFeedback;
+  rect: DOMRect;
+  onClose: () => void;
+  onSubmit?: InlineCommentSubmit;
+  // Generate the regression test if needed AND copy the fix prompt to the
+  // clipboard. Always shown in view mode (unless resolved). The test is the
+  // slow part (LLM call); the parent surfaces a spinner via `isFixing`. In
+  // the future this will dispatch to a worker instead of just copying.
+  onFixIt?: (feedback: PlaygroundFeedback) => void;
+  onRunTest?: (feedback: PlaygroundFeedback) => void;
+  onResolve?: (feedback: PlaygroundFeedback) => void;
+  onDelete?: (feedback: PlaygroundFeedback) => void;
+  onOpenIssue?: (issueId: string) => void;
+  isSubmitting?: boolean;
+  isFixing?: boolean;
+  isRunning?: boolean;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [rationale, setRationale] = useState('');
+
+  // Reset form on (re)open. For view mode we don't currently support
+  // editing, so the form fields are read-only summaries below.
+  useEffect(() => {
+    if (mode === 'create') {
+      setRationale('');
+    }
+  }, [mode, selection?.start, selection?.end, selection?.message_id]);
+
+  useLayoutEffect(() => {
+    if (mode === 'create') {
+      const t = setTimeout(() => textareaRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [mode]);
+
+  // Click-outside / Escape close.
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const node = containerRef.current;
+      if (!node) return;
+      const target = e.target as Node | null;
+      if (target && !node.contains(target)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const submit = async () => {
+    if (mode !== 'create' || !selection || !rationale.trim() || !onSubmit) return;
+    await onSubmit({
+      rationale: rationale.trim(),
+      // Aspect/expected-output were dropped from the popover UI per UX
+      // simplification; default to 'quality' so the assessment metadata
+      // shape downstream (persistFeedback, dispatchFeedback) stays stable.
+      aspect: 'quality',
+      anchor: {
+        message_id: selection.message_id,
+        trace_id: selection.trace_id,
+        start: selection.start,
+        end: selection.end,
+        selected_text: selection.selected_text,
+        prefix: selection.prefix,
+        suffix: selection.suffix,
+      },
+    });
+  };
+
+  const { top, left } = computePopoverPosition(rect);
+
+  const selectedText = mode === 'create' ? selection?.selected_text : feedback?.anchor.selected_text;
+
+  return (
+    <div
+      ref={containerRef}
+      role="dialog"
+      aria-label={mode === 'create' ? 'Add comment' : 'Comment'}
+      css={{
+        position: 'fixed',
+        top,
+        left,
+        width: POPOVER_WIDTH,
+        zIndex: 1100,
+        backgroundColor: theme.colors.backgroundPrimary,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+        padding: theme.spacing.md,
+      }}
+    >
+      <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography.Text css={{ fontWeight: 600 }}>{mode === 'create' ? 'Leave feedback' : 'Comment'}</Typography.Text>
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          {mode === 'view' && feedback?.dispatched_issue_id && (
+            <button
+              type="button"
+              onClick={() => onOpenIssue?.(feedback.dispatched_issue_id as string)}
+              css={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: theme.typography.fontSizeSm,
+                color: theme.colors.actionDefaultTextDefault,
+                textDecoration: 'underline',
+              }}
+              title="Open issue detail"
+            >
+              {feedback.dispatched_issue_id}
+            </button>
+          )}
+          <Button
+            componentId="mlflow.playground.feedback.popover.close"
+            size="small"
+            type="tertiary"
+            icon={<CloseIcon />}
+            onClick={onClose}
+            aria-label="Close"
+          />
+        </div>
+      </div>
+
+      {selectedText && (
+        <div
+          css={{
+            padding: theme.spacing.sm,
+            borderLeft: `3px solid ${theme.colors.blue400}`,
+            backgroundColor: 'rgba(238,244,255,0.6)',
+            fontStyle: 'italic',
+            maxHeight: 84,
+            overflow: 'auto',
+            fontSize: theme.typography.fontSizeSm,
+          }}
+        >
+          "{selectedText}"
+        </div>
+      )}
+
+      {mode === 'create' ? (
+        <>
+          <div>
+            <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
+              What's wrong? (required)
+            </Typography.Text>
+            <Input.TextArea
+              componentId="mlflow.playground.feedback.popover.rationale"
+              ref={textareaRef as never}
+              value={rationale}
+              onChange={(e) => setRationale(e.target.value)}
+              autoSize={{ minRows: 3, maxRows: 8 }}
+              placeholder="e.g. 'tone is too casual for support'"
+            />
+          </div>
+          <div
+            css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.xs, marginTop: theme.spacing.xs }}
+          >
+            <Button componentId="mlflow.playground.feedback.popover.cancel" size="small" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              componentId="mlflow.playground.feedback.popover.save"
+              type="primary"
+              size="small"
+              disabled={!rationale.trim() || !!isSubmitting}
+              loading={!!isSubmitting}
+              onClick={() => void submit()}
+            >
+              Save
+            </Button>
+          </div>
+        </>
+      ) : feedback ? (
+        <>
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+            <StatusPill feedback={feedback} />
+          </div>
+          <Typography.Text>{feedback.rationale}</Typography.Text>
+          {feedback.latestVerdict && !feedback.latestVerdict.passed && feedback.latestVerdict.reasons?.length ? (
+            <div
+              css={{
+                padding: theme.spacing.sm,
+                borderRadius: theme.borders.borderRadiusMd,
+                backgroundColor: 'rgba(255, 224, 224, 0.4)',
+                fontSize: theme.typography.fontSizeSm,
+              }}
+            >
+              <Typography.Text size="sm" css={{ display: 'block', fontWeight: 600, marginBottom: theme.spacing.xs }}>
+                Why it failed
+              </Typography.Text>
+              {feedback.latestVerdict.reasons.slice(0, 3).map((reason, i) => (
+                <Typography.Text key={i} size="sm" color="secondary" css={{ display: 'block' }}>
+                  • {reason}
+                </Typography.Text>
+              ))}
+            </div>
+          ) : null}
+          <div
+            css={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: theme.spacing.xs,
+              marginTop: theme.spacing.xs,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Button
+              componentId="mlflow.playground.feedback.popover.delete"
+              size="small"
+              type="tertiary"
+              onClick={() => onDelete?.(feedback)}
+              disabled={feedback.pending}
+            >
+              Delete
+            </Button>
+            <Button
+              componentId="mlflow.playground.feedback.popover.resolve"
+              size="small"
+              onClick={() => onResolve?.(feedback)}
+              disabled={feedback.pending || feedback.resolved}
+            >
+              {feedback.resolved ? 'Resolved' : 'Resolve'}
+            </Button>
+            {feedback.dispatched_issue_id && onRunTest && (
+              <Button
+                componentId="mlflow.playground.feedback.popover.run"
+                size="small"
+                loading={!!isRunning}
+                onClick={() => onRunTest(feedback)}
+              >
+                {feedback.latestVerdict ? 'Run again' : 'Run test'}
+              </Button>
+            )}
+            {onFixIt && !feedback.resolved && (
+              <Button
+                componentId="mlflow.playground.feedback.popover.fix-it"
+                type="primary"
+                size="small"
+                loading={!!isFixing}
+                disabled={feedback.pending}
+                onClick={() => onFixIt(feedback)}
+              >
+                Fix it
+              </Button>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+};
+
+// Re-exported for callers that want to clamp anchor positions outside this
+// module (e.g. for screenshot tests).
+export { computePopoverPosition };
