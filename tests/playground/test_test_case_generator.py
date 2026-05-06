@@ -173,72 +173,27 @@ def test_to_dataset_record_judge_shape_and_omits_empty_tags():
     assert record["tags"] == {}
 
 
-def test_default_llm_call_uses_databricks_serving_endpoint(monkeypatch):
-    """Test-case generation hits Databricks model serving via its
-    OpenAI-compatible API: base_url=<host>/serving-endpoints, api_key=<PAT>.
-    """
+def test_default_llm_call_forwards_to_shared_databricks_helper(monkeypatch):
+    """Test-case generation delegates to the shared `_llm.call_databricks_endpoint`
+    helper with the `_LLMTestCase` schema as structured output."""
     from unittest import mock as _mock
 
     captured = {}
 
-    class _Choice:
-        def __init__(self):
-            self.message = type("M", (), {"content": "{}"})()
+    def fake_call(prompt, *, response_format=None):
+        captured["prompt"] = prompt
+        captured["response_format"] = response_format
+        return "{}"
 
-    class _Resp:
-        choices = [_Choice()]
-
-    fake_client = _mock.Mock()
-    fake_client.chat.completions.create.return_value = _Resp()
-
-    fake_openai_module = type("M", (), {"OpenAI": _mock.Mock(return_value=fake_client)})
-
-    monkeypatch.setitem(__import__("sys").modules, "openai", fake_openai_module)
-    monkeypatch.setenv("DATABRICKS_HOST", "https://example.cloud.databricks.com/")
-    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-fake")
-    monkeypatch.delenv("MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT", raising=False)
+    monkeypatch.setattr("mlflow.playground._llm.call_databricks_endpoint", fake_call)
 
     from mlflow.playground.test_case_generator import _default_llm_call
 
     _default_llm_call("hello world")
 
-    fake_openai_module.OpenAI.assert_called_once_with(
-        api_key="dapi-fake",
-        base_url="https://example.cloud.databricks.com/serving-endpoints",
-    )
-    create_call = fake_client.chat.completions.create.call_args
-    assert create_call.kwargs["model"] == "databricks-gpt-5-4"
-    assert create_call.kwargs["messages"] == [{"role": "user", "content": "hello world"}]
-
-
-def test_default_llm_call_endpoint_env_override(monkeypatch):
-    from unittest import mock as _mock
-
-    fake_client = _mock.Mock()
-    fake_client.chat.completions.create.return_value = type(
-        "R", (), {"choices": [type("C", (), {"message": type("M", (), {"content": "{}"})()})()]}
-    )()
-    fake_openai_module = type("M", (), {"OpenAI": _mock.Mock(return_value=fake_client)})
-
-    monkeypatch.setitem(__import__("sys").modules, "openai", fake_openai_module)
-    monkeypatch.setenv("DATABRICKS_HOST", "https://example.cloud.databricks.com")
-    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-fake")
-    monkeypatch.setenv("MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT", "databricks-meta-llama-3-3-70b-instruct")
-
-    from mlflow.playground.test_case_generator import _default_llm_call
-
-    _default_llm_call("hi")
-    assert (
-        fake_client.chat.completions.create.call_args.kwargs["model"]
-        == "databricks-meta-llama-3-3-70b-instruct"
-    )
-
-
-def test_default_llm_call_raises_when_databricks_credentials_missing(monkeypatch):
-    monkeypatch.delenv("DATABRICKS_HOST", raising=False)
-    monkeypatch.delenv("DATABRICKS_TOKEN", raising=False)
-
-    from mlflow.playground.test_case_generator import _default_llm_call
-
-    with pytest.raises(RuntimeError, match="DATABRICKS_HOST"):
-        _default_llm_call("hi")
+    assert captured["prompt"] == "hello world"
+    rf = captured["response_format"]
+    assert rf["type"] == "json_schema"
+    assert rf["json_schema"]["name"] == "LLMTestCase"  # `_` stripped
+    # Schema body comes from the Pydantic model — just smoke-check it's there.
+    assert "properties" in rf["json_schema"]["schema"]
