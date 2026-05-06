@@ -97,6 +97,7 @@ import {
 import { ConnectionPicker, useConnections } from './connections';
 import {
   IssueDetailDrawer,
+  dispatchWorker,
   fetchIssues,
   runIssueTest,
   type IssueDetail,
@@ -2114,10 +2115,14 @@ const PlaygroundPageImpl = () => {
   );
 
   /**
-   * Always-on "Fix it" action on a feedback comment. Generates the test
-   * case if needed (slow LLM call), then copies a fix prompt for Claude
-   * Code to the clipboard. Future: dispatch to a worker instead of just
-   * copying.
+   * Always-on "Fix it" action on a feedback comment. Ensures the issue's
+   * regression test is generated (slow LLM call), then dispatches the
+   * Claude Code worker to fix the agent in an isolated worktree (Epic 8 /
+   * YUK-50). The connection-registry poll picks up the new worker and
+   * surfaces a toast when it's ready to test.
+   *
+   * `copyFixPromptForFeedback` (above) stays as an internal fallback in
+   * case we want to expose a "copy prompt" escape hatch later.
    */
   const [fixingFeedbackIds, setFixingFeedbackIds] = useState<Set<string>>(new Set());
   const fixItForFeedback = useCallback(
@@ -2131,9 +2136,26 @@ const PlaygroundPageImpl = () => {
       try {
         const issueId = await ensureTestForFeedback(feedback);
         if (!issueId) return;
-        // Use the freshly-resolved issue id rather than `feedback.dispatched_issue_id`
-        // — local copy may be stale when the test was just generated.
-        await copyFixPromptForFeedback({ ...feedback, dispatched_issue_id: issueId });
+        try {
+          await dispatchWorker(issueId);
+          Utils.displayGlobalNotification({
+            severity: 'info',
+            message: 'Worker dispatched',
+            description:
+              `Claude is working on issue ${issueId}. ` +
+              "You'll see a notification here when the new agent version is ready to test.",
+            placement: 'topRight',
+          });
+        } catch (e) {
+          // 409 = "already an active worker for this issue" — surface clearly.
+          const msg = e instanceof Error ? e.message : String(e);
+          Utils.displayGlobalNotification({
+            severity: 'error',
+            message: 'Could not dispatch worker',
+            description: msg,
+            placement: 'topRight',
+          });
+        }
       } finally {
         setFixingFeedbackIds((prev) => {
           if (!prev.has(feedback.assessment_id)) return prev;
@@ -2143,7 +2165,7 @@ const PlaygroundPageImpl = () => {
         });
       }
     },
-    [ensureTestForFeedback, copyFixPromptForFeedback],
+    [ensureTestForFeedback],
   );
 
   useEffect(() => {
