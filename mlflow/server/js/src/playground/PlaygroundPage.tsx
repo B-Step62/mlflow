@@ -53,11 +53,12 @@ import {
   CopyIcon,
   DagIcon,
   Input,
+  NewWindowIcon,
   PlayIcon,
+  RefreshIcon,
   SendIcon,
   SpeechBubbleIcon,
   Spinner,
-  Tag,
   Tooltip,
   TrashIcon,
   Typography,
@@ -103,6 +104,7 @@ import {
   type IssueDetail,
   type RunTestVerdict,
 } from './issues';
+import { IssueStatusIcon, shortenId } from './issues-board';
 import {
   fetchRegressionCases,
   fetchRegressionRunSnapshot,
@@ -1362,17 +1364,8 @@ const BatchNavigator = ({
 
 // --- Tasks panel ------------------------------------------------------------
 // Compact list of in-flight Issues for the right-pane "Tasks" accordion.
-// Shows status pill + name + click-to-open in the IssueDetailDrawer; an
-// "Open kanban" button launches the full board in a new tab.
-
-const _TASK_STATUS_COLOR: Record<string, 'indigo' | 'lemon' | 'default'> = {
-  in_progress: 'indigo',
-  review: 'lemon',
-};
-const _TASK_STATUS_LABEL: Record<string, string> = {
-  in_progress: 'in progress',
-  review: 'review',
-};
+// Shares status icons + shortenId with the kanban (`./issues-board`) so the
+// two surfaces stay visually aligned.
 
 const TasksPanel = ({
   experimentId,
@@ -1394,24 +1387,29 @@ const TasksPanel = ({
 
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, padding: theme.spacing.md }}>
-      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-        <Button
-          componentId="mlflow.playground.tasks.refresh"
-          size="small"
-          onClick={onRefresh}
-          loading={loading}
-        >
-          Refresh
-        </Button>
-        {kanbanUrl && (
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, justifyContent: 'flex-end' }}>
+        <Tooltip componentId="mlflow.playground.tasks.refresh.tooltip" content="Refresh">
           <Button
-            componentId="mlflow.playground.tasks.open-kanban"
+            componentId="mlflow.playground.tasks.refresh"
             size="small"
-            type="primary"
-            onClick={() => window.open(kanbanUrl, '_blank', 'noopener')}
-          >
-            Open kanban
-          </Button>
+            type="tertiary"
+            icon={<RefreshIcon />}
+            onClick={onRefresh}
+            loading={loading}
+            aria-label="Refresh tasks"
+          />
+        </Tooltip>
+        {kanbanUrl && (
+          <Tooltip componentId="mlflow.playground.tasks.open-kanban.tooltip" content="Open kanban">
+            <Button
+              componentId="mlflow.playground.tasks.open-kanban"
+              size="small"
+              type="tertiary"
+              icon={<NewWindowIcon />}
+              onClick={() => window.open(kanbanUrl, '_blank', 'noopener')}
+              aria-label="Open kanban in a new tab"
+            />
+          </Tooltip>
         )}
       </div>
 
@@ -1447,30 +1445,26 @@ const TasksPanel = ({
                 ':hover': { backgroundColor: theme.colors.backgroundSecondary },
               }}
             >
-              <Tag
-                componentId="mlflow.playground.tasks.status-tag"
-                color={_TASK_STATUS_COLOR[task.status] ?? 'default'}
-              >
-                {_TASK_STATUS_LABEL[task.status] ?? task.status}
-              </Tag>
+              <IssueStatusIcon status={task.status} />
               <Typography.Text
-                size="sm"
                 css={{
                   flex: 1,
+                  fontWeight: 600,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}
-                title={task.name}
+                title={task.name || task.issue_id}
               >
-                {task.name}
+                {task.name || '(untitled issue)'}
               </Typography.Text>
               <Typography.Text
                 size="sm"
                 color="secondary"
                 css={{ fontFamily: 'monospace', flexShrink: 0 }}
+                title={task.issue_id}
               >
-                {task.issue_id}
+                {shortenId(task.issue_id)}
               </Typography.Text>
             </button>
           ))}
@@ -2199,6 +2193,19 @@ const PlaygroundPageImpl = () => {
   useEffect(() => {
     syncConfig();
   }, [syncConfig]);
+
+  // Keep agentUrlInput aligned with the active connection. /chat sends
+  // agentUrlInput as the explicit agent_url, which the server prefers over
+  // its own active-connection lookup — so without this sync, switching the
+  // active connection (toggle in the picker, or activate_for_issue deeplink)
+  // doesn't actually re-route chat traffic.
+  useEffect(() => {
+    if (!activeConnectionId) return;
+    const active = connections.find((c) => c.connection_id === activeConnectionId);
+    if (active?.agent_url) {
+      setAgentUrlInput(active.agent_url);
+    }
+  }, [activeConnectionId, connections]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
