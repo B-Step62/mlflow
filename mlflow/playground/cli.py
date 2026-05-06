@@ -39,16 +39,27 @@ agent_commands.add_command(test_commands)
         "to skip instrumentation."
     ),
 )
+@click.option(
+    "--no-start",
+    is_flag=True,
+    help="Stop after the wizard; don't launch the playground server.",
+)
 def setup(
     non_interactive: bool,
     config_path: Path | None,
     repo_dir: Path | None,
+    no_start: bool,
 ) -> None:
     """Interactive wizard for the MLflow Agent Playground.
 
     Detects installed coding agents (claude, codex, gemini, opencode) and lets
     you pick one as the playground's primary worker. Only Claude Code is fully
     supported today; other selections are saved but instrumentation is skipped.
+
+    By default the wizard hands off to ``mlflow agent playground`` once setup
+    finishes — that's the natural next step and saves a context switch. Pass
+    ``--no-start`` (or run with ``--non-interactive``, which is typically a
+    CI/scripted path) to skip the auto-start.
     """
     from mlflow.claude_code.playground_setup import (
         DEFAULT_CONFIG_PATH,
@@ -59,6 +70,24 @@ def setup(
         config_path=config_path or DEFAULT_CONFIG_PATH,
         non_interactive=non_interactive,
         repo_dir=repo_dir if repo_dir is not None else Path.cwd(),
+    )
+
+    if no_start or non_interactive:
+        return
+
+    click.echo("")
+    click.echo("Setup complete — starting playground at http://127.0.0.1:5000 …")
+    click.echo("(re-run `mlflow agent setup --no-start` to skip this auto-start)")
+    click.echo("")
+    from mlflow.playground.server import serve
+
+    serve(
+        host="127.0.0.1",
+        port=5000,
+        open_browser=True,
+        reload=False,
+        agent_url=None,
+        rebuild_ui=False,
     )
 
 
