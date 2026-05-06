@@ -48,6 +48,7 @@ import {
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ClipboardIcon,
   CloseSmallIcon,
   CopyIcon,
   DagIcon,
@@ -56,6 +57,7 @@ import {
   SendIcon,
   SpeechBubbleIcon,
   Spinner,
+  Tag,
   Tooltip,
   TrashIcon,
   Typography,
@@ -92,7 +94,13 @@ import {
   type FeedbackVerdict,
   type PlaygroundFeedback,
 } from './feedback';
-import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
+import {
+  IssueDetailDrawer,
+  fetchIssues,
+  runIssueTest,
+  type IssueDetail,
+  type RunTestVerdict,
+} from './issues';
 import {
   fetchRegressionCases,
   fetchRegressionRunSnapshot,
@@ -1350,6 +1358,126 @@ const BatchNavigator = ({
   );
 };
 
+// --- Tasks panel ------------------------------------------------------------
+// Compact list of in-flight Issues for the right-pane "Tasks" accordion.
+// Shows status pill + name + click-to-open in the IssueDetailDrawer; an
+// "Open kanban" button launches the full board in a new tab.
+
+const _TASK_STATUS_COLOR: Record<string, 'indigo' | 'lemon' | 'default'> = {
+  in_progress: 'indigo',
+  review: 'lemon',
+};
+const _TASK_STATUS_LABEL: Record<string, string> = {
+  in_progress: 'in progress',
+  review: 'review',
+};
+
+const TasksPanel = ({
+  experimentId,
+  tasks,
+  loading,
+  onOpenTask,
+  onRefresh,
+}: {
+  experimentId: string | undefined;
+  tasks: IssueDetail[];
+  loading: boolean;
+  onOpenTask: (issueId: string) => void;
+  onRefresh: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const kanbanUrl = experimentId
+    ? `${window.location.origin}${window.location.pathname}#/experiments/${encodeURIComponent(experimentId)}/issues`
+    : null;
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, padding: theme.spacing.md }}>
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+        <Button
+          componentId="mlflow.playground.tasks.refresh"
+          size="small"
+          onClick={onRefresh}
+          loading={loading}
+        >
+          Refresh
+        </Button>
+        {kanbanUrl && (
+          <Button
+            componentId="mlflow.playground.tasks.open-kanban"
+            size="small"
+            type="primary"
+            onClick={() => window.open(kanbanUrl, '_blank', 'noopener')}
+          >
+            Open kanban
+          </Button>
+        )}
+      </div>
+
+      {tasks.length === 0 && !loading ? (
+        <Typography.Text color="secondary" size="sm" css={{ padding: theme.spacing.sm }}>
+          No active tasks. Dispatch a feedback comment to create one.
+        </Typography.Text>
+      ) : (
+        <div
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing.xs,
+            maxHeight: 360,
+            overflowY: 'auto',
+          }}
+        >
+          {tasks.map((task) => (
+            <button
+              key={task.issue_id}
+              type="button"
+              onClick={() => onOpenTask(task.issue_id)}
+              css={{
+                background: 'none',
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusMd,
+                padding: theme.spacing.sm,
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
+                ':hover': { backgroundColor: theme.colors.backgroundSecondary },
+              }}
+            >
+              <Tag
+                componentId="mlflow.playground.tasks.status-tag"
+                color={_TASK_STATUS_COLOR[task.status] ?? 'default'}
+              >
+                {_TASK_STATUS_LABEL[task.status] ?? task.status}
+              </Tag>
+              <Typography.Text
+                size="sm"
+                css={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={task.name}
+              >
+                {task.name}
+              </Typography.Text>
+              <Typography.Text
+                size="sm"
+                color="secondary"
+                css={{ fontFamily: 'monospace', flexShrink: 0 }}
+              >
+                {task.issue_id}
+              </Typography.Text>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PlaygroundPageImpl = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
@@ -1481,8 +1609,10 @@ const PlaygroundPageImpl = () => {
   // default — expandable on demand; the live trace can chew up a lot of
   // vertical space). Each section is a separate concern; they share
   // remaining vertical space proportionally based on which are open.
-  const [openSections, setOpenSections] = useState<Set<'tests' | 'trace'>>(() => new Set(['tests']));
-  const toggleSection = useCallback((id: 'tests' | 'trace') => {
+  const [openSections, setOpenSections] = useState<Set<'tests' | 'tasks' | 'trace'>>(
+    () => new Set(['tests']),
+  );
+  const toggleSection = useCallback((id: 'tests' | 'tasks' | 'trace') => {
     setOpenSections((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -1608,6 +1738,34 @@ const PlaygroundPageImpl = () => {
 
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
+
+  // --- Tasks panel ---------------------------------------------------------
+  // Compact list of in-flight Issues (statuses: in_progress, review). The
+  // full kanban lives at /experiments/<id>/issues; this panel is the
+  // at-a-glance summary the playground user sees without leaving the chat.
+  const [tasks, setTasks] = useState<IssueDetail[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const reloadTasks = useCallback(async () => {
+    if (!experimentId) return;
+    setTasksLoading(true);
+    try {
+      const all = await fetchIssues(experimentId);
+      setTasks(all.filter((i) => i.status === 'in_progress' || i.status === 'review'));
+    } catch {
+      // best-effort; leave the panel empty rather than blowing up the page
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [experimentId]);
+  useEffect(() => {
+    void reloadTasks();
+  }, [reloadTasks]);
+  // Refresh whenever the issue drawer closes (a transition there could
+  // have moved an Issue between in_progress / review / done).
+  const onIssueDrawerClose = useCallback(() => {
+    setOpenIssueId(null);
+    void reloadTasks();
+  }, [reloadTasks]);
 
   // --- Inline test-run -----------------------------------------------------
   // Run the regression test for a dispatched issue straight from the inline
@@ -3076,6 +3234,27 @@ const PlaygroundPageImpl = () => {
           </CollapsibleSection>
 
           <CollapsibleSection
+            id="tasks"
+            title="Tasks"
+            icon={<ClipboardIcon css={{ color: theme.colors.textSecondary }} />}
+            rightSlot={
+              <Typography.Text size="sm" color="secondary">
+                {tasks.length} active
+              </Typography.Text>
+            }
+            open={openSections.has('tasks')}
+            onToggle={() => toggleSection('tasks')}
+          >
+            <TasksPanel
+              experimentId={experimentId}
+              tasks={tasks}
+              loading={tasksLoading}
+              onOpenTask={(issueId) => setOpenIssueId(issueId)}
+              onRefresh={() => void reloadTasks()}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection
             id="trace"
             title="Trace"
             icon={<DagIcon css={{ color: theme.colors.textSecondary }} />}
@@ -3195,7 +3374,7 @@ const PlaygroundPageImpl = () => {
           );
         })()}
 
-      <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={() => setOpenIssueId(null)} />
+      <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={onIssueDrawerClose} />
 
       {/* Full-trace drawer: opens on demand for the full explorer experience
           (assessments pane, attributes, events, linked prompts). */}
