@@ -13,7 +13,14 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { Button, CloseIcon, Input, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  Button,
+  CloseIcon,
+  Input,
+  SpeechBubbleIcon,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 
 import {
   getAjaxUrl,
@@ -391,7 +398,46 @@ export const resolveAnchorOffsets = (
   if (direct >= 0) {
     return { start: direct, end: direct + anchor.selected_text.length };
   }
-  return null;
+  // Whitespace-tolerant fallback. The markdown renderer can normalise
+  // whitespace differently from what `window.getSelection().toString()`
+  // captured (e.g. collapsing newlines around block boundaries). We map
+  // each character of `text` to its position in a whitespace-collapsed
+  // form, find the selection there, and translate back to original-text
+  // offsets. Without this the highlight silently drops on multi-paragraph
+  // selections inside markdown — the assessment saves fine, but the chip
+  // never paints.
+  const collapse = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const collapsedSelected = collapse(anchor.selected_text);
+  if (!collapsedSelected) return null;
+  const collapsedText = collapse(text);
+  const collapsedIdx = collapsedText.indexOf(collapsedSelected);
+  if (collapsedIdx < 0) return null;
+  // Walk the original text, counting only collapsed-significant characters
+  // (single spaces and non-whitespace) to map collapsed offsets back.
+  let collapsedPos = 0;
+  let inWhitespaceRun = false;
+  let leadingWs = true;
+  let originalStart = -1;
+  let originalEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const isWs = /\s/.test(ch);
+    if (isWs) {
+      if (!inWhitespaceRun && !leadingWs) collapsedPos += 1;
+      inWhitespaceRun = true;
+      continue;
+    }
+    if (collapsedPos === collapsedIdx && originalStart < 0) originalStart = i;
+    inWhitespaceRun = false;
+    leadingWs = false;
+    collapsedPos += 1;
+    if (collapsedPos === collapsedIdx + collapsedSelected.length) {
+      originalEnd = i + 1;
+      break;
+    }
+  }
+  if (originalStart < 0 || originalEnd < 0) return null;
+  return { start: originalStart, end: originalEnd };
 };
 
 // --- Inline highlight rendering ---------------------------------------------
@@ -910,3 +956,350 @@ export const InlineCommentPopover = ({
 // Re-exported for callers that want to clamp anchor positions outside this
 // module (e.g. for screenshot tests).
 export { computePopoverPosition };
+
+// --- Message-level comments button ------------------------------------------
+//
+// Sub-selection highlights are great for "this specific phrase is wrong" but
+// don't have a place for "the whole answer misses the user's intent" — there's
+// nothing to wrap a mark around. The button below the message bubble closes
+// that gap: it lists all comments anchored to the message (both selection-
+// based and message-level) and exposes a textarea for adding a new
+// message-level one. Same downstream actions as the inline popover (resolve,
+// delete, run test, fix it).
+
+const MESSAGE_LEVEL_ANCHOR_OFFSET = 0;
+
+/** Anchor used for message-level (no sub-selection) feedback. The empty
+ * range means InlineCommentMarks won't paint a highlight, which is what we
+ * want — the comment is about the whole reply, not a substring. */
+export const messageLevelAnchor = (
+  message_id: string,
+  trace_id: string | undefined,
+): AssistantMessageAnchor => ({
+  message_id,
+  trace_id,
+  start: MESSAGE_LEVEL_ANCHOR_OFFSET,
+  end: MESSAGE_LEVEL_ANCHOR_OFFSET,
+  selected_text: '',
+  prefix: '',
+  suffix: '',
+});
+
+const isMessageLevel = (a: AssistantMessageAnchor) =>
+  a.start === a.end && a.selected_text === '' && a.prefix === '' && a.suffix === '';
+
+export const MessageCommentsButton = ({
+  messageId,
+  traceId,
+  feedbacks,
+  onSubmit,
+  onResolve,
+  onDelete,
+  onRunTest,
+  onFixIt,
+  onOpenIssue,
+  isFixingIds,
+  isRunningIssueIds,
+}: {
+  messageId: string;
+  traceId: string | undefined;
+  feedbacks: PlaygroundFeedback[];
+  onSubmit: InlineCommentSubmit;
+  onResolve: (feedback: PlaygroundFeedback) => void;
+  onDelete: (feedback: PlaygroundFeedback) => void;
+  onRunTest?: (feedback: PlaygroundFeedback) => void;
+  onFixIt?: (feedback: PlaygroundFeedback) => void;
+  onOpenIssue?: (issueId: string) => void;
+  // Per-feedback / per-issue progress flags driven by the parent. Keys here
+  // mirror the inline-popover wiring so the message-level panel surfaces the
+  // same spinners the inline path already does.
+  isFixingIds?: Set<string>;
+  isRunningIssueIds?: Set<string>;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const visible = feedbacks.filter((f) => !f.resolved);
+  const count = visible.length;
+
+  // Auto-focus the textarea when the panel opens. Matches the inline popover's
+  // behavior so keyboard-first users can start typing immediately.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const t = setTimeout(() => textareaRef.current?.focus(), 30);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  // Click-outside / Escape close — same convention as InlineCommentPopover.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onMouseDown = (e: MouseEvent) => {
+      const node = containerRef.current;
+      if (!node) return;
+      const target = e.target as Node | null;
+      if (target && !node.contains(target)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const handleSubmit = useCallback(async () => {
+    const text = draft.trim();
+    if (!text) return;
+    await onSubmit({
+      rationale: text,
+      aspect: 'quality',
+      anchor: messageLevelAnchor(messageId, traceId),
+    });
+    setDraft('');
+  }, [draft, messageId, traceId, onSubmit]);
+
+  return (
+    <div ref={containerRef} css={{ position: 'relative', alignSelf: 'flex-start' }}>
+      <Button
+        componentId="mlflow.playground.feedback.message-comments.toggle"
+        size="small"
+        type="tertiary"
+        icon={<SpeechBubbleIcon />}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {count > 0 ? String(count) : 'Comment'}
+      </Button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Message comments"
+          css={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            marginTop: theme.spacing.xs,
+            width: 380,
+            maxHeight: 480,
+            overflow: 'auto',
+            zIndex: 1100,
+            backgroundColor: theme.colors.backgroundPrimary,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
+            padding: theme.spacing.md,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing.sm,
+          }}
+        >
+          <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography.Text css={{ fontWeight: 600 }}>
+              Comments {count > 0 ? `(${count})` : ''}
+            </Typography.Text>
+            <Button
+              componentId="mlflow.playground.feedback.message-comments.close"
+              size="small"
+              type="tertiary"
+              icon={<CloseIcon />}
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+            />
+          </div>
+
+          {visible.length === 0 ? (
+            <Typography.Text size="sm" color="secondary">
+              No comments yet on this message.
+            </Typography.Text>
+          ) : (
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              {visible.map((f) => (
+                <CommentRow
+                  key={f.assessment_id}
+                  feedback={f}
+                  onResolve={onResolve}
+                  onDelete={onDelete}
+                  onRunTest={onRunTest}
+                  onFixIt={onFixIt}
+                  onOpenIssue={onOpenIssue}
+                  isFixing={isFixingIds?.has(f.assessment_id) ?? false}
+                  isRunning={
+                    f.dispatched_issue_id ? (isRunningIssueIds?.has(f.dispatched_issue_id) ?? false) : false
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          <div css={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.sm }}>
+            <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
+              Add a comment about this whole message
+            </Typography.Text>
+            <Input.TextArea
+              componentId="mlflow.playground.feedback.message-comments.rationale"
+              ref={textareaRef as never}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              placeholder="e.g. 'misses the user's actual intent'"
+            />
+            <div
+              css={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: theme.spacing.xs,
+                marginTop: theme.spacing.xs,
+              }}
+            >
+              <Button
+                componentId="mlflow.playground.feedback.message-comments.cancel"
+                size="small"
+                onClick={() => {
+                  setDraft('');
+                  setOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                componentId="mlflow.playground.feedback.message-comments.save"
+                type="primary"
+                size="small"
+                disabled={!draft.trim()}
+                onClick={() => void handleSubmit()}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CommentRow = ({
+  feedback,
+  onResolve,
+  onDelete,
+  onRunTest,
+  onFixIt,
+  onOpenIssue,
+  isFixing,
+  isRunning,
+}: {
+  feedback: PlaygroundFeedback;
+  onResolve: (feedback: PlaygroundFeedback) => void;
+  onDelete: (feedback: PlaygroundFeedback) => void;
+  onRunTest?: (feedback: PlaygroundFeedback) => void;
+  onFixIt?: (feedback: PlaygroundFeedback) => void;
+  onOpenIssue?: (issueId: string) => void;
+  isFixing: boolean;
+  isRunning: boolean;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const messageLevel = isMessageLevel(feedback.anchor);
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.xs,
+        padding: theme.spacing.sm,
+        borderRadius: theme.borders.borderRadiusMd,
+        border: `1px solid ${theme.colors.border}`,
+      }}
+    >
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+        <StatusPill feedback={feedback} />
+        {feedback.dispatched_issue_id && (
+          <button
+            type="button"
+            onClick={() => onOpenIssue?.(feedback.dispatched_issue_id as string)}
+            css={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: theme.typography.fontSizeSm,
+              color: theme.colors.actionDefaultTextDefault,
+              textDecoration: 'underline',
+            }}
+            title="Open issue detail"
+          >
+            {feedback.dispatched_issue_id}
+          </button>
+        )}
+      </div>
+      {!messageLevel && feedback.anchor.selected_text && (
+        <div
+          css={{
+            padding: theme.spacing.xs,
+            borderLeft: `3px solid ${theme.colors.blue400}`,
+            backgroundColor: 'rgba(238,244,255,0.6)',
+            fontStyle: 'italic',
+            fontSize: theme.typography.fontSizeSm,
+            maxHeight: 60,
+            overflow: 'auto',
+          }}
+        >
+          "{feedback.anchor.selected_text}"
+        </div>
+      )}
+      <Typography.Text>{feedback.rationale}</Typography.Text>
+      <div
+        css={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: theme.spacing.xs,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button
+          componentId="mlflow.playground.feedback.message-comments.delete"
+          size="small"
+          type="tertiary"
+          onClick={() => onDelete(feedback)}
+          disabled={feedback.pending}
+        >
+          Delete
+        </Button>
+        <Button
+          componentId="mlflow.playground.feedback.message-comments.resolve"
+          size="small"
+          onClick={() => onResolve(feedback)}
+          disabled={feedback.pending || feedback.resolved}
+        >
+          {feedback.resolved ? 'Resolved' : 'Resolve'}
+        </Button>
+        {feedback.dispatched_issue_id && onRunTest && (
+          <Button
+            componentId="mlflow.playground.feedback.message-comments.run"
+            size="small"
+            loading={isRunning}
+            onClick={() => onRunTest(feedback)}
+          >
+            {feedback.latestVerdict ? 'Run again' : 'Run test'}
+          </Button>
+        )}
+        {onFixIt && !feedback.resolved && (
+          <Button
+            componentId="mlflow.playground.feedback.message-comments.fix-it"
+            type="primary"
+            size="small"
+            loading={isFixing}
+            disabled={feedback.pending}
+            onClick={() => onFixIt(feedback)}
+          >
+            Fix it
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};

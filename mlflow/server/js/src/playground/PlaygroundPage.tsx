@@ -81,6 +81,7 @@ import {
   FloatingAnnotateButton,
   InlineCommentMarks,
   InlineCommentPopover,
+  MessageCommentsButton,
   dispatchFeedback,
   feedbacksFromTraceAssessments,
   persistFeedback,
@@ -1215,6 +1216,7 @@ type BatchConvForNav = {
   label: string;
   status: 'pending' | 'streaming' | 'done' | 'failed';
   trace_id?: string;
+  error?: string;
   verdicts?: BatchVerdictForNav[];
 };
 type BatchRunForNav = {
@@ -1320,9 +1322,17 @@ const BatchNavigator = ({
       >
         {active?.label}
       </Typography.Text>
-      <Typography.Text size="sm" css={{ color: statusColor, fontWeight: 600 }}>
-        {statusLabel}
-      </Typography.Text>
+      {active?.status === 'failed' && active.error ? (
+        <Tooltip componentId="mlflow.playground.batch-nav.error.tooltip" content={active.error}>
+          <Typography.Text size="sm" css={{ color: statusColor, fontWeight: 600 }}>
+            {statusLabel}
+          </Typography.Text>
+        </Tooltip>
+      ) : (
+        <Typography.Text size="sm" css={{ color: statusColor, fontWeight: 600 }}>
+          {statusLabel}
+        </Typography.Text>
+      )}
       {traceHref && (
         <a
           href={traceHref}
@@ -1752,7 +1762,15 @@ const PlaygroundPageImpl = () => {
       expected_output?: string;
       anchor: AssistantMessageAnchor;
     }) => {
-      const traceId = input.anchor.trace_id;
+      // The anchor's `trace_id` is captured from the assistant bubble's
+      // `data-mlflow-feedback-trace-id` at selection time. Batch-mode slots
+      // (regression suite + question-bank batch runs) carry a single trace
+      // per slot rather than per requestId, and the data-attribute can lag
+      // a frame behind the slot's first verdict — fall back to the active
+      // slot's `trace_id` so feedback save works the moment the user can
+      // see a reply in the navigator.
+      const traceId =
+        input.anchor.trace_id || batchRun?.conversations[batchRun.activeIndex]?.trace_id;
       if (!traceId) {
         setError('Cannot save feedback: this turn has no trace yet. Try again in a moment.');
         return;
@@ -1801,19 +1819,21 @@ const PlaygroundPageImpl = () => {
         }
       })();
     },
-    [clearSelection],
+    [clearSelection, batchRun],
   );
 
   /**
-   * Generate a regression test case + Issue for an existing comment. This is
-   * the LLM-backed step (the server runs a model to derive assertions /
-   * judge criteria from the rationale), so it can take a few seconds. The
-   * popover surfaces a spinner via `generatingFeedbackIds`.
+   * Ensure a regression test case + Issue exists for this feedback. This
+   * is the LLM-backed step (the server runs a model to derive assertions /
+   * judge criteria from the rationale), so it can take a few seconds.
+   * Returns the issue id on success, null on failure. Idempotent — when
+   * the feedback already has a dispatched issue, returns it without a
+   * network call.
    */
-  const [generatingFeedbackIds, setGeneratingFeedbackIds] = useState<Set<string>>(new Set());
-  const generateTestForFeedback = useCallback(
-    async (feedback: PlaygroundFeedback) => {
-      if (feedback.dispatched_issue_id || feedback.pending) return;
+  const ensureTestForFeedback = useCallback(
+    async (feedback: PlaygroundFeedback): Promise<string | null> => {
+      if (feedback.dispatched_issue_id) return feedback.dispatched_issue_id;
+      if (feedback.pending) return null;
       const targetIndex = messages.findIndex((m) => m.id === feedback.anchor.message_id);
       if (targetIndex < 0) {
         Utils.displayGlobalNotification({
@@ -1822,17 +1842,11 @@ const PlaygroundPageImpl = () => {
           description: 'Anchor message not found in current thread.',
           placement: 'topRight',
         });
-        return;
+        return null;
       }
       const failing = messages[targetIndex];
       const prefix = messages.slice(0, targetIndex).map((m) => ({ role: m.role, content: m.content }));
 
-      setGeneratingFeedbackIds((prev) => {
-        if (prev.has(feedback.assessment_id)) return prev;
-        const next = new Set(prev);
-        next.add(feedback.assessment_id);
-        return next;
-      });
       const progressKey = `mlflow.playground.generate-test.${feedback.assessment_id}`;
       Utils.displayGlobalNotification({
         severity: 'info',
@@ -1860,13 +1874,7 @@ const PlaygroundPageImpl = () => {
         void tagFeedbackWithIssueId(feedback.trace_id, feedback.assessment_id, result.issue_id);
         reloadRegressionCount();
         Utils.closeGlobalNotification(progressKey);
-        Utils.displayGlobalNotification({
-          severity: 'success',
-          message: 'Test generated',
-          description: `Tracked as ${result.issue_id} in the regression suite.`,
-          duration: 3,
-          placement: 'topRight',
-        });
+        return result.issue_id;
       } catch (e) {
         Utils.closeGlobalNotification(progressKey);
         Utils.displayGlobalNotification({
@@ -1876,8 +1884,35 @@ const PlaygroundPageImpl = () => {
           duration: 6,
           placement: 'topRight',
         });
+        return null;
+      }
+    },
+    [messages, experimentId, reloadRegressionCount],
+  );
+
+  /**
+   * Always-on "Fix it" action on a feedback comment. Generates the test
+   * case if needed (slow LLM call), then copies a fix prompt for Claude
+   * Code to the clipboard. Future: dispatch to a worker instead of just
+   * copying.
+   */
+  const [fixingFeedbackIds, setFixingFeedbackIds] = useState<Set<string>>(new Set());
+  const fixItForFeedback = useCallback(
+    async (feedback: PlaygroundFeedback) => {
+      setFixingFeedbackIds((prev) => {
+        if (prev.has(feedback.assessment_id)) return prev;
+        const next = new Set(prev);
+        next.add(feedback.assessment_id);
+        return next;
+      });
+      try {
+        const issueId = await ensureTestForFeedback(feedback);
+        if (!issueId) return;
+        // Use the freshly-resolved issue id rather than `feedback.dispatched_issue_id`
+        // — local copy may be stale when the test was just generated.
+        await copyFixPromptForFeedback({ ...feedback, dispatched_issue_id: issueId });
       } finally {
-        setGeneratingFeedbackIds((prev) => {
+        setFixingFeedbackIds((prev) => {
           if (!prev.has(feedback.assessment_id)) return prev;
           const next = new Set(prev);
           next.delete(feedback.assessment_id);
@@ -1885,7 +1920,7 @@ const PlaygroundPageImpl = () => {
         });
       }
     },
-    [messages, experimentId, reloadRegressionCount],
+    [ensureTestForFeedback, copyFixPromptForFeedback],
   );
 
   useEffect(() => {
@@ -2359,14 +2394,7 @@ const PlaygroundPageImpl = () => {
     type GroupError = { type: 'group_error'; group_index: number; detail: string };
     type Started = { type: 'started'; total_groups: number; total_cases: number };
     type Summary = { type: 'summary'; total_groups: number; run_id?: string };
-    type GroupedEvent =
-      | RunStarted
-      | RunError
-      | GroupStarted
-      | GroupVerdict
-      | GroupError
-      | Started
-      | Summary;
+    type GroupedEvent = RunStarted | RunError | GroupStarted | GroupVerdict | GroupError | Started | Summary;
 
     let response: Response;
     try {
@@ -2769,6 +2797,23 @@ const PlaygroundPageImpl = () => {
               />
             )}
             {batchRun?.kind === 'regression_suite' && <BatchFailuresBanner conversations={batchRun.conversations} />}
+            {activeBatch?.status === 'failed' && activeBatch.error && (
+              <div
+                css={{
+                  padding: theme.spacing.md,
+                  borderRadius: theme.borders.borderRadiusMd,
+                  border: `1px solid ${theme.colors.textValidationDanger}`,
+                  backgroundColor: theme.colors.backgroundDanger,
+                  color: theme.colors.textValidationDanger,
+                  fontFamily: 'monospace',
+                  fontSize: theme.typography.fontSizeSm,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {activeBatch.error}
+              </div>
+            )}
             {activeBatch?.verdicts && activeBatch.verdicts.length > 0 && (
               <VerdictStack
                 verdicts={activeBatch.verdicts}
@@ -2830,9 +2875,19 @@ const PlaygroundPageImpl = () => {
                   <div
                     data-mlflow-feedback-anchor={message.role === 'assistant' ? message.id : undefined}
                     data-mlflow-feedback-trace-id={
-                      message.role === 'assistant' && message.requestId
-                        ? traceIdsByRequestId[message.requestId]
-                        : undefined
+                      message.role !== 'assistant'
+                        ? undefined
+                        : // Batch-mode messages (regression suite + question
+                          // bank batch runs) carry one trace per slot rather
+                          // than per requestId — they're synthesised on the
+                          // client without a requestId, so we fall back to the
+                          // active slot's `trace_id`. Live chat keeps the
+                          // requestId path so multi-turn sessions stay correct.
+                          activeBatch
+                          ? activeBatch.trace_id
+                          : message.requestId
+                            ? traceIdsByRequestId[message.requestId]
+                            : undefined
                     }
                     css={{
                       borderRadius: theme.borders.borderRadiusMd,
@@ -2860,6 +2915,27 @@ const PlaygroundPageImpl = () => {
                       message.content
                     )}
                   </div>
+                  {message.role === 'assistant' && (
+                    <MessageCommentsButton
+                      messageId={message.id}
+                      traceId={
+                        activeBatch
+                          ? activeBatch.trace_id
+                          : message.requestId
+                            ? traceIdsByRequestId[message.requestId]
+                            : undefined
+                      }
+                      feedbacks={feedbacks.filter((f) => f.anchor.message_id === message.id)}
+                      onSubmit={submitFeedback}
+                      onResolve={resolveFeedback}
+                      onDelete={deleteFeedback}
+                      onRunTest={(f) => void runTestNow(f)}
+                      onFixIt={(f) => void fixItForFeedback(f)}
+                      onOpenIssue={(issueId) => setOpenIssueId(issueId)}
+                      isFixingIds={fixingFeedbackIds}
+                      isRunningIssueIds={runningTestIssueIds}
+                    />
+                  )}
                 </div>
               ))
             )}
@@ -3101,10 +3177,10 @@ const PlaygroundPageImpl = () => {
               mode="view"
               feedback={feedback}
               rect={activePopover.rect}
-              isGenerating={generatingFeedbackIds.has(feedback.assessment_id)}
+              isFixing={fixingFeedbackIds.has(feedback.assessment_id)}
               isRunning={feedback.dispatched_issue_id ? runningTestIssueIds.has(feedback.dispatched_issue_id) : false}
               onClose={() => setActivePopover(null)}
-              onGenerateTest={(f) => void generateTestForFeedback(f)}
+              onFixIt={(f) => void fixItForFeedback(f)}
               onRunTest={(f) => void runTestNow(f)}
               onResolve={(f) => {
                 resolveFeedback(f);
@@ -3115,7 +3191,6 @@ const PlaygroundPageImpl = () => {
                 setActivePopover(null);
               }}
               onOpenIssue={(issueId) => setOpenIssueId(issueId)}
-              onCopyFixPrompt={(f) => void copyFixPromptForFeedback(f)}
             />
           );
         })()}
