@@ -80,12 +80,15 @@ const STATUS_TONE: Record<ConnectionStatus, { label: string; color: 'lime' | 'le
   dead: { label: 'dead', color: 'default' },
 };
 
-const STATUS_ICON: Record<ConnectionStatus, React.ComponentType<{ css?: unknown }>> = {
+// Icon components are `ForwardRefExoticComponent<IconProps>`; let TS infer
+// the record value type so the strict prop shape doesn't get widened to
+// something incompatible (matches the COLUMN_ICON pattern in issues-board).
+const STATUS_ICON = {
   ready: CheckCircleIcon,
   pending: LoopIcon,
   failed: CircleOffIcon,
   dead: CircleOutlineIcon,
-};
+} satisfies Record<ConnectionStatus, unknown>;
 
 export const ConnectionPicker = ({
   connections,
