@@ -845,8 +845,14 @@ def create_playground_api_router(
             # later with `start_run(run_id=...)` to log metrics + artifact
             # once the work completes. Avoids leaving a zombie active run if
             # the SSE client disconnects mid-stream.
+            #
+            # Pushed into a thread because `start_run` is a synchronous HTTP
+            # call against the configured tracking URI — leaving it on the
+            # event loop would freeze the SSE stream while the round-trip
+            # completes (visible to the user as a stuck 0/0 indicator).
             started_at = _time.time()
-            try:
+
+            def _create_parent_run() -> str:
                 with _mlflow.start_run(
                     experiment_id=experiment_id,
                     run_name=f"regression run @ {_time.strftime('%H:%M:%S')}",
@@ -855,11 +861,16 @@ def create_playground_api_router(
                         "playground.regression_dataset": regression_dataset_name(experiment_id),
                     },
                 ) as parent_run:
-                    parent_run_id = parent_run.info.run_id
+                    return parent_run.info.run_id
+
+            try:
+                parent_run_id = await asyncio.to_thread(_create_parent_run)
             except Exception as exc:
+                # `group_index: -1` flags this as a run-level error (no
+                # group slot to attach it to). The client surfaces it as a
+                # toast and aborts the batch.
                 yield _emit({
-                    "type": "group_error",
-                    "group_index": -1,
+                    "type": "run_error",
                     "detail": f"Could not create MLflow run: {exc}",
                 })
                 return
@@ -871,8 +882,7 @@ def create_playground_api_router(
                 df = await asyncio.to_thread(dataset.to_df)
             except Exception as exc:
                 yield _emit({
-                    "type": "group_error",
-                    "group_index": -1,
+                    "type": "run_error",
                     "detail": f"Could not load regression dataset: {exc}",
                 })
                 return
@@ -972,7 +982,7 @@ def create_playground_api_router(
                     # plain `@invoke()` agent. The tag is the universal escape
                     # hatch (same pattern the chat handler uses).
                     import uuid as _uuid
-                    group_request_id = f"reg-{run_id}-{gi}-{_uuid.uuid4().hex[:8]}"
+                    group_request_id = f"reg-{parent_run_id}-{gi}-{_uuid.uuid4().hex[:8]}"
                     try:
                         raw, _protocol = await _invoke_agent(
                             agent_url=runtime.agent_url,
