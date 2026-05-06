@@ -112,47 +112,19 @@ Return JSON matching the schema.
 """
 
 
-_DEFAULT_DATABRICKS_ENDPOINT = "databricks-gpt-5-4"
-
-
 def _default_llm_call(prompt: str) -> str:
-    """Invoke a Databricks model-serving endpoint via its OpenAI-compatible API.
+    """Invoke the configured Databricks model-serving endpoint.
 
-    Databricks model serving exposes every endpoint at
-    ``<DATABRICKS_HOST>/serving-endpoints`` with an OpenAI-shaped
-    chat-completions surface, so we just point the OpenAI client at it
-    and pass the workspace PAT as the API key. No special MLflow judge
-    adapter, no `databricks-agents` dependency.
-
-    Configuration (all from env):
-      * ``DATABRICKS_HOST`` — workspace URL.
-      * ``DATABRICKS_TOKEN`` — personal access token.
-      * ``MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT`` — endpoint name (optional;
-        defaults to ``databricks-gpt-5-4``).
-
-    The prompt asks the model to return JSON matching the schema; we
-    parse it via ``_LLMTestCase.model_validate_json(...)`` downstream.
+    See :mod:`mlflow.playground._llm` for credential / endpoint resolution.
+    Forwards the ``_LLMTestCase`` schema as structured output so the
+    endpoint emits JSON matching the schema directly.
     """
-    import os
+    from mlflow.playground._llm import call_databricks_endpoint, pydantic_to_response_format
 
-    host = os.environ.get("DATABRICKS_HOST", "").rstrip("/")
-    token = os.environ.get("DATABRICKS_TOKEN", "")
-    if not host or not token:
-        raise RuntimeError(
-            "Test-case generation needs Databricks workspace credentials. "
-            "Set DATABRICKS_HOST (workspace URL) and DATABRICKS_TOKEN (PAT) "
-            "in the environment running `mlflow agent playground`, then retry."
-        )
-    endpoint = os.environ.get("MLFLOW_PLAYGROUND_TEST_GEN_ENDPOINT", _DEFAULT_DATABRICKS_ENDPOINT)
-
-    from openai import OpenAI
-
-    client = OpenAI(api_key=token, base_url=f"{host}/serving-endpoints")
-    response = client.chat.completions.create(
-        model=endpoint,
-        messages=[{"role": "user", "content": prompt}],
+    return call_databricks_endpoint(
+        prompt,
+        response_format=pydantic_to_response_format(_LLMTestCase),
     )
-    return response.choices[0].message.content or ""
 
 
 class TestCaseGenerator:

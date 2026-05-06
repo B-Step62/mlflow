@@ -213,17 +213,15 @@ def _eval_judge(
 
 
 def _default_judge_llm(prompt: str) -> str:
-    """Default judge: same model the generator uses."""
-    from mlflow.genai.simulators.utils import (
-        get_default_simulation_model,
-        invoke_model_without_tracing,
-    )
-    from mlflow.types.llm import ChatMessage
+    """Default judge: same Databricks endpoint the generator uses.
 
-    return invoke_model_without_tracing(
-        model_uri=get_default_simulation_model(),
-        messages=[ChatMessage(role="user", content=prompt)],
-        response_format=_JudgeVerdict,
+    See :mod:`mlflow.playground._llm` for credential / endpoint resolution.
+    """
+    from mlflow.playground._llm import call_databricks_endpoint, pydantic_to_response_format
+
+    return call_databricks_endpoint(
+        prompt,
+        response_format=pydantic_to_response_format(_JudgeVerdict),
     )
 
 
