@@ -943,7 +943,7 @@ export const InlineCommentPopover = ({
                 disabled={feedback.pending}
                 onClick={() => onFixIt(feedback)}
               >
-                Fix it
+                Send to worker
               </Button>
             )}
           </div>
@@ -1296,7 +1296,7 @@ const CommentRow = ({
             disabled={feedback.pending}
             onClick={() => onFixIt(feedback)}
           >
-            Fix it
+            Send to worker
           </Button>
         )}
       </div>
