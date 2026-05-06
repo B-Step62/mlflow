@@ -171,3 +171,26 @@ def test_to_dataset_record_judge_shape_and_omits_empty_tags():
         "judge": {"criteria": "be formal", "expected_response": None},
     }
     assert record["tags"] == {}
+
+
+def test_default_llm_call_uses_databricks_endpoint(monkeypatch):
+    """Test-case generation always routes through the Databricks managed
+    judge endpoint — no raw provider API keys required."""
+    captured = {}
+
+    def fake_invoke(*, model_uri, messages, **kwargs):
+        captured["model_uri"] = model_uri
+        captured["messages"] = messages
+        captured["kwargs"] = kwargs
+        return "{}"
+
+    monkeypatch.setattr(
+        "mlflow.genai.simulators.utils.invoke_model_without_tracing", fake_invoke
+    )
+
+    from mlflow.playground.test_case_generator import _default_llm_call
+
+    _default_llm_call("hello world")
+
+    assert captured["model_uri"] == "databricks"
+    assert captured["messages"][0].content == "hello world"
