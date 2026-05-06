@@ -77,8 +77,11 @@ class LLMCallable(Protocol):
 
 
 _PROMPT_TEMPLATE = """\
-You are turning human feedback about an AI assistant's response into a runnable \
-test case.
+You are turning a human's feedback about an AI assistant's response into a \
+robust, runnable test case. The test will be re-run against the agent later \
+to confirm regressions don't return — so it must catch the *general failure \
+mode* the human was pointing at, not just the specific surface symptom they \
+happened to notice this time.
 
 # Conversation prefix (messages leading up to the failing turn)
 {conversation_prefix}
@@ -89,26 +92,68 @@ test case.
 # Human feedback
 Rationale: {rationale}{expected_response_section}{aspect_section}
 
-# Your task
-Pick ONE of two strategies:
+# How to think about this (do this BEFORE filling the JSON)
 
-1. "assertion" — the rationale is concrete and decidable by string match on the \
-assistant message or by checking which tools it called / didn't call. Examples:
-     - "must mention §4.2 of the refund policy"
-     - "must not call delete_account"
-   Fill `must_contain` / `must_not_contain` / `must_call_tool` / `must_not_call_tool`. \
-Leave `judge_criteria` null.
+1. **Identify the underlying principle.** Read the rationale and ask: what \
+general rule is the human asking the assistant to follow? The specific \
+strings or values in *this* failing response are evidence, not the rule itself.
 
-2. "judge" — the rationale is qualitative and can't be decided by string or tool match. \
-Examples:
-     - "tone is too casual"
-     - "the answer doesn't actually address what the user asked"
-   Fill `judge_criteria` with a short natural-language standard the judge will evaluate. \
-Leave the assertion lists empty.
+2. **Articulate the expected state.** Restate the rule as a positive standard \
+the assistant must meet, in general terms — not "must not contain X" where \
+X is the literal symbol from this turn, but "the response must satisfy \
+PROPERTY_OF_X".
 
-Also fill `rationale_summary` — a short summary of the original rationale (<= 80 chars).
+3. **Pick the strategy that captures the principle.** A test that only \
+catches the exact literal failure is *brittle*: it'll go green for \
+near-identical violations that share the same root cause. Bias toward the \
+strategy that captures the underlying rule.
 
-Return JSON matching the schema.
+# The two strategies
+
+## "assertion" — string- or tool-call match
+Use this ONLY when the principle reduces to a literal substring presence/absence \
+or a literal tool name. Good fits:
+  - "must mention §4.2 of the refund policy"   → must_contain: ["§4.2"]
+  - "must not call delete_account"              → must_not_call_tool: ["delete_account"]
+  - "must include a link to docs.example.com"   → must_contain: ["docs.example.com"]
+
+Bad fits (use "judge" instead):
+  - "must not link to non-latest docs" — "2.20.3" today, "2.21.0" tomorrow.
+  - "tone is too casual" — no fixed string captures formality.
+  - "the answer should be a polite refusal" — phrasing varies.
+
+## "judge" — qualitative principle
+Use this when the rule needs *understanding* the response, not just \
+string-grepping it. Fill `judge_criteria` with a short, *general* standard \
+a separate LLM judge will evaluate — phrased so it would still apply when \
+the same failure recurs with different surface details. Leave assertion lists empty.
+
+# Concrete brittle-vs-robust examples (study these — they map directly to common mistakes)
+
+Rationale: "do not use non-latest doc" (assistant linked to /docs/2.20.3/x)
+  ✗ Brittle:  must_not_contain: ["2.20.3"]
+              # Won't catch /docs/2.21.0/, /docs/v2/, /archive/...
+  ✓ Robust:   strategy = "judge"
+              judge_criteria = "Any documentation links must point to the
+                  latest published version. Reject responses that include
+                  versioned, archived, or otherwise non-latest doc URLs."
+
+Rationale: "answer is too long, should be one paragraph"
+  ✗ Brittle:  must_not_contain: ["\\n\\n"]   # collapses on one false positive
+  ✓ Robust:   strategy = "judge"
+              judge_criteria = "The answer is at most one short paragraph
+                  (~3 sentences); no headings, lists, or multi-paragraph
+                  structure."
+
+Rationale: "must mention the §4.2 clause specifically"
+  ✓ Robust:   strategy = "assertion"
+              must_contain: ["§4.2"]
+              # The literal "§4.2" IS the principle here — no generalization needed.
+
+# Output
+
+Fill `rationale_summary` with a short (<=80 char) summary of the original rationale.
+Pick `strategy` and fill the matching fields. Return JSON matching the schema.
 """
 
 
