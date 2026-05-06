@@ -44,7 +44,6 @@ import Utils from '../common/utils/Utils';
 import { withErrorBoundary } from '../common/utils/withErrorBoundary';
 import {
   Alert,
-  BookmarkIcon,
   Button,
   CheckIcon,
   ChevronLeftIcon,
@@ -53,7 +52,6 @@ import {
   CopyIcon,
   DagIcon,
   Input,
-  MegaphoneIcon,
   PlayIcon,
   SendIcon,
   SpeechBubbleIcon,
@@ -80,16 +78,17 @@ import {
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
 import { useParams } from '../common/utils/RoutingUtils';
 import {
-  FeedbackComposer,
-  FeedbackRail,
   FloatingAnnotateButton,
+  InlineCommentMarks,
+  InlineCommentPopover,
   dispatchFeedback,
   feedbacksFromTraceAssessments,
   persistFeedback,
-  resolveAnchorOffsets,
   tagFeedbackWithIssueId,
   useChatSelection,
+  type ActiveSelection,
   type AssistantMessageAnchor,
+  type FeedbackVerdict,
   type PlaygroundFeedback,
 } from './feedback';
 import { IssueDetailDrawer, runIssueTest, type RunTestVerdict } from './issues';
@@ -708,8 +707,7 @@ const QuestionChip = ({
   onDelete: () => void;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const truncated =
-    question.content.length > 30 ? `${question.content.slice(0, 30).trimEnd()}…` : question.content;
+  const truncated = question.content.length > 30 ? `${question.content.slice(0, 30).trimEnd()}…` : question.content;
   return (
     <Tooltip componentId="mlflow.playground.question-bank.chip.tooltip" content={question.content}>
       <div
@@ -792,11 +790,7 @@ type BannerVerdict = {
  * works off the slimmer batch-run shape (no full IssueDetail / TestCaseRow
  * — just what the navigator already has).
  */
-const buildBatchFixPrompt = (args: {
-  verdict: BannerVerdict;
-  question: string;
-  agentResponse: string;
-}): string => {
+const buildBatchFixPrompt = (args: { verdict: BannerVerdict; question: string; agentResponse: string }): string => {
   const { verdict, question, agentResponse } = args;
   const lines: string[] = [];
   lines.push(`# Fix failing regression test`);
@@ -830,7 +824,7 @@ const buildBatchFixPrompt = (args: {
   lines.push('');
   lines.push('## Your job');
   lines.push(
-    "Treat this test as a SYMPTOM of a behaviour gap in the agent, not the target itself. " +
+    'Treat this test as a SYMPTOM of a behaviour gap in the agent, not the target itself. ' +
       'A user wrote down what a correct response looks like; this run shows the agent missed that bar. ' +
       "Your task is to identify the underlying behaviour gap and improve the agent's general handling of " +
       'the kind of input that triggered it — not to make this one assertion green.',
@@ -855,9 +849,7 @@ const buildBatchFixPrompt = (args: {
   lines.push('- Do NOT special-case this exact question, this exact phrasing, or this exact assertion text.');
   lines.push('- Do NOT add a branch like `if "refund policy" in question: respond with "§4.2"`.');
   lines.push('- Do NOT hard-code the expected response or its keywords into the agent.');
-  lines.push(
-    '- Do NOT post-process the agent output to inject the missing tokens — fix the upstream behaviour.',
-  );
+  lines.push('- Do NOT post-process the agent output to inject the missing tokens — fix the upstream behaviour.');
   lines.push(
     '- Do NOT modify the test row or its assertion / judge spec (the playground regenerates it from ' +
       'the original feedback if you delete it).',
@@ -907,16 +899,16 @@ const buildBatchFixAllPrompt = (
       'Articulate the underlying behaviour gap in one or two sentences (general terms, not "for this exact question").',
   );
   lines.push(
-    "2. Decide on the root-cause layer (prompt / instructions / tools / retrieval / reasoning / training data). " +
+    '2. Decide on the root-cause layer (prompt / instructions / tools / retrieval / reasoning / training data). ' +
       'Touch the layer that owns the gap; do NOT slap a downstream bandaid.',
   );
   lines.push('3. Implement the fix.');
   lines.push(
     '4. **Commit.** Use a focused message that names the behaviour change, e.g. ' +
-      "`fix: agent now cites refund policy §4.2`. Do NOT bundle multiple fixes into one commit — each one should be reviewable on its own.",
+      '`fix: agent now cites refund policy §4.2`. Do NOT bundle multiple fixes into one commit — each one should be reviewable on its own.',
   );
   lines.push(
-    '5. Verify with the test row\'s verify command (shown per failure below) before moving to the next failure. ' +
+    "5. Verify with the test row's verify command (shown per failure below) before moving to the next failure. " +
       'If you broke a previously-passing test along the way, fix that first and commit it separately.',
   );
   lines.push('6. Repeat for the next failure. Stop when all of them pass.');
@@ -1024,9 +1016,7 @@ const BatchFailuresBanner = ({ conversations }: { conversations: ConvForBanner[]
   const failures = useMemo(() => collectFailures(conversations), [conversations]);
   if (failures.length === 0) return null;
   const slotsAffected = new Set(
-    conversations
-      .filter((c) => (c.verdicts ?? []).some((v) => !v.passed))
-      .map((c) => c.label),
+    conversations.filter((c) => (c.verdicts ?? []).some((v) => !v.passed)).map((c) => c.label),
   ).size;
   return (
     <div
@@ -1200,12 +1190,7 @@ const VerdictStack = ({
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
       {verdicts.map((v, i) => (
-        <VerdictBanner
-          key={v.test_case_id ?? `${i}`}
-          verdict={v}
-          question={question}
-          agentResponse={agentResponse}
-        />
+        <VerdictBanner key={v.test_case_id ?? `${i}`} verdict={v} question={question} agentResponse={agentResponse} />
       ))}
     </div>
   );
@@ -1265,9 +1250,7 @@ const BatchNavigator = ({
     if (active?.status === 'pending') return 'queued';
     if (active?.status === 'streaming') return 'running…';
     if (verdicts && verdicts.length > 0) {
-      return failedCount === 0
-        ? `✓ ${passedCount} passed`
-        : `✗ ${failedCount}/${verdicts.length} failed`;
+      return failedCount === 0 ? `✓ ${passedCount} passed` : `✗ ${failedCount}/${verdicts.length} failed`;
     }
     if (active?.status === 'failed') return '✗ error';
     if (active?.status === 'done') return '✓ done';
@@ -1282,9 +1265,7 @@ const BatchNavigator = ({
     return theme.colors.textSecondary;
   })();
   const traceHref =
-    experimentId && active?.trace_id
-      ? `/#/experiments/${experimentId}/traces/${active.trace_id}`
-      : null;
+    experimentId && active?.trace_id ? `/#/experiments/${experimentId}/traces/${active.trace_id}` : null;
 
   return (
     <div
@@ -1438,25 +1419,18 @@ const PlaygroundPageImpl = () => {
     }
   }, [sessionStorageKey, messages, traceIdsByRequestId, sessionId]);
 
-  // --- Annotation state (Epic 4) -------------------------------------------
+  // --- Annotation state ----------------------------------------------------
+  // Comments are inline (Google-Docs style): selecting text → floating 💬 →
+  // popover anchored at the selection; clicking an existing highlight in an
+  // assistant message → popover anchored at the mark. One popover state
+  // covers both modes; old separate composer/dispatch modals are gone.
+  // (YUK-57)
   const { selection, clear: clearSelection } = useChatSelection();
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerSelection, setComposerSelection] = useState<typeof selection>(null);
+  type ActivePopover =
+    | { mode: 'create'; selection: ActiveSelection }
+    | { mode: 'view'; feedbackId: string; rect: DOMRect };
+  const [activePopover, setActivePopover] = useState<ActivePopover | null>(null);
   const [feedbacks, setFeedbacks] = useState<PlaygroundFeedback[]>([]);
-  const [hoveredFeedback, setHoveredFeedback] = useState<string | null>(null);
-  const [flashedFeedback, setFlashedFeedback] = useState<string | null>(null);
-
-  const upsertFeedback = useCallback((next: PlaygroundFeedback) => {
-    setFeedbacks((prev) => {
-      const idx = prev.findIndex((f) => f.assessment_id === next.assessment_id);
-      if (idx >= 0) {
-        const merged = [...prev];
-        merged[idx] = { ...prev[idx], ...next };
-        return merged;
-      }
-      return [...prev, next];
-    });
-  }, []);
 
   // Hydrate feedbacks from each turn's trace assessments. The trace already
   // arrives via the live-trace polling effect above; we walk its info
@@ -1480,75 +1454,15 @@ const PlaygroundPageImpl = () => {
     });
   }, [selectedTrace]);
 
-  const submitFeedback = useCallback(
-    async (input: {
-      rationale: string;
-      aspect: PlaygroundFeedback['aspect'];
-      expected_output?: string;
-      anchor: AssistantMessageAnchor;
-    }) => {
-      const traceId = input.anchor.trace_id;
-      if (!traceId) {
-        setError('Cannot save feedback: this turn has no trace yet. Try again in a moment.');
-        return;
-      }
-      const optimisticId = `pending-${Date.now()}`;
-      const optimistic: PlaygroundFeedback = {
-        assessment_id: optimisticId,
-        trace_id: traceId,
-        rationale: input.rationale,
-        aspect: input.aspect,
-        expected_output: input.expected_output,
-        anchor: input.anchor,
-        pending: true,
-      };
-      setFeedbacks((prev) => [...prev, optimistic]);
-      setComposerOpen(false);
-      clearSelection();
-      try {
-        const { assessment_id } = await persistFeedback({
-          trace_id: traceId,
-          rationale: input.rationale,
-          aspect: input.aspect,
-          expected_output: input.expected_output,
-          anchor: input.anchor,
-        });
-        setFeedbacks((prev) =>
-          prev.map((f) =>
-            f.assessment_id === optimisticId
-              ? { ...f, assessment_id: assessment_id || optimisticId, pending: false }
-              : f,
-          ),
-        );
-      } catch (e) {
-        setFeedbacks((prev) => prev.filter((f) => f.assessment_id !== optimisticId));
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    },
-    [clearSelection],
-  );
-
-  const handleFeedbackHover = useCallback((feedbackId: string | null) => {
-    setHoveredFeedback(feedbackId);
-    setFlashedFeedback(feedbackId);
-  }, []);
-
   const resolveFeedback = useCallback((feedback: PlaygroundFeedback) => {
     setFeedbacks((prev) =>
       prev.map((f) => (f.assessment_id === feedback.assessment_id ? { ...f, resolved: true } : f)),
     );
   }, []);
 
-  // --- Dispatch flow (Epic 5) ---------------------------------------------
-  // The dispatch button creates the Issue immediately, no confirmation modal
-  // — the user already wrote the rationale in the feedback composer, asking
-  // them to retype it under a new heading is friction. Progress, success,
-  // and failure all surface through MLflow's global notification API
-  // (Utils.displayGlobalNotification), so the playground reuses the same
-  // notification surface the rest of the app does instead of mounting its
-  // own toast provider.
-  const [dispatchingIds, setDispatchingIds] = useState<Set<string>>(new Set());
-  const inFlightDispatchesRef = useRef<Set<string>>(new Set());
+  const deleteFeedback = useCallback((feedback: PlaygroundFeedback) => {
+    setFeedbacks((prev) => prev.filter((f) => f.assessment_id !== feedback.assessment_id));
+  }, []);
 
   // --- Right-pane accordion state -----------------------------------------
   // Three collapsible sections: Feedback (open by default — primary action
@@ -1557,10 +1471,8 @@ const PlaygroundPageImpl = () => {
   // default — expandable on demand; the live trace can chew up a lot of
   // vertical space). Each section is a separate concern; they share
   // remaining vertical space proportionally based on which are open.
-  const [openSections, setOpenSections] = useState<Set<'feedback' | 'tests' | 'trace'>>(
-    () => new Set(['feedback', 'tests']),
-  );
-  const toggleSection = useCallback((id: 'feedback' | 'tests' | 'trace') => {
+  const [openSections, setOpenSections] = useState<Set<'tests' | 'trace'>>(() => new Set(['tests']));
+  const toggleSection = useCallback((id: 'tests' | 'trace') => {
     setOpenSections((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -1687,10 +1599,12 @@ const PlaygroundPageImpl = () => {
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
 
-  // --- Inline test-run (YUK / Epic 6) -------------------------------------
-  // Run the regression test for a dispatched issue straight from the feedback
-  // card so the user doesn't have to open the detail drawer. The verdict
-  // surfaces as a toast (pass/fail + reasons + status transition).
+  // --- Inline test-run -----------------------------------------------------
+  // Run the regression test for a dispatched issue straight from the inline
+  // popover so the user doesn't have to open the detail drawer. The verdict
+  // surfaces as a toast AND is written back into the feedback's
+  // `latestVerdict` so the highlight re-colors (red=failing, green=passing)
+  // and the popover surfaces the failure reasons next time it opens.
   const [runningTestIssueIds, setRunningTestIssueIds] = useState<Set<string>>(new Set());
   const runTestNow = useCallback(async (feedback: PlaygroundFeedback) => {
     const issueId = feedback.dispatched_issue_id;
@@ -1711,7 +1625,6 @@ const PlaygroundPageImpl = () => {
     });
     try {
       const verdict = await runIssueTest(issueId, ({ message }) => {
-        // Re-post with the same `key` to update the toast text in place.
         Utils.displayGlobalNotification({
           severity: 'info',
           message,
@@ -1722,8 +1635,6 @@ const PlaygroundPageImpl = () => {
         });
       });
       Utils.closeGlobalNotification(progressKey);
-      // Surface the test run's trace in the live trace pane, and pop the
-      // Trace accordion section open so the user sees it without a click.
       if (verdict.trace_id) {
         setManualTraceId(verdict.trace_id);
         setOpenSections((prev) => {
@@ -1733,6 +1644,16 @@ const PlaygroundPageImpl = () => {
           return next;
         });
       }
+      // Persist the verdict on the feedback so highlights re-color and the
+      // popover can show failure reasons without re-fetching.
+      const stored: FeedbackVerdict = {
+        passed: verdict.passed,
+        trace_id: verdict.trace_id ?? undefined,
+        reasons: verdict.reasons,
+      };
+      setFeedbacks((prev) =>
+        prev.map((f) => (f.assessment_id === feedback.assessment_id ? { ...f, latestVerdict: stored } : f)),
+      );
       Utils.displayGlobalNotification({
         severity: verdict.passed ? 'success' : 'warning',
         message: verdict.passed ? `Test passed — ${issueId}` : `Test failed — ${issueId}`,
@@ -1761,130 +1682,210 @@ const PlaygroundPageImpl = () => {
   }, []);
 
   /**
-   * Build the conversation prefix for the dispatch payload by walking
-   * `messages` up to (but not including) the assistant message that the
-   * feedback is anchored to. The trace generator wants {role, content}
-   * pairs, so we drop client-only fields like requestId / traceId.
+   * Copy a single-failure fix prompt for the inline popover's [Fix] button.
+   * Reuses the same shape as the batch builder so the prompt's anti-overfit
+   * framing is identical between single and batch flows.
    */
-  const buildDispatchPayload = useCallback(
-    (
-      feedback: PlaygroundFeedback,
-      overrides: { rationale: string; aspect: string; expected_output?: string },
-    ): {
-      rationale: string;
-      failing_assistant_message: string;
-      conversation_prefix: Array<{ role: string; content: string }>;
-      expected_response?: string;
-      aspect?: string;
-      experiment_id?: string;
-      source_trace_id?: string;
-      source_feedback_id?: string;
-    } | null => {
+  const copyFixPromptForFeedback = useCallback(
+    async (feedback: PlaygroundFeedback) => {
       const targetIndex = messages.findIndex((m) => m.id === feedback.anchor.message_id);
-      if (targetIndex < 0) return null;
-      const failing = messages[targetIndex];
-      const prefix = messages.slice(0, targetIndex).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-      return {
-        rationale: overrides.rationale,
-        failing_assistant_message: failing.content,
-        conversation_prefix: prefix,
-        expected_response: overrides.expected_output,
-        aspect: overrides.aspect,
-        experiment_id: experimentId,
-        source_trace_id: feedback.trace_id,
-        source_feedback_id: feedback.assessment_id,
+      if (targetIndex < 0) {
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Cannot build fix prompt',
+          description: 'Anchor message not found in current thread.',
+          placement: 'topRight',
+        });
+        return;
+      }
+      const assistantMessage = messages[targetIndex];
+      const userMessage = messages
+        .slice(0, targetIndex)
+        .reverse()
+        .find((m) => m.role === 'user');
+      const verdict: BannerVerdict = {
+        passed: feedback.latestVerdict?.passed ?? false,
+        rationale_summary: feedback.rationale,
+        issue_id: feedback.dispatched_issue_id,
+        test_case_id: undefined,
+        reasons: feedback.latestVerdict?.reasons ?? [],
+        strategy: 'inline-feedback',
       };
+      const prompt = buildBatchFixPrompt({
+        verdict,
+        question: userMessage?.content ?? '',
+        agentResponse: assistantMessage.content,
+      });
+      try {
+        await navigator.clipboard.writeText(prompt);
+        Utils.displayGlobalNotification({
+          severity: 'success',
+          message: 'Fix prompt copied',
+          description: 'Paste into Claude Code to start fixing.',
+          duration: 3,
+          placement: 'topRight',
+        });
+      } catch (e) {
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Could not copy to clipboard',
+          description: e instanceof Error ? e.message : String(e),
+          placement: 'topRight',
+        });
+      }
     },
-    [messages, experimentId],
+    [messages],
   );
 
-  const dispatchNow = useCallback(
+  /**
+   * Save a new comment. Closes the popover immediately and persists in the
+   * background — the LLM-driven test generation is split off into a
+   * separate "Generate test" action (`generateTestForFeedback`) so Save
+   * feels instant. If persist fails the optimistic row is removed and a
+   * toast surfaces; the comment text is short enough that "redo it" beats
+   * keeping a half-saved row in the UI.
+   */
+  const submitFeedback = useCallback(
+    async (input: {
+      rationale: string;
+      aspect: PlaygroundFeedback['aspect'];
+      expected_output?: string;
+      anchor: AssistantMessageAnchor;
+    }) => {
+      const traceId = input.anchor.trace_id;
+      if (!traceId) {
+        setError('Cannot save feedback: this turn has no trace yet. Try again in a moment.');
+        return;
+      }
+
+      const optimisticId = `pending-${Date.now()}`;
+      setFeedbacks((prev) => [
+        ...prev,
+        {
+          assessment_id: optimisticId,
+          trace_id: traceId,
+          rationale: input.rationale,
+          aspect: input.aspect,
+          expected_output: input.expected_output,
+          anchor: input.anchor,
+          pending: true,
+        },
+      ]);
+
+      // Close immediately — no LLM call here, so don't make the user wait.
+      setActivePopover(null);
+      clearSelection();
+
+      void (async () => {
+        try {
+          const { assessment_id } = await persistFeedback({
+            trace_id: traceId,
+            rationale: input.rationale,
+            aspect: input.aspect,
+            expected_output: input.expected_output,
+            anchor: input.anchor,
+          });
+          const finalId = assessment_id || optimisticId;
+          setFeedbacks((prev) =>
+            prev.map((f) => (f.assessment_id === optimisticId ? { ...f, assessment_id: finalId, pending: false } : f)),
+          );
+        } catch (e) {
+          setFeedbacks((prev) => prev.filter((f) => f.assessment_id !== optimisticId));
+          Utils.displayGlobalNotification({
+            severity: 'error',
+            message: 'Could not save comment',
+            description: e instanceof Error ? e.message : String(e),
+            duration: 6,
+            placement: 'topRight',
+          });
+        }
+      })();
+    },
+    [clearSelection],
+  );
+
+  /**
+   * Generate a regression test case + Issue for an existing comment. This is
+   * the LLM-backed step (the server runs a model to derive assertions /
+   * judge criteria from the rationale), so it can take a few seconds. The
+   * popover surfaces a spinner via `generatingFeedbackIds`.
+   */
+  const [generatingFeedbackIds, setGeneratingFeedbackIds] = useState<Set<string>>(new Set());
+  const generateTestForFeedback = useCallback(
     async (feedback: PlaygroundFeedback) => {
-      if (feedback.dispatched_issue_id) return;
-      // Synchronous dedup guard — setState lags by a render, a Set ref avoids
-      // duplicate POSTs from a fast double-click.
-      if (inFlightDispatchesRef.current.has(feedback.assessment_id)) return;
-      inFlightDispatchesRef.current.add(feedback.assessment_id);
-      setDispatchingIds((prev) => {
+      if (feedback.dispatched_issue_id || feedback.pending) return;
+      const targetIndex = messages.findIndex((m) => m.id === feedback.anchor.message_id);
+      if (targetIndex < 0) {
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Cannot generate test',
+          description: 'Anchor message not found in current thread.',
+          placement: 'topRight',
+        });
+        return;
+      }
+      const failing = messages[targetIndex];
+      const prefix = messages.slice(0, targetIndex).map((m) => ({ role: m.role, content: m.content }));
+
+      setGeneratingFeedbackIds((prev) => {
+        if (prev.has(feedback.assessment_id)) return prev;
         const next = new Set(prev);
         next.add(feedback.assessment_id);
         return next;
       });
-
-      const progressKey = `mlflow.playground.dispatch.${feedback.assessment_id}`;
+      const progressKey = `mlflow.playground.generate-test.${feedback.assessment_id}`;
       Utils.displayGlobalNotification({
         severity: 'info',
-        message: 'Generating task and test case from feedback…',
+        message: 'Generating regression test from feedback…',
         key: progressKey,
         duration: 0,
         placement: 'topRight',
       });
-
-      // Reuse the rationale / aspect / expected_output the user already typed
-      // into the feedback composer; the old modal made them retype.
-      const overrides = {
-        rationale: feedback.rationale,
-        aspect: feedback.aspect,
-        expected_output: feedback.expected_output,
-      };
-      const payload = buildDispatchPayload(feedback, overrides);
-      const cleanup = () => {
-        inFlightDispatchesRef.current.delete(feedback.assessment_id);
-        setDispatchingIds((prev) => {
-          if (!prev.has(feedback.assessment_id)) return prev;
-          const next = new Set(prev);
-          next.delete(feedback.assessment_id);
-          return next;
-        });
-      };
-      if (!payload) {
-        Utils.closeGlobalNotification(progressKey);
-        Utils.displayGlobalNotification({
-          severity: 'error',
-          message: 'Cannot dispatch',
-          description: 'The assistant message this feedback is anchored to was not found.',
-          placement: 'topRight',
-        });
-        cleanup();
-        return;
-      }
       try {
-        const result = await dispatchFeedback(payload);
+        const result = await dispatchFeedback({
+          rationale: feedback.rationale,
+          failing_assistant_message: failing.content,
+          conversation_prefix: prefix,
+          expected_response: feedback.expected_output,
+          aspect: feedback.aspect,
+          experiment_id: experimentId,
+          source_trace_id: feedback.trace_id,
+          source_feedback_id: feedback.assessment_id,
+        });
         setFeedbacks((prev) =>
           prev.map((f) =>
             f.assessment_id === feedback.assessment_id ? { ...f, dispatched_issue_id: result.issue_id } : f,
           ),
         );
-        // Best-effort: stamp the assessment so the dispatched link survives a reload.
         void tagFeedbackWithIssueId(feedback.trace_id, feedback.assessment_id, result.issue_id);
-        // Refresh the Tests-panel case count — the dispatch just generated
-        // a regression-suite row, and the panel header should reflect that
-        // immediately rather than waiting for a page reload.
         reloadRegressionCount();
         Utils.closeGlobalNotification(progressKey);
         Utils.displayGlobalNotification({
           severity: 'success',
-          message: 'Issue created',
-          description: `${result.issue_id} — worker will pick it up on the next poll.`,
-          duration: 4,
+          message: 'Test generated',
+          description: `Tracked as ${result.issue_id} in the regression suite.`,
+          duration: 3,
           placement: 'topRight',
         });
       } catch (e) {
         Utils.closeGlobalNotification(progressKey);
         Utils.displayGlobalNotification({
           severity: 'error',
-          message: 'Dispatch failed',
+          message: 'Test generation failed',
           description: e instanceof Error ? e.message : String(e),
+          duration: 6,
           placement: 'topRight',
         });
       } finally {
-        cleanup();
+        setGeneratingFeedbackIds((prev) => {
+          if (!prev.has(feedback.assessment_id)) return prev;
+          const next = new Set(prev);
+          next.delete(feedback.assessment_id);
+          return next;
+        });
       }
     },
-    [buildDispatchPayload, reloadRegressionCount],
+    [messages, experimentId, reloadRegressionCount],
   );
 
   useEffect(() => {
@@ -2022,150 +2023,184 @@ const PlaygroundPageImpl = () => {
     }
   }, [agentUrlInput]);
 
-  const sendMessage = useCallback(async (overrideContent?: string) => {
-    // Allow callers (e.g. question-bank chip clicks) to bypass the input box
-    // by passing the content explicitly. Default behaviour reads from `draft`
-    // so the existing Send button + Enter-key handler work unchanged.
-    const content = (overrideContent ?? draft).trim();
-    if (!content || isSubmitting) {
-      return;
-    }
-
-    // Hand control of the live trace pane back to the chat path. Any trace
-    // the user pinned via a regression-test run gets superseded by the new
-    // turn's trace as soon as it lands.
-    setManualTraceId(undefined);
-
-    const requestId = createRequestId();
-    // Mint a session id on the first send of a fresh thread; subsequent sends
-    // (and a resumed history selected from the picker) reuse the same id so all
-    // their traces share `mlflow.trace.session`.
-    const turnSessionId = sessionId ?? createRequestId();
-    if (!sessionId) {
-      setSessionId(turnSessionId);
-    }
-    const userMessage: PlaygroundMessage = {
-      id: createMessageId('user'),
-      role: 'user',
-      content,
-      requestId,
-    };
-    const nextMessages = [...messages, userMessage];
-
-    setMessages(nextMessages);
-    if (overrideContent === undefined) {
-      // Only clear the input box when the send came from the input. Chip
-      // clicks (with overrideContent) leave the user's in-progress draft alone.
-      setDraft('');
-    }
-    setStreamingText('');
-    setIsSubmitting(true);
-    setError(null);
-    // Clear the prior turn's trace so the right pane shows "Loading trace…"
-    // until the new turn's first span lands. Without this, the previous turn's
-    // span tree lingers visibly while the new turn is in flight.
-    setSelectedTrace(null);
-    // Cancel any in-flight tag-lookup polling from a prior turn (a stale
-    // resolver could still race in and set traceId on an old user message).
-    traceLookupAbortersRef.current.forEach((controller) => controller.abort());
-    traceLookupAbortersRef.current.clear();
-
-    // Start polling for the trace by request_id IMMEDIATELY so the right pane
-    // can pick up the trace as soon as the agent's first child span persists
-    // the trace_info row in the backend. We attach the traceId onto the user
-    // message (whichever message has the latest traceId drives the live-poll
-    // effect; SSE assistant_final later mirrors it onto the assistant
-    // message).
-    if (experimentId) {
-      const controller = new AbortController();
-      traceLookupAbortersRef.current.add(controller);
-      void (async () => {
-        try {
-          const resolved = await lookupTraceIdByRequestId(experimentId, requestId, controller.signal);
-          if (resolved) {
-            setTraceIdsByRequestId((current) => (current[requestId] ? current : { ...current, [requestId]: resolved }));
-          }
-        } finally {
-          traceLookupAbortersRef.current.delete(controller);
-        }
-      })();
-    }
-
-    try {
-      const response = await fetch(getAjaxUrl('ajax-api/3.0/mlflow/playground/chat'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getDefaultHeaders(document.cookie),
-        },
-        body: JSON.stringify({
-          messages: nextMessages.map(({ role, content: messageContent }) => ({ role, content: messageContent })),
-          agent_url: agentUrlInput,
-          request_id: requestId,
-          session_id: turnSessionId,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(await parseErrorText(response));
-      }
-      if (!response.body) {
-        throw new Error('Streaming response body is not available.');
+  const sendMessage = useCallback(
+    async (overrideContent?: string) => {
+      // Allow callers (e.g. question-bank chip clicks) to bypass the input box
+      // by passing the content explicitly. Default behaviour reads from `draft`
+      // so the existing Send button + Enter-key handler work unchanged.
+      const content = (overrideContent ?? draft).trim();
+      if (!content || isSubmitting) {
+        return;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finalMessage: PlaygroundMessage | null = null;
+      // Hand control of the live trace pane back to the chat path. Any trace
+      // the user pinned via a regression-test run gets superseded by the new
+      // turn's trace as soon as it lands.
+      setManualTraceId(undefined);
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() ?? '';
-
-        chunks.forEach((chunk) =>
-          parseSseChunk(chunk, (event) => {
-            if (event.type === 'assistant_delta') {
-              setStreamingText((current) => current + event.delta);
-            }
-            if (event.type === 'assistant_final') {
-              finalMessage = {
-                id: createMessageId('assistant'),
-                role: 'assistant',
-                content: event.message.content,
-                requestId,
-                toolCalls: event.tool_calls,
-              };
-              if (event.trace_id) {
-                const sseTraceId = event.trace_id;
-                setTraceIdsByRequestId((current) =>
-                  current[requestId] ? current : { ...current, [requestId]: sseTraceId },
-                );
-              }
-            }
-          }),
-        );
+      const requestId = createRequestId();
+      // Mint a session id on the first send of a fresh thread; subsequent sends
+      // (and a resumed history selected from the picker) reuse the same id so all
+      // their traces share `mlflow.trace.session`.
+      const turnSessionId = sessionId ?? createRequestId();
+      if (!sessionId) {
+        setSessionId(turnSessionId);
       }
+      const userMessage: PlaygroundMessage = {
+        id: createMessageId('user'),
+        role: 'user',
+        content,
+        requestId,
+      };
+      const nextMessages = [...messages, userMessage];
 
-      if (finalMessage) {
-        setMessages((current) => [...current, finalMessage as PlaygroundMessage]);
-        setStreamingText('');
-        setConfig((current) => (current ? { ...current, agent_connected: true } : current));
-      } else {
-        throw new Error('The playground did not receive a completed assistant response.');
+      setMessages(nextMessages);
+      if (overrideContent === undefined) {
+        // Only clear the input box when the send came from the input. Chip
+        // clicks (with overrideContent) leave the user's in-progress draft alone.
+        setDraft('');
       }
-    } catch (e) {
-      setConfig((current) => (current ? { ...current, agent_connected: false } : current));
       setStreamingText('');
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [agentUrlInput, draft, experimentId, isSubmitting, messages, sessionId]);
+      setIsSubmitting(true);
+      setError(null);
+      // Clear the prior turn's trace so the right pane shows "Loading trace…"
+      // until the new turn's first span lands. Without this, the previous turn's
+      // span tree lingers visibly while the new turn is in flight.
+      setSelectedTrace(null);
+      // Cancel any in-flight tag-lookup polling from a prior turn (a stale
+      // resolver could still race in and set traceId on an old user message).
+      traceLookupAbortersRef.current.forEach((controller) => controller.abort());
+      traceLookupAbortersRef.current.clear();
+
+      // Start polling for the trace by request_id IMMEDIATELY so the right pane
+      // can pick up the trace as soon as the agent's first child span persists
+      // the trace_info row in the backend. We attach the traceId onto the user
+      // message (whichever message has the latest traceId drives the live-poll
+      // effect; SSE assistant_final later mirrors it onto the assistant
+      // message).
+      if (experimentId) {
+        const controller = new AbortController();
+        traceLookupAbortersRef.current.add(controller);
+        void (async () => {
+          try {
+            const resolved = await lookupTraceIdByRequestId(experimentId, requestId, controller.signal);
+            if (resolved) {
+              setTraceIdsByRequestId((current) =>
+                current[requestId] ? current : { ...current, [requestId]: resolved },
+              );
+            }
+          } finally {
+            traceLookupAbortersRef.current.delete(controller);
+          }
+        })();
+      }
+
+      try {
+        const response = await fetch(getAjaxUrl('ajax-api/3.0/mlflow/playground/chat'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getDefaultHeaders(document.cookie),
+          },
+          body: JSON.stringify({
+            messages: nextMessages.map(({ role, content: messageContent }) => ({ role, content: messageContent })),
+            agent_url: agentUrlInput,
+            request_id: requestId,
+            session_id: turnSessionId,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(await parseErrorText(response));
+        }
+        if (!response.body) {
+          throw new Error('Streaming response body is not available.');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalMessage: PlaygroundMessage | null = null;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() ?? '';
+
+          chunks.forEach((chunk) =>
+            parseSseChunk(chunk, (event) => {
+              if (event.type === 'assistant_delta') {
+                setStreamingText((current) => current + event.delta);
+              }
+              if (event.type === 'assistant_final') {
+                finalMessage = {
+                  id: createMessageId('assistant'),
+                  role: 'assistant',
+                  content: event.message.content,
+                  requestId,
+                  toolCalls: event.tool_calls,
+                };
+                if (event.trace_id) {
+                  const sseTraceId = event.trace_id;
+                  setTraceIdsByRequestId((current) =>
+                    current[requestId] ? current : { ...current, [requestId]: sseTraceId },
+                  );
+                }
+              }
+            }),
+          );
+        }
+
+        if (finalMessage) {
+          setMessages((current) => [...current, finalMessage as PlaygroundMessage]);
+          setStreamingText('');
+          setConfig((current) => (current ? { ...current, agent_connected: true } : current));
+          // Auto-record every user question into the question bank so the
+          // user doesn't have to click the per-message 💾 affordance to seed
+          // the bank. Dedupe by exact content match so retries don't pile up
+          // duplicates. Fire-and-forget: a backend hiccup must not break
+          // chat, just leave the bank one entry shy.
+          if (experimentId && !savedQuestions.some((q) => q.content === content)) {
+            const sourceMessageId = userMessage.id;
+            void (async () => {
+              try {
+                const newId = await apiAddQuestion(experimentId, content, {
+                  sourceMessageId,
+                });
+                setSavedQuestions((current) =>
+                  current.some((q) => q.content === content)
+                    ? current
+                    : [
+                        ...current,
+                        {
+                          question_id: newId,
+                          content,
+                          source_message_id: sourceMessageId,
+                        },
+                      ],
+                );
+              } catch {
+                // best-effort; question-bank failures don't block chat
+              }
+            })();
+          }
+        } else {
+          throw new Error('The playground did not receive a completed assistant response.');
+        }
+      } catch (e) {
+        setConfig((current) => (current ? { ...current, agent_connected: false } : current));
+        setStreamingText('');
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [agentUrlInput, draft, experimentId, isSubmitting, messages, savedQuestions, sessionId],
+  );
 
   // Single batch turn — fires one question through the agent, no shared
   // history with the live chat or with sibling batch slots, and updates the
@@ -2299,6 +2334,10 @@ const PlaygroundPageImpl = () => {
     setRegressionInProgress({ current: 0, total: 0, passed: 0, failed: 0 });
 
     type RunStarted = { type: 'run_started'; run_id: string };
+    // Run-level errors (no group slot to attach to) — server emits these
+    // when the parent run can't be created or the dataset can't be
+    // loaded; the navigator can't recover from either, so we abort.
+    type RunError = { type: 'run_error'; detail: string };
     type GroupStarted = {
       type: 'group_started';
       group_index: number;
@@ -2320,7 +2359,14 @@ const PlaygroundPageImpl = () => {
     type GroupError = { type: 'group_error'; group_index: number; detail: string };
     type Started = { type: 'started'; total_groups: number; total_cases: number };
     type Summary = { type: 'summary'; total_groups: number; run_id?: string };
-    type GroupedEvent = RunStarted | GroupStarted | GroupVerdict | GroupError | Started | Summary;
+    type GroupedEvent =
+      | RunStarted
+      | RunError
+      | GroupStarted
+      | GroupVerdict
+      | GroupError
+      | Started
+      | Summary;
 
     let response: Response;
     try {
@@ -2360,10 +2406,23 @@ const PlaygroundPageImpl = () => {
     let doneGroups = 0;
     let passedCases = 0;
     let failedCases = 0;
+    let aborted = false;
 
     const handleEvent = (event: GroupedEvent) => {
       if (event.type === 'run_started') {
         setBatchRun((current) => (current ? { ...current, run_id: event.run_id } : current));
+        return;
+      }
+      if (event.type === 'run_error') {
+        aborted = true;
+        setBatchRun(null);
+        setRegressionInProgress(undefined);
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Regression run failed',
+          description: event.detail,
+          placement: 'topRight',
+        });
         return;
       }
       if (event.type === 'started') {
@@ -2383,9 +2442,7 @@ const PlaygroundPageImpl = () => {
           streamingText: 'Replaying conversation against the agent…',
           status: 'streaming',
         };
-        setBatchRun((current) =>
-          current ? { ...current, conversations: [...current.conversations, slot] } : current,
-        );
+        setBatchRun((current) => (current ? { ...current, conversations: [...current.conversations, slot] } : current));
         return;
       }
       if (event.type === 'group_verdict') {
@@ -2439,7 +2496,7 @@ const PlaygroundPageImpl = () => {
       // 'summary' — handled after the loop ends.
     };
 
-    while (true) {
+    while (!aborted) {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -2457,7 +2514,13 @@ const PlaygroundPageImpl = () => {
         } catch {
           // Malformed event; skip rather than abort the whole run.
         }
+        if (aborted) break;
       }
+    }
+
+    if (aborted) {
+      reader.cancel().catch(() => undefined);
+      return;
     }
 
     setRegressionInProgress(undefined);
@@ -2523,7 +2586,7 @@ const PlaygroundPageImpl = () => {
   // When a batch run is active, the chat thread renders the active
   // conversation slot's messages instead of the live `messages`. Live state
   // is preserved untouched — clearing `batchRun` returns to the live chat.
-  const activeBatch = batchRun ? batchRun.conversations[batchRun.activeIndex] ?? null : null;
+  const activeBatch = batchRun ? (batchRun.conversations[batchRun.activeIndex] ?? null) : null;
   const displayedMessages = activeBatch ? activeBatch.messages : messages;
   const displayedStreamingText = activeBatch ? activeBatch.streamingText : streamingText;
   const displayedIsSubmitting = activeBatch ? activeBatch.status === 'streaming' : isSubmitting;
@@ -2709,12 +2772,8 @@ const PlaygroundPageImpl = () => {
             {activeBatch?.verdicts && activeBatch.verdicts.length > 0 && (
               <VerdictStack
                 verdicts={activeBatch.verdicts}
-                question={
-                  activeBatch.messages.find((m) => m.role === 'user')?.content ?? activeBatch.label ?? ''
-                }
-                agentResponse={
-                  [...activeBatch.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''
-                }
+                question={activeBatch.messages.find((m) => m.role === 'user')?.content ?? activeBatch.label ?? ''}
+                agentResponse={[...activeBatch.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''}
               />
             )}
             {isLoadingConfig ? (
@@ -2765,38 +2824,8 @@ const PlaygroundPageImpl = () => {
                     >
                       {message.role === 'user' ? 'User' : `Assistant turn ${String(index + 1).padStart(2, '0')}`}
                     </Typography.Text>
-                    {message.role === 'user' && experimentId && (
-                      <Tooltip
-                        componentId="mlflow.playground.save-question.tooltip"
-                        content="Save this question to the bank"
-                      >
-                        <button
-                          type="button"
-                          aria-label="Save this question to the bank"
-                          onClick={async () => {
-                            try {
-                              await apiAddQuestion(experimentId, message.content, {
-                                sourceMessageId: message.id,
-                              });
-                              reloadQuestionBank();
-                            } catch {
-                              // Best-effort — bank is non-critical, swallow.
-                            }
-                          }}
-                          css={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 2,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            color: theme.colors.textSecondary,
-                            ':hover': { color: theme.colors.textPrimary },
-                          }}
-                        >
-                          <BookmarkIcon />
-                        </button>
-                      </Tooltip>
-                    )}
+                    {/* Question bank auto-records every send (see sendMessage);
+                        no manual save affordance needed. */}
                   </div>
                   <div
                     data-mlflow-feedback-anchor={message.role === 'assistant' ? message.id : undefined}
@@ -2819,7 +2848,14 @@ const PlaygroundPageImpl = () => {
                     }}
                   >
                     {message.role === 'assistant' ? (
-                      <GenAIMarkdownRenderer>{message.content}</GenAIMarkdownRenderer>
+                      <InlineCommentMarks
+                        feedbacks={feedbacks.filter((f) => f.anchor.message_id === message.id && !f.resolved)}
+                        onClickMark={({ feedback, rect }) =>
+                          setActivePopover({ mode: 'view', feedbackId: feedback.assessment_id, rect })
+                        }
+                      >
+                        <GenAIMarkdownRenderer>{message.content}</GenAIMarkdownRenderer>
+                      </InlineCommentMarks>
                     ) : (
                       message.content
                     )}
@@ -2940,34 +2976,6 @@ const PlaygroundPageImpl = () => {
           }}
         >
           <CollapsibleSection
-            id="feedback"
-            title="Feedback"
-            icon={<MegaphoneIcon css={{ color: theme.colors.textSecondary }} />}
-            rightSlot={
-              <Typography.Text size="sm" color="secondary">
-                {feedbacks.filter((f) => !f.resolved).length} active
-              </Typography.Text>
-            }
-            open={openSections.has('feedback')}
-            onToggle={() => toggleSection('feedback')}
-          >
-            <FeedbackRail
-              feedbacks={feedbacks}
-              hoveredId={hoveredFeedback}
-              flashedId={flashedFeedback}
-              callbacks={{
-                onHover: handleFeedbackHover,
-                onDispatch: (feedback) => void dispatchNow(feedback),
-                onResolve: resolveFeedback,
-                onOpenIssue: (issueId) => setOpenIssueId(issueId),
-                onRunTest: (feedback) => void runTestNow(feedback),
-                runningTestIssueIds,
-                dispatchingIds,
-              }}
-            />
-          </CollapsibleSection>
-
-          <CollapsibleSection
             id="tests"
             title="Tests"
             icon={<PlayIcon css={{ color: theme.colors.textSecondary }} />}
@@ -3060,28 +3068,57 @@ const PlaygroundPageImpl = () => {
         </aside>
       </div>
 
-      {/* Floating 💬 button shown next to the active text selection.
-          Click → captures the selection into composerSelection and opens the
-          composer modal. The button itself uses preventDefault on mousedown
-          so the underlying selection doesn't collapse before our handler runs. */}
-      {!composerOpen && (
+      {/* Floating 💬 button shown next to the active text selection. Click →
+          opens the inline comment popover in create mode anchored at the
+          selection. The button uses preventDefault on mousedown so the
+          underlying selection isn't collapsed before our handler runs. */}
+      {activePopover?.mode !== 'create' && (
         <FloatingAnnotateButton
           selection={selection}
           onClick={() => {
-            setComposerSelection(selection);
-            setComposerOpen(true);
+            if (selection) setActivePopover({ mode: 'create', selection });
           }}
         />
       )}
-      <FeedbackComposer
-        selection={composerSelection}
-        visible={composerOpen}
-        onCancel={() => {
-          setComposerOpen(false);
-          setComposerSelection(null);
-        }}
-        onSubmit={submitFeedback}
-      />
+      {activePopover?.mode === 'create' && (
+        <InlineCommentPopover
+          mode="create"
+          selection={activePopover.selection}
+          rect={activePopover.selection.rect}
+          onClose={() => {
+            setActivePopover(null);
+            clearSelection();
+          }}
+          onSubmit={submitFeedback}
+        />
+      )}
+      {activePopover?.mode === 'view' &&
+        (() => {
+          const feedback = feedbacks.find((f) => f.assessment_id === activePopover.feedbackId);
+          if (!feedback) return null;
+          return (
+            <InlineCommentPopover
+              mode="view"
+              feedback={feedback}
+              rect={activePopover.rect}
+              isGenerating={generatingFeedbackIds.has(feedback.assessment_id)}
+              isRunning={feedback.dispatched_issue_id ? runningTestIssueIds.has(feedback.dispatched_issue_id) : false}
+              onClose={() => setActivePopover(null)}
+              onGenerateTest={(f) => void generateTestForFeedback(f)}
+              onRunTest={(f) => void runTestNow(f)}
+              onResolve={(f) => {
+                resolveFeedback(f);
+                setActivePopover(null);
+              }}
+              onDelete={(f) => {
+                deleteFeedback(f);
+                setActivePopover(null);
+              }}
+              onOpenIssue={(issueId) => setOpenIssueId(issueId)}
+              onCopyFixPrompt={(f) => void copyFixPromptForFeedback(f)}
+            />
+          );
+        })()}
 
       <IssueDetailDrawer issueId={openIssueId} visible={!!openIssueId} onClose={() => setOpenIssueId(null)} />
 
