@@ -746,6 +746,20 @@ class AbstractStore(GatewayStoreMixin):
         """
         raise MlflowNotImplementedException()
 
+    def add_issue_comment(
+        self,
+        issue_id: str,
+        body: str,
+        author: str,
+        kind: str = "comment",
+    ) -> "IssueComment":  # noqa: F821
+        """Append an entry to an issue's activity thread (Linear-style)."""
+        raise MlflowNotImplementedException()
+
+    def list_issue_comments(self, issue_id: str) -> list["IssueComment"]:  # noqa: F821
+        """Return all comments for an issue, oldest first."""
+        raise MlflowNotImplementedException()
+
     def log_spans(self, location: str, spans: list[Span], tracking_uri=None) -> list[Span]:
         """
         Log multiple span entities to the tracking store.

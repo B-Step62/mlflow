@@ -1,22 +1,16 @@
 """Shared LLM call helper for the playground.
 
-Test-case generation and judge evaluation both call a Databricks model-
-serving endpoint using its OpenAI-compatible API surface. Centralized here
-so the credential handling, endpoint resolution, and OpenAI client wiring
-live in one place — no managed-judge adapter, no `databricks-agents`
-dependency, no raw provider API keys.
+Test-case generation and judge evaluation issue single-turn structured-output
+calls. The dispatcher in :func:`call_default_llm` always routes to the
+Claude Code CLI (:mod:`mlflow.playground._claude_llm`); the Databricks
+model-serving fallback below (:func:`call_databricks_endpoint`) is kept as
+dead code so it can be re-enabled later, but no production caller reaches
+it today.
 
-Endpoint resolution:
-
-  * ``DATABRICKS_HOST`` (env, required) — workspace URL, e.g.
-    ``https://dbc-foo.cloud.databricks.com``.
-  * ``DATABRICKS_TOKEN`` (env, required) — personal access token.
-  * ``MLFLOW_PLAYGROUND_DATABRICKS_ENDPOINT`` (env, optional) — endpoint
-    name. Defaults to ``databricks-gpt-5-4``.
-
-Structured output (``response_format``) is forwarded as-is when supplied;
-``pydantic_to_response_format()`` converts a Pydantic model class to the
-OpenAI ``json_schema`` dict the endpoint expects.
+Why the single-provider lock-in: we want every playground install to
+exercise the Claude Code path so we don't ship a regression there
+unnoticed. Flipping the dispatcher back to a multi-provider scheme is
+intentionally a one-line change in :func:`call_default_llm`.
 """
 
 from __future__ import annotations
@@ -58,6 +52,9 @@ def call_databricks_endpoint(
     returns no content). Raises ``RuntimeError`` if either credential is
     missing — surfaces a clear setup hint instead of a confusing 401 from
     the endpoint.
+
+    Currently dead code: :func:`call_default_llm` no longer dispatches here.
+    Kept around so re-enabling the Databricks path is a one-line change.
     """
     host = os.environ.get("DATABRICKS_HOST", "").rstrip("/")
     token = os.environ.get("DATABRICKS_TOKEN", "")
@@ -82,7 +79,29 @@ def call_databricks_endpoint(
     return response.choices[0].message.content or ""
 
 
+def call_default_llm(
+    prompt: str,
+    *,
+    response_schema: type[pydantic.BaseModel],
+) -> str:
+    """Send ``prompt`` to the Claude Code CLI provider.
+
+    The returned string is a JSON document parseable against
+    ``response_schema`` — the CLI's ``--json-schema`` flag enforces the
+    contract — so callers can safely call
+    ``response_schema.model_validate_json(...)`` on the result.
+
+    The Databricks fallback (:func:`call_databricks_endpoint`) is preserved
+    in this module but not reached. To re-enable provider selection, fork
+    this function on an env var or feature flag.
+    """
+    from mlflow.playground._claude_llm import call_claude
+
+    return call_claude(prompt, response_schema=response_schema)
+
+
 __all__ = [
     "call_databricks_endpoint",
+    "call_default_llm",
     "pydantic_to_response_format",
 ]

@@ -118,6 +118,23 @@ def test_build_claude_fix_prompt_includes_issue_and_test(monkeypatch):
     assert "tr-1" in prompt
 
 
+def _fake_claude_popen(*, returncode: int = 0, lines: list[str] | None = None):
+    """Build a Mock that quacks like ``subprocess.Popen`` for streaming claude.
+
+    `lines` are yielded one-by-one from `proc.stdout` to mimic stream-json
+    output; pass `None` for an empty stream (claude exits without printing).
+    """
+    from unittest import mock
+
+    proc = mock.Mock()
+    proc.stdout = iter(lines or [])
+    proc.returncode = returncode
+    proc.poll = mock.Mock(return_value=returncode)
+    proc.wait = mock.Mock(return_value=returncode)
+    proc.kill = mock.Mock()
+    return proc
+
+
 def test_dispatch_claude_fix_marks_failed_when_claude_missing(tmp_path, monkeypatch):
     from unittest import mock
 
@@ -136,7 +153,7 @@ def test_dispatch_claude_fix_marks_failed_when_claude_missing(tmp_path, monkeypa
     with (
         mock.patch("mlflow.playground.worker.build_claude_fix_prompt", return_value="hi"),
         mock.patch(
-            "mlflow.playground.worker.subprocess.run",
+            "mlflow.playground.worker.subprocess.Popen",
             side_effect=FileNotFoundError("no claude"),
         ),
     ):
@@ -167,15 +184,12 @@ def test_dispatch_claude_fix_marks_failed_when_test_still_red(tmp_path, monkeypa
     )
     runtime.connections[conn.connection_id] = conn
 
-    # First subprocess.run = claude (exits 0). Second = mlflow agent test run (exits 1).
-    claude_proc = mock.Mock(returncode=0)
+    claude_proc = _fake_claude_popen(returncode=0)
     test_proc = mock.Mock(returncode=1, stdout="assertion failed", stderr="")
     with (
         mock.patch("mlflow.playground.worker.build_claude_fix_prompt", return_value="hi"),
-        mock.patch(
-            "mlflow.playground.worker.subprocess.run",
-            side_effect=[claude_proc, test_proc],
-        ),
+        mock.patch("mlflow.playground.worker.subprocess.Popen", return_value=claude_proc),
+        mock.patch("mlflow.playground.worker.subprocess.run", return_value=test_proc),
     ):
         thread = worker.dispatch_claude_fix(
             runtime,
@@ -204,17 +218,15 @@ def test_dispatch_claude_fix_happy_path(tmp_path, monkeypatch):
     )
     runtime.connections[conn.connection_id] = conn
 
-    claude_proc = mock.Mock(returncode=0)
+    claude_proc = _fake_claude_popen(returncode=0)
     test_proc = mock.Mock(returncode=0, stdout="PASS", stderr="")
     agent_proc = mock.Mock()
     store = mock.Mock(transition_issue=mock.Mock())
 
     with (
         mock.patch("mlflow.playground.worker.build_claude_fix_prompt", return_value="hi"),
-        mock.patch(
-            "mlflow.playground.worker.subprocess.run",
-            side_effect=[claude_proc, test_proc],
-        ),
+        mock.patch("mlflow.playground.worker.subprocess.Popen", return_value=claude_proc),
+        mock.patch("mlflow.playground.worker.subprocess.run", return_value=test_proc),
         mock.patch("mlflow.playground.server._launch_local_agent_process", return_value=agent_proc),
         mock.patch("mlflow.playground.server._wait_for_agent_health", return_value=True),
         mock.patch("mlflow.playground.worker._find_free_port", return_value=12345),
@@ -232,3 +244,47 @@ def test_dispatch_claude_fix_happy_path(tmp_path, monkeypatch):
     assert conn.agent_url == "http://127.0.0.1:12345"
     assert conn.process is agent_proc
     store.transition_issue.assert_called_once()
+
+
+def test_run_claude_streams_events_into_comments(tmp_path):
+    from unittest import mock
+
+    from mlflow.playground import worker
+
+    lines = [
+        '{"type":"system","subtype":"init","model":"claude-sonnet-4-6"}\n',
+        (
+            '{"type":"assistant","message":{"content":'
+            '[{"type":"text","text":"Investigating the issue."}]}}\n'
+        ),
+        (
+            '{"type":"assistant","message":{"content":'
+            '[{"type":"tool_use","name":"Read","input":{"file_path":"/x/agent.py"}}]}}\n'
+        ),
+        (
+            '{"type":"result","subtype":"success",'
+            '"num_turns":3,"duration_ms":4200,"total_cost_usd":0.0123}\n'
+        ),
+    ]
+    fake_proc = _fake_claude_popen(returncode=0, lines=lines)
+    store = mock.Mock(add_issue_comment=mock.Mock())
+
+    with (
+        mock.patch("mlflow.playground.worker.subprocess.Popen", return_value=fake_proc),
+        mock.patch("mlflow.tracking._tracking_service.utils._get_store", return_value=store),
+    ):
+        exit_code, error = worker._run_claude(
+            tmp_path,
+            "prompt",
+            tmp_path / "claude.log",
+            issue_id="iss-1",
+        )
+
+    assert exit_code == 0
+    assert error == ""
+    bodies = [call.kwargs.get("body") or call.args[1] for call in store.add_issue_comment.mock_calls]
+    assert any("Investigating the issue" in b for b in bodies)
+    assert any(b.startswith("→ Read(") for b in bodies)
+    assert any("claude finished" in b for b in bodies)
+    # Raw stream landed on disk too.
+    assert (tmp_path / "claude.log").read_text().count("\n") == len(lines)

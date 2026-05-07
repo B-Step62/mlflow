@@ -173,27 +173,23 @@ def test_to_dataset_record_judge_shape_and_omits_empty_tags():
     assert record["tags"] == {}
 
 
-def test_default_llm_call_forwards_to_shared_databricks_helper(monkeypatch):
-    """Test-case generation delegates to the shared `_llm.call_databricks_endpoint`
-    helper with the `_LLMTestCase` schema as structured output."""
-    from unittest import mock as _mock
-
+def test_default_llm_call_routes_to_claude(monkeypatch):
+    """Test-case generation delegates to ``_claude_llm.call_claude`` with
+    the `_LLMTestCase` schema. The Databricks fallback in ``_llm`` is dead
+    code today (see :func:`mlflow.playground._llm.call_default_llm`).
+    """
     captured = {}
 
-    def fake_call(prompt, *, response_format=None):
+    def fake_call(prompt, *, response_schema=None, timeout=None):
         captured["prompt"] = prompt
-        captured["response_format"] = response_format
+        captured["response_schema"] = response_schema
         return "{}"
 
-    monkeypatch.setattr("mlflow.playground._llm.call_databricks_endpoint", fake_call)
+    monkeypatch.setattr("mlflow.playground._claude_llm.call_claude", fake_call)
 
-    from mlflow.playground.test_case_generator import _default_llm_call
+    from mlflow.playground.test_case_generator import _default_llm_call, _LLMTestCase
 
     _default_llm_call("hello world")
 
     assert captured["prompt"] == "hello world"
-    rf = captured["response_format"]
-    assert rf["type"] == "json_schema"
-    assert rf["json_schema"]["name"] == "LLMTestCase"  # `_` stripped
-    # Schema body comes from the Pydantic model — just smoke-check it's there.
-    assert "properties" in rf["json_schema"]["schema"]
+    assert captured["response_schema"] is _LLMTestCase

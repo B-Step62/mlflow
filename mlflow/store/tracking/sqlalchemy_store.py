@@ -138,6 +138,7 @@ from mlflow.store.tracking.dbmodels.models import (
     SqlInput,
     SqlInputTag,
     SqlIssue,
+    SqlIssueComment,
     SqlLatestMetric,
     SqlLoggedModel,
     SqlLoggedModelMetric,
@@ -6279,6 +6280,48 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
             )
             by_id = {row.issue_id: row.to_mlflow_entity() for row in rows}
             return [by_id[i] for i in issue_ids if i in by_id]
+
+    def add_issue_comment(self, issue_id, body, author, kind="comment"):
+        from mlflow.entities.issue_comment import IssueComment
+
+        with self.ManagedSessionMaker() as session:
+            # Verify the issue exists so we surface a clean error instead of a FK
+            # violation buried inside SQLAlchemy.
+            existing = session.query(SqlIssue).filter(SqlIssue.issue_id == issue_id).first()
+            if existing is None:
+                raise MlflowException(
+                    f"Issue with id={issue_id} not found",
+                    INVALID_PARAMETER_VALUE,
+                )
+            comment_id = f"icmt-{uuid.uuid4().hex}"
+            row = SqlIssueComment(
+                comment_id=comment_id,
+                issue_id=issue_id,
+                author=author,
+                body=body,
+                kind=kind,
+                created_timestamp=get_current_time_millis(),
+            )
+            session.add(row)
+            session.flush()
+            return IssueComment(
+                comment_id=row.comment_id,
+                issue_id=row.issue_id,
+                author=row.author,
+                body=row.body,
+                kind=row.kind,
+                created_timestamp=row.created_timestamp,
+            )
+
+    def list_issue_comments(self, issue_id):
+        with self.ManagedSessionMaker() as session:
+            rows = (
+                session.query(SqlIssueComment)
+                .filter(SqlIssueComment.issue_id == issue_id)
+                .order_by(SqlIssueComment.created_timestamp.asc())
+                .all()
+            )
+            return [row.to_mlflow_entity() for row in rows]
 
     def search_issues(
         self,

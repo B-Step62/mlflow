@@ -454,6 +454,37 @@ def create_playground_api_router(
             raise HTTPException(status_code=status, detail=str(exc)) from exc
         return issue.to_dictionary()
 
+    @router.get("/issues/{issue_id}/comments")
+    async def list_issue_comments(issue_id: str) -> dict[str, Any]:
+        """Return the issue's activity thread (Linear-style), oldest first."""
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        comments = await asyncio.to_thread(_get_store().list_issue_comments, issue_id)
+        return {"comments": [c.to_dict() for c in comments]}
+
+    @router.post("/issues/{issue_id}/comments")
+    async def add_issue_comment(issue_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from mlflow.exceptions import MlflowException
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        body = request.get("body")
+        if not isinstance(body, str) or not body.strip():
+            raise HTTPException(status_code=400, detail="`body` must be a non-empty string.")
+        author = request.get("author") or "user"
+        kind = request.get("kind") or "comment"
+        try:
+            comment = await asyncio.to_thread(
+                _get_store().add_issue_comment,
+                issue_id,
+                body.strip(),
+                author,
+                kind,
+            )
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        return comment.to_dict()
+
     @router.get("/issues/{issue_id}/test-case")
     async def get_issue_test_case(issue_id: str) -> dict[str, Any]:
         """Return the regression-suite row generated for this Issue, so the

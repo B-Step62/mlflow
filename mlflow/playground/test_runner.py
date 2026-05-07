@@ -213,16 +213,14 @@ def _eval_judge(
 
 
 def _default_judge_llm(prompt: str) -> str:
-    """Default judge: same Databricks endpoint the generator uses.
+    """Default judge: same provider the generator uses.
 
-    See :mod:`mlflow.playground._llm` for credential / endpoint resolution.
+    See :mod:`mlflow.playground._llm` for provider selection (Claude Code
+    CLI by default, Databricks endpoint as fallback).
     """
-    from mlflow.playground._llm import call_databricks_endpoint, pydantic_to_response_format
+    from mlflow.playground._llm import call_default_llm
 
-    return call_databricks_endpoint(
-        prompt,
-        response_format=pydantic_to_response_format(_JudgeVerdict),
-    )
+    return call_default_llm(prompt, response_schema=_JudgeVerdict)
 
 
 # ---------------------------------------------------------------------------
