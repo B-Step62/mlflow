@@ -1299,6 +1299,53 @@ class SqlIssue(Base):
         )
 
 
+class SqlIssueComment(Base):
+    """Linear-style activity thread on an issue.
+
+    Each row is one entry in the issue's chronological feed. Authored either
+    by a human (``kind='comment'``), the worker (``kind='claude'``), or the
+    playground itself (``kind='system'`` — state changes, dispatch events, etc.).
+    """
+
+    __tablename__ = "issue_comments"
+
+    comment_id = Column(String(36), nullable=False)
+    issue_id = Column(
+        String(36),
+        ForeignKey("issues.issue_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    author = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    kind = Column(String(32), nullable=False, default="comment")
+    created_timestamp = Column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("comment_id", name="issue_comments_pk"),
+        Index(f"index_{__tablename__}_issue_id", "issue_id"),
+        Index(
+            f"index_{__tablename__}_issue_created",
+            "issue_id",
+            "created_timestamp",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<SqlIssueComment({self.comment_id}, {self.issue_id}, {self.kind})>"
+
+    def to_mlflow_entity(self):
+        from mlflow.entities.issue_comment import IssueComment
+
+        return IssueComment(
+            comment_id=self.comment_id,
+            issue_id=self.issue_id,
+            author=self.author,
+            body=self.body,
+            kind=self.kind,
+            created_timestamp=self.created_timestamp,
+        )
+
+
 class SqlLoggedModel(Base):
     __tablename__ = "logged_models"
 

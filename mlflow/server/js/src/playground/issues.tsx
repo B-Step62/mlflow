@@ -152,6 +152,45 @@ export const fetchIssueTestCase = async (issueId: string): Promise<TestCaseRow |
   return (await response.json()) as TestCaseRow;
 };
 
+export type IssueCommentEntry = {
+  comment_id: string;
+  issue_id: string;
+  author: string;
+  body: string;
+  kind: string;
+  created_timestamp: number;
+};
+
+export const fetchIssueComments = async (issueId: string): Promise<IssueCommentEntry[]> => {
+  const response = await fetch(
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/comments`),
+    { headers: getDefaultHeaders(document.cookie) },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch comments (${response.status}): ${await response.text()}`);
+  }
+  const body = (await response.json()) as { comments?: IssueCommentEntry[] };
+  return body.comments ?? [];
+};
+
+export const postIssueComment = async (
+  issueId: string,
+  body: string,
+): Promise<IssueCommentEntry> => {
+  const response = await fetch(
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/comments`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
+      body: JSON.stringify({ body, author: 'user', kind: 'comment' }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to post comment (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as IssueCommentEntry;
+};
+
 export type RunTestProgress = {
   stage: 'loading' | 'replaying' | 'evaluating';
   message: string;
@@ -382,7 +421,9 @@ const WorkerReviewActions = ({
   const [reworkFeedback, setReworkFeedback] = useState('');
   const [reworkOpen, setReworkOpen] = useState(false);
 
-  const playgroundHref = `/experiments/${encodeURIComponent(experimentId)}/playground?activate_for_issue=${encodeURIComponent(
+  // The app uses createHashRouter, so client routes live under #/...; a path-style
+  // href would do a full document navigation and 404 against the FastAPI server.
+  const playgroundHref = `#/experiments/${encodeURIComponent(experimentId)}/playground?activate_for_issue=${encodeURIComponent(
     issue.issue_id,
   )}`;
 
@@ -633,7 +674,14 @@ const WorkerSection = ({
 
   // Worker ready — surface the deeplink + accept/rework/discard actions.
   if (worker && worker.status === 'ready') {
-    return <WorkerReviewActions worker={worker} issue={issue} experimentId={experimentId} onChange={onDispatched} />;
+    return (
+      <WorkerReviewActions
+        worker={worker}
+        issue={issue}
+        experimentId={experimentId}
+        onChange={onDispatched}
+      />
+    );
   }
 
   // Worker failed.
@@ -663,6 +711,138 @@ const WorkerSection = ({
   }
 
   return null;
+};
+
+// --- Comments thread (Linear-style) ----------------------------------------
+
+const formatRelativeTime = (ts: number): string => {
+  const seconds = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+};
+
+const IssueComments = ({ issueId }: { issueId: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const [comments, setComments] = useState<IssueCommentEntry[]>([]);
+  const [draft, setDraft] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await fetchIssueComments(issueId);
+      setComments(next);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [issueId]);
+
+  useEffect(() => {
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 5000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
+  const onSubmit = useCallback(async () => {
+    const body = draft.trim();
+    if (!body) return;
+    setSubmitting(true);
+    try {
+      await postIssueComment(issueId, body);
+      setDraft('');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [draft, issueId, refresh]);
+
+  return (
+    <div
+      css={{
+        borderTop: `1px solid ${theme.colors.border}`,
+        paddingTop: theme.spacing.md,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+      }}
+    >
+      <Typography.Text css={{ fontWeight: 600 }}>Activity</Typography.Text>
+      {error && (
+        <Alert
+          componentId="mlflow.playground.issue-detail.comments-error"
+          type="error"
+          message={error}
+          closable
+          onClose={() => setError(null)}
+        />
+      )}
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+        {comments.length === 0 && (
+          <Typography.Text color="secondary" size="sm">
+            No activity yet.
+          </Typography.Text>
+        )}
+        {comments.map((c) => (
+          <div key={c.comment_id} css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'baseline' }}>
+              <Typography.Text css={{ fontWeight: 600 }} size="sm">
+                {c.author}
+              </Typography.Text>
+              <Typography.Text color="secondary" size="sm">
+                {formatRelativeTime(c.created_timestamp)}
+              </Typography.Text>
+            </div>
+            <pre
+              css={{
+                margin: 0,
+                fontFamily: 'inherit',
+                fontSize: theme.typography.fontSizeBase,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color:
+                  c.kind === 'system' ? theme.colors.textSecondary : theme.colors.textPrimary,
+              }}
+            >
+              {c.body}
+            </pre>
+          </div>
+        ))}
+      </div>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          placeholder="Leave a comment…"
+          css={{
+            fontFamily: 'inherit',
+            fontSize: theme.typography.fontSizeBase,
+            padding: theme.spacing.sm,
+            borderRadius: theme.borders.borderRadiusSm,
+            border: `1px solid ${theme.colors.border}`,
+          }}
+        />
+        <div>
+          <Button
+            componentId="mlflow.playground.issue-detail.comment-submit"
+            type="primary"
+            onClick={onSubmit}
+            disabled={submitting || !draft.trim()}
+          >
+            {submitting ? 'Posting…' : 'Comment'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // --- Drawer -----------------------------------------------------------------
@@ -850,6 +1030,8 @@ export const IssueDetailDrawer = ({
                   }}
                 />
               )}
+
+              <IssueComments issueId={issue.issue_id} />
 
               <div
                 css={{

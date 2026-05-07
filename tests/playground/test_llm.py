@@ -1,15 +1,21 @@
-"""Tests for `mlflow.playground._llm` (shared Databricks-OpenAI helper)."""
+"""Tests for `mlflow.playground._llm` (shared LLM provider dispatcher) and
+its ``claude_code`` provider in `mlflow.playground._claude_llm`.
+"""
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from unittest import mock
 
 import pydantic
 import pytest
 
+from mlflow.playground._claude_llm import ClaudeCLIError, call_claude
 from mlflow.playground._llm import (
     call_databricks_endpoint,
+    call_default_llm,
     pydantic_to_response_format,
 )
 
@@ -21,7 +27,8 @@ class _Sample(pydantic.BaseModel):
 
 def _fake_openai_module(content: str = "{}"):
     """Build a fake `openai` module with a stub `OpenAI()` client whose
-    `chat.completions.create` returns the given content."""
+    `chat.completions.create` returns the given content.
+    """
     fake_client = mock.Mock()
     fake_client.chat.completions.create.return_value = type(
         "R",
@@ -93,3 +100,150 @@ def test_call_databricks_endpoint_requires_credentials(monkeypatch):
 
     with pytest.raises(RuntimeError, match="DATABRICKS_HOST"):
         call_databricks_endpoint("hi")
+
+
+# ---------------------------------------------------------------------------
+# claude_code provider
+# ---------------------------------------------------------------------------
+
+
+def _fake_claude_proc(*, returncode: int = 0, stdout: str = "{}", stderr: str = ""):
+    return subprocess.CompletedProcess(
+        args=[], returncode=returncode, stdout=stdout, stderr=stderr
+    )
+
+
+def test_call_claude_returns_structured_output(monkeypatch):
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    fake_run = mock.Mock(
+        return_value=_fake_claude_proc(
+            stdout=json.dumps({"structured_output": {"passed": True}})
+        )
+    )
+    monkeypatch.setattr("mlflow.playground._claude_llm.subprocess.run", fake_run)
+
+    out = call_claude("hi", response_schema=_Sample)
+
+    assert json.loads(out) == {"passed": True}
+    cmd = fake_run.call_args.args[0]
+    assert cmd[:2] == ["claude", "-p"]
+    assert cmd[2] == "hi"
+    assert cmd[cmd.index("--max-turns") + 1] == "5"
+    assert cmd[cmd.index("--tools") + 1] == ""
+    assert cmd[cmd.index("--output-format") + 1] == "json"
+    schema_idx = cmd.index("--json-schema")
+    assert json.loads(cmd[schema_idx + 1])["properties"]["passed"]["type"] == "boolean"
+
+
+def test_call_claude_omits_schema_when_unspecified(monkeypatch):
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    fake_run = mock.Mock(
+        return_value=_fake_claude_proc(stdout=json.dumps({"result": "hi there"}))
+    )
+    monkeypatch.setattr("mlflow.playground._claude_llm.subprocess.run", fake_run)
+
+    out = call_claude("ping")
+
+    assert out == "hi there"
+    cmd = fake_run.call_args.args[0]
+    assert "--json-schema" not in cmd
+
+
+def test_call_claude_raises_when_cli_missing(monkeypatch):
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: None)
+
+    with pytest.raises(ClaudeCLIError, match="not available on PATH"):
+        call_claude("hi", response_schema=_Sample)
+
+
+def test_call_claude_raises_on_nonzero_exit(monkeypatch):
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    monkeypatch.setattr(
+        "mlflow.playground._claude_llm.subprocess.run",
+        mock.Mock(return_value=_fake_claude_proc(returncode=2, stdout="not json", stderr="boom")),
+    )
+
+    with pytest.raises(ClaudeCLIError, match="boom"):
+        call_claude("hi", response_schema=_Sample)
+
+
+def test_call_claude_surfaces_envelope_error_on_nonzero_exit(monkeypatch):
+    """Exit-1 with empty stderr but a populated JSON envelope should surface
+    the envelope's subtype/errors instead of the unhelpful 'exit code N'."""
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    monkeypatch.setattr(
+        "mlflow.playground._claude_llm.subprocess.run",
+        mock.Mock(
+            return_value=_fake_claude_proc(
+                returncode=1,
+                stdout=json.dumps(
+                    {
+                        "subtype": "error_max_turns",
+                        "errors": ["Reached maximum number of turns (1)"],
+                    }
+                ),
+                stderr="",
+            )
+        ),
+    )
+
+    with pytest.raises(ClaudeCLIError, match="error_max_turns"):
+        call_claude("hi", response_schema=_Sample)
+
+
+def test_call_claude_raises_on_timeout(monkeypatch):
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    monkeypatch.setattr(
+        "mlflow.playground._claude_llm.subprocess.run",
+        mock.Mock(side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=1.0)),
+    )
+
+    with pytest.raises(ClaudeCLIError, match="timed out"):
+        call_claude("hi", response_schema=_Sample, timeout=1.0)
+
+
+def test_call_claude_raises_when_envelope_lacks_structured_output(monkeypatch):
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    monkeypatch.setattr(
+        "mlflow.playground._claude_llm.subprocess.run",
+        mock.Mock(return_value=_fake_claude_proc(stdout=json.dumps({"session_id": "x"}))),
+    )
+
+    with pytest.raises(ClaudeCLIError, match="structured_output"):
+        call_claude("hi", response_schema=_Sample)
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher
+# ---------------------------------------------------------------------------
+
+
+def test_call_default_llm_routes_to_claude(monkeypatch):
+    """The dispatcher unconditionally routes to the Claude Code CLI; the
+    Databricks fallback below is dead code (preserved for future re-enablement).
+    """
+    fake = mock.Mock(return_value='{"passed": true}')
+    monkeypatch.setattr("mlflow.playground._claude_llm.call_claude", fake)
+
+    out = call_default_llm("hi", response_schema=_Sample)
+
+    assert out == '{"passed": true}'
+    fake.assert_called_once_with("hi", response_schema=_Sample)
+
+
+def test_call_default_llm_does_not_call_databricks(monkeypatch):
+    """Sanity-check: even with both providers reachable, the Databricks helper
+    is never invoked through the dispatcher.
+    """
+    monkeypatch.setattr(
+        "mlflow.playground._claude_llm.call_claude",
+        mock.Mock(return_value="{}"),
+    )
+    databricks_call = mock.Mock(return_value="{}")
+    monkeypatch.setattr(
+        "mlflow.playground._llm.call_databricks_endpoint", databricks_call
+    )
+
+    call_default_llm("hi", response_schema=_Sample)
+
+    databricks_call.assert_not_called()

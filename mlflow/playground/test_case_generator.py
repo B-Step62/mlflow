@@ -158,18 +158,15 @@ Pick `strategy` and fill the matching fields. Return JSON matching the schema.
 
 
 def _default_llm_call(prompt: str) -> str:
-    """Invoke the configured Databricks model-serving endpoint.
+    """Invoke the auto-selected playground LLM provider.
 
-    See :mod:`mlflow.playground._llm` for credential / endpoint resolution.
-    Forwards the ``_LLMTestCase`` schema as structured output so the
-    endpoint emits JSON matching the schema directly.
+    See :mod:`mlflow.playground._llm` for provider selection (Claude Code
+    CLI by default, Databricks endpoint as fallback). The ``_LLMTestCase``
+    schema is enforced natively by whichever provider is chosen.
     """
-    from mlflow.playground._llm import call_databricks_endpoint, pydantic_to_response_format
+    from mlflow.playground._llm import call_default_llm
 
-    return call_databricks_endpoint(
-        prompt,
-        response_format=pydantic_to_response_format(_LLMTestCase),
-    )
+    return call_default_llm(prompt, response_schema=_LLMTestCase)
 
 
 class TestCaseGenerator:
