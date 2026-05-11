@@ -9,6 +9,5 @@
   "homepage": "https://mlflow.org/",
   "license": "Apache-2.0",
   "keywords": ["mlflow", "tracing", "observability", "llm"],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }
