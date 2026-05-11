@@ -15,8 +15,6 @@ import { FAIL, OK, WARN, bold, cyan, dim } from '../ui.js';
 const DEFAULT_TRACKING_URI = 'http://localhost:5000';
 const DEFAULT_EXPERIMENT_NAME = 'claude-code-traces';
 
-type Readline = ReturnType<typeof createInterface>;
-
 export interface SetupOptions extends ConfigPathOptions {
   trackingUri?: string;
   experimentId?: string;
@@ -28,13 +26,13 @@ export interface ParsedSetupArgs extends SetupOptions {
   projectLocal: boolean | undefined;
 }
 
-function askOn(
-  rl: Readline,
+function askQuestion(
   label: string,
   defaultValue: string,
   validate?: (value: string) => string | null,
 ): Promise<string> {
   return new Promise((resolvePromise) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
     const ask = (): void => {
       rl.question(`  ${label} ${dim(`[${defaultValue}]`)} `, (answer) => {
         const value = answer.trim() || defaultValue;
@@ -44,6 +42,7 @@ function askOn(
           ask();
           return;
         }
+        rl.close();
         resolvePromise(value);
       });
     };
@@ -147,17 +146,11 @@ export async function runSetup(args: string[], options: SetupOptions = {}): Prom
         : true;
   const settingsPath = resolveSettingsPath(projectLocal, merged);
 
-  const rl =
-    interactive &&
-    (!merged.trackingUri || (!merged.experimentId && !merged.experimentName))
-      ? createInterface({ input: process.stdin, output: process.stdout })
-      : null;
-
   try {
     const trackingUri =
       merged.trackingUri ??
-      (rl
-        ? await askOn(rl, 'MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri)
+      (interactive
+        ? await askQuestion('MLflow tracking URI', DEFAULT_TRACKING_URI, validateTrackingUri)
         : DEFAULT_TRACKING_URI);
 
     if (!isValidTrackingUri(trackingUri)) {
@@ -169,12 +162,15 @@ export async function runSetup(args: string[], options: SetupOptions = {}): Prom
     let experimentId = merged.experimentId;
     let experimentName = merged.experimentName;
     if (!experimentId && !experimentName) {
-      if (rl) {
+      if (interactive) {
         const mode = await promptExperimentMode();
         if (mode === 'id') {
-          experimentId = await askOn(rl, 'MLflow experiment ID', '0');
+          experimentId = await askQuestion('MLflow experiment ID', '0');
         } else {
-          experimentName = await askOn(rl, 'MLflow experiment name', DEFAULT_EXPERIMENT_NAME);
+          experimentName = await askQuestion(
+            'MLflow experiment name',
+            DEFAULT_EXPERIMENT_NAME,
+          );
         }
       } else {
         experimentName = DEFAULT_EXPERIMENT_NAME;
@@ -206,8 +202,6 @@ export async function runSetup(args: string[], options: SetupOptions = {}): Prom
   } catch (error) {
     console.error(`${FAIL} ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
-  } finally {
-    rl?.close();
   }
 }
 
