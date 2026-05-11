@@ -1,24 +1,17 @@
 import { build } from 'esbuild';
 import { chmodSync } from 'node:fs';
 
-const banner = {
-  // Create a require function for CJS dependencies that use bare node specifiers
-  js: [
-    '#!/usr/bin/env node',
-    'import { createRequire as __createRequire } from "node:module";',
-    'const require = __createRequire(import.meta.url);',
-  ].join('\n'),
-};
+const banner = { js: '#!/usr/bin/env node' };
 
 for (const [entryPoint, outfile] of [
-  ['dist/hooks/stop.js', 'bundle/stop.js'],
-  ['dist/cli.js', 'bundle/cli.js'],
+  ['dist/hooks/stop.js', 'bundle/stop.cjs'],
+  ['dist/cli.js', 'bundle/cli.cjs'],
 ]) {
   await build({
     entryPoints: [entryPoint],
     bundle: true,
     platform: 'node',
-    format: 'esm',
+    format: 'cjs',
     outfile,
     external: ['node:*'],
     banner,
