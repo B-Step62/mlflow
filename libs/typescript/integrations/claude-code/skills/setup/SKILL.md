@@ -7,15 +7,34 @@ disable-model-invocation: true
 
 Use this skill only when the user explicitly asks to configure MLflow tracing.
 
-1. Determine the scope.
+You must not invent your own setup wizard, option picker, or tracking URI menu.
+Do not present made-up choices like `http://localhost:3000`.
+Do not simulate configuration steps in natural language when the bundled CLI can do them.
+
+The source of truth for setup is the bundled CLI command:
+
+```bash
+mlflow-claude-code setup
+```
+
+Rules:
+
+1. Determine scope.
 Prefer project scope unless the user explicitly asks for user-wide configuration.
 
-2. Gather the required configuration.
-You need:
-- a tracking URI: `http://...`, `https://...`, `databricks`, or `databricks://<profile>`
-- either an experiment ID or an experiment name
+2. Accept only real tracking URI forms.
+Valid values are:
+- `http://localhost:5000` for the default local MLflow server
+- any arbitrary `http://...` or `https://...` URL
+- `databricks`
+- `databricks://<profile>`
 
-3. Once you have enough information, run one of these commands:
+3. Accept either:
+- an experiment ID
+- an experiment name
+
+4. If the user already provided all required values, run the CLI non-interactively.
+Use one of these forms:
 
 ```bash
 mlflow-claude-code setup --non-interactive --project --tracking-uri "<uri>" --experiment-id "<id>"
@@ -27,6 +46,17 @@ mlflow-claude-code setup --non-interactive --project --tracking-uri "<uri>" --ex
 
 If the user asked for user-wide configuration, replace `--project` with `--user`.
 
-4. Summarize the resulting configuration and the next steps.
+5. If the user did not provide all required values, do not invent your own questionnaire.
+Run the interactive CLI instead:
 
-5. If the user already provided all required values in one message, do not ask follow-up questions before running the command.
+```bash
+mlflow-claude-code setup --project
+```
+
+or:
+
+```bash
+mlflow-claude-code setup --user
+```
+
+6. After the CLI finishes, summarize the resulting configuration and next steps.
