@@ -253,7 +253,9 @@ def test_regression_runs_list_returns_shaped_rows():
     )
     with mock.patch("mlflow.tracking.client.MlflowClient") as MlflowClientCls:
         MlflowClientCls.return_value.search_runs.return_value = [fake_run]
-        response = client.get("/ajax-api/3.0/mlflow/playground/regression-suite/runs?experiment_id=exp-1")
+        response = client.get(
+            "/ajax-api/3.0/mlflow/playground/regression-suite/runs?experiment_id=exp-1"
+        )
 
     assert response.status_code == 200
     body = response.json()
@@ -418,6 +420,68 @@ def test_list_issues_passes_state_through_as_filter_string():
         max_results=200,
         include_trace_count=False,
     )
+
+
+def test_transition_issue_routes_to_store_and_returns_updated():
+    from mlflow.entities.issue import IssueStatus
+
+    client = create_test_client()
+    updated = mock.Mock(to_dictionary=mock.Mock(return_value=_issue_dict("iss-1", "in_progress")))
+    store = mock.Mock(transition_issue=mock.Mock(return_value=updated))
+    with mock.patch(
+        "mlflow.tracking._tracking_service.utils._get_store",
+        return_value=store,
+    ):
+        response = client.post(
+            "/ajax-api/3.0/mlflow/playground/issues/iss-1/transition",
+            json={"status": "in_progress"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "in_progress"
+    store.transition_issue.assert_called_once_with("iss-1", IssueStatus.IN_PROGRESS)
+
+
+def test_transition_issue_returns_400_on_missing_status():
+    client = create_test_client()
+    response = client.post(
+        "/ajax-api/3.0/mlflow/playground/issues/iss-1/transition",
+        json={},
+    )
+    assert response.status_code == 400
+    assert "status" in response.json()["detail"].lower()
+
+
+def test_transition_issue_returns_400_on_unknown_status():
+    client = create_test_client()
+    response = client.post(
+        "/ajax-api/3.0/mlflow/playground/issues/iss-1/transition",
+        json={"status": "nonsense"},
+    )
+    assert response.status_code == 400
+    assert "nonsense" in response.json()["detail"]
+
+
+def test_transition_issue_translates_illegal_edge_to_400():
+    from mlflow.exceptions import MlflowException
+
+    client = create_test_client()
+    store = mock.Mock(
+        transition_issue=mock.Mock(
+            side_effect=MlflowException("Illegal issue transition 'done' -> 'todo'.")
+        )
+    )
+    with mock.patch(
+        "mlflow.tracking._tracking_service.utils._get_store",
+        return_value=store,
+    ):
+        response = client.post(
+            "/ajax-api/3.0/mlflow/playground/issues/iss-1/transition",
+            json={"status": "todo"},
+        )
+
+    assert response.status_code == 400
+    assert "Illegal" in response.json()["detail"]
 
 
 def test_list_issues_translates_mlflow_exception_to_400():
