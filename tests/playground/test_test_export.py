@@ -102,6 +102,91 @@ def test_export_test_script_raises_lookup_error_when_dataset_empty(monkeypatch):
         export_test_script("exp-empty", "python")
 
 
+@pytest.fixture
+def _clear_export_cache():
+    """Reset the in-memory export cache before/after each cache-related test
+    so cross-test pollution doesn't hide a real cache miss."""
+    from mlflow.playground import test_export as _te
+
+    _te._export_cache.clear()
+    yield
+    _te._export_cache.clear()
+
+
+def test_export_caches_until_cases_change(monkeypatch, _clear_export_cache):
+    """Repeated calls with the same dataset rows must reuse the cached
+    script and skip the LLM. A change in the rows must bust the cache."""
+    cases_v1 = _sample_cases()
+    cases_v2 = _sample_cases() + [
+        {
+            "id": "tc-new",
+            "rationale": "added later",
+            "messages": [{"role": "user", "content": "fresh"}],
+            "test_spec": {"strategy": "assertion", "assertion": {"must_contain": ["x"]}},
+        }
+    ]
+    cases_ref = {"current": cases_v1}
+
+    monkeypatch.setattr(
+        "mlflow.playground.test_export._collect_test_cases",
+        lambda _: cases_ref["current"],
+    )
+
+    llm_call_count = {"n": 0}
+
+    def fake_llm(prompt, *, response_schema):
+        llm_call_count["n"] += 1
+        return json.dumps({"code": f"# v{llm_call_count['n']}\nprint('hi')", "filename": "test_x.py"})
+
+    monkeypatch.setattr("mlflow.playground._llm.call_default_llm", fake_llm)
+
+    # First call — cache miss, hits the LLM.
+    s1 = export_test_script("exp-cache", "python")
+    assert llm_call_count["n"] == 1
+    assert s1.code == "# v1\nprint('hi')"
+
+    # Second call, same dataset — cache hit, no LLM.
+    s2 = export_test_script("exp-cache", "python")
+    assert llm_call_count["n"] == 1
+    assert s2.code == s1.code
+
+    # Dataset mutated — fingerprint differs, cache busts, LLM called again.
+    cases_ref["current"] = cases_v2
+    s3 = export_test_script("exp-cache", "python")
+    assert llm_call_count["n"] == 2
+    assert s3.code == "# v2\nprint('hi')"
+
+    # Mutated dataset, repeat call — cache hit on the new fingerprint.
+    s4 = export_test_script("exp-cache", "python")
+    assert llm_call_count["n"] == 2
+    assert s4.code == s3.code
+
+
+def test_export_does_not_cache_failures(monkeypatch, _clear_export_cache):
+    """LLM exceptions must not be cached — the next call should retry."""
+    monkeypatch.setattr(
+        "mlflow.playground.test_export._collect_test_cases", lambda _: _sample_cases()
+    )
+
+    attempts = {"n": 0}
+
+    def flaky_llm(prompt, *, response_schema):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("LLM unavailable")
+        return json.dumps({"code": "ok", "filename": "test.py"})
+
+    monkeypatch.setattr("mlflow.playground._llm.call_default_llm", flaky_llm)
+
+    with pytest.raises(RuntimeError, match="LLM unavailable"):
+        export_test_script("exp-flaky", "python")
+
+    # Same dataset, retry — must call the LLM again (failure wasn't cached).
+    script = export_test_script("exp-flaky", "python")
+    assert attempts["n"] == 2
+    assert script.code == "ok"
+
+
 # --- HTTP endpoint shape ----------------------------------------------------
 
 
