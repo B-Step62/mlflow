@@ -31,6 +31,10 @@ from mlflow.playground.test_runner import (
 
 DEFAULT_AGENT_URL = "http://127.0.0.1:8000"
 DEFAULT_TIMEOUT_SECONDS = 120.0
+# Upper bound on auto-parallelism. `/invocations` is async on the agent
+# server side, so concurrency through uvicorn is fine; we just cap so a
+# batch of 50 issues doesn't open 50 simultaneous connections.
+DEFAULT_PARALLEL_CAP = 8
 
 
 def _wrap_mlflow_errors(fn: Callable) -> Callable:
@@ -311,12 +315,12 @@ def _print_verdict_for_issue(
 @click.option(
     "--parallel",
     "parallel",
-    default=1,
-    show_default=True,
+    default=None,
     type=click.IntRange(min=1),
     help=(
-        "Run up to N tests concurrently. Default 1 (sequential) — the user's "
-        "agent may not be threadsafe; opt in only when you know it is."
+        f"Run up to N tests concurrently. Default: auto — `min(num_issues, "
+        f"{DEFAULT_PARALLEL_CAP})`. Pass --parallel 1 to force sequential "
+        "execution if your agent isn't threadsafe."
     ),
 )
 @click.option("--verbose", "-v", is_flag=True, help="Print full conversation and reasoning.")
@@ -326,7 +330,7 @@ def test_run(
     issue_flags: tuple[str, ...],
     agent_url: str | None,
     timeout: float,
-    parallel: int,
+    parallel: int | None,
     verbose: bool,
 ) -> None:
     """Run the regression test for one or more Issues.
@@ -337,12 +341,16 @@ def test_run(
         mlflow agent test run --issue iss-1
         mlflow agent test run --issue iss-1 --issue iss-2
         mlflow agent test run iss-1 iss-2 iss-3
-        mlflow agent test run iss-1 iss-2 --parallel 2
+        mlflow agent test run iss-1 iss-2 --parallel 1   # force sequential
+
+    Default concurrency: ``min(num_issues, DEFAULT_PARALLEL_CAP)``. The
+    agent's ``/invocations`` is HTTP and uvicorn handles concurrent
+    requests asynchronously, so the cap is the only safeguard — set
+    ``--parallel 1`` if your agent code isn't threadsafe.
 
     Exits 0 if every selected issue passes; non-zero if any fail or error.
     Per-issue PASS / FAIL lines stream as they complete; a summary prints
-    at the end. ``--parallel N`` runs up to N tests concurrently — opt in
-    only when your agent is threadsafe.
+    at the end for multi-issue runs.
     """
     # Combine positional + repeated --issue, dedupe but preserve order.
     selected: list[str] = list(dict.fromkeys((*positional_issues, *issue_flags)))
@@ -358,21 +366,26 @@ def test_run(
         or DEFAULT_AGENT_URL
     ).rstrip("/")
 
+    # Auto-resolve parallelism: cap at DEFAULT_PARALLEL_CAP, never exceed
+    # the number of issues. User can force sequential with --parallel 1.
+    effective_parallel = parallel if parallel is not None else min(len(selected), DEFAULT_PARALLEL_CAP)
+    effective_parallel = max(1, min(effective_parallel, len(selected)))
+
     if verbose or len(selected) > 1:
         click.secho(
             f"Running {len(selected)} test{'s' if len(selected) != 1 else ''} "
-            f"against {resolved_url} (parallel={parallel})",
+            f"against {resolved_url} (parallel={effective_parallel})",
             fg="bright_black",
         )
 
     results: list[tuple[str, bool, str | None]] = []
-    if parallel <= 1 or len(selected) == 1:
+    if effective_parallel <= 1 or len(selected) == 1:
         for iid in selected:
             results.append(_run_one_issue(iid, agent_url=resolved_url, timeout=timeout, verbose=verbose))
     else:
         from concurrent.futures import ThreadPoolExecutor
 
-        with ThreadPoolExecutor(max_workers=parallel) as pool:
+        with ThreadPoolExecutor(max_workers=effective_parallel) as pool:
             for result in pool.map(
                 lambda iid: _run_one_issue(iid, agent_url=resolved_url, timeout=timeout, verbose=verbose),
                 selected,
