@@ -191,6 +191,22 @@ export const postIssueComment = async (
   return (await response.json()) as IssueCommentEntry;
 };
 
+/** Transition an Issue to `rejected` — used by the Tests panel's
+ *  selection-bar "Delete" action so reviewers can triage away tests they
+ *  don't want to fix. */
+export const rejectIssue = async (issueId: string): Promise<void> => {
+  const response = await fetch(
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/reject`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Reject failed (${response.status}): ${await response.text()}`);
+  }
+};
+
 export type EvaluateExistingVerdict = {
   passed: boolean;
   reasons: string[];
@@ -681,6 +697,8 @@ const WorkerSection = ({
   );
   const [dispatching, setDispatching] = useState(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const onDispatchWorker = useCallback(async () => {
     setDispatching(true);
@@ -695,6 +713,20 @@ const WorkerSection = ({
     }
   }, [issue.issue_id, onDispatched]);
 
+  const onCancelWorker = useCallback(async () => {
+    if (!worker) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await discardWorker(worker.connection_id);
+      onDispatched();
+    } catch (e) {
+      setCancelError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancelling(false);
+    }
+  }, [worker, onDispatched]);
+
   // Status `todo` with no worker yet → show dispatch button.
   if (issue.status === 'todo' && !worker) {
     return (
@@ -707,10 +739,12 @@ const WorkerSection = ({
           gap: theme.spacing.sm,
         }}
       >
-        <Typography.Text css={{ fontWeight: 600 }}>Dispatch a worker</Typography.Text>
+        <Typography.Text css={{ fontWeight: 600 }}>Fix it with Claude Code</Typography.Text>
         <Typography.Text color="secondary" size="sm">
-          Send this Issue to a Claude Code worker. It opens an isolated worktree, iterates on the
+          Dispatches a local Claude Code session into an isolated worktree, iterates on the
           regression test until green, then connects the fixed agent here for you to test.
+          Experimental — your code stays on disk in <code>.mlflow-worktrees/</code> until you
+          accept or discard.
         </Typography.Text>
         <div>
           <Button
@@ -719,7 +753,7 @@ const WorkerSection = ({
             onClick={onDispatchWorker}
             disabled={dispatching}
           >
-            {dispatching ? 'Dispatching…' : 'Send to worker'}
+            {dispatching ? 'Dispatching…' : 'Fix it with Claude Code'}
           </Button>
         </div>
         {dispatchError && (
@@ -735,7 +769,9 @@ const WorkerSection = ({
     );
   }
 
-  // Worker pending — iteration in progress.
+  // Worker pending — iteration in progress. Cancel mid-flight via the same
+  // `discardWorker` endpoint the ready / failed paths use; backend SIGTERMs
+  // the Claude subprocess and cleans up the worktree.
   if (worker && worker.status === 'pending') {
     return (
       <div
@@ -743,18 +779,37 @@ const WorkerSection = ({
           borderTop: `1px solid ${theme.colors.border}`,
           paddingTop: theme.spacing.md,
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: theme.spacing.sm,
         }}
       >
-        <Spinner size="small" />
-        <div css={{ display: 'flex', flexDirection: 'column' }}>
-          <Typography.Text css={{ fontWeight: 600 }}>Worker iterating…</Typography.Text>
-          <Typography.Text color="secondary" size="sm">
-            {worker.name} (<code>{worker.branch}</code>). Test runs locally; the connection will
-            flip to ready once the test goes green.
-          </Typography.Text>
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <Spinner size="small" />
+          <div css={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+            <Typography.Text css={{ fontWeight: 600 }}>Worker iterating…</Typography.Text>
+            <Typography.Text color="secondary" size="sm">
+              {worker.name} (<code>{worker.branch}</code>). Test runs locally; the connection will
+              flip to ready once the test goes green.
+            </Typography.Text>
+          </div>
+          <Button
+            componentId="mlflow.playground.issue-detail.cancel-worker"
+            size="small"
+            onClick={onCancelWorker}
+            disabled={cancelling}
+          >
+            {cancelling ? 'Cancelling…' : 'Cancel'}
+          </Button>
         </div>
+        {cancelError && (
+          <Alert
+            componentId="mlflow.playground.issue-detail.cancel-error"
+            type="error"
+            message={cancelError}
+            closable
+            onClose={() => setCancelError(null)}
+          />
+        )}
       </div>
     );
   }
@@ -771,7 +826,8 @@ const WorkerSection = ({
     );
   }
 
-  // Worker failed.
+  // Worker failed — give the user a Discard button to clear it so they can
+  // re-dispatch or fall back to the manual fix flow without refreshing.
   if (worker && worker.status === 'failed') {
     return (
       <div
@@ -789,10 +845,24 @@ const WorkerSection = ({
         <Typography.Text color="secondary" size="sm">
           {worker.status_message ?? 'Claude could not get the test green.'}
         </Typography.Text>
-        <Typography.Text size="sm" color="secondary">
-          You can retry by discarding the worker (YUK-55), or fall back to the manual fix flow
-          below.
-        </Typography.Text>
+        <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+          <Button
+            componentId="mlflow.playground.issue-detail.failed-discard"
+            onClick={onCancelWorker}
+            disabled={cancelling}
+          >
+            {cancelling ? 'Discarding…' : 'Discard worker'}
+          </Button>
+        </div>
+        {cancelError && (
+          <Alert
+            componentId="mlflow.playground.issue-detail.failed-discard-error"
+            type="error"
+            message={cancelError}
+            closable
+            onClose={() => setCancelError(null)}
+          />
+        )}
       </div>
     );
   }
@@ -820,6 +890,20 @@ const IssueComments = ({ issueId }: { issueId: string }) => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Detect whether a worker for this issue is currently pending — if so,
+  // tighten the comment poll so Claude's turns appear in near-real-time
+  // on the activity thread (matters for the DAIS demo recording where the
+  // user is watching the thread stream).
+  const { connections } = useConnections();
+  const isWorkerPending = useMemo(
+    () =>
+      connections.some(
+        (c) => c.source_issue_id === issueId && c.status === 'pending',
+      ),
+    [connections, issueId],
+  );
+  const pollIntervalMs = isWorkerPending ? 2000 : 5000;
+
   const refresh = useCallback(async () => {
     try {
       const next = await fetchIssueComments(issueId);
@@ -832,9 +916,9 @@ const IssueComments = ({ issueId }: { issueId: string }) => {
 
   useEffect(() => {
     void refresh();
-    const id = window.setInterval(() => void refresh(), 5000);
+    const id = window.setInterval(() => void refresh(), pollIntervalMs);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [refresh, pollIntervalMs]);
 
   const onSubmit = useCallback(async () => {
     const body = draft.trim();

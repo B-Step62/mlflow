@@ -709,9 +709,11 @@ def test_dispatch_worker_happy_path(tmp_path):
     assert workers[0]["branch"] == "worker/iss-x"
 
 
-def test_dispatch_worker_409_when_active_worker_exists(tmp_path):
+def test_dispatch_worker_idempotent_when_active_worker_exists(tmp_path):
     """A second dispatch for the same issue while the first is pending/ready
-    must be refused.
+    must return the existing connection rather than 409. Lets the UI button
+    be double-click-safe and gives a future pull-mode poller a way to call
+    the endpoint on every sweep without state-tracking.
     """
     from mlflow.entities.issue import IssueStatus
     from mlflow.playground.worker import WorkerWorktree
@@ -736,8 +738,12 @@ def test_dispatch_worker_409_when_active_worker_exists(tmp_path):
         second = client.post("/ajax-api/3.0/mlflow/playground/issues/iss-x/dispatch-worker")
 
     assert first.status_code == 200
-    assert second.status_code == 409
-    assert "already has an active worker" in second.json()["detail"]
+    assert second.status_code == 200
+    # Same connection id — second call returned the existing record, did not
+    # create a new one.
+    assert first.json()["connection_id"] == second.json()["connection_id"]
+    assert first.json()["reused"] is False
+    assert second.json()["reused"] is True
 
 
 @pytest.mark.parametrize("status", ["pending", "dead"])

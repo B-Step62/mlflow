@@ -16,6 +16,7 @@ from mlflow.playground.server import (
     _demo_stream_response,
     _dispatch_feedback,
     _ensure_agent_running,
+    _ensure_experiment_id,
     _extract_assistant_text,
     _extract_tool_calls,
     _extract_trace_id,
@@ -370,6 +371,22 @@ def create_playground_api_router(
 
         assistant_text = _extract_assistant_text(response_json)
         trace_id = _extract_trace_id(response_json)
+        if not trace_id and request_id:
+            # Fallback for non-ResponsesAgent: the agent server only adds
+            # `metadata.trace_id` to the response when `agent_type ==
+            # "ResponsesAgent"` (see commit 95b770503a for the same workaround
+            # on the regression batch path). For plain `@invoke()` agents,
+            # look the trace up by the `playground.request_id` tag that
+            # `_invoke_agent` set via the `x-mlflow-trace-tags` header. The
+            # UI needs trace_id to anchor feedback comments.
+            config = _load_playground_config(runtime.config_path)
+            experiment_id = _ensure_experiment_id(
+                config.get("tracking_uri") or "", config.get("experiment") or ""
+            )
+            if experiment_id:
+                trace_id = await asyncio.to_thread(
+                    _lookup_trace_id_by_request_id, experiment_id, request_id
+                )
         tool_calls: list[dict[str, Any]] = []
         if trace_id:
             try:
@@ -449,6 +466,25 @@ def create_playground_api_router(
 
         try:
             issue = await asyncio.to_thread(_get_store().get_issue, issue_id)
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        return issue.to_dictionary()
+
+    @router.post("/issues/{issue_id}/reject")
+    async def reject_issue(issue_id: str) -> dict[str, Any]:
+        """Transition an Issue to ``rejected`` (user discarded it). Used by
+        the Tests panel's selection-bar "Delete" action so reviewers can
+        triage away tests they don't want to fix.
+        """
+        from mlflow.entities.issue import IssueStatus
+        from mlflow.exceptions import MlflowException
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        try:
+            issue = await asyncio.to_thread(
+                _get_store().transition_issue, issue_id, IssueStatus.REJECTED, ""
+            )
         except MlflowException as exc:
             status = 404 if "not found" in str(exc).lower() else 400
             raise HTTPException(status_code=status, detail=str(exc)) from exc
@@ -820,6 +856,101 @@ def create_playground_api_router(
             "agent_response_text": response.text,
             "agent_tool_calls": response.tool_calls,
             "trace_id": trace_id,
+        }
+
+    @router.post("/issues/{issue_id}/evaluate-existing-response")
+    async def evaluate_existing_response(
+        issue_id: str, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Evaluate the issue's test spec against an *already-produced* agent
+        response, without invoking the agent again.
+
+        Used by the feedback save flow: right after a user leaves negative
+        feedback and the test case is auto-generated, we want to surface a
+        "Fix it" CTA without making the user click "Run test". The agent
+        already produced the failing turn — feeding that text + tool calls
+        through the judge is enough to know the test fails.
+
+        Does not transition the issue's state and does not invoke the agent
+        (no extra trace / no MLflow run). Body shape::
+
+            {
+              "agent_response_text": "<the failing assistant message text>",
+              "agent_tool_calls": ["tool_name", ...]   # optional
+            }
+        """
+        from mlflow.entities.issue import IssueStatus
+        from mlflow.exceptions import MlflowException
+        from mlflow.playground.regression_suite import get_or_create_regression_dataset
+        from mlflow.playground.test_runner import AgentResponse, evaluate
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        agent_response_text = request.get("agent_response_text")
+        if not isinstance(agent_response_text, str):
+            raise HTTPException(
+                status_code=400, detail="`agent_response_text` must be a string."
+            )
+        raw_tool_calls = request.get("agent_tool_calls") or []
+        if not isinstance(raw_tool_calls, list):
+            raise HTTPException(
+                status_code=400, detail="`agent_tool_calls` must be a list when provided."
+            )
+        agent_tool_calls = [str(t) for t in raw_tool_calls if isinstance(t, str)]
+
+        store = _get_store()
+        try:
+            issue = await asyncio.to_thread(store.get_issue, issue_id)
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+        if issue.status in (IssueStatus.PENDING, IssueStatus.RESOLVED):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Legacy detection-path issues aren't runnable through the "
+                    "playground."
+                ),
+            )
+
+        dataset = await asyncio.to_thread(
+            get_or_create_regression_dataset, str(issue.experiment_id)
+        )
+        df = await asyncio.to_thread(dataset.to_df)
+        rows = df.to_dict(orient="records") if not df.empty else []
+        match = None
+        for row in rows:
+            expectations = row.get("expectations") or {}
+            if issue.test_case_id and expectations.get("test_case_id") == issue.test_case_id:
+                match = row
+                break
+            tags = row.get("tags") or {}
+            if tags.get("issue_id") == issue_id:
+                match = row
+                break
+        if match is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No regression-suite row found for issue {issue_id!r}. "
+                    "Has the test case been generated yet?"
+                ),
+            )
+
+        spec = (match.get("expectations") or {}).get("test_spec") or {}
+        if not isinstance(spec, dict):
+            raise HTTPException(
+                status_code=500,
+                detail="Regression-suite row is malformed (missing test_spec).",
+            )
+
+        response = AgentResponse(text=agent_response_text, tool_calls=agent_tool_calls)
+        verdict = await asyncio.to_thread(evaluate, spec, response)
+        return {
+            "passed": verdict.passed,
+            "reasons": list(verdict.reasons),
+            "strategy": verdict.strategy,
+            "judge_reasoning": verdict.judge_reasoning,
         }
 
     @router.patch("/regression-suite/cases/{test_case_id}")
@@ -1635,7 +1766,11 @@ def create_playground_api_router(
                 ),
             )
 
-        # Refuse concurrent dispatch.
+        # Idempotency: a second dispatch for an issue that already has a
+        # pending/ready worker returns that worker rather than 409'ing. Keeps
+        # double-clicks safe in the UI today and makes pull-mode polling safe
+        # tomorrow — the poller can call this on every sweep without worrying
+        # about state.
         with runtime.connections_lock:
             existing = next(
                 (
@@ -1646,14 +1781,14 @@ def create_playground_api_router(
                 None,
             )
         if existing is not None:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Issue {issue_id} already has an active worker "
-                    f"(connection_id={existing.connection_id}, status={existing.status}). "
-                    "Discard or accept it before dispatching a new one."
-                ),
-            )
+            return {
+                "connection_id": existing.connection_id,
+                "worktree_path": str(existing.repo_dir) if existing.repo_dir else "",
+                "branch": existing.branch or "",
+                "base_commit": existing.base_commit or "",
+                "base_branch": "",
+                "reused": True,
+            }
 
         store = _get_store()
         try:
@@ -1725,6 +1860,7 @@ def create_playground_api_router(
             "branch": worktree.branch,
             "base_commit": worktree.base_commit,
             "base_branch": worktree.base_branch,
+            "reused": False,
         }
 
     # ----- Worker actions: accept / rework / discard (Epic 8 / YUK-55) -------
