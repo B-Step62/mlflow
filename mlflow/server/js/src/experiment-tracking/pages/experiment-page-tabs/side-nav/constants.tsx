@@ -39,8 +39,8 @@ const ExperimentPageSideNavGenAIConfig = {
     {
       label: (
         <FormattedMessage
-          defaultMessage="Playground"
-          description="Label for the playground tab in the MLflow experiment navbar"
+          defaultMessage="Studio"
+          description="Label for the agent studio tab (formerly Playground) in the MLflow experiment navbar"
         />
       ),
       icon: <AssistantSparkleIcon isHovered={false} iconSize={16} />,
