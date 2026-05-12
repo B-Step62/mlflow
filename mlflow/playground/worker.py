@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import socket
 import subprocess
 import threading
@@ -84,12 +85,42 @@ def create_worker_worktree(repo_dir: Path, issue_id: str) -> WorkerWorktree:
     worktree_path.parent.mkdir(parents=True, exist_ok=True)
     _git_run("worktree", "add", "-b", branch, str(worktree_path), base_branch, cwd=repo_dir)
 
+    _install_claude_tracing_hooks(worktree_path)
+
     return WorkerWorktree(
         worktree_path=worktree_path,
         branch=branch,
         base_commit=base_commit,
         base_branch=base_branch,
     )
+
+
+def _install_claude_tracing_hooks(worktree_path: Path) -> None:
+    """Wire Claude Code's tracing hooks into the worker worktree.
+
+    Writes a ``.claude/settings.json`` with the MLflow-provided
+    UserPromptSubmit / PostToolUse / Stop hooks plus the env vars Claude's
+    hook subcommands read to find the tracking store. Best-effort: if
+    anything below raises we log + continue — the worker still runs Claude,
+    just without per-turn MLflow spans. We don't want a missing import or
+    misconfigured tracking URI to block the fix loop.
+    """
+    try:
+        from mlflow.claude_code.config import setup_environment_config
+        from mlflow.claude_code.hooks import setup_hooks_config
+        from mlflow.tracking import get_tracking_uri
+
+        settings_file = worktree_path / ".claude" / "settings.json"
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
+        setup_hooks_config(settings_file)
+        setup_environment_config(
+            settings_file,
+            tracking_uri=get_tracking_uri(),
+            experiment_id=None,
+            experiment_name=os.environ.get("MLFLOW_EXPERIMENT_NAME", "agent-playground"),
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort, don't break the worker
+        logger.warning("Could not install Claude tracing hooks in %s: %s", worktree_path, exc)
 
 
 def prune_worker_worktree(repo_dir: Path, issue_id: str, *, force: bool = False) -> None:
