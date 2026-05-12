@@ -24,6 +24,7 @@ import socket
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -382,6 +383,8 @@ def _run_claude(
     prompt: str,
     log_path: Path,
     issue_id: str | None = None,
+    on_proc_started: Callable[[subprocess.Popen[str]], None] | None = None,
+    agent_url: str | None = None,
 ) -> tuple[int | None, str]:
     """Run ``claude -p PROMPT`` in the worktree, streaming progress.
 
@@ -390,8 +393,25 @@ def _run_claude(
     arrives, and (when ``issue_id`` is provided) summarized into a Linear-style
     comment on the issue so reviewers can watch progress live.
 
+    ``on_proc_started`` is invoked synchronously right after ``Popen`` returns
+    so the caller can register the subprocess on a runtime-visible slot — that
+    is what lets a different thread (the discard endpoint) terminate the run
+    while it's still in flight. The callback runs before any stdout is read,
+    so a discard issued the very moment the process is created still wins.
+
+    ``agent_url`` is forwarded as ``MLFLOW_PLAYGROUND_AGENT_URL`` in the
+    Claude subprocess's environment so that nested ``mlflow agent test run``
+    calls hit the *worktree-local* agent (which sees Claude's edits via
+    uvicorn ``--reload``) instead of the parent project's main agent at
+    127.0.0.1:8000. Without this, Claude iterates blindly: edits land in
+    the worktree but the verifying test always re-evaluates the same
+    upstream code and reports the same failure.
+
     Returns (exit_code, error_message). exit_code is None when Claude could
-    not be invoked at all (timeout, missing CLI).
+    not be invoked at all (timeout, missing CLI). A discard / external kill
+    surfaces as a normal ``proc.wait()`` return, typically with a non-zero
+    exit code; the caller distinguishes "killed" by checking whether the
+    connection still exists, not by interpreting the exit code.
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -402,6 +422,9 @@ def _run_claude(
         "--verbose",
         prompt,
     ]
+    env = os.environ.copy()
+    if agent_url is not None:
+        env["MLFLOW_PLAYGROUND_AGENT_URL"] = agent_url
     try:
         proc = subprocess.Popen(
             cmd,
@@ -410,9 +433,13 @@ def _run_claude(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env,
         )
     except FileNotFoundError:
         return None, "claude CLI not found in PATH"
+
+    if on_proc_started is not None:
+        on_proc_started(proc)
 
     deadline = time.time() + CLAUDE_TIMEOUT_SECONDS
     try:
@@ -452,8 +479,18 @@ def _run_claude(
     return proc.returncode, ""
 
 
-def _run_final_test(worktree_path: Path, issue_id: str) -> tuple[bool, str]:
-    """Final sanity test after Claude exits. Returns (passed, output_excerpt)."""
+def _run_final_test(
+    worktree_path: Path, issue_id: str, agent_url: str | None = None
+) -> tuple[bool, str]:
+    """Final sanity test after Claude exits. Returns (passed, output_excerpt).
+
+    Forwards ``agent_url`` as ``MLFLOW_PLAYGROUND_AGENT_URL`` so the
+    verifying test hits the worktree-local agent rather than the parent
+    project's main agent — same reasoning as ``_run_claude``.
+    """
+    env = os.environ.copy()
+    if agent_url is not None:
+        env["MLFLOW_PLAYGROUND_AGENT_URL"] = agent_url
     try:
         proc = subprocess.run(
             ["mlflow", "agent", "test", "run", "--issue", issue_id],
@@ -462,6 +499,7 @@ def _run_final_test(worktree_path: Path, issue_id: str) -> tuple[bool, str]:
             text=True,
             timeout=TEST_TIMEOUT_SECONDS,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return False, f"Test timed out after {TEST_TIMEOUT_SECONDS}s"
@@ -511,61 +549,14 @@ def dispatch_claude_fix(
             )
             return
 
-        _post_comment(
-            issue_id,
-            f"Running claude (timeout {CLAUDE_TIMEOUT_SECONDS:.0f}s)",
-            author="system",
-            kind="system",
-        )
-        started = time.time()
-        exit_code, claude_error = _run_claude(
-            worktree_path, prompt, log_path, issue_id=issue_id
-        )
-        elapsed = time.time() - started
-        if exit_code is None:
-            _post_comment(
-                issue_id, f"Claude failed: {claude_error}", author="system", kind="system"
-            )
-            _mark_connection(
-                runtime,
-                connection_id,
-                status="failed",
-                status_message=claude_error,
-                log_path=log_path,
-            )
-            return
-        _post_comment(
-            issue_id,
-            f"Claude exited (code={exit_code}) after {elapsed:.0f}s",
-            author="system",
-            kind="system",
-        )
-
-        _post_comment(issue_id, "Running regression test", author="system", kind="system")
-        passed, test_output = _run_final_test(worktree_path, issue_id)
-        diff_summary = _summarize_worker_diff(worktree_path, base_commit)
-        if diff_summary:
-            _post_comment(issue_id, diff_summary, author="claude", kind="claude")
-        if not passed:
-            _post_comment(
-                issue_id,
-                f"Regression test still red:\n```\n{test_output[-1000:]}\n```",
-                author="system",
-                kind="system",
-            )
-            _mark_connection(
-                runtime,
-                connection_id,
-                status="failed",
-                status_message=(
-                    f"Claude exited (code={exit_code}) but the regression test "
-                    f"is still red.\n{test_output}"
-                ),
-                log_path=log_path,
-            )
-            return
-        _post_comment(issue_id, "Regression test passed", author="system", kind="system")
-
+        # Spin up the worktree-local agent *before* Claude starts iterating
+        # so its nested `mlflow agent test run` calls hit code that reflects
+        # Claude's edits. The agent uses uvicorn `--reload` so each save
+        # in the worktree picks up automatically (see
+        # ``mlflow/playground/agent_bootstrap.py``); without this the
+        # verifier always hits the parent project's main agent on
+        # 127.0.0.1:8000 and Claude iterates blindly. The same process is
+        # later handed off as the `ready` connection — no second launch.
         port = _find_free_port()
         agent_url = f"http://127.0.0.1:{port}"
         _post_comment(
@@ -609,6 +600,110 @@ def dispatch_claude_fix(
                 log_path=log_path,
             )
             return
+
+        _post_comment(
+            issue_id,
+            f"Running claude (timeout {CLAUDE_TIMEOUT_SECONDS:.0f}s)",
+            author="system",
+            kind="system",
+        )
+
+        def _register_claude_proc(proc: subprocess.Popen[str]) -> None:
+            # Park the Popen on the connection so a concurrent
+            # `discard_worker_connection` can find and terminate it; without
+            # this the Claude run keeps burning compute until it hits the
+            # CLAUDE_TIMEOUT_SECONDS deadline even after the user gives up.
+            # Note: this overwrites the slot temporarily — the worktree-local
+            # agent process is tracked via the local `agent_proc` variable
+            # and re-attached to the connection at the end. If discard fires
+            # mid-claude the discard endpoint will fall back to walking the
+            # connection's known children (claude_proc was current at that
+            # moment).
+            with runtime.connections_lock:
+                conn = runtime.connections.get(connection_id)
+                if conn is not None:
+                    conn.process = proc
+
+        started = time.time()
+        exit_code, claude_error = _run_claude(
+            worktree_path,
+            prompt,
+            log_path,
+            issue_id=issue_id,
+            on_proc_started=_register_claude_proc,
+            agent_url=agent_url,
+        )
+        elapsed = time.time() - started
+
+        # If the user discarded mid-claude, the connection has already been
+        # popped from runtime.connections (`discard_worker_connection`'s
+        # pop-then-kill order). Skip the regression test and the agent-launch
+        # stage instead of spamming a vanished connection.
+        with runtime.connections_lock:
+            current = runtime.connections.get(connection_id)
+            cancelled = current is None
+            if current is not None:
+                # Clear the now-dead Popen so the next stage can re-use
+                # `connection.process` without confusing a future discard
+                # with the wrong PID.
+                current.process = None
+        if cancelled:
+            _logger.info(
+                "Connection %s discarded mid-claude (exit_code=%s); aborting dispatch.",
+                connection_id,
+                exit_code,
+            )
+            # Discard popped the connection but didn't see our agent_proc
+            # (we'd swapped it for claude_proc on the slot). Tear it down
+            # explicitly so the worktree port doesn't leak.
+            _terminate_process(agent_proc)
+            return
+
+        if exit_code is None:
+            _terminate_process(agent_proc)
+            _post_comment(
+                issue_id, f"Claude failed: {claude_error}", author="system", kind="system"
+            )
+            _mark_connection(
+                runtime,
+                connection_id,
+                status="failed",
+                status_message=claude_error,
+                log_path=log_path,
+            )
+            return
+        _post_comment(
+            issue_id,
+            f"Claude exited (code={exit_code}) after {elapsed:.0f}s",
+            author="system",
+            kind="system",
+        )
+
+        _post_comment(issue_id, "Running regression test", author="system", kind="system")
+        passed, test_output = _run_final_test(worktree_path, issue_id, agent_url=agent_url)
+        diff_summary = _summarize_worker_diff(worktree_path, base_commit)
+        if diff_summary:
+            _post_comment(issue_id, diff_summary, author="claude", kind="claude")
+        if not passed:
+            _terminate_process(agent_proc)
+            _post_comment(
+                issue_id,
+                f"Regression test still red:\n```\n{test_output[-1000:]}\n```",
+                author="system",
+                kind="system",
+            )
+            _mark_connection(
+                runtime,
+                connection_id,
+                status="failed",
+                status_message=(
+                    f"Claude exited (code={exit_code}) but the regression test "
+                    f"is still red.\n{test_output}"
+                ),
+                log_path=log_path,
+            )
+            return
+        _post_comment(issue_id, "Regression test passed", author="system", kind="system")
 
         _post_comment(issue_id, "Worker ready for review", author="system", kind="system")
         _mark_connection(
@@ -858,6 +953,55 @@ def rework_worker_connection(
     def run() -> None:
         prompt = _build_with_feedback()
         from mlflow.playground import worker as _worker_mod
+        from mlflow.playground.server import (
+            _launch_local_agent_process,
+            _terminate_process,
+            _wait_for_agent_health,
+        )
+
+        # Same restructure as `dispatch_claude_fix`: launch the worktree-local
+        # agent *before* Claude starts so its verifying `mlflow agent test
+        # run` hits the worktree code (auto-reloaded by uvicorn) instead of
+        # the parent project's main agent. The process is reused as the
+        # final `ready` connection — no second launch.
+        port = _find_free_port()
+        agent_url = f"http://127.0.0.1:{port}"
+        _post_comment(
+            issue_id,
+            f"Launching worker agent on {agent_url}",
+            author="system",
+            kind="system",
+        )
+        try:
+            agent_proc = _launch_local_agent_process(worktree_path, agent_url)
+        except Exception as exc:
+            _logger.exception("Failed to launch worker agent for %s", issue_id)
+            _post_comment(
+                issue_id,
+                f"Failed to launch worker agent: {exc}",
+                author="system",
+                kind="system",
+            )
+            _mark_connection(
+                runtime,
+                connection_id,
+                status="failed",
+                status_message=f"Failed to launch worker agent: {exc}",
+            )
+            return
+
+        if not _wait_for_agent_health(agent_url, timeout_seconds=AGENT_HEALTH_TIMEOUT_SECONDS):
+            _terminate_process(agent_proc)
+            _post_comment(
+                issue_id, "Worker agent unhealthy after rework", author="system", kind="system"
+            )
+            _mark_connection(
+                runtime,
+                connection_id,
+                status="failed",
+                status_message="Worker agent unhealthy after rework",
+            )
+            return
 
         _post_comment(
             issue_id,
@@ -871,9 +1015,11 @@ def rework_worker_connection(
             prompt,
             worktree_path / ".mlflow" / "claude.log",
             issue_id=issue_id,
+            agent_url=agent_url,
         )
         elapsed = time.time() - started
         if exit_code is None:
+            _terminate_process(agent_proc)
             _post_comment(
                 issue_id, f"Claude failed: {claude_error}", author="system", kind="system"
             )
@@ -887,11 +1033,12 @@ def rework_worker_connection(
         )
 
         _post_comment(issue_id, "Running regression test", author="system", kind="system")
-        passed, output = _worker_mod._run_final_test(worktree_path, issue_id)
+        passed, output = _worker_mod._run_final_test(worktree_path, issue_id, agent_url=agent_url)
         diff_summary = _summarize_worker_diff(worktree_path, base_commit)
         if diff_summary:
             _post_comment(issue_id, diff_summary, author="claude", kind="claude")
         if not passed:
+            _terminate_process(agent_proc)
             _post_comment(
                 issue_id,
                 f"Regression test still red:\n```\n{output[-1000:]}\n```",
@@ -907,32 +1054,6 @@ def rework_worker_connection(
             return
 
         _post_comment(issue_id, "Regression test passed", author="system", kind="system")
-
-        port = _find_free_port()
-        agent_url = f"http://127.0.0.1:{port}"
-        from mlflow.playground.server import (
-            _launch_local_agent_process,
-            _wait_for_agent_health,
-        )
-
-        _post_comment(
-            issue_id,
-            f"Launching worker agent on {agent_url}",
-            author="system",
-            kind="system",
-        )
-        agent_proc = _launch_local_agent_process(worktree_path, agent_url)
-        if not _wait_for_agent_health(agent_url, timeout_seconds=AGENT_HEALTH_TIMEOUT_SECONDS):
-            _post_comment(
-                issue_id, "Worker agent unhealthy after rework", author="system", kind="system"
-            )
-            _mark_connection(
-                runtime,
-                connection_id,
-                status="failed",
-                status_message="Worker agent unhealthy after rework",
-            )
-            return
         _post_comment(issue_id, "Worker ready for review", author="system", kind="system")
         _mark_connection(
             runtime,
@@ -953,21 +1074,36 @@ def rework_worker_connection(
 
 
 def discard_worker_connection(runtime: PlaygroundRuntime, connection_id: str) -> dict:
-    """Kill the worker, prune the worktree, drop the connection."""
+    """Kill the worker (including any in-flight Claude fix), prune the worktree,
+    drop the connection.
+
+    Pop-then-kill order matters: the dispatch thread polls
+    ``connection_id in runtime.connections`` after ``_run_claude`` returns to
+    decide whether to continue with the regression-test / agent-launch stages.
+    If we killed the process before popping, the dispatcher could race the
+    pop and march past the cancellation window. Popping first means the
+    dispatcher always sees a missing connection by the time the killed
+    process's stdout drains and ``_run_claude`` returns.
+    """
     with runtime.connections_lock:
-        connection = runtime.connections.get(connection_id)
+        connection = runtime.connections.pop(connection_id, None)
         if connection is None:
             raise WorkerActionError(f"Connection {connection_id} not found.", status_code=404)
         issue_id = connection.source_issue_id
-
-    _terminate_connection_process(runtime, connection_id)
-    with runtime.connections_lock:
-        runtime.connections.pop(connection_id, None)
+        process = connection.process
+        connection.process = None
         if runtime.active_connection_id == connection_id:
             runtime.active_connection_id = next(
                 (c.connection_id for c in runtime.connections.values() if c.name == "main"),
                 None,
             )
+
+    if process is not None:
+        # Outside the lock so a SIGTERM-induced flush+exit in the dispatch
+        # thread doesn't deadlock on `connections_lock` while we wait here.
+        from mlflow.playground.server import _terminate_process
+
+        _terminate_process(process)
 
     if runtime.repo_dir is not None and issue_id:
         prune_worker_worktree(runtime.repo_dir, issue_id, force=True)
