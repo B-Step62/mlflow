@@ -368,3 +368,48 @@ def test_run_no_issues_specified_returns_error(cli_env):
     result = runner.invoke(agent_commands, ["test", "run"])
     assert result.exit_code == 1
     assert "No issues specified" in result.output
+
+
+def test_run_default_parallelism_is_concurrent(cli_env):
+    """No `--parallel` flag → auto cap. Multi-issue runs go concurrent by
+    default; the announce line reports `parallel=N` where N matches the
+    auto-computed value `min(num_issues, DEFAULT_PARALLEL_CAP)`."""
+    iss_a = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    iss_b = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["beta"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha beta"}],
+    })
+    runner = CliRunner()
+    with patch("mlflow.playground.test_run_cli.httpx.post", return_value=fake):
+        result = runner.invoke(agent_commands, ["test", "run", iss_a, iss_b])
+
+    assert result.exit_code == 0, result.output
+    # Auto-parallelism = min(2 issues, DEFAULT_PARALLEL_CAP=8) = 2.
+    assert "parallel=2" in result.output
+
+
+def test_run_parallel_1_forces_sequential(cli_env):
+    """Explicit `--parallel 1` opts out of the new concurrent default."""
+    iss_a = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    iss_b = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["beta"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha beta"}],
+    })
+    runner = CliRunner()
+    with patch("mlflow.playground.test_run_cli.httpx.post", return_value=fake):
+        result = runner.invoke(
+            agent_commands, ["test", "run", iss_a, iss_b, "--parallel", "1"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "parallel=1" in result.output
