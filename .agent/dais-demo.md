@@ -107,7 +107,7 @@ observable, replayable, auditable.
 | Push: relabel "Send to worker" → "Fix it with Claude Code" | ❌ cosmetic | push-polish | 5 min |
 | Comment poll cadence (5s → 2s during pending) | ❌ poll feels slow | push-polish | 10 min |
 | `dispatchWorker` endpoint idempotency | ❌ returns 409 on dup | push-polish (pull prereq) | 15 min |
-| MLflow tracing of worker's planning loop (`worker.turn` spans) | ❌ no spans | observability | 45 min |
+| MLflow tracing of worker's Claude session | ❌ hooks not installed in worker worktree | observability | 10 min |
 | Pull: auto-fix pool poller | ❌ to build | pull-mvp | ~2 d |
 | Pull: policy storage (per-experiment YAML) | ❌ to build | pull-mvp | ~0.5 d |
 | Pull: concurrency semaphore + per-issue retry budget | ❌ to build | pull-mvp | ~1 d |
@@ -123,8 +123,12 @@ observable, replayable, auditable.
 
 - **push-polish** (~1 hr 5 min): the six small items above. Lands first; makes
   the existing flow camera-worthy and unblocks pull (idempotency).
-- **observability** (~45 min): wrap `_run_claude` in `mlflow.start_span` so
-  Act 5 has something to show.
+- **observability** (~10 min): install Claude Code's existing tracing hooks
+  into the worker worktree's `.claude/settings.json` (via
+  `mlflow.claude_code.hooks.setup_hooks_config` +
+  `setup_environment_config`). Claude's own hook mechanism emits a span
+  per turn / tool call / stop. Zero code in `worker.py` — config only.
+  Gives Act 5 real turn-by-turn data rather than a coarse wrapper.
 - **pull-mvp** (backend ~3.5 d): poller + policy + concurrency. Cuts the
   load-bearing risk of Act 3.
 - **pull-ui** (~2 d): toggle, activity feed, badges. The camera surface for
@@ -142,9 +146,9 @@ observable, replayable, auditable.
    freeform popover) into `agent-playground`. Cut new `dais-demo` branch.
 2. **push-polish bucket** (1 hr): Cancel during pending, failed-state
    Discard, relabel, poll cadence, idempotency, manual end-to-end test.
-3. **observability bucket** (45 min): `mlflow.start_span(name="worker.turn",
-   ...)` around each Claude call in `worker.py`. Inputs = prompt summary,
-   outputs = exit code + diff summary.
+3. **observability bucket** (10 min): install Claude Code's hooks into the
+   worker worktree's `.claude/settings.json` so Claude emits a span per turn
+   automatically. No `worker.py` code changes.
 4. **First dry run**: record the push half of the arc (Acts 1, 2, 4-flavour-2,
    5). Validates the camera flow before pull lands.
 
