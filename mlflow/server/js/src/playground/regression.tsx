@@ -30,6 +30,7 @@ import {
   Tooltip,
   TrashIcon,
   Typography,
+  VisibleIcon,
   XCircleFillIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -38,6 +39,7 @@ import {
   getAjaxUrl,
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
+import type { AgentConnection } from './connections';
 import type { IssueDetail } from './issues';
 
 export type RegressionRunSummary = {
@@ -58,6 +60,7 @@ export const RegressionTestsPanel = ({
   inProgress,
   canRun,
   failingTests,
+  workersByIssueId,
   onOpenIssue,
   onDispatchSelected,
   onCopyFixPrompt,
@@ -76,6 +79,10 @@ export const RegressionTestsPanel = ({
   // Rendered as a "Failing on current agent" triage list so reviewers can
   // pick which to fix next without leaving the playground.
   failingTests?: IssueDetail[];
+  // Maps `issue_id -> AgentConnection` for issues that currently have a
+  // worker. Overlays the per-row icon: pending = spinner, ready = "Preview"
+  // (eye). Folds in what used to be the separate "Tasks" accordion.
+  workersByIssueId?: Map<string, AgentConnection>;
   onOpenIssue?: (issueId: string) => void;
   // Selection-bar handlers wired into the failing-tests triage list. All
   // receive the set of selected issue ids.
@@ -106,9 +113,7 @@ export const RegressionTestsPanel = ({
   // Selection-bar state lives here so the bar can render in place of the
   // [Run regression suite] controls when any are selected (overlay UX).
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [busyAction, setBusyAction] = useState<null | 'dispatch' | 'copy' | 'rerun' | 'delete'>(
-    null,
-  );
+  const [busyAction, setBusyAction] = useState<null | 'dispatch' | 'copy' | 'rerun' | 'delete'>(null);
   // Prune selections that disappear from the underlying list (issue
   // transitioned to done, test case deleted, etc.) so the count stays
   // honest.
@@ -179,9 +184,7 @@ export const RegressionTestsPanel = ({
               disabled={busyAction !== null || !onDispatchSelected}
               onClick={() => void runSelectionAction('dispatch', onDispatchSelected)}
             >
-              {busyAction === 'dispatch'
-                ? 'Dispatching…'
-                : `Fix with Claude Code (${cleanSelected.size})`}
+              {busyAction === 'dispatch' ? 'Dispatching…' : `Fix with Claude Code (${cleanSelected.size})`}
             </Button>
             <Tooltip
               componentId="mlflow.playground.regression.failing.fix-copy.tooltip"
@@ -197,10 +200,7 @@ export const RegressionTestsPanel = ({
                 onClick={() => void runSelectionAction('copy', onCopyFixPrompt)}
               />
             </Tooltip>
-            <Tooltip
-              componentId="mlflow.playground.regression.failing.rerun.tooltip"
-              content="Re-run selected tests"
-            >
+            <Tooltip componentId="mlflow.playground.regression.failing.rerun.tooltip" content="Re-run selected tests">
               <Button
                 componentId="mlflow.playground.regression.failing.rerun"
                 size="small"
@@ -211,10 +211,7 @@ export const RegressionTestsPanel = ({
                 onClick={() => void runSelectionAction('rerun', onRerunSelected)}
               />
             </Tooltip>
-            <Tooltip
-              componentId="mlflow.playground.regression.failing.delete.tooltip"
-              content="Delete selected tests"
-            >
+            <Tooltip componentId="mlflow.playground.regression.failing.delete.tooltip" content="Delete selected tests">
               <Button
                 componentId="mlflow.playground.regression.failing.delete"
                 size="small"
@@ -226,10 +223,7 @@ export const RegressionTestsPanel = ({
                 onClick={() => void runSelectionAction('delete', onDeleteSelected)}
               />
             </Tooltip>
-            <Tooltip
-              componentId="mlflow.playground.regression.failing.clear.tooltip"
-              content="Clear selection"
-            >
+            <Tooltip componentId="mlflow.playground.regression.failing.clear.tooltip" content="Clear selection">
               <Button
                 componentId="mlflow.playground.regression.failing.clear"
                 size="small"
@@ -250,10 +244,7 @@ export const RegressionTestsPanel = ({
                     ? '' // Failing-tests list tells the story; don't contradict it.
                     : 'No test cases yet — dispatch feedback to generate the first one.'}
               </Typography.Text>
-              <Tooltip
-                componentId="mlflow.playground.regression.export.tooltip"
-                content="Export as pytest script"
-              >
+              <Tooltip componentId="mlflow.playground.regression.export.tooltip" content="Export as pytest script">
                 <Button
                   componentId="mlflow.playground.regression.export"
                   size="small"
@@ -263,10 +254,7 @@ export const RegressionTestsPanel = ({
                   disabled={!experimentId || testCount === 0}
                 />
               </Tooltip>
-              <Tooltip
-                componentId="mlflow.playground.regression.browse-suite.tooltip"
-                content="Browse / manage suite"
-              >
+              <Tooltip componentId="mlflow.playground.regression.browse-suite.tooltip" content="Browse / manage suite">
                 <Button
                   componentId="mlflow.playground.regression.browse-suite"
                   size="small"
@@ -296,9 +284,7 @@ export const RegressionTestsPanel = ({
               disabled={disabled}
               loading={Boolean(inProgress)}
             >
-              {inProgress
-                ? `Running ${inProgress.current}/${inProgress.total}…`
-                : 'Run regression suite'}
+              {inProgress ? `Running ${inProgress.current}/${inProgress.total}…` : 'Run regression suite'}
             </Button>
           </div>
         )}
@@ -314,6 +300,7 @@ export const RegressionTestsPanel = ({
 
         <FailingTestsList
           tests={failingTests ?? []}
+          workersByIssueId={workersByIssueId}
           selectedIds={cleanSelected}
           onToggleSelection={toggleSelection}
           onOpenIssue={onOpenIssue}
@@ -330,17 +317,11 @@ export const RegressionTestsPanel = ({
               </Typography.Text>
             ) : (
               recentRuns.map((run) => (
-                <RecentRunRow
-                  key={run.parent_run_id}
-                  run={run}
-                  experimentId={experimentId}
-                  onSelectRun={onSelectRun}
-                />
+                <RecentRunRow key={run.parent_run_id} run={run} experimentId={experimentId} onSelectRun={onSelectRun} />
               ))
             )}
           </div>
         )}
-
       </div>
 
       <BrowseSuiteDrawer
@@ -368,11 +349,13 @@ const formatRelativeTime = (timestampMs?: number): string => {
 
 const FailingTestsList = ({
   tests,
+  workersByIssueId,
   selectedIds,
   onToggleSelection,
   onOpenIssue,
 }: {
   tests: IssueDetail[];
+  workersByIssueId?: Map<string, AgentConnection>;
   selectedIds: Set<string>;
   onToggleSelection: (issueId: string) => void;
   onOpenIssue?: (issueId: string) => void;
@@ -392,7 +375,38 @@ const FailingTestsList = ({
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
           {tests.map((test) => {
             const isSelected = selectedIds.has(test.issue_id);
+            // Per-row verdict, with the worker overlay folded in (replaces
+            // the old separate "Tasks" accordion):
+            //   - worker.status === 'pending'  → spinner   (worker iterating)
+            //   - worker.status === 'ready'    → eye icon  (preview ready)
+            //   - test.status === 'done'       → green check
+            //   - test.status in
+            //     ('in_progress','review')      → spinner   (human/CI in flight)
+            //   - otherwise                    → red X     (failing)
+            // Worker state takes precedence over the test status so the
+            // reviewer sees "this is being fixed" the moment dispatch fires,
+            // before any test re-run actually moves the underlying issue.
+            const worker = workersByIssueId?.get(test.issue_id);
+            const workerPending = worker?.status === 'pending';
+            const workerReady = worker?.status === 'ready';
             const passed = test.status === 'done';
+            const issueInProgress = test.status === 'in_progress' || test.status === 'review';
+            const inProgress = workerPending || (issueInProgress && !workerReady);
+            const previewReady = workerReady && !passed;
+            const iconColor = passed
+              ? theme.colors.green500
+              : previewReady
+                ? theme.colors.blue500
+                : inProgress
+                  ? theme.colors.blue500
+                  : theme.colors.red500;
+            const verdictLabel = passed
+              ? 'Passed'
+              : previewReady
+                ? 'Preview ready'
+                : inProgress
+                  ? 'Fix in progress'
+                  : 'Failing';
             return (
               <div
                 key={test.issue_id}
@@ -407,9 +421,7 @@ const FailingTestsList = ({
                   }
                 }}
                 css={{
-                  border: `1px solid ${
-                    isSelected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.border
-                  }`,
+                  border: `1px solid ${isSelected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.border}`,
                   borderRadius: theme.borders.borderRadiusMd,
                   padding: theme.spacing.sm,
                   cursor: onOpenIssue ? 'pointer' : 'default',
@@ -417,9 +429,7 @@ const FailingTestsList = ({
                   alignItems: 'center',
                   gap: theme.spacing.sm,
                   backgroundColor: isSelected ? theme.colors.backgroundSecondary : 'transparent',
-                  ':hover': onOpenIssue
-                    ? { backgroundColor: theme.colors.backgroundSecondary }
-                    : undefined,
+                  ':hover': onOpenIssue ? { backgroundColor: theme.colors.backgroundSecondary } : undefined,
                   // Crossfade verdict icon ↔ checkbox. Both layers are
                   // `pointer-events: none` so the wrapper's onClick is the
                   // single source of truth — antd Checkbox would otherwise
@@ -431,7 +441,7 @@ const FailingTestsList = ({
                     display: 'inline-flex',
                   },
                   '& .row-verdict-icon': {
-                    color: passed ? theme.colors.green500 : theme.colors.red500,
+                    color: iconColor,
                     transitionProperty: 'opacity, color',
                   },
                   '& .row-checkbox': {
@@ -460,10 +470,24 @@ const FailingTestsList = ({
                 >
                   <span
                     className="row-verdict-icon"
-                    css={{ position: 'absolute', inset: 0 }}
-                    aria-label={passed ? 'Passed' : 'Failing'}
+                    css={{
+                      position: 'absolute',
+                      inset: 0,
+                      // Spinner ships its own sizing; clip to the same 16x16
+                      // slot so it doesn't push the row layout when it kicks in.
+                      '& > *': inProgress ? { width: 16, height: 16 } : undefined,
+                    }}
+                    aria-label={verdictLabel}
                   >
-                    {passed ? <CheckCircleFillIcon /> : <XCircleFillIcon />}
+                    {passed ? (
+                      <CheckCircleFillIcon />
+                    ) : previewReady ? (
+                      <VisibleIcon />
+                    ) : inProgress ? (
+                      <Spinner size="small" />
+                    ) : (
+                      <XCircleFillIcon />
+                    )}
                   </span>
                   <span
                     className="row-checkbox"
@@ -493,6 +517,18 @@ const FailingTestsList = ({
                 >
                   {test.name || '(untitled issue)'}
                 </Typography.Text>
+                {previewReady && (
+                  <Typography.Text
+                    size="sm"
+                    css={{
+                      flexShrink: 0,
+                      color: theme.colors.blue500,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Preview
+                  </Typography.Text>
+                )}
                 <Typography.Text size="sm" color="secondary" css={{ flexShrink: 0 }}>
                   {formatRelativeTime(test.last_updated_timestamp ?? test.created_timestamp)}
                 </Typography.Text>
@@ -577,13 +613,7 @@ const exportRegressionSuite = async (experimentId: string): Promise<ExportRespon
   return (await response.json()) as ExportResponse;
 };
 
-const ExportTestsModal = ({
-  experimentId,
-  onClose,
-}: {
-  experimentId: string;
-  onClose: () => void;
-}) => {
+const ExportTestsModal = ({ experimentId, onClose }: { experimentId: string; onClose: () => void }) => {
   const { theme } = useDesignSystemTheme();
   const [data, setData] = useState<ExportResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -673,18 +703,11 @@ const ExportTestsModal = ({
           }}
         >
           <Spinner />
-          <Typography.Text color="secondary">
-            Asking the LLM to assemble your test file…
-          </Typography.Text>
+          <Typography.Text color="secondary">Asking the LLM to assemble your test file…</Typography.Text>
         </div>
       )}
       {error && (
-        <Alert
-          componentId="mlflow.playground.regression.export.error"
-          type="error"
-          message={error}
-          closable={false}
-        />
+        <Alert componentId="mlflow.playground.regression.export.error" type="error" message={error} closable={false} />
       )}
       {data && (
         <pre
@@ -859,10 +882,7 @@ export const updateRegressionCase = async (
  * for the panel's "Recent runs" section (replaces the old in-session
  * component-state list).
  */
-export const fetchRegressionRuns = async (
-  experimentId: string,
-  limit = 10,
-): Promise<RegressionRunSummary[]> => {
+export const fetchRegressionRuns = async (experimentId: string, limit = 10): Promise<RegressionRunSummary[]> => {
   const response = await fetch(
     getAjaxUrl(
       `ajax-api/3.0/mlflow/playground/regression-suite/runs?experiment_id=${encodeURIComponent(experimentId)}&limit=${limit}`,
@@ -1024,9 +1044,7 @@ const BrowseSuiteDrawer = ({
     };
   }, [open, experimentId]);
 
-  const fullUrl = experimentId
-    ? `/#/experiments/${experimentId}/datasets?name=regression_suite_${experimentId}`
-    : '#';
+  const fullUrl = experimentId ? `/#/experiments/${experimentId}/datasets?name=regression_suite_${experimentId}` : '#';
 
   return (
     <Drawer.Root open={open} onOpenChange={(o) => !o && onClose()}>
@@ -1161,10 +1179,7 @@ const RegressionCaseRow = ({
           </Tooltip>
         )}
         {onDelete && (
-          <Tooltip
-            componentId="mlflow.playground.regression.case-row.delete.tooltip"
-            content="Remove from suite"
-          >
+          <Tooltip componentId="mlflow.playground.regression.case-row.delete.tooltip" content="Remove from suite">
             <Button
               componentId="mlflow.playground.regression.case-row.delete"
               size="small"
@@ -1225,10 +1240,7 @@ function buildAssertionSentences(case_: RegressionCase): AssertionSentence[] {
   }
   // expected_response can also live at the top level (older rows) — show it
   // even if the judge object isn't present.
-  if (
-    case_.expected_response &&
-    !out.some((s) => s.verb === 'match' && s.prose === case_.expected_response)
-  ) {
+  if (case_.expected_response && !out.some((s) => s.verb === 'match' && s.prose === case_.expected_response)) {
     out.push({ verb: 'match', prose: case_.expected_response });
   }
   return out;
@@ -1365,17 +1377,9 @@ const CaseEditor = ({
       {case_.strategy === 'assertion' && (
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
           <ChipListEditor label="Answer must contain" values={mustContain} onChange={setMustContain} />
-          <ChipListEditor
-            label="Answer must NOT contain"
-            values={mustNotContain}
-            onChange={setMustNotContain}
-          />
+          <ChipListEditor label="Answer must NOT contain" values={mustNotContain} onChange={setMustNotContain} />
           <ChipListEditor label="Answer must call tool" values={mustCallTool} onChange={setMustCallTool} />
-          <ChipListEditor
-            label="Answer must NOT call tool"
-            values={mustNotCallTool}
-            onChange={setMustNotCallTool}
-          />
+          <ChipListEditor label="Answer must NOT call tool" values={mustNotCallTool} onChange={setMustNotCallTool} />
         </div>
       )}
 
@@ -1409,11 +1413,7 @@ const CaseEditor = ({
       {error && <Typography.Text color="error">{error}</Typography.Text>}
 
       <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
-        <Button
-          componentId="mlflow.playground.regression.edit-case.cancel"
-          onClick={onCancel}
-          disabled={saving}
-        >
+        <Button componentId="mlflow.playground.regression.edit-case.cancel" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
         <Button
@@ -1493,7 +1493,7 @@ const ChipListEditor = ({
         <Input
           componentId={`mlflow.playground.regression.edit-case.chip-input.${label}`}
           value={draft}
-          placeholder={`Add a value…`}
+          placeholder="Add a value…"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {

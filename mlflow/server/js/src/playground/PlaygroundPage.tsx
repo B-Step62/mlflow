@@ -48,14 +48,11 @@ import {
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ClipboardIcon,
   CloseSmallIcon,
   CopyIcon,
   DagIcon,
   Input,
-  NewWindowIcon,
   PlayIcon,
-  RefreshIcon,
   SendIcon,
   SpeechBubbleIcon,
   Spinner,
@@ -95,7 +92,7 @@ import {
   type FeedbackVerdict,
   type PlaygroundFeedback,
 } from './feedback';
-import { ConnectionPicker, useConnections } from './connections';
+import { ConnectionPicker, useConnections, type AgentConnection } from './connections';
 import {
   IssueDetailDrawer,
   dispatchWorker,
@@ -106,7 +103,6 @@ import {
   type IssueDetail,
   type RunTestVerdict,
 } from './issues';
-import { IssueStatusIcon, shortenId } from './issues-board';
 import {
   fetchRegressionCases,
   fetchRegressionRunSnapshot,
@@ -1486,118 +1482,6 @@ const BatchNavigator = ({
   );
 };
 
-// --- Tasks panel ------------------------------------------------------------
-// Compact list of in-flight Issues for the right-pane "Tasks" accordion.
-// Shares status icons + shortenId with the kanban (`./issues-board`) so the
-// two surfaces stay visually aligned.
-
-const TasksPanel = ({
-  experimentId,
-  tasks,
-  loading,
-  onOpenTask,
-  onRefresh,
-}: {
-  experimentId: string | undefined;
-  tasks: IssueDetail[];
-  loading: boolean;
-  onOpenTask: (issueId: string) => void;
-  onRefresh: () => void;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const kanbanUrl = experimentId
-    ? `${window.location.origin}${window.location.pathname}#/experiments/${encodeURIComponent(experimentId)}/issues`
-    : null;
-
-  return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, padding: theme.spacing.md }}>
-      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, justifyContent: 'flex-end' }}>
-        <Tooltip componentId="mlflow.playground.tasks.refresh.tooltip" content="Refresh">
-          <Button
-            componentId="mlflow.playground.tasks.refresh"
-            size="small"
-            type="tertiary"
-            icon={<RefreshIcon />}
-            onClick={onRefresh}
-            loading={loading}
-            aria-label="Refresh tasks"
-          />
-        </Tooltip>
-        {kanbanUrl && (
-          <Tooltip componentId="mlflow.playground.tasks.open-kanban.tooltip" content="Open kanban">
-            <Button
-              componentId="mlflow.playground.tasks.open-kanban"
-              size="small"
-              type="tertiary"
-              icon={<NewWindowIcon />}
-              onClick={() => window.open(kanbanUrl, '_blank', 'noopener')}
-              aria-label="Open kanban in a new tab"
-            />
-          </Tooltip>
-        )}
-      </div>
-
-      {tasks.length === 0 && !loading ? (
-        <Typography.Text color="secondary" size="sm" css={{ padding: theme.spacing.sm }}>
-          No active tasks. Dispatch a feedback comment to create one.
-        </Typography.Text>
-      ) : (
-        <div
-          css={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: theme.spacing.xs,
-            maxHeight: 360,
-            overflowY: 'auto',
-          }}
-        >
-          {tasks.map((task) => (
-            <button
-              key={task.issue_id}
-              type="button"
-              onClick={() => onOpenTask(task.issue_id)}
-              css={{
-                background: 'none',
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: theme.borders.borderRadiusMd,
-                padding: theme.spacing.sm,
-                cursor: 'pointer',
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-                ':hover': { backgroundColor: theme.colors.backgroundSecondary },
-              }}
-            >
-              <IssueStatusIcon status={task.status} />
-              <Typography.Text
-                css={{
-                  flex: 1,
-                  fontWeight: 600,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-                title={task.name || task.issue_id}
-              >
-                {task.name || '(untitled issue)'}
-              </Typography.Text>
-              <Typography.Text
-                size="sm"
-                color="secondary"
-                css={{ fontFamily: 'monospace', flexShrink: 0 }}
-                title={task.issue_id}
-              >
-                {shortenId(task.issue_id)}
-              </Typography.Text>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const PlaygroundPageImpl = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
@@ -1729,10 +1613,8 @@ const PlaygroundPageImpl = () => {
   // default — expandable on demand; the live trace can chew up a lot of
   // vertical space). Each section is a separate concern; they share
   // remaining vertical space proportionally based on which are open.
-  const [openSections, setOpenSections] = useState<Set<'tests' | 'tasks' | 'trace'>>(
-    () => new Set(['tests']),
-  );
-  const toggleSection = useCallback((id: 'tests' | 'tasks' | 'trace') => {
+  const [openSections, setOpenSections] = useState<Set<'tests' | 'trace'>>(() => new Set(['tests']));
+  const toggleSection = useCallback((id: 'tests' | 'trace') => {
     setOpenSections((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -1800,9 +1682,7 @@ const PlaygroundPageImpl = () => {
     fetchRegressionCases(experimentId)
       .then((cases) => {
         setRegressionCasesCount(cases.length);
-        setIssueIdsWithTestCase(
-          new Set(cases.map((c) => c.issue_id).filter((id): id is string => Boolean(id))),
-        );
+        setIssueIdsWithTestCase(new Set(cases.map((c) => c.issue_id).filter((id): id is string => Boolean(id))));
       })
       .catch(() => {
         // Same silent-failure rationale as the question bank reload — a
@@ -1872,36 +1752,25 @@ const PlaygroundPageImpl = () => {
   // --- Issue detail drawer (Epic 6) ---------------------------------------
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
 
-  // --- Tasks panel ---------------------------------------------------------
-  // Compact list of in-flight Issues (statuses: in_progress, review). The
-  // full kanban lives at /experiments/<id>/issues; this panel is the
-  // at-a-glance summary the playground user sees without leaving the chat.
-  const [tasks, setTasks] = useState<IssueDetail[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  // Issues whose test the agent currently fails. `todo` = newly generated
-  // from feedback, never attempted. `in_progress` = a fix is being worked
-  // on but not yet verified green. Once a test passes, the issue moves
-  // through `review` to `done` and drops off this list. Surfaced in the
-  // Tests tab so reviewers can triage what to fix next.
+  // Issues whose test the agent currently fails, in progress, or just
+  // passed. `todo` = newly generated from feedback, never attempted.
+  // `in_progress` = a fix is being worked on (with or without a worker
+  // connection) but not yet verified green. `done` rows are kept visible
+  // (coloured green) so reviewers see "just-passed" progress after a run.
+  // Worker presence + status (from `useConnections` below) overlays this
+  // for per-row rendering — pending = spinner, ready = "Preview".
   const [failingTests, setFailingTests] = useState<IssueDetail[]>([]);
-  const reloadTasks = useCallback(async () => {
+  const [failingTestsLoading, setFailingTestsLoading] = useState(false);
+  const reloadFailingTests = useCallback(async () => {
     if (!experimentId) return;
-    setTasksLoading(true);
+    setFailingTestsLoading(true);
     try {
       const all = await fetchIssues(experimentId);
-      setTasks(all.filter((i) => i.status === 'in_progress' || i.status === 'review'));
-      // Include `done` so just-passed tests stay visible (now coloured
-      // green) — gives reviewers a progress signal after a regression run
-      // rather than rows silently disappearing the moment they go green.
-      setFailingTests(
-        all.filter(
-          (i) => i.status === 'todo' || i.status === 'in_progress' || i.status === 'done',
-        ),
-      );
+      setFailingTests(all.filter((i) => i.status === 'todo' || i.status === 'in_progress' || i.status === 'done'));
     } catch {
       // best-effort; leave the panel empty rather than blowing up the page
     } finally {
-      setTasksLoading(false);
+      setFailingTestsLoading(false);
     }
   }, [experimentId]);
   // Drop issues whose backing test case has been removed from the suite —
@@ -1912,22 +1781,35 @@ const PlaygroundPageImpl = () => {
     [failingTests, issueIdsWithTestCase],
   );
   useEffect(() => {
-    void reloadTasks();
-  }, [reloadTasks]);
+    void reloadFailingTests();
+  }, [reloadFailingTests]);
   // Refresh whenever the issue drawer closes (a transition there could
   // have moved an Issue between in_progress / review / done).
   const onIssueDrawerClose = useCallback(() => {
     setOpenIssueId(null);
-    void reloadTasks();
-  }, [reloadTasks]);
+    void reloadFailingTests();
+  }, [reloadFailingTests]);
 
   // Connection registry (Epic 8). Polls /agent-connections for the picker
   // dropdown; YUK-53 layers a notification on top of the same poll.
-  const {
-    connections,
-    activeConnectionId,
-    activate: activateConnection,
-  } = useConnections();
+  const { connections, activeConnectionId, activate: activateConnection } = useConnections();
+
+  // `issue_id → AgentConnection` index for the FailingTestsList overlay.
+  // Drops the "main" baseline; only worktree-backed workers carry a
+  // source_issue_id anyway. If multiple workers race for the same issue
+  // (shouldn't happen with the idempotent dispatch endpoint, but be
+  // defensive), prefer a ready one over a pending one.
+  const workersByIssueId = useMemo(() => {
+    const map = new Map<string, AgentConnection>();
+    for (const conn of connections) {
+      if (!conn.source_issue_id) continue;
+      const existing = map.get(conn.source_issue_id);
+      if (!existing || (existing.status !== 'ready' && conn.status === 'ready')) {
+        map.set(conn.source_issue_id, conn);
+      }
+    }
+    return map;
+  }, [connections]);
 
   // YUK-53: surface a notification when a worker connection transitions
   // into `ready` while the user is on the page. Seed the seen set on the
@@ -1935,9 +1817,7 @@ const PlaygroundPageImpl = () => {
   const seenReadyConnectionIdsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (connections.length === 0) return;
-    const readyIds = connections
-      .filter((c) => c.status === 'ready' && c.name !== 'main')
-      .map((c) => c.connection_id);
+    const readyIds = connections.filter((c) => c.status === 'ready' && c.name !== 'main').map((c) => c.connection_id);
     if (seenReadyConnectionIdsRef.current === null) {
       seenReadyConnectionIdsRef.current = new Set(readyIds);
       return;
@@ -1969,17 +1849,13 @@ const PlaygroundPageImpl = () => {
     const issueId = searchParams.get('activate_for_issue');
     if (!issueId || deeplinkProcessedRef.current || connections.length === 0) return;
     deeplinkProcessedRef.current = true;
-    const match = connections.find(
-      (c) => c.source_issue_id === issueId && c.status === 'ready',
-    );
+    const match = connections.find((c) => c.source_issue_id === issueId && c.status === 'ready');
     const next = new URLSearchParams(searchParams);
     next.delete('activate_for_issue');
     setSearchParams(next, { replace: true });
     if (match) {
       void activateConnection(match.connection_id);
-      setDeeplinkBanner(
-        `Switched to ${match.name}. Send a message to test the worker's fix.`,
-      );
+      setDeeplinkBanner(`Switched to ${match.name}. Send a message to test the worker's fix.`);
     } else {
       setDeeplinkBanner(`No worker is ready for issue ${issueId} yet.`);
     }
@@ -2071,55 +1947,48 @@ const PlaygroundPageImpl = () => {
    * Selection-bar actions on the failing-tests triage list. Each receives
    * the set of selected issue ids; the inner helpers fan out to the
    * existing single-issue endpoints/helpers and surface a single toast.
-   * Triage-bar specific (kept here so they can refresh `reloadTasks`).
+   * Triage-bar specific (kept here so they can refresh `reloadFailingTests`).
    */
-  const buildMultiIssueFixPrompt = useCallback(
-    (issues: IssueDetail[], mode: 'together' | 'separately'): string => {
-      const lines: string[] = [];
-      lines.push(
-        mode === 'together'
-          ? `# Fix ${issues.length} failing regression tests (single root cause)`
-          : `# Fix ${issues.length} failing regression tests (one commit per fix)`,
-      );
-      lines.push('');
-      lines.push(
-        mode === 'together'
-          ? 'These tests are all failing on the current agent. Look for the common ' +
-              'underlying behaviour gap and fix it once - assume the listed tests are ' +
-              'variations of a single root cause unless the evidence forces otherwise.'
-          : 'These tests are all failing on the current agent. Treat each as a ' +
-              'SEPARATE behaviour gap: address them one at a time with one commit per ' +
-              'fix so the diffs stay reviewable.',
-      );
-      lines.push('');
-      issues.forEach((issue, idx) => {
-        lines.push(`## ${idx + 1}. ${issue.name || '(untitled)'} (${issue.issue_id})`);
-        if (issue.description?.trim()) {
-          lines.push('');
-          lines.push(`**Rationale (user feedback):** ${issue.description.trim()}`);
-        }
-        if (issue.source_trace_id) {
-          lines.push(`**Trace:** \`${issue.source_trace_id}\``);
-        }
+  const buildMultiIssueFixPrompt = useCallback((issues: IssueDetail[], mode: 'together' | 'separately'): string => {
+    const lines: string[] = [];
+    lines.push(
+      mode === 'together'
+        ? `# Fix ${issues.length} failing regression tests (single root cause)`
+        : `# Fix ${issues.length} failing regression tests (one commit per fix)`,
+    );
+    lines.push('');
+    lines.push(
+      mode === 'together'
+        ? 'These tests are all failing on the current agent. Look for the common ' +
+            'underlying behaviour gap and fix it once - assume the listed tests are ' +
+            'variations of a single root cause unless the evidence forces otherwise.'
+        : 'These tests are all failing on the current agent. Treat each as a ' +
+            'SEPARATE behaviour gap: address them one at a time with one commit per ' +
+            'fix so the diffs stay reviewable.',
+    );
+    lines.push('');
+    issues.forEach((issue, idx) => {
+      lines.push(`## ${idx + 1}. ${issue.name || '(untitled)'} (${issue.issue_id})`);
+      if (issue.description?.trim()) {
         lines.push('');
-        lines.push('Verify:');
-        lines.push('```bash');
-        lines.push(
-          `MLFLOW_TRACKING_URI=http://localhost:5000 uv run mlflow agent test run --issue ${issue.issue_id}`,
-        );
-        lines.push('```');
-        lines.push('');
-      });
-      lines.push('## Hard rules');
-      lines.push('- Do NOT special-case the exact phrasing or hard-code expected outputs.');
-      lines.push('- Do NOT modify the test rows; fix the agent.');
-      lines.push(
-        '- After each fix, run the verify command and confirm exit code 0 before moving on.',
-      );
-      return lines.join('\n');
-    },
-    [],
-  );
+        lines.push(`**Rationale (user feedback):** ${issue.description.trim()}`);
+      }
+      if (issue.source_trace_id) {
+        lines.push(`**Trace:** \`${issue.source_trace_id}\``);
+      }
+      lines.push('');
+      lines.push('Verify:');
+      lines.push('```bash');
+      lines.push(`MLFLOW_TRACKING_URI=http://localhost:5000 uv run mlflow agent test run --issue ${issue.issue_id}`);
+      lines.push('```');
+      lines.push('');
+    });
+    lines.push('## Hard rules');
+    lines.push('- Do NOT special-case the exact phrasing or hard-code expected outputs.');
+    lines.push('- Do NOT modify the test rows; fix the agent.');
+    lines.push('- After each fix, run the verify command and confirm exit code 0 before moving on.');
+    return lines.join('\n');
+  }, []);
 
   // Primary action for the failing-tests selection bar — fires a Claude
   // Code worker per selected issue. Backend dispatch endpoint is
@@ -2150,9 +2019,9 @@ const PlaygroundPageImpl = () => {
         description: parts.join(', ') || 'No issues to dispatch.',
         placement: 'topRight',
       });
-      void reloadTasks();
+      void reloadFailingTests();
     },
-    [reloadTasks],
+    [reloadFailingTests],
   );
 
   // Secondary action (manual flow): copy a combined fix prompt for all
@@ -2194,18 +2063,16 @@ const PlaygroundPageImpl = () => {
       });
       const results = await Promise.allSettled(issueIds.map((id) => runIssueTest(id)));
       const failed = results.filter((r) => r.status === 'rejected').length;
-      const passed = results.filter(
-        (r) => r.status === 'fulfilled' && (r.value as RunTestVerdict).passed,
-      ).length;
+      const passed = results.filter((r) => r.status === 'fulfilled' && (r.value as RunTestVerdict).passed).length;
       Utils.displayGlobalNotification({
         severity: failed > 0 ? 'warning' : 'success',
         message: `Re-run complete: ${passed} pass, ${issueIds.length - passed - failed} fail${failed > 0 ? `, ${failed} errored` : ''}`,
         placement: 'topRight',
         duration: 4,
       });
-      void reloadTasks();
+      void reloadFailingTests();
     },
-    [reloadTasks],
+    [reloadFailingTests],
   );
 
   const deleteSelectedFailingTests = useCallback(
@@ -2221,9 +2088,9 @@ const PlaygroundPageImpl = () => {
         placement: 'topRight',
         duration: 3,
       });
-      void reloadTasks();
+      void reloadFailingTests();
     },
-    [reloadTasks],
+    [reloadFailingTests],
   );
 
   /**
@@ -2304,8 +2171,7 @@ const PlaygroundPageImpl = () => {
       // a frame behind the slot's first verdict — fall back to the active
       // slot's `trace_id` so feedback save works the moment the user can
       // see a reply in the navigator.
-      const traceId =
-        input.anchor.trace_id || batchRun?.conversations[batchRun.activeIndex]?.trace_id;
+      const traceId = input.anchor.trace_id || batchRun?.conversations[batchRun.activeIndex]?.trace_id;
       if (!traceId) {
         setError('Cannot save feedback: this turn has no trace yet. Try again in a moment.');
         return;
@@ -2377,13 +2243,9 @@ const PlaygroundPageImpl = () => {
 
   // Forward-ref into `ensureTestForFeedback` so `submitFeedback` can fire
   // it after persist without entering the dependency cycle.
-  const ensureTestForFeedbackRef = useRef<
-    ((feedback: PlaygroundFeedback) => Promise<string | null>) | null
-  >(null);
+  const ensureTestForFeedbackRef = useRef<((feedback: PlaygroundFeedback) => Promise<string | null>) | null>(null);
   // Same trick for the pre-grade step that runs right after.
-  const preGradeFeedbackRef = useRef<
-    ((feedback: PlaygroundFeedback, issueId: string) => Promise<void>) | null
-  >(null);
+  const preGradeFeedbackRef = useRef<((feedback: PlaygroundFeedback, issueId: string) => Promise<void>) | null>(null);
 
   /**
    * Ensure a regression test case + Issue exists for this feedback. This
@@ -2449,7 +2311,7 @@ const PlaygroundPageImpl = () => {
         // Also refresh the issue list so the new issue shows up in
         // `failingTests`; without this the panel stays stale until the
         // user opens / closes a drawer.
-        void reloadTasks();
+        void reloadFailingTests();
         Utils.closeGlobalNotification(progressKey);
         return result.issue_id;
       } catch (e) {
@@ -2464,7 +2326,7 @@ const PlaygroundPageImpl = () => {
         return null;
       }
     },
-    [messages, experimentId, reloadRegressionCount, reloadTasks],
+    [messages, experimentId, reloadRegressionCount, reloadFailingTests],
   );
 
   /**
@@ -2496,9 +2358,7 @@ const PlaygroundPageImpl = () => {
         reasons: verdict.reasons,
       };
       setFeedbacks((prev) =>
-        prev.map((f) =>
-          f.assessment_id === feedback.assessment_id ? { ...f, latestVerdict: stored } : f,
-        ),
+        prev.map((f) => (f.assessment_id === feedback.assessment_id ? { ...f, latestVerdict: stored } : f)),
       );
       // No toast — the verdict updates `feedback.latestVerdict` (which
       // re-colours the inline highlight) and the new test shows up in the
@@ -3674,6 +3534,7 @@ const PlaygroundPageImpl = () => {
               inProgress={regressionInProgress}
               canRun
               failingTests={visibleFailingTests}
+              workersByIssueId={workersByIssueId}
               onOpenIssue={(issueId) => setOpenIssueId(issueId)}
               onDispatchSelected={dispatchSelectedFailingTests}
               onCopyFixPrompt={copyMultiIssueFixPrompt}
@@ -3682,27 +3543,6 @@ const PlaygroundPageImpl = () => {
               onRunSuite={() => void runRegressionSuite()}
               onCasesChanged={reloadRegressionCount}
               onSelectRun={(runId) => void onSelectRecentRun(runId)}
-            />
-          </CollapsibleSection>
-
-          <CollapsibleSection
-            id="tasks"
-            title="Tasks"
-            icon={<ClipboardIcon css={{ color: theme.colors.textSecondary }} />}
-            rightSlot={
-              <Typography.Text size="sm" color="secondary">
-                {tasks.length} active
-              </Typography.Text>
-            }
-            open={openSections.has('tasks')}
-            onToggle={() => toggleSection('tasks')}
-          >
-            <TasksPanel
-              experimentId={experimentId}
-              tasks={tasks}
-              loading={tasksLoading}
-              onOpenTask={(issueId) => setOpenIssueId(issueId)}
-              onRefresh={() => void reloadTasks()}
             />
           </CollapsibleSection>
 
