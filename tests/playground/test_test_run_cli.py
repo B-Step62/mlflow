@@ -246,3 +246,125 @@ def test_run_judge_strategy_uses_default_llm_unless_overridden(cli_env, monkeypa
 
     assert result.exit_code == 0, result.output
     assert "PASS (judge)" in result.output
+
+
+# --- Multi-issue + parallel ------------------------------------------------
+
+
+def test_run_multiple_issues_via_repeated_flags(cli_env):
+    """Two `--issue` flags run both tests; exit 0 when both pass; summary
+    line appears at the bottom."""
+    iss_a = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    iss_b = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["beta"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha beta gamma"}],
+    })
+    runner = CliRunner()
+    with patch("mlflow.playground.test_run_cli.httpx.post", return_value=fake):
+        result = runner.invoke(
+            agent_commands,
+            ["test", "run", "--issue", iss_a, "--issue", iss_b],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert f"[{iss_a}] PASS" in result.output
+    assert f"[{iss_b}] PASS" in result.output
+    assert "Summary: 2 passed, 0 failed, 0 errored" in result.output
+
+
+def test_run_multiple_issues_via_positional_args(cli_env):
+    """Issues passed positionally work the same as repeated `--issue`."""
+    iss_a = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    iss_b = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["beta"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha beta"}],
+    })
+    runner = CliRunner()
+    with patch("mlflow.playground.test_run_cli.httpx.post", return_value=fake):
+        result = runner.invoke(agent_commands, ["test", "run", iss_a, iss_b])
+
+    assert result.exit_code == 0, result.output
+    assert f"[{iss_a}] PASS" in result.output
+    assert f"[{iss_b}] PASS" in result.output
+
+
+def test_run_multiple_issues_exits_nonzero_when_any_fail(cli_env):
+    """One pass, one fail → exit 1, summary reflects the split."""
+    iss_pass = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    iss_fail = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["nothere"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha only"}],
+    })
+    runner = CliRunner()
+    with patch("mlflow.playground.test_run_cli.httpx.post", return_value=fake):
+        result = runner.invoke(agent_commands, ["test", "run", iss_pass, iss_fail])
+
+    assert result.exit_code == 1, result.output
+    assert f"[{iss_pass}] PASS" in result.output
+    assert f"[{iss_fail}] FAIL" in result.output
+    assert "Summary: 1 passed, 1 failed, 0 errored" in result.output
+
+
+def test_run_multiple_issues_dedupes_overlap(cli_env):
+    """Same issue id passed twice (positional + flag) runs only once."""
+    iss = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha"}],
+    })
+    runner = CliRunner()
+    with patch(
+        "mlflow.playground.test_run_cli.httpx.post", return_value=fake,
+    ) as mock_post:
+        result = runner.invoke(agent_commands, ["test", "run", iss, "--issue", iss])
+
+    assert result.exit_code == 0, result.output
+    assert mock_post.call_count == 1
+
+
+def test_run_parallel_runs_concurrently(cli_env):
+    """`--parallel 2` uses a ThreadPoolExecutor. Just verify behavior is
+    correct end-to-end; we don't time-test concurrency to keep the suite fast."""
+    iss_a = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["alpha"]
+    )
+    iss_b = _seed_issue_with_assertion_test(
+        cli_env["experiment_id"], must_contain=["beta"]
+    )
+    fake = _make_fake_response({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "alpha beta"}],
+    })
+    runner = CliRunner()
+    with patch("mlflow.playground.test_run_cli.httpx.post", return_value=fake):
+        result = runner.invoke(
+            agent_commands,
+            ["test", "run", iss_a, iss_b, "--parallel", "2"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Summary: 2 passed, 0 failed, 0 errored" in result.output
+
+
+def test_run_no_issues_specified_returns_error(cli_env):
+    runner = CliRunner()
+    result = runner.invoke(agent_commands, ["test", "run"])
+    assert result.exit_code == 1
+    assert "No issues specified" in result.output

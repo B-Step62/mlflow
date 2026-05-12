@@ -184,8 +184,118 @@ def _print_verdict(verdict, response: AgentResponse, *, verbose: bool) -> None:
             click.echo(verdict.judge_reasoning)
 
 
+def _emit_error(issue_id: str, message: str) -> None:
+    """Stream a per-issue error line to stderr immediately so single-issue
+    and multi-issue runs both surface the error in the same place. Multi-
+    issue summary at the end just counts; the body of each error appears
+    here."""
+    click.secho(f"[{issue_id}] ERROR: {message}", fg="red", err=True, bold=True)
+
+
+def _run_one_issue(
+    issue_id: str,
+    *,
+    agent_url: str,
+    timeout: float,
+    verbose: bool,
+) -> tuple[str, bool, str | None]:
+    """Run one issue's test against the agent. Returns ``(issue_id, passed, error)``.
+
+    ``error`` is None on success (including a "passed=False" verdict — that's
+    a legitimate test outcome, not an error). It carries a one-line message
+    only for operational failures (missing issue, malformed row, agent
+    unreachable). The error is also streamed to stderr via ``_emit_error``
+    so callers don't have to inspect the tuple to surface it.
+    """
+    store = _store()
+    try:
+        issue = store.get_issue(issue_id)
+    except MlflowException as exc:
+        msg = str(exc)
+        _emit_error(issue_id, msg)
+        return issue_id, False, msg
+
+    if issue.status in (IssueStatus.PENDING, IssueStatus.RESOLVED):
+        msg = (
+            f"issue is on the legacy detection path (status={issue.status}); "
+            "the playground test runner doesn't apply"
+        )
+        _emit_error(issue_id, msg)
+        return issue_id, False, msg
+
+    try:
+        row = _load_test_row(
+            experiment_id=str(issue.experiment_id),
+            issue_id=issue_id,
+            test_case_id=issue.test_case_id,
+        )
+        spec = _test_spec(row)
+        messages = _conversation_prefix(row)
+    except (click.ClickException, MlflowException) as exc:
+        msg = exc.message if isinstance(exc, click.ClickException) else str(exc)
+        _emit_error(issue_id, msg)
+        return issue_id, False, msg
+
+    if verbose:
+        click.secho(f"\n=== {issue_id} ===", fg="cyan", bold=True)
+        click.secho(f"→ POST {agent_url}/invocations", fg="bright_black")
+        click.secho(
+            f"  conversation prefix: {len(messages)} message(s)",
+            fg="bright_black",
+        )
+
+    try:
+        raw = _invoke_agent(agent_url, messages, timeout=timeout)
+    except click.ClickException as exc:
+        _emit_error(issue_id, exc.message)
+        return issue_id, False, exc.message
+
+    response = normalize_agent_response(raw)
+    verdict = evaluate(spec, response)
+    _print_verdict_for_issue(issue_id, verdict, response, verbose=verbose)
+    return issue_id, verdict.passed, None
+
+
+def _print_verdict_for_issue(
+    issue_id: str,
+    verdict,
+    response: AgentResponse,
+    *,
+    verbose: bool,
+) -> None:
+    """Like ``_print_verdict`` but prefixed with the issue id so multi-issue
+    runs are readable."""
+    color = "green" if verdict.passed else "red"
+    label = "PASS" if verdict.passed else "FAIL"
+    click.secho(f"[{issue_id}] {label} ({verdict.strategy})", fg=color, bold=True)
+    for reason in verdict.reasons:
+        bullet = "✔" if verdict.passed else "✗"
+        click.secho(f"  {bullet} {reason}", fg=color)
+    if verbose:
+        if response.text:
+            click.secho("  --- agent response ---", fg="cyan", bold=True)
+            for line in (response.text or "").splitlines() or ["<empty>"]:
+                click.echo(f"  {line}")
+        if response.tool_calls:
+            click.secho("  --- tool calls ---", fg="cyan", bold=True)
+            for t in response.tool_calls:
+                click.echo(f"  · {t}")
+        if verdict.judge_reasoning:
+            click.secho("  --- judge reasoning ---", fg="cyan", bold=True)
+            click.echo(f"  {verdict.judge_reasoning}")
+
+
 @click.command("run")
-@click.option("--issue", "issue_id", required=True, help="Issue ID to run the test for.")
+@click.argument("positional_issues", nargs=-1)
+@click.option(
+    "--issue",
+    "issue_flags",
+    multiple=True,
+    help=(
+        "Issue ID to run. Repeat for multiple issues. Positional args also "
+        "accepted (mixed positional + flag works)."
+    ),
+)
 @click.option(
     "--agent-url",
     default=None,
@@ -198,49 +308,94 @@ def _print_verdict(verdict, response: AgentResponse, *, verbose: bool) -> None:
     type=float,
     help="Per-request timeout for /invocations (seconds).",
 )
+@click.option(
+    "--parallel",
+    "parallel",
+    default=1,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Run up to N tests concurrently. Default 1 (sequential) — the user's "
+        "agent may not be threadsafe; opt in only when you know it is."
+    ),
+)
 @click.option("--verbose", "-v", is_flag=True, help="Print full conversation and reasoning.")
 @_wrap_mlflow_errors
-def test_run(issue_id: str, agent_url: str | None, timeout: float, verbose: bool) -> None:
-    """Run the regression test for a single Issue. Exits 0 on pass, 1 on fail."""
-    store = _store()
-    issue = store.get_issue(issue_id)
+def test_run(
+    positional_issues: tuple[str, ...],
+    issue_flags: tuple[str, ...],
+    agent_url: str | None,
+    timeout: float,
+    parallel: int,
+    verbose: bool,
+) -> None:
+    """Run the regression test for one or more Issues.
 
-    if issue.status in (IssueStatus.PENDING, IssueStatus.RESOLVED):
-        click.secho(
-            f"  note: issue {issue_id!r} is on the legacy detection path (status="
-            f"{issue.status}); the playground test runner doesn't apply.",
-            fg="yellow",
-            err=True,
+    Usage examples:
+
+    \b
+        mlflow agent test run --issue iss-1
+        mlflow agent test run --issue iss-1 --issue iss-2
+        mlflow agent test run iss-1 iss-2 iss-3
+        mlflow agent test run iss-1 iss-2 --parallel 2
+
+    Exits 0 if every selected issue passes; non-zero if any fail or error.
+    Per-issue PASS / FAIL lines stream as they complete; a summary prints
+    at the end. ``--parallel N`` runs up to N tests concurrently — opt in
+    only when your agent is threadsafe.
+    """
+    # Combine positional + repeated --issue, dedupe but preserve order.
+    selected: list[str] = list(dict.fromkeys((*positional_issues, *issue_flags)))
+
+    if not selected:
+        raise click.ClickException(
+            "No issues specified. Pass --issue / positional ids."
         )
-        sys.exit(1)
-
-    row = _load_test_row(
-        experiment_id=str(issue.experiment_id),
-        issue_id=issue_id,
-        test_case_id=issue.test_case_id,
-    )
-    spec = _test_spec(row)
-    messages = _conversation_prefix(row)
 
     resolved_url = (
         agent_url
         or os.environ.get("MLFLOW_PLAYGROUND_AGENT_URL")
         or DEFAULT_AGENT_URL
     ).rstrip("/")
-    if verbose:
-        click.secho(f"→ POST {resolved_url}/invocations", fg="bright_black")
+
+    if verbose or len(selected) > 1:
         click.secho(
-            f"  conversation prefix: {len(messages)} message(s)",
+            f"Running {len(selected)} test{'s' if len(selected) != 1 else ''} "
+            f"against {resolved_url} (parallel={parallel})",
             fg="bright_black",
         )
 
-    raw = _invoke_agent(resolved_url, messages, timeout=timeout)
-    response = normalize_agent_response(raw)
+    results: list[tuple[str, bool, str | None]] = []
+    if parallel <= 1 or len(selected) == 1:
+        for iid in selected:
+            results.append(_run_one_issue(iid, agent_url=resolved_url, timeout=timeout, verbose=verbose))
+    else:
+        from concurrent.futures import ThreadPoolExecutor
 
-    verdict = evaluate(spec, response)
-    _print_verdict(verdict, response, verbose=verbose)
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            for result in pool.map(
+                lambda iid: _run_one_issue(iid, agent_url=resolved_url, timeout=timeout, verbose=verbose),
+                selected,
+            ):
+                results.append(result)
 
-    if not verdict.passed:
+    # Summary
+    passed = sum(1 for _, p, e in results if p and e is None)
+    failed = sum(1 for _, p, e in results if not p and e is None)
+    errored = sum(1 for _, _, e in results if e is not None)
+
+    if len(results) > 1:
+        click.echo()
+        summary_color = "green" if failed == 0 and errored == 0 else "red"
+        click.secho(
+            f"Summary: {passed} passed, {failed} failed, {errored} errored",
+            fg=summary_color,
+            bold=True,
+        )
+        # Per-error lines already streamed to stderr inside `_run_one_issue`
+        # via `_emit_error`; no need to repeat them in the summary block.
+
+    if failed > 0 or errored > 0:
         sys.exit(1)
 
 
