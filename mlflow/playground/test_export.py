@@ -16,13 +16,24 @@ at code shape we haven't validated.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import threading
 from typing import Any, Literal
 
 import pydantic
 
 ExportLanguage = Literal["python", "typescript"]
 SUPPORTED_LANGUAGES: tuple[ExportLanguage, ...] = ("python",)
+
+# In-memory cache: (experiment_id, language) -> (cases_fingerprint, script).
+# A change in the regression dataset rotates the fingerprint, so the cache
+# self-invalidates without us having to wire eviction hooks into every
+# `append_test_case` / `update_test_case` / `delete_test_case` call site.
+# Process-local: a playground restart drops the cache, which is the correct
+# behavior (the LLM might have improved and we'd want to re-emit).
+_export_cache: dict[tuple[str, ExportLanguage], tuple[str, "ExportedTestScript"]] = {}
+_export_cache_lock = threading.Lock()
 
 
 class ExportedTestScript(pydantic.BaseModel):
@@ -174,11 +185,28 @@ def _collect_test_cases(experiment_id: str) -> list[dict[str, Any]]:
     return cases
 
 
+def _fingerprint_cases(cases: list[dict[str, Any]]) -> str:
+    """Stable hash of the test-case list, used as the cache invalidation key.
+
+    Sorted by ``id`` so the cache survives reorderings that don't actually
+    change the content. Hash covers the message bodies, the test spec, and
+    the rationale, so any edit to any case rotates the fingerprint.
+    """
+    sorted_cases = sorted(cases, key=lambda c: c.get("id", ""))
+    blob = json.dumps(sorted_cases, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha1(blob).hexdigest()
+
+
 def export_test_script(
     experiment_id: str,
     language: ExportLanguage = "python",
 ) -> ExportedTestScript:
     """Read regression cases, prompt the default LLM, return the script.
+
+    Cached: if the dataset rows haven't changed since the last successful
+    export for the same ``(experiment_id, language)``, the cached script is
+    returned without re-calling the LLM. Cache lives in process memory; a
+    playground restart drops it.
 
     Raises:
         ValueError: when ``language`` is not supported by v1 (anything
@@ -195,9 +223,26 @@ def export_test_script(
             f"Regression dataset for experiment {experiment_id!r} is empty; "
             "dispatch feedback first to seed test cases."
         )
+
+    fingerprint = _fingerprint_cases(cases)
+    cache_key = (experiment_id, language)
+    with _export_cache_lock:
+        cached = _export_cache.get(cache_key)
+        if cached is not None and cached[0] == fingerprint:
+            return cached[1]
+
+    # Cache miss or stale — regenerate.
     prompt = build_export_prompt(cases, language)
     raw = call_default_llm(prompt, response_schema=ExportedTestScript)
-    return ExportedTestScript.model_validate_json(raw) if isinstance(raw, str) else ExportedTestScript.model_validate(raw)
+    script = (
+        ExportedTestScript.model_validate_json(raw)
+        if isinstance(raw, str)
+        else ExportedTestScript.model_validate(raw)
+    )
+    # Only cache successful results — failed calls raise before we get here.
+    with _export_cache_lock:
+        _export_cache[cache_key] = (fingerprint, script)
+    return script
 
 
 __all__ = [
