@@ -9,11 +9,17 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  Alert,
   Button,
+  CheckIcon,
   CloseSmallIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
   Drawer,
   GearIcon,
   Input,
+  Modal,
   NewWindowIcon,
   PencilIcon,
   Spinner,
@@ -68,6 +74,7 @@ export const RegressionTestsPanel = ({
   const disabled = !canRun || testCount === 0;
 
   const [browseSuiteOpen, setBrowseSuiteOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   return (
     <>
@@ -88,6 +95,19 @@ export const RegressionTestsPanel = ({
                 ? 'No test cases yet — dispatch feedback to generate the first one.'
                 : `Suite contains ${testCount} test ${testCount === 1 ? 'case' : 'cases'}.`}
             </Typography.Text>
+            <Tooltip
+              componentId="mlflow.playground.regression.export.tooltip"
+              content="Export as pytest script"
+            >
+              <Button
+                componentId="mlflow.playground.regression.export"
+                size="small"
+                icon={<CodeIcon />}
+                aria-label="Export tests as pytest script"
+                onClick={() => setExportOpen(true)}
+                disabled={!experimentId || testCount === 0}
+              />
+            </Tooltip>
             <Tooltip
               componentId="mlflow.playground.regression.browse-suite.tooltip"
               content="Browse / manage suite"
@@ -150,6 +170,10 @@ export const RegressionTestsPanel = ({
         onCasesChanged={onCasesChanged}
         experimentId={experimentId}
       />
+
+      {exportOpen && experimentId && (
+        <ExportTestsModal experimentId={experimentId} onClose={() => setExportOpen(false)} />
+      )}
     </>
   );
 };
@@ -197,6 +221,163 @@ const ProgressStrip = ({
         </Typography.Text>
       </div>
     </div>
+  );
+};
+
+// --- Export-as-pytest modal -------------------------------------------------
+// Fetches a generated pytest file from the export endpoint and surfaces it in
+// a copy-/download-friendly modal. Pure presentation — the LLM generation
+// happens server-side in `mlflow/playground/test_export.py`.
+
+type ExportResponse = {
+  language: 'python';
+  filename: string;
+  code: string;
+};
+
+const exportRegressionSuite = async (experimentId: string): Promise<ExportResponse> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/regression-suite/export?experiment_id=${encodeURIComponent(
+        experimentId,
+      )}&language=python`,
+    ),
+    { headers: getDefaultHeaders(document.cookie) },
+  );
+  if (!response.ok) {
+    throw new Error(`Export failed (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as ExportResponse;
+};
+
+const ExportTestsModal = ({
+  experimentId,
+  onClose,
+}: {
+  experimentId: string;
+  onClose: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [data, setData] = useState<ExportResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    exportRegressionSuite(experimentId)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentId]);
+
+  const onCopy = useCallback(() => {
+    if (!data) return;
+    void navigator.clipboard.writeText(data.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [data]);
+
+  const onDownload = useCallback(() => {
+    if (!data) return;
+    const blob = new Blob([data.code], { type: 'text/x-python' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = data.filename || 'test_regression.py';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [data]);
+
+  return (
+    <Modal
+      visible
+      title="Export regression suite as pytest"
+      componentId="mlflow.playground.regression.export.modal"
+      onCancel={onClose}
+      size="wide"
+      verticalSizing="maxed_out"
+      footer={
+        <div css={{ display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end' }}>
+          <Button componentId="mlflow.playground.regression.export.close" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            componentId="mlflow.playground.regression.export.copy"
+            icon={copied ? <CheckIcon /> : <CopyIcon />}
+            onClick={onCopy}
+            disabled={!data}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+          <Button
+            componentId="mlflow.playground.regression.export.download"
+            type="primary"
+            icon={<DownloadIcon />}
+            onClick={onDownload}
+            disabled={!data}
+          >
+            Download {data?.filename ?? 'test_regression.py'}
+          </Button>
+        </div>
+      }
+    >
+      {loading && (
+        <div
+          css={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: theme.spacing.lg,
+            gap: theme.spacing.sm,
+          }}
+        >
+          <Spinner />
+          <Typography.Text color="secondary">
+            Asking the LLM to assemble your test file…
+          </Typography.Text>
+        </div>
+      )}
+      {error && (
+        <Alert
+          componentId="mlflow.playground.regression.export.error"
+          type="error"
+          message={error}
+          closable={false}
+        />
+      )}
+      {data && (
+        <pre
+          css={{
+            margin: 0,
+            padding: theme.spacing.md,
+            backgroundColor: theme.colors.backgroundSecondary,
+            borderRadius: theme.borders.borderRadiusMd,
+            fontFamily: 'monospace',
+            fontSize: theme.typography.fontSizeSm,
+            lineHeight: 1.5,
+            overflow: 'auto',
+            maxHeight: '60vh',
+            whiteSpace: 'pre',
+          }}
+        >
+          {data.code}
+        </pre>
+      )}
+    </Modal>
   );
 };
 
