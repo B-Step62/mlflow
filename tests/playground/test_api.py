@@ -463,12 +463,16 @@ def test_transition_issue_returns_400_on_unknown_status():
 
 
 def test_transition_issue_translates_illegal_edge_to_400():
+    """Self-loop transitions stay illegal (legitimate edges across
+    playground states are now all legal — see `_PLAYGROUND_TRANSITIONS`).
+    The endpoint should surface the store's MlflowException as a 400.
+    """
     from mlflow.exceptions import MlflowException
 
     client = create_test_client()
     store = mock.Mock(
         transition_issue=mock.Mock(
-            side_effect=MlflowException("Illegal issue transition 'done' -> 'todo'.")
+            side_effect=MlflowException("Illegal issue transition 'todo' -> 'todo'.")
         )
     )
     with mock.patch(

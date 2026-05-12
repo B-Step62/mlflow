@@ -42,35 +42,44 @@ class IssueStatus(str, Enum):
 
 
 # Playground state-machine transitions (design.md §5.1 + §6.5).
-# done / rejected are terminal — no key entry, no outgoing edges.
+#
+# Originally forward-only with terminal `done` / `rejected`. Relaxed to a
+# fully-connected graph between playground states so the kanban / issue
+# detail "Change status" dropdown can reopen completed work, walk a card
+# back to an earlier stage, or revive a rejected one. The auto-driven
+# paths (worker dispatch → in_progress, run-test pass → done, reject → ...)
+# only ever fire forward edges, so this loosening doesn't enable any new
+# automatic mis-transitions — it only stops the validator from blocking
+# legitimate manual overrides.
+#
+# Legacy detection states (`pending` / `resolved`) remain outside the
+# playground graph; `validate_transition` rejects any edge touching them.
 _PLAYGROUND_TRANSITIONS: dict[IssueStatus, frozenset[IssueStatus]] = {}
 
 
 def _build_transitions() -> None:
     # Defined as a function so the module is still importable if IssueStatus
     # is partially constructed (e.g. during test collection with `from x import *`).
-    _PLAYGROUND_TRANSITIONS.update(
-        {
-            IssueStatus.TODO: frozenset({IssueStatus.IN_PROGRESS, IssueStatus.REJECTED}),
-            IssueStatus.IN_PROGRESS: frozenset({IssueStatus.REVIEW, IssueStatus.REJECTED}),
-            IssueStatus.REVIEW: frozenset(
-                {IssueStatus.DONE, IssueStatus.IN_PROGRESS, IssueStatus.REJECTED}
-            ),
-        }
-    )
-
-
-_build_transitions()
-
-_PLAYGROUND_STATES: frozenset[IssueStatus] = frozenset(
-    {
+    all_playground = frozenset({
         IssueStatus.TODO,
         IssueStatus.IN_PROGRESS,
         IssueStatus.REVIEW,
         IssueStatus.DONE,
         IssueStatus.REJECTED,
-    }
-)
+    })
+    for state in all_playground:
+        _PLAYGROUND_TRANSITIONS[state] = all_playground - {state}
+
+
+_build_transitions()
+
+_PLAYGROUND_STATES: frozenset[IssueStatus] = frozenset({
+    IssueStatus.TODO,
+    IssueStatus.IN_PROGRESS,
+    IssueStatus.REVIEW,
+    IssueStatus.DONE,
+    IssueStatus.REJECTED,
+})
 
 
 def is_playground_state(status: IssueStatus) -> bool:
@@ -82,14 +91,14 @@ def is_playground_state(status: IssueStatus) -> bool:
 def validate_transition(from_status: IssueStatus, to_status: IssueStatus) -> None:
     """Validate a playground state-machine transition.
 
-    Raises ``MlflowException`` (INVALID_PARAMETER_VALUE) if the transition
-    is illegal, including:
+    The playground graph is fully connected — any playground state can
+    move to any other playground state. The validator rejects:
 
     * either side is a legacy detection state (``pending`` / ``resolved``) —
       use ``update_issue`` directly for those, the state machine doesn't
       govern them;
-    * ``from_status`` is terminal (``done`` / ``rejected``);
-    * the edge ``from_status -> to_status`` isn't in the allow-list.
+    * self-loops (``X -> X``) — the validator only governs movement, so a
+      no-op is surfaced as an error to keep callers honest.
     """
     if not is_playground_state(from_status) or not is_playground_state(to_status):
         raise MlflowException(

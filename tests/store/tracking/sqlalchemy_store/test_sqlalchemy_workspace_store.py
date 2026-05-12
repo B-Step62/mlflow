@@ -2325,6 +2325,11 @@ def test_transition_issue_is_workspace_scoped(workspace_tracking_store):
 
 
 def test_transition_issue_rejects_illegal_state_transitions(workspace_tracking_store):
+    """The state machine now allows any playground→playground edge; the only
+    edges that still raise are self-loops and edges touching legacy
+    detection states. Use a self-loop here to verify the validator fires
+    on the workspace-aware path too.
+    """
     with WorkspaceContext("team-a"):
         exp_id = workspace_tracking_store.create_experiment("issue-exp-illegal")
         issue = workspace_tracking_store.create_issue(
@@ -2333,11 +2338,10 @@ def test_transition_issue_rejects_illegal_state_transitions(workspace_tracking_s
             description="ensure 400 path is workspace-aware too",
             status=IssueStatus.TODO,
         )
-        # todo -> review is a skip-ahead, must raise
         with pytest.raises(MlflowException, match="Illegal issue transition"):
             workspace_tracking_store.transition_issue(
                 issue.issue_id,
-                IssueStatus.REVIEW,
+                IssueStatus.TODO,
             )
         # And the row must not have moved
         assert workspace_tracking_store.get_issue(issue.issue_id).status == IssueStatus.TODO

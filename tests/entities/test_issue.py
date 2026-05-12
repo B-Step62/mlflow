@@ -464,41 +464,33 @@ def test_issue_proto_roundtrip_required_fields():
 # --- State machine (design.md §5.1 + §6.5) -----------------------------------
 
 
+_PLAYGROUND = (
+    IssueStatus.TODO,
+    IssueStatus.IN_PROGRESS,
+    IssueStatus.REVIEW,
+    IssueStatus.DONE,
+    IssueStatus.REJECTED,
+)
+
+
 @pytest.mark.parametrize(
     ("from_status", "to_status"),
-    [
-        (IssueStatus.TODO, IssueStatus.IN_PROGRESS),
-        (IssueStatus.TODO, IssueStatus.REJECTED),
-        (IssueStatus.IN_PROGRESS, IssueStatus.REVIEW),
-        (IssueStatus.IN_PROGRESS, IssueStatus.REJECTED),
-        (IssueStatus.REVIEW, IssueStatus.DONE),
-        (IssueStatus.REVIEW, IssueStatus.IN_PROGRESS),
-        (IssueStatus.REVIEW, IssueStatus.REJECTED),
-    ],
+    [(a, b) for a in _PLAYGROUND for b in _PLAYGROUND if a != b],
 )
 def test_validate_transition_legal(from_status: IssueStatus, to_status: IssueStatus):
+    """Any edge between distinct playground states is legal. The graph is
+    fully connected so the kanban "Change status" dropdown can rewind a
+    card or reopen a terminal one."""
     validate_transition(from_status, to_status)
 
 
-@pytest.mark.parametrize(
-    ("from_status", "to_status"),
-    [
-        # skip-ahead
-        (IssueStatus.TODO, IssueStatus.REVIEW),
-        (IssueStatus.TODO, IssueStatus.DONE),
-        (IssueStatus.IN_PROGRESS, IssueStatus.DONE),
-        # backward
-        (IssueStatus.REVIEW, IssueStatus.TODO),
-        (IssueStatus.IN_PROGRESS, IssueStatus.TODO),
-        # from terminal
-        (IssueStatus.DONE, IssueStatus.IN_PROGRESS),
-        (IssueStatus.DONE, IssueStatus.REJECTED),
-        (IssueStatus.REJECTED, IssueStatus.TODO),
-    ],
-)
-def test_validate_transition_illegal_raises(from_status: IssueStatus, to_status: IssueStatus):
+@pytest.mark.parametrize("state", _PLAYGROUND)
+def test_validate_transition_self_loop_is_illegal(state: IssueStatus):
+    """A `state -> state` no-op is still rejected — the validator only
+    governs movement, and surfacing a no-op as an error keeps callers
+    honest about whether they actually transitioned anything."""
     with pytest.raises(MlflowException, match="Illegal issue transition"):
-        validate_transition(from_status, to_status)
+        validate_transition(state, state)
 
 
 @pytest.mark.parametrize("legacy", [IssueStatus.PENDING, IssueStatus.RESOLVED])
