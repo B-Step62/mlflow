@@ -1019,18 +1019,23 @@ const STATUS_TAG_COLOR = {
 } as const satisfies Record<string, 'default' | 'indigo' | 'lemon' | 'lime' | 'coral'>;
 
 // Playground state-machine — keep in lockstep with
-// `mlflow/entities/issue.py::_PLAYGROUND_TRANSITIONS`. `done` and
-// `rejected` are terminal (no outgoing edges); the dropdown disables the
-// trigger when the issue is in one of them.
+// `mlflow/entities/issue.py::_PLAYGROUND_TRANSITIONS`. The graph is fully
+// connected between playground states so the dropdown can rewind a card
+// (e.g. done → in_progress) or revive a rejected one — only self-loops
+// and edges touching legacy `pending` / `resolved` are illegal.
 type PlaygroundStatus = 'todo' | 'in_progress' | 'review' | 'done' | 'rejected';
 
-const STATUS_TRANSITIONS: Record<PlaygroundStatus, PlaygroundStatus[]> = {
-  todo: ['in_progress', 'rejected'],
-  in_progress: ['review', 'rejected'],
-  review: ['done', 'in_progress', 'rejected'],
-  done: [],
-  rejected: [],
-};
+const PLAYGROUND_STATUSES: readonly PlaygroundStatus[] = [
+  'todo',
+  'in_progress',
+  'review',
+  'done',
+  'rejected',
+];
+
+const STATUS_TRANSITIONS: Record<PlaygroundStatus, PlaygroundStatus[]> = Object.fromEntries(
+  PLAYGROUND_STATUSES.map((s) => [s, PLAYGROUND_STATUSES.filter((t) => t !== s)]),
+) as Record<PlaygroundStatus, PlaygroundStatus[]>;
 
 const STATUS_LABEL: Record<PlaygroundStatus, string> = {
   todo: 'Todo',

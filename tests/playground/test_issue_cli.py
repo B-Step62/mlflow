@@ -149,7 +149,14 @@ def test_accept_walks_full_legal_path(cli_env):
     assert after.assignee is None
 
 
-def test_accept_after_reject_returns_clean_error(cli_env):
+def test_accept_after_reject_succeeds(cli_env):
+    """The state machine now allows any playground→playground edge, so a
+    user can manually revive a previously-rejected issue by accepting it.
+    The CLI mirrors that — no error, the row moves rejected → done.
+    """
+    from mlflow.entities.issue import IssueStatus
+    from mlflow.tracking._tracking_service.utils import _get_store
+
     runner = CliRunner()
     create = runner.invoke(
         agent_commands,
@@ -159,10 +166,9 @@ def test_accept_after_reject_returns_clean_error(cli_env):
     runner.invoke(agent_commands, ["issue", "reject", issue_id])
 
     result = runner.invoke(agent_commands, ["issue", "accept", issue_id])
-    assert result.exit_code != 0
-    assert "Illegal issue transition" in result.output
-    # No traceback should leak — the wrapper translated it to a click error.
+    assert result.exit_code == 0, result.output
     assert "Traceback" not in result.output
+    assert _get_store().get_issue(issue_id).status == IssueStatus.DONE
 
 
 def test_reject_missing_issue_returns_not_found(cli_env):
