@@ -135,6 +135,28 @@ def test_call_claude_returns_structured_output(monkeypatch):
     assert json.loads(cmd[schema_idx + 1])["properties"]["passed"]["type"] == "boolean"
 
 
+def test_call_claude_runs_in_neutral_cwd(monkeypatch):
+    """The judge call must NOT inherit the calling process's cwd — the worker
+    dispatcher installs MLflow tracing hooks into worktree-local
+    `.claude/settings.json`, and if the judge picks those up it fires hook
+    subcommands per turn and blows past --max-turns. Pass a tempdir cwd to
+    isolate.
+    """
+    import tempfile
+
+    monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
+    fake_run = mock.Mock(
+        return_value=_fake_claude_proc(
+            stdout=json.dumps({"structured_output": {"passed": True}})
+        )
+    )
+    monkeypatch.setattr("mlflow.playground._claude_llm.subprocess.run", fake_run)
+
+    call_claude("hi", response_schema=_Sample)
+
+    assert fake_run.call_args.kwargs["cwd"] == tempfile.gettempdir()
+
+
 def test_call_claude_omits_schema_when_unspecified(monkeypatch):
     monkeypatch.setattr("mlflow.playground._claude_llm.shutil.which", lambda _: "/bin/claude")
     fake_run = mock.Mock(
