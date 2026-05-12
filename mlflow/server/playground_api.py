@@ -665,6 +665,47 @@ def create_playground_api_router(
             "cases": cases,
         }
 
+    @router.get("/regression-suite/export")
+    async def export_regression_suite(
+        experiment_id: str,
+        language: str = "python",
+    ) -> dict[str, Any]:
+        """Emit a runnable test script for every regression case in an
+        experiment. v1 ships ``language=python`` (pytest); other languages
+        return 400 with a clear hint.
+
+        Returns ``{language, filename, code}`` or 404 when the dataset is
+        empty.
+        """
+        from mlflow.playground.test_export import (
+            SUPPORTED_LANGUAGES,
+            export_test_script,
+        )
+
+        if language not in SUPPORTED_LANGUAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported export language: {language!r}. "
+                    f"Supported: {list(SUPPORTED_LANGUAGES)}."
+                ),
+            )
+
+        try:
+            script = await asyncio.to_thread(export_test_script, experiment_id, language)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            # build_export_prompt raises ValueError on unsupported language;
+            # already filtered above but guard against future divergence.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return {
+            "language": language,
+            "filename": script.filename,
+            "code": script.code,
+        }
+
     @router.post("/issues/{issue_id}/run-test")
     async def run_test(issue_id: str) -> dict[str, Any]:
         """Run the regression test for an Issue against the user's local
