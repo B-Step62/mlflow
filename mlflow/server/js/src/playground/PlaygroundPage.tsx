@@ -94,7 +94,6 @@ import {
 } from './feedback';
 import { ConnectionPicker, useConnections, type AgentConnection } from './connections';
 import {
-  IssueDetailDrawer,
   dispatchWorker,
   evaluateExistingAgentResponse,
   fetchIssues,
@@ -1088,37 +1087,22 @@ const FixAllFailuresButton = ({
 }: {
   failures: { verdict: BannerVerdict; question: string; agentResponse: string }[];
 }) => {
-  const [dispatching, setDispatching] = useState(false);
-
-  const onDispatchAll = useCallback(async () => {
-    setDispatching(true);
-    try {
-      const tally = await dispatchWorkersForFailures(failures);
-      const parts: string[] = [];
-      if (tally.dispatched) parts.push(`${tally.dispatched} dispatched`);
-      if (tally.reused) parts.push(`${tally.reused} already running`);
-      if (tally.failed) parts.push(`${tally.failed} failed`);
-      if (tally.missingIssue) parts.push(`${tally.missingIssue} skipped (no issue)`);
-      Utils.displayGlobalNotification({
-        severity: tally.failed > 0 ? 'warning' : 'success',
-        message: 'Fix it with Claude Code',
-        description: parts.join(', ') || 'No failures to dispatch.',
-        placement: 'topRight',
-      });
-    } finally {
-      setDispatching(false);
-    }
-  }, [failures]);
-
+  // The managed-worker dispatch path is currently unreliable, so the primary
+  // button copies a multi-failure fix prompt to the clipboard instead of
+  // spawning a background worker. Users paste it into their own Claude Code
+  // session. Worker dispatch still exists server-side (see
+  // `dispatchWorkersForFailures`) and can be re-enabled here once the
+  // discard/cancel UX is solid.
   const onCopyPrompt = useCallback(async () => {
     const prompt = buildBatchFixAllPrompt(failures);
     try {
       await navigator.clipboard.writeText(prompt);
       Utils.displayGlobalNotification({
-        severity: 'info',
-        message: 'Copied multi-fix prompt to clipboard',
+        severity: 'success',
+        message: `Fix prompt copied (${failures.length} failure${failures.length === 1 ? '' : 's'})`,
+        description: 'Paste into Claude Code to start fixing.',
         placement: 'topRight',
-        duration: 2,
+        duration: 3,
       });
     } catch (e) {
       Utils.displayGlobalNotification({
@@ -1131,201 +1115,15 @@ const FixAllFailuresButton = ({
   }, [failures]);
 
   return (
-    <div css={{ display: 'flex', gap: 4 }}>
-      <Button
-        componentId="mlflow.playground.regression.fix-all-failures"
-        type="primary"
-        size="small"
-        onClick={onDispatchAll}
-        loading={dispatching}
-      >
-        {dispatching ? 'Dispatching…' : `Fix all (${failures.length}) with Claude`}
-      </Button>
-      <Tooltip
-        componentId="mlflow.playground.regression.fix-all-failures.copy.tooltip"
-        content="Copy multi-fix prompt to clipboard (manual fix flow)"
-      >
-        <Button
-          componentId="mlflow.playground.regression.fix-all-failures.copy"
-          size="small"
-          icon={<CopyIcon />}
-          aria-label="Copy multi-fix prompt"
-          onClick={onCopyPrompt}
-        />
-      </Tooltip>
-    </div>
-  );
-};
-
-const FixFailedTestButton = ({
-  verdict,
-  question,
-  agentResponse,
-}: {
-  verdict: BannerVerdict;
-  question: string;
-  agentResponse: string;
-}) => {
-  const [dispatching, setDispatching] = useState(false);
-
-  const onDispatch = useCallback(async () => {
-    if (!verdict.issue_id) {
-      Utils.displayGlobalNotification({
-        severity: 'warning',
-        message: 'No issue linked to this verdict',
-        description: 'This failure was not dispatched — only test cases tied to an Issue can be auto-fixed.',
-        placement: 'topRight',
-      });
-      return;
-    }
-    setDispatching(true);
-    try {
-      const result = await dispatchWorker(verdict.issue_id);
-      Utils.displayGlobalNotification({
-        severity: 'success',
-        message: result.reused
-          ? `Worker already running for ${verdict.issue_id}`
-          : `Worker dispatched for ${verdict.issue_id}`,
-        description: 'Open the issue drawer to watch turns stream in.',
-        placement: 'topRight',
-      });
-    } catch (e) {
-      Utils.displayGlobalNotification({
-        severity: 'error',
-        message: 'Dispatch failed',
-        description: e instanceof Error ? e.message : String(e),
-        placement: 'topRight',
-      });
-    } finally {
-      setDispatching(false);
-    }
-  }, [verdict.issue_id]);
-
-  const onCopyPrompt = useCallback(async () => {
-    const prompt = buildBatchFixPrompt({ verdict, question, agentResponse });
-    try {
-      await navigator.clipboard.writeText(prompt);
-      Utils.displayGlobalNotification({
-        severity: 'info',
-        message: 'Copied fix prompt to clipboard',
-        placement: 'topRight',
-        duration: 2,
-      });
-    } catch (e) {
-      Utils.displayGlobalNotification({
-        severity: 'error',
-        message: 'Could not copy to clipboard',
-        description: e instanceof Error ? e.message : String(e),
-        placement: 'topRight',
-      });
-    }
-  }, [verdict, question, agentResponse]);
-
-  return (
-    <div css={{ display: 'flex', gap: 4 }}>
-      <Button
-        componentId="mlflow.playground.regression.fix-failed-test"
-        size="small"
-        onClick={onDispatch}
-        loading={dispatching}
-      >
-        {dispatching ? 'Dispatching…' : 'Fix with Claude Code'}
-      </Button>
-      <Tooltip
-        componentId="mlflow.playground.regression.fix-failed-test.copy.tooltip"
-        content="Copy fix prompt to clipboard (manual fix flow)"
-      >
-        <Button
-          componentId="mlflow.playground.regression.fix-failed-test.copy"
-          size="small"
-          icon={<CopyIcon />}
-          aria-label="Copy fix prompt"
-          onClick={onCopyPrompt}
-        />
-      </Tooltip>
-    </div>
-  );
-};
-
-const VerdictBanner = ({
-  verdict,
-  question,
-  agentResponse,
-}: {
-  verdict: BannerVerdict;
-  question: string;
-  agentResponse: string;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const palette = verdict.passed
-    ? {
-        bg: 'rgba(220, 245, 220, 0.55)',
-        border: theme.colors.green400,
-        fg: theme.colors.textValidationSuccess,
-        title: '✓ Passed',
-      }
-    : {
-        bg: 'rgba(255, 224, 224, 0.55)',
-        border: theme.colors.red400,
-        fg: theme.colors.textValidationDanger,
-        title: '✗ Failed',
-      };
-  return (
-    <div
-      css={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.xs,
-        padding: theme.spacing.md,
-        borderRadius: theme.borders.borderRadiusMd,
-        border: `1px solid ${palette.border}`,
-        backgroundColor: palette.bg,
-      }}
+    <Button
+      componentId="mlflow.playground.regression.fix-all-failures"
+      type="primary"
+      size="small"
+      icon={<CopyIcon />}
+      onClick={onCopyPrompt}
     >
-      <div css={{ display: 'flex', alignItems: 'baseline', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-        <Typography.Text css={{ color: palette.fg, fontWeight: 700 }}>{palette.title}</Typography.Text>
-        {verdict.rationale_summary && (
-          <Typography.Text css={{ fontStyle: 'italic' }}>{verdict.rationale_summary}</Typography.Text>
-        )}
-        <Typography.Text size="sm" color="secondary">
-          ({verdict.strategy})
-        </Typography.Text>
-        {!verdict.passed && (
-          <div css={{ marginLeft: 'auto' }}>
-            <FixFailedTestButton verdict={verdict} question={question} agentResponse={agentResponse} />
-          </div>
-        )}
-      </div>
-      {verdict.reasons.length > 0 && (
-        <ul css={{ margin: 0, paddingLeft: theme.spacing.lg }}>
-          {verdict.reasons.map((reason, i) => (
-            <li key={i}>
-              <Typography.Text css={{ color: palette.fg, whiteSpace: 'pre-wrap' }}>{reason}</Typography.Text>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
-
-const VerdictStack = ({
-  verdicts,
-  question,
-  agentResponse,
-}: {
-  verdicts: BannerVerdict[];
-  question: string;
-  agentResponse: string;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  if (!verdicts || verdicts.length === 0) return null;
-  return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-      {verdicts.map((v, i) => (
-        <VerdictBanner key={v.test_case_id ?? `${i}`} verdict={v} question={question} agentResponse={agentResponse} />
-      ))}
-    </div>
+      {`Fix all (${failures.length}) with Claude`}
+    </Button>
   );
 };
 
@@ -1750,8 +1548,6 @@ const PlaygroundPageImpl = () => {
   const [batchRun, setBatchRun] = useState<BatchRunState | null>(null);
 
   // --- Issue detail drawer (Epic 6) ---------------------------------------
-  const [openIssueId, setOpenIssueId] = useState<string | null>(null);
-
   // Issues whose test the agent currently fails, in progress, or just
   // passed. `todo` = newly generated from feedback, never attempted.
   // `in_progress` = a fix is being worked on (with or without a worker
@@ -1783,12 +1579,6 @@ const PlaygroundPageImpl = () => {
   useEffect(() => {
     void reloadFailingTests();
   }, [reloadFailingTests]);
-  // Refresh whenever the issue drawer closes (a transition there could
-  // have moved an Issue between in_progress / review / done).
-  const onIssueDrawerClose = useCallback(() => {
-    setOpenIssueId(null);
-    void reloadFailingTests();
-  }, [reloadFailingTests]);
 
   // Connection registry (Epic 8). Polls /agent-connections for the picker
   // dropdown; YUK-53 layers a notification on top of the same poll.
@@ -1810,6 +1600,21 @@ const PlaygroundPageImpl = () => {
     }
     return map;
   }, [connections]);
+
+  // We no longer host an issue-detail drawer inside the playground —
+  // expanding a failing-test row shows the rationale inline and the
+  // external-link icon opens the kanban deeplink in a new tab. Same
+  // pattern for the feedback popover's "open issue" button.
+  const openIssueInKanban = useCallback(
+    (issueId: string) => {
+      if (!experimentId) return;
+      const url = `${window.location.origin}${window.location.pathname}#/experiments/${encodeURIComponent(
+        experimentId,
+      )}/issues?issue=${encodeURIComponent(issueId)}`;
+      window.open(url, '_blank', 'noopener');
+    },
+    [experimentId],
+  );
 
   // YUK-53: surface a notification when a worker connection transitions
   // into `ready` while the user is on the page. Seed the seen set on the
@@ -3280,13 +3085,6 @@ const PlaygroundPageImpl = () => {
                 {activeBatch.error}
               </div>
             )}
-            {activeBatch?.verdicts && activeBatch.verdicts.length > 0 && (
-              <VerdictStack
-                verdicts={activeBatch.verdicts}
-                question={activeBatch.messages.find((m) => m.role === 'user')?.content ?? activeBatch.label ?? ''}
-                agentResponse={[...activeBatch.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''}
-              />
-            )}
             {isLoadingConfig ? (
               <div css={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spinner />
@@ -3396,7 +3194,7 @@ const PlaygroundPageImpl = () => {
                       onResolve={resolveFeedback}
                       onDelete={deleteFeedback}
                       onRunTest={(f) => void runTestNow(f)}
-                      onOpenIssue={(issueId) => setOpenIssueId(issueId)}
+                      onOpenIssue={openIssueInKanban}
                       isRunningIssueIds={runningTestIssueIds}
                     />
                   )}
@@ -3535,7 +3333,6 @@ const PlaygroundPageImpl = () => {
               canRun
               failingTests={visibleFailingTests}
               workersByIssueId={workersByIssueId}
-              onOpenIssue={(issueId) => setOpenIssueId(issueId)}
               onDispatchSelected={dispatchSelectedFailingTests}
               onCopyFixPrompt={copyMultiIssueFixPrompt}
               onRerunSelected={rerunSelectedFailingTests}
@@ -3659,17 +3456,10 @@ const PlaygroundPageImpl = () => {
                 deleteFeedback(f);
                 setActivePopover(null);
               }}
-              onOpenIssue={(issueId) => setOpenIssueId(issueId)}
+              onOpenIssue={openIssueInKanban}
             />
           );
         })()}
-
-      <IssueDetailDrawer
-        issueId={openIssueId}
-        visible={!!openIssueId}
-        onClose={onIssueDrawerClose}
-        experimentId={experimentId}
-      />
 
       {/* Full-trace drawer: opens on demand for the full explorer experience
           (assessments pane, attributes, events, linked prompts). */}
