@@ -98,7 +98,7 @@ import {
 import { ConnectionPicker, useConnections } from './connections';
 import {
   IssueDetailDrawer,
-  dispatchWorker,
+  evaluateExistingAgentResponse,
   fetchIssues,
   runIssueTest,
   type IssueDetail,
@@ -882,7 +882,7 @@ const buildBatchFixPrompt = (args: { verdict: BannerVerdict; question: string; a
     lines.push('```');
     lines.push('Exit code 0 = pass.');
   } else {
-    lines.push('Re-run the regression suite from the MLflow Agent Playground after your fix lands.');
+    lines.push('Re-run the regression suite from the MLflow Agent Studio after your fix lands.');
   }
   return lines.join('\n');
 };
@@ -900,7 +900,7 @@ const buildBatchFixAllPrompt = (
   lines.push(`# Fix ${failures.length} failing regression tests`);
   lines.push('');
   lines.push(
-    `The MLflow Agent Playground just ran ${failures.length} regression test${
+    `The MLflow Agent Studio just ran ${failures.length} regression test${
       failures.length === 1 ? '' : 's'
     } that failed. Each is listed below in order. Treat each as a SYMPTOM of a separate behaviour gap; ` +
       'fix them one at a time, commit between fixes, verify before moving on.',
@@ -1741,12 +1741,19 @@ const PlaygroundPageImpl = () => {
   // at-a-glance summary the playground user sees without leaving the chat.
   const [tasks, setTasks] = useState<IssueDetail[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  // Issues whose test the agent currently fails. `todo` = newly generated
+  // from feedback, never attempted. `in_progress` = a fix is being worked
+  // on but not yet verified green. Once a test passes, the issue moves
+  // through `review` to `done` and drops off this list. Surfaced in the
+  // Tests tab so reviewers can triage what to fix next.
+  const [failingTests, setFailingTests] = useState<IssueDetail[]>([]);
   const reloadTasks = useCallback(async () => {
     if (!experimentId) return;
     setTasksLoading(true);
     try {
       const all = await fetchIssues(experimentId);
       setTasks(all.filter((i) => i.status === 'in_progress' || i.status === 'review'));
+      setFailingTests(all.filter((i) => i.status === 'todo' || i.status === 'in_progress'));
     } catch {
       // best-effort; leave the panel empty rather than blowing up the page
     } finally {
@@ -2025,6 +2032,24 @@ const PlaygroundPageImpl = () => {
           setFeedbacks((prev) =>
             prev.map((f) => (f.assessment_id === optimisticId ? { ...f, assessment_id: finalId, pending: false } : f)),
           );
+          // Auto-add to the regression suite, then pre-grade against the
+          // already-produced agent response so a "Fix it" CTA appears
+          // without making the user click "Run test". Routed through refs
+          // to break the use-before-declare cycle with their definitions
+          // below this callback.
+          const newFeedback: PlaygroundFeedback = {
+            assessment_id: finalId,
+            trace_id: traceId,
+            rationale: input.rationale,
+            aspect: input.aspect,
+            expected_output: input.expected_output,
+            anchor: input.anchor,
+            pending: false,
+          };
+          const issueId = await ensureTestForFeedbackRef.current?.(newFeedback);
+          if (issueId) {
+            void preGradeFeedbackRef.current?.(newFeedback, issueId);
+          }
         } catch (e) {
           setFeedbacks((prev) => prev.filter((f) => f.assessment_id !== optimisticId));
           Utils.displayGlobalNotification({
@@ -2039,6 +2064,16 @@ const PlaygroundPageImpl = () => {
     },
     [clearSelection, batchRun],
   );
+
+  // Forward-ref into `ensureTestForFeedback` so `submitFeedback` can fire
+  // it after persist without entering the dependency cycle.
+  const ensureTestForFeedbackRef = useRef<
+    ((feedback: PlaygroundFeedback) => Promise<string | null>) | null
+  >(null);
+  // Same trick for the pre-grade step that runs right after.
+  const preGradeFeedbackRef = useRef<
+    ((feedback: PlaygroundFeedback, issueId: string) => Promise<void>) | null
+  >(null);
 
   /**
    * Ensure a regression test case + Issue exists for this feedback. This
@@ -2109,58 +2144,78 @@ const PlaygroundPageImpl = () => {
   );
 
   /**
-   * Always-on "Fix it" action on a feedback comment. Ensures the issue's
-   * regression test is generated (slow LLM call), then dispatches the
-   * Claude Code worker to fix the agent in an isolated worktree (Epic 8 /
-   * YUK-50). The connection-registry poll picks up the new worker and
-   * surfaces a toast when it's ready to test.
-   *
-   * `copyFixPromptForFeedback` (above) stays as an internal fallback in
-   * case we want to expose a "copy prompt" escape hatch later.
+   * Pre-grade: run the test's judge against the already-produced agent
+   * response (the failing message the user just left feedback on) without
+   * re-invoking the agent. Surfaces a "Fix it" CTA on failure so the user
+   * doesn't have to click "Run test" first. Idempotent / silent on error.
    */
-  const [fixingFeedbackIds, setFixingFeedbackIds] = useState<Set<string>>(new Set());
-  const fixItForFeedback = useCallback(
-    async (feedback: PlaygroundFeedback) => {
-      setFixingFeedbackIds((prev) => {
-        if (prev.has(feedback.assessment_id)) return prev;
-        const next = new Set(prev);
-        next.add(feedback.assessment_id);
-        return next;
-      });
+  const preGradeFeedback = useCallback(
+    async (feedback: PlaygroundFeedback, issueId: string): Promise<void> => {
+      const targetIndex = messages.findIndex((m) => m.id === feedback.anchor.message_id);
+      if (targetIndex < 0) return;
+      const failing = messages[targetIndex];
+      const toolNames = (failing.toolCalls ?? []).map((t) => t.name);
+      let verdict;
       try {
-        const issueId = await ensureTestForFeedback(feedback);
-        if (!issueId) return;
-        try {
-          await dispatchWorker(issueId);
-          Utils.displayGlobalNotification({
-            severity: 'info',
-            message: 'Worker dispatched',
-            description:
-              `Claude is working on issue ${issueId}. ` +
-              "You'll see a notification here when the new agent version is ready to test.",
-            placement: 'topRight',
-          });
-        } catch (e) {
-          // 409 = "already an active worker for this issue" — surface clearly.
-          const msg = e instanceof Error ? e.message : String(e);
-          Utils.displayGlobalNotification({
-            severity: 'error',
-            message: 'Could not dispatch worker',
-            description: msg,
-            placement: 'topRight',
-          });
-        }
-      } finally {
-        setFixingFeedbackIds((prev) => {
-          if (!prev.has(feedback.assessment_id)) return prev;
-          const next = new Set(prev);
-          next.delete(feedback.assessment_id);
-          return next;
-        });
+        verdict = await evaluateExistingAgentResponse(issueId, failing.content, toolNames);
+      } catch (e) {
+        // Pre-grade is a UX optimisation; failure shouldn't surface
+        // anything to the user — they can still click "Run test" manually.
+        // eslint-disable-next-line no-console
+        console.warn('Pre-grade failed', e);
+        return;
       }
+      // Persist on the feedback so highlights re-color (red = failing) and
+      // the popover can show reasons without re-fetching.
+      const stored: FeedbackVerdict = {
+        passed: verdict.passed,
+        reasons: verdict.reasons,
+      };
+      setFeedbacks((prev) =>
+        prev.map((f) =>
+          f.assessment_id === feedback.assessment_id ? { ...f, latestVerdict: stored } : f,
+        ),
+      );
+      if (verdict.passed) {
+        Utils.displayGlobalNotification({
+          severity: 'success',
+          message: 'New test case generated',
+          description: 'The agent already passes this case — no fix needed.',
+          duration: 6,
+          placement: 'topRight',
+        });
+        return;
+      }
+      Utils.displayGlobalNotification({
+        severity: 'info',
+        message: 'New test case generated',
+        description: (
+          <div css={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span>{verdict.judge_reasoning || verdict.reasons[0] || 'Agent currently fails this test.'}</span>
+            <div>
+              <Button
+                componentId="mlflow.playground.feedback.auto-grade.fix-it"
+                type="primary"
+                size="small"
+                onClick={() => void copyFixPromptForFeedback(feedback)}
+              >
+                Fix it
+              </Button>
+            </div>
+          </div>
+        ),
+        duration: 0,
+        placement: 'topRight',
+      });
     },
-    [ensureTestForFeedback],
+    [messages, copyFixPromptForFeedback],
   );
+
+  // Keep the refs pointed at the latest closures. Assigning during render
+  // is safe because we don't read them during this render pass — they're
+  // only consumed inside `submitFeedback`'s async IIFE.
+  ensureTestForFeedbackRef.current = ensureTestForFeedback;
+  preGradeFeedbackRef.current = preGradeFeedback;
 
   useEffect(() => {
     const aborters = traceLookupAbortersRef.current;
@@ -2924,7 +2979,7 @@ const PlaygroundPageImpl = () => {
       >
         <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
           <Typography.Title level={2} withoutMargins>
-            Agent Playground
+            Agent Studio
           </Typography.Title>
           <ConnectionPicker
             connections={connections}
@@ -3184,9 +3239,7 @@ const PlaygroundPageImpl = () => {
                       onResolve={resolveFeedback}
                       onDelete={deleteFeedback}
                       onRunTest={(f) => void runTestNow(f)}
-                      onFixIt={(f) => void fixItForFeedback(f)}
                       onOpenIssue={(issueId) => setOpenIssueId(issueId)}
-                      isFixingIds={fixingFeedbackIds}
                       isRunningIssueIds={runningTestIssueIds}
                     />
                   )}
@@ -3323,6 +3376,8 @@ const PlaygroundPageImpl = () => {
               recentRuns={regressionRecentRuns}
               inProgress={regressionInProgress}
               canRun
+              failingTests={failingTests}
+              onOpenIssue={(issueId) => setOpenIssueId(issueId)}
               onRunSuite={() => void runRegressionSuite()}
               onCasesChanged={reloadRegressionCount}
               onSelectRun={(runId) => void onSelectRecentRun(runId)}
@@ -3452,10 +3507,8 @@ const PlaygroundPageImpl = () => {
               mode="view"
               feedback={feedback}
               rect={activePopover.rect}
-              isFixing={fixingFeedbackIds.has(feedback.assessment_id)}
               isRunning={feedback.dispatched_issue_id ? runningTestIssueIds.has(feedback.dispatched_issue_id) : false}
               onClose={() => setActivePopover(null)}
-              onFixIt={(f) => void fixItForFeedback(f)}
               onRunTest={(f) => void runTestNow(f)}
               onResolve={(f) => {
                 resolveFeedback(f);

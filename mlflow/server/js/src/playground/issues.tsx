@@ -191,6 +191,43 @@ export const postIssueComment = async (
   return (await response.json()) as IssueCommentEntry;
 };
 
+export type EvaluateExistingVerdict = {
+  passed: boolean;
+  reasons: string[];
+  strategy: string;
+  judge_reasoning?: string | null;
+};
+
+/**
+ * Evaluate the issue's test spec against an already-produced agent response
+ * (no agent invocation, no MLflow run created). Used by the feedback save
+ * flow to pre-grade the test the moment it's generated, so we can surface a
+ * "Fix it" CTA without waiting for the user to click "Run test".
+ */
+export const evaluateExistingAgentResponse = async (
+  issueId: string,
+  agentResponseText: string,
+  agentToolCalls: string[],
+): Promise<EvaluateExistingVerdict> => {
+  const response = await fetch(
+    getAjaxUrl(
+      `ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/evaluate-existing-response`,
+    ),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
+      body: JSON.stringify({
+        agent_response_text: agentResponseText,
+        agent_tool_calls: agentToolCalls,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Pre-grade failed (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as EvaluateExistingVerdict;
+};
+
 export type RunTestProgress = {
   stage: 'loading' | 'replaying' | 'evaluating';
   message: string;
@@ -290,7 +327,7 @@ export const buildFixPrompt = (
   verdict: RunTestVerdict | null,
 ): string => {
   const lines: string[] = [];
-  lines.push(`# Fix MLflow Agent Playground Issue ${issue.issue_id}`);
+  lines.push(`# Fix MLflow Agent Studio Issue ${issue.issue_id}`);
   lines.push('');
   lines.push(`**Title:** ${issue.name}`);
   if (issue.source_trace_id) {
@@ -351,9 +388,59 @@ export const buildFixPrompt = (
       '(MLflow regenerates it from the original feedback if you delete it).',
   );
   lines.push('');
+  lines.push('## Solution space - explore beyond system-prompt tweaks');
+  lines.push(
+    'A system-prompt hack is the laziest fix and often the most brittle. Before ' +
+      'defaulting to it, weigh these alternatives and pick the one that actually ' +
+      'addresses the root cause. Multiple options can be combined.',
+  );
+  lines.push('');
+  lines.push(
+    '- **Tooling / retrieval**: add or fix a tool (web search, doc lookup, API call) ' +
+      'so the agent grounds its answer in real data instead of guessing.',
+  );
+  lines.push(
+    '- **Tool selection / routing**: adjust which tools are exposed, their descriptions, ' +
+      "or the model's tool-calling logic so the right tool fires for this kind of question.",
+  );
+  lines.push(
+    '- **Model / provider**: try a stronger model (or different provider) if the current ' +
+      'one consistently fails the criterion.',
+  );
+  lines.push(
+    "- **Output formatting / post-processing**: transform the model's raw response " +
+      '(e.g. enforce markdown, add citations, strip boilerplate) outside the prompt.',
+  );
+  lines.push(
+    '- **Control flow**: add a verification / self-check step, a retry-with-feedback ' +
+      'loop, or a structured-output schema.',
+  );
+  lines.push(
+    '- **Retrieval corpus**: change what is searched (domains, filters, freshness) or ' +
+      'how results are ranked / filtered.',
+  );
+  lines.push(
+    '- **System prompt**: only after the above do not fit. When you do edit the prompt, ' +
+      'change the *rule* not the *symptom* - "answer with citations" is durable; ' +
+      '"do not say X" is brittle.',
+  );
+  lines.push('');
+  lines.push('## Environment');
+  lines.push(
+    '**Critical:** always run the verify command via `uv run` so it uses the project\'s ' +
+      "pinned MLflow + agent dependencies - invoking `mlflow` directly picks up whatever " +
+      'is on PATH and silently diverges from the env the agent itself runs in. Also set ' +
+      '`MLFLOW_TRACKING_URI=http://localhost:5000` so the command talks to the running ' +
+      'playground server rather than a worktree-local sqlite; without it, ' +
+      '`mlflow agent test run` will not find the issue / test case and will exit with an ' +
+      'unrelated error.',
+  );
+  lines.push('');
   lines.push('## Verify');
   lines.push('```bash');
-  lines.push(`mlflow agent test run --issue ${issue.issue_id}`);
+  lines.push(
+    `MLFLOW_TRACKING_URI=http://localhost:5000 uv run mlflow agent test run --issue ${issue.issue_id}`,
+  );
   lines.push('```');
   lines.push('Exit code 0 = pass. Iterate until it passes, then return to the playground and click "I fixed this".');
   return lines.join('\n');
@@ -1017,19 +1104,6 @@ export const IssueDetailDrawer = ({
               </div>
 
               <TestCasePanel testCase={testCase} />
-
-              {experimentId && (
-                <WorkerSection
-                  issue={issue}
-                  experimentId={experimentId}
-                  onDispatched={() => {
-                    void fetchIssue(issue.issue_id).then((refreshed) => {
-                      setIssue(refreshed);
-                      onIssueUpdated?.(refreshed);
-                    });
-                  }}
-                />
-              )}
 
               <IssueComments issueId={issue.issue_id} />
 
