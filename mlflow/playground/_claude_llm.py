@@ -25,6 +25,7 @@ import json
 import logging
 import shutil
 import subprocess
+import tempfile
 from typing import Any
 
 import pydantic
@@ -81,6 +82,16 @@ def call_claude(
     if response_schema is not None:
         cmd.extend(["--json-schema", json.dumps(response_schema.model_json_schema())])
 
+    # Run from a neutral cwd so the inner Claude doesn't inherit project-level
+    # `.claude/settings.json` hooks from wherever this call originates. The
+    # worker dispatcher installs MLflow tracing hooks into the worker
+    # worktree's `.claude/settings.json` (see
+    # `mlflow.playground.worker._install_claude_tracing_hooks`); if the
+    # judge call inherits those hooks it fires `mlflow autolog claude` shell
+    # subcommands on every turn, blows past `--max-turns 5`, and returns
+    # `subtype: error_max_turns` with no verdict. Judge prompts are
+    # self-contained (the agent response is embedded as text), so a neutral
+    # cwd is safe.
     try:
         proc = subprocess.run(
             cmd,
@@ -88,6 +99,7 @@ def call_claude(
             text=True,
             timeout=timeout,
             check=False,
+            cwd=tempfile.gettempdir(),
         )
     except subprocess.TimeoutExpired as e:
         raise ClaudeCLIError(f"Claude CLI timed out after {timeout}s") from e
