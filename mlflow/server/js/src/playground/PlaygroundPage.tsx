@@ -1890,7 +1890,14 @@ const PlaygroundPageImpl = () => {
     try {
       const all = await fetchIssues(experimentId);
       setTasks(all.filter((i) => i.status === 'in_progress' || i.status === 'review'));
-      setFailingTests(all.filter((i) => i.status === 'todo' || i.status === 'in_progress'));
+      // Include `done` so just-passed tests stay visible (now coloured
+      // green) — gives reviewers a progress signal after a regression run
+      // rather than rows silently disappearing the moment they go green.
+      setFailingTests(
+        all.filter(
+          (i) => i.status === 'todo' || i.status === 'in_progress' || i.status === 'done',
+        ),
+      );
     } catch {
       // best-effort; leave the panel empty rather than blowing up the page
     } finally {
@@ -2114,19 +2121,53 @@ const PlaygroundPageImpl = () => {
     [],
   );
 
+  // Primary action for the failing-tests selection bar — fires a Claude
+  // Code worker per selected issue. Backend dispatch endpoint is
+  // idempotent, so re-clicking is safe (returns the existing connection
+  // for issues that already have a worker).
+  const dispatchSelectedFailingTests = useCallback(
+    async (issueIds: string[]) => {
+      if (issueIds.length === 0) return;
+      const results = await Promise.allSettled(issueIds.map((id) => dispatchWorker(id)));
+      let dispatched = 0;
+      let reused = 0;
+      let failed = 0;
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          if (r.value.reused) reused += 1;
+          else dispatched += 1;
+        } else {
+          failed += 1;
+        }
+      }
+      const parts: string[] = [];
+      if (dispatched) parts.push(`${dispatched} dispatched`);
+      if (reused) parts.push(`${reused} already running`);
+      if (failed) parts.push(`${failed} failed`);
+      Utils.displayGlobalNotification({
+        severity: failed > 0 ? 'warning' : 'success',
+        message: 'Fix with Claude Code',
+        description: parts.join(', ') || 'No issues to dispatch.',
+        placement: 'topRight',
+      });
+      void reloadTasks();
+    },
+    [reloadTasks],
+  );
+
+  // Secondary action (manual flow): copy a combined fix prompt for all
+  // selected issues — for users who prefer to drive Claude themselves
+  // rather than dispatching a managed worker.
   const copyMultiIssueFixPrompt = useCallback(
-    async (issueIds: string[], mode: 'together' | 'separately') => {
+    async (issueIds: string[]) => {
       const selected = visibleFailingTests.filter((t) => issueIds.includes(t.issue_id));
       if (selected.length === 0) return;
-      const prompt = buildMultiIssueFixPrompt(selected, mode);
+      const prompt = buildMultiIssueFixPrompt(selected, 'together');
       try {
         await navigator.clipboard.writeText(prompt);
         Utils.displayGlobalNotification({
           severity: 'success',
-          message:
-            mode === 'together'
-              ? `Fix-together prompt copied (${selected.length} tests)`
-              : `Fix-separately prompt copied (${selected.length} tests)`,
+          message: `Fix prompt copied (${selected.length} test${selected.length === 1 ? '' : 's'})`,
           description: 'Paste into Claude Code to start fixing.',
           duration: 3,
           placement: 'topRight',
@@ -2459,39 +2500,12 @@ const PlaygroundPageImpl = () => {
           f.assessment_id === feedback.assessment_id ? { ...f, latestVerdict: stored } : f,
         ),
       );
-      if (verdict.passed) {
-        Utils.displayGlobalNotification({
-          severity: 'success',
-          message: 'New test case generated',
-          description: 'The agent already passes this case — no fix needed.',
-          duration: 6,
-          placement: 'topRight',
-        });
-        return;
-      }
-      Utils.displayGlobalNotification({
-        severity: 'info',
-        message: 'New test case generated',
-        description: (
-          <div css={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span>{verdict.judge_reasoning || verdict.reasons[0] || 'Agent currently fails this test.'}</span>
-            <div>
-              <Button
-                componentId="mlflow.playground.feedback.auto-grade.fix-it"
-                type="primary"
-                size="small"
-                onClick={() => void copyFixPromptForFeedback(feedback)}
-              >
-                Fix it
-              </Button>
-            </div>
-          </div>
-        ),
-        duration: 0,
-        placement: 'topRight',
-      });
+      // No toast — the verdict updates `feedback.latestVerdict` (which
+      // re-colours the inline highlight) and the new test shows up in the
+      // Tests panel's failing list. Both are enough for the user; an
+      // additional notification was too noisy on every feedback save.
     },
-    [messages, copyFixPromptForFeedback],
+    [messages],
   );
 
   // Keep the refs pointed at the latest closures. Assigning during render
@@ -3661,8 +3675,8 @@ const PlaygroundPageImpl = () => {
               canRun
               failingTests={visibleFailingTests}
               onOpenIssue={(issueId) => setOpenIssueId(issueId)}
-              onFixSelectedTogether={(ids) => copyMultiIssueFixPrompt(ids, 'together')}
-              onFixSelectedSeparately={(ids) => copyMultiIssueFixPrompt(ids, 'separately')}
+              onDispatchSelected={dispatchSelectedFailingTests}
+              onCopyFixPrompt={copyMultiIssueFixPrompt}
               onRerunSelected={rerunSelectedFailingTests}
               onDeleteSelected={deleteSelectedFailingTests}
               onRunSuite={() => void runRegressionSuite()}

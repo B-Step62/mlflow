@@ -11,7 +11,10 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Button,
+  CheckCircleFillIcon,
   CheckIcon,
+  Checkbox,
+  ClockIcon,
   CloseSmallIcon,
   CodeIcon,
   CopyIcon,
@@ -22,10 +25,12 @@ import {
   Modal,
   NewWindowIcon,
   PencilIcon,
+  PlayIcon,
   Spinner,
   Tooltip,
   TrashIcon,
   Typography,
+  XCircleFillIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 
@@ -33,6 +38,7 @@ import {
   getAjaxUrl,
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
+import type { IssueDetail } from './issues';
 
 export type RegressionRunSummary = {
   parent_run_id: string;
@@ -51,6 +57,12 @@ export const RegressionTestsPanel = ({
   recentRuns,
   inProgress,
   canRun,
+  failingTests,
+  onOpenIssue,
+  onDispatchSelected,
+  onCopyFixPrompt,
+  onRerunSelected,
+  onDeleteSelected,
   onRunSuite,
   onCasesChanged,
   onSelectRun,
@@ -60,6 +72,21 @@ export const RegressionTestsPanel = ({
   recentRuns: RegressionRunSummary[];
   inProgress?: { current: number; total: number; passed: number; failed: number };
   canRun: boolean;
+  // Issues whose test the agent currently fails (status in todo / in_progress).
+  // Rendered as a "Failing on current agent" triage list so reviewers can
+  // pick which to fix next without leaving the playground.
+  failingTests?: IssueDetail[];
+  onOpenIssue?: (issueId: string) => void;
+  // Selection-bar handlers wired into the failing-tests triage list. All
+  // receive the set of selected issue ids.
+  // - `onDispatchSelected` is the primary action: fires a Claude Code
+  //   worker per selected issue via the dispatch endpoint.
+  // - `onCopyFixPrompt` is the manual-flow escape hatch: copies a
+  //   combined fix prompt to the clipboard for hand-driving Claude.
+  onDispatchSelected?: (issueIds: string[]) => void | Promise<void>;
+  onCopyFixPrompt?: (issueIds: string[]) => void | Promise<void>;
+  onRerunSelected?: (issueIds: string[]) => void | Promise<void>;
+  onDeleteSelected?: (issueIds: string[]) => void | Promise<void>;
   onRunSuite: () => void;
   // Called whenever the drawer mutates the suite (delete a case today;
   // edits later). Parent uses this to reload its case count so the
@@ -75,6 +102,45 @@ export const RegressionTestsPanel = ({
 
   const [browseSuiteOpen, setBrowseSuiteOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [recentRunsOpen, setRecentRunsOpen] = useState(false);
+  // Selection-bar state lives here so the bar can render in place of the
+  // [Run regression suite] controls when any are selected (overlay UX).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [busyAction, setBusyAction] = useState<null | 'dispatch' | 'copy' | 'rerun' | 'delete'>(
+    null,
+  );
+  // Prune selections that disappear from the underlying list (issue
+  // transitioned to done, test case deleted, etc.) so the count stays
+  // honest.
+  const visibleIds = new Set((failingTests ?? []).map((t) => t.issue_id));
+  const cleanSelected = new Set([...selectedIds].filter((id) => visibleIds.has(id)));
+  if (cleanSelected.size !== selectedIds.size) {
+    setSelectedIds(cleanSelected);
+  }
+  const toggleSelection = (issueId: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(issueId)) next.delete(issueId);
+      else next.add(issueId);
+      return next;
+    });
+  const selectedArray = [...cleanSelected];
+  const runSelectionAction = async (
+    kind: 'dispatch' | 'copy' | 'rerun' | 'delete',
+    handler?: (ids: string[]) => void | Promise<void>,
+  ) => {
+    if (!handler || selectedArray.length === 0) return;
+    setBusyAction(kind);
+    try {
+      await handler(selectedArray);
+    } finally {
+      setBusyAction(null);
+    }
+    if (kind === 'rerun' || kind === 'delete') {
+      setSelectedIds(new Set());
+    }
+  };
+  const hasSelection = cleanSelected.size > 0;
 
   return (
     <>
@@ -88,50 +154,154 @@ export const RegressionTestsPanel = ({
           overflow: 'auto',
         }}
       >
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-            <Typography.Text size="sm" color="secondary" css={{ flex: 1, minWidth: 0 }}>
-              {testCount === 0
-                ? 'No test cases yet — dispatch feedback to generate the first one.'
-                : `Suite contains ${testCount} test ${testCount === 1 ? 'case' : 'cases'}.`}
+        {hasSelection ? (
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              padding: theme.spacing.xs,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.colors.backgroundSecondary,
+              border: `1px solid ${theme.colors.actionPrimaryBackgroundDefault}`,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography.Text size="sm" css={{ fontWeight: 600, paddingLeft: theme.spacing.xs }}>
+              {cleanSelected.size} selected
             </Typography.Text>
+            <span css={{ flex: 1 }} />
+            <Button
+              componentId="mlflow.playground.regression.failing.fix-dispatch"
+              size="small"
+              type="primary"
+              loading={busyAction === 'dispatch'}
+              disabled={busyAction !== null || !onDispatchSelected}
+              onClick={() => void runSelectionAction('dispatch', onDispatchSelected)}
+            >
+              {busyAction === 'dispatch'
+                ? 'Dispatching…'
+                : `Fix with Claude Code (${cleanSelected.size})`}
+            </Button>
             <Tooltip
-              componentId="mlflow.playground.regression.export.tooltip"
-              content="Export as pytest script"
+              componentId="mlflow.playground.regression.failing.fix-copy.tooltip"
+              content="Copy combined fix prompt to clipboard (manual fix flow)"
             >
               <Button
-                componentId="mlflow.playground.regression.export"
+                componentId="mlflow.playground.regression.failing.fix-copy"
                 size="small"
-                icon={<CodeIcon />}
-                aria-label="Export tests as pytest script"
-                onClick={() => setExportOpen(true)}
-                disabled={!experimentId || testCount === 0}
+                icon={<CopyIcon />}
+                aria-label="Copy combined fix prompt"
+                loading={busyAction === 'copy'}
+                disabled={busyAction !== null || !onCopyFixPrompt}
+                onClick={() => void runSelectionAction('copy', onCopyFixPrompt)}
               />
             </Tooltip>
             <Tooltip
-              componentId="mlflow.playground.regression.browse-suite.tooltip"
-              content="Browse / manage suite"
+              componentId="mlflow.playground.regression.failing.rerun.tooltip"
+              content="Re-run selected tests"
             >
               <Button
-                componentId="mlflow.playground.regression.browse-suite"
+                componentId="mlflow.playground.regression.failing.rerun"
                 size="small"
-                icon={<GearIcon />}
-                aria-label="Browse / manage suite"
-                onClick={() => setBrowseSuiteOpen(true)}
-                disabled={!experimentId}
+                icon={<PlayIcon />}
+                aria-label="Re-run selected tests"
+                loading={busyAction === 'rerun'}
+                disabled={busyAction !== null || !onRerunSelected}
+                onClick={() => void runSelectionAction('rerun', onRerunSelected)}
+              />
+            </Tooltip>
+            <Tooltip
+              componentId="mlflow.playground.regression.failing.delete.tooltip"
+              content="Delete selected tests"
+            >
+              <Button
+                componentId="mlflow.playground.regression.failing.delete"
+                size="small"
+                danger
+                icon={<TrashIcon />}
+                aria-label="Delete selected tests"
+                loading={busyAction === 'delete'}
+                disabled={busyAction !== null || !onDeleteSelected}
+                onClick={() => void runSelectionAction('delete', onDeleteSelected)}
+              />
+            </Tooltip>
+            <Tooltip
+              componentId="mlflow.playground.regression.failing.clear.tooltip"
+              content="Clear selection"
+            >
+              <Button
+                componentId="mlflow.playground.regression.failing.clear"
+                size="small"
+                type="tertiary"
+                icon={<CloseSmallIcon />}
+                aria-label="Clear selection"
+                onClick={() => setSelectedIds(new Set())}
               />
             </Tooltip>
           </div>
-          <Button
-            componentId="mlflow.playground.regression.run-all"
-            type="primary"
-            onClick={onRunSuite}
-            disabled={disabled}
-            loading={Boolean(inProgress)}
-          >
-            {inProgress ? `Running ${inProgress.current}/${inProgress.total}…` : 'Run regression suite'}
-          </Button>
-        </div>
+        ) : (
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <Typography.Text size="sm" color="secondary" css={{ flex: 1, minWidth: 0 }}>
+                {testCount > 0
+                  ? `Suite contains ${testCount} test ${testCount === 1 ? 'case' : 'cases'}.`
+                  : (failingTests?.length ?? 0) > 0
+                    ? '' // Failing-tests list tells the story; don't contradict it.
+                    : 'No test cases yet — dispatch feedback to generate the first one.'}
+              </Typography.Text>
+              <Tooltip
+                componentId="mlflow.playground.regression.export.tooltip"
+                content="Export as pytest script"
+              >
+                <Button
+                  componentId="mlflow.playground.regression.export"
+                  size="small"
+                  icon={<CodeIcon />}
+                  aria-label="Export tests as pytest script"
+                  onClick={() => setExportOpen(true)}
+                  disabled={!experimentId || testCount === 0}
+                />
+              </Tooltip>
+              <Tooltip
+                componentId="mlflow.playground.regression.browse-suite.tooltip"
+                content="Browse / manage suite"
+              >
+                <Button
+                  componentId="mlflow.playground.regression.browse-suite"
+                  size="small"
+                  icon={<GearIcon />}
+                  aria-label="Browse / manage suite"
+                  onClick={() => setBrowseSuiteOpen(true)}
+                  disabled={!experimentId}
+                />
+              </Tooltip>
+              <Tooltip
+                componentId="mlflow.playground.regression.recent-runs.tooltip"
+                content={recentRunsOpen ? 'Hide recent runs' : 'Show recent runs'}
+              >
+                <Button
+                  componentId="mlflow.playground.regression.recent-runs"
+                  size="small"
+                  icon={<ClockIcon />}
+                  aria-label="Toggle recent runs"
+                  onClick={() => setRecentRunsOpen((v) => !v)}
+                />
+              </Tooltip>
+            </div>
+            <Button
+              componentId="mlflow.playground.regression.run-all"
+              type="primary"
+              onClick={onRunSuite}
+              disabled={disabled}
+              loading={Boolean(inProgress)}
+            >
+              {inProgress
+                ? `Running ${inProgress.current}/${inProgress.total}…`
+                : 'Run regression suite'}
+            </Button>
+          </div>
+        )}
 
         {inProgress && (
           <ProgressStrip
@@ -142,25 +312,34 @@ export const RegressionTestsPanel = ({
           />
         )}
 
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-          <Typography.Text size="sm" color="secondary" css={{ fontWeight: 600 }}>
-            Recent runs
-          </Typography.Text>
-          {recentRuns.length === 0 ? (
-            <Typography.Text size="sm" color="secondary">
-              No runs yet.
+        <FailingTestsList
+          tests={failingTests ?? []}
+          selectedIds={cleanSelected}
+          onToggleSelection={toggleSelection}
+          onOpenIssue={onOpenIssue}
+        />
+
+        {recentRunsOpen && (
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+            <Typography.Text size="sm" color="secondary" css={{ fontWeight: 600 }}>
+              Recent runs
             </Typography.Text>
-          ) : (
-            recentRuns.map((run) => (
-              <RecentRunRow
-                key={run.parent_run_id}
-                run={run}
-                experimentId={experimentId}
-                onSelectRun={onSelectRun}
-              />
-            ))
-          )}
-        </div>
+            {recentRuns.length === 0 ? (
+              <Typography.Text size="sm" color="secondary">
+                No runs yet.
+              </Typography.Text>
+            ) : (
+              recentRuns.map((run) => (
+                <RecentRunRow
+                  key={run.parent_run_id}
+                  run={run}
+                  experimentId={experimentId}
+                  onSelectRun={onSelectRun}
+                />
+              ))
+            )}
+          </div>
+        )}
 
       </div>
 
@@ -175,6 +354,154 @@ export const RegressionTestsPanel = ({
         <ExportTestsModal experimentId={experimentId} onClose={() => setExportOpen(false)} />
       )}
     </>
+  );
+};
+
+const formatRelativeTime = (timestampMs?: number): string => {
+  if (!timestampMs) return '';
+  const diffSec = (Date.now() - timestampMs) / 1000;
+  if (diffSec < 60) return 'just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86_400)}d ago`;
+};
+
+const FailingTestsList = ({
+  tests,
+  selectedIds,
+  onToggleSelection,
+  onOpenIssue,
+}: {
+  tests: IssueDetail[];
+  selectedIds: Set<string>;
+  onToggleSelection: (issueId: string) => void;
+  onOpenIssue?: (issueId: string) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+      <Typography.Text size="sm" color="secondary" css={{ fontWeight: 600 }}>
+        Tests on current agent ({tests.length})
+      </Typography.Text>
+      {tests.length === 0 ? (
+        <Typography.Text size="sm" color="secondary">
+          No tests yet.
+        </Typography.Text>
+      ) : (
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+          {tests.map((test) => {
+            const isSelected = selectedIds.has(test.issue_id);
+            const passed = test.status === 'done';
+            return (
+              <div
+                key={test.issue_id}
+                data-selected={isSelected ? 'true' : undefined}
+                role={onOpenIssue ? 'button' : undefined}
+                tabIndex={onOpenIssue ? 0 : undefined}
+                onClick={() => onOpenIssue?.(test.issue_id)}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && onOpenIssue) {
+                    e.preventDefault();
+                    onOpenIssue(test.issue_id);
+                  }
+                }}
+                css={{
+                  border: `1px solid ${
+                    isSelected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.border
+                  }`,
+                  borderRadius: theme.borders.borderRadiusMd,
+                  padding: theme.spacing.sm,
+                  cursor: onOpenIssue ? 'pointer' : 'default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                  backgroundColor: isSelected ? theme.colors.backgroundSecondary : 'transparent',
+                  ':hover': onOpenIssue
+                    ? { backgroundColor: theme.colors.backgroundSecondary }
+                    : undefined,
+                  // Crossfade verdict icon ↔ checkbox. Both layers are
+                  // `pointer-events: none` so the wrapper's onClick is the
+                  // single source of truth — antd Checkbox would otherwise
+                  // fire its own onChange on the same click as the wrapper,
+                  // leaving selection unchanged.
+                  '& .row-verdict-icon, & .row-checkbox': {
+                    transition: 'opacity 150ms',
+                    pointerEvents: 'none',
+                    display: 'inline-flex',
+                  },
+                  '& .row-verdict-icon': {
+                    color: passed ? theme.colors.green500 : theme.colors.red500,
+                    transitionProperty: 'opacity, color',
+                  },
+                  '& .row-checkbox': {
+                    opacity: 0,
+                  },
+                  '&:hover .row-verdict-icon, &[data-selected="true"] .row-verdict-icon': {
+                    opacity: 0,
+                  },
+                  '&:hover .row-checkbox, &[data-selected="true"] .row-checkbox': {
+                    opacity: 1,
+                  },
+                }}
+              >
+                <span
+                  css={{
+                    position: 'relative',
+                    width: 16,
+                    height: 16,
+                    flexShrink: 0,
+                  }}
+                  // Toggling selection shouldn't also open the drawer.
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSelection(test.issue_id);
+                  }}
+                >
+                  <span
+                    className="row-verdict-icon"
+                    css={{ position: 'absolute', inset: 0 }}
+                    aria-label={passed ? 'Passed' : 'Failing'}
+                  >
+                    {passed ? <CheckCircleFillIcon /> : <XCircleFillIcon />}
+                  </span>
+                  <span
+                    className="row-checkbox"
+                    css={{ position: 'absolute', inset: 0 }}
+                    aria-label={isSelected ? 'Deselect test' : 'Select test'}
+                  >
+                    {/* `onChange` is a no-op because the wrapper's onClick owns
+                        toggling; the Checkbox container has `pointer-events: none`
+                        via CSS so this handler should never fire anyway. Antd
+                        still requires the prop for the controlled-state contract. */}
+                    <Checkbox
+                      componentId="mlflow.playground.regression.failing.row-checkbox"
+                      isChecked={isSelected}
+                      onChange={() => {}}
+                    />
+                  </span>
+                </span>
+                <Typography.Text
+                  css={{
+                    flex: 1,
+                    fontWeight: 600,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={test.name || test.issue_id}
+                >
+                  {test.name || '(untitled issue)'}
+                </Typography.Text>
+                <Typography.Text size="sm" color="secondary" css={{ flexShrink: 0 }}>
+                  {formatRelativeTime(test.last_updated_timestamp ?? test.created_timestamp)}
+                </Typography.Text>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 };
 
