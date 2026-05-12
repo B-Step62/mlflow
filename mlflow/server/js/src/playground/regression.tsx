@@ -14,6 +14,7 @@ import {
   CheckCircleFillIcon,
   CheckIcon,
   Checkbox,
+  ChevronRightIcon,
   ClockIcon,
   CloseSmallIcon,
   CodeIcon,
@@ -40,7 +41,7 @@ import {
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
 import type { AgentConnection } from './connections';
-import type { IssueDetail } from './issues';
+import { fetchIssueComments, type IssueCommentEntry, type IssueDetail } from './issues';
 
 export type RegressionRunSummary = {
   parent_run_id: string;
@@ -61,7 +62,6 @@ export const RegressionTestsPanel = ({
   canRun,
   failingTests,
   workersByIssueId,
-  onOpenIssue,
   onDispatchSelected,
   onCopyFixPrompt,
   onRerunSelected,
@@ -83,7 +83,6 @@ export const RegressionTestsPanel = ({
   // worker. Overlays the per-row icon: pending = spinner, ready = "Preview"
   // (eye). Folds in what used to be the separate "Tasks" accordion.
   workersByIssueId?: Map<string, AgentConnection>;
-  onOpenIssue?: (issueId: string) => void;
   // Selection-bar handlers wired into the failing-tests triage list. All
   // receive the set of selected issue ids.
   // - `onDispatchSelected` is the primary action: fires a Claude Code
@@ -176,30 +175,24 @@ export const RegressionTestsPanel = ({
               {cleanSelected.size} selected
             </Typography.Text>
             <span css={{ flex: 1 }} />
+            {/*
+             * Primary action is now "copy combined fix prompt to clipboard"
+             * instead of dispatching a managed worker — the worker's
+             * discard/cancel UX is still rough. `onDispatchSelected` is kept
+             * available on the prop for future re-enablement but is no
+             * longer wired to a visible control here.
+             */}
             <Button
               componentId="mlflow.playground.regression.failing.fix-dispatch"
               size="small"
               type="primary"
-              loading={busyAction === 'dispatch'}
-              disabled={busyAction !== null || !onDispatchSelected}
-              onClick={() => void runSelectionAction('dispatch', onDispatchSelected)}
+              icon={<CopyIcon />}
+              loading={busyAction === 'copy'}
+              disabled={busyAction !== null || !onCopyFixPrompt}
+              onClick={() => void runSelectionAction('copy', onCopyFixPrompt)}
             >
-              {busyAction === 'dispatch' ? 'Dispatching…' : `Fix with Claude Code (${cleanSelected.size})`}
+              {`Fix with Claude Code (${cleanSelected.size})`}
             </Button>
-            <Tooltip
-              componentId="mlflow.playground.regression.failing.fix-copy.tooltip"
-              content="Copy combined fix prompt to clipboard (manual fix flow)"
-            >
-              <Button
-                componentId="mlflow.playground.regression.failing.fix-copy"
-                size="small"
-                icon={<CopyIcon />}
-                aria-label="Copy combined fix prompt"
-                loading={busyAction === 'copy'}
-                disabled={busyAction !== null || !onCopyFixPrompt}
-                onClick={() => void runSelectionAction('copy', onCopyFixPrompt)}
-              />
-            </Tooltip>
             <Tooltip componentId="mlflow.playground.regression.failing.rerun.tooltip" content="Re-run selected tests">
               <Button
                 componentId="mlflow.playground.regression.failing.rerun"
@@ -284,7 +277,7 @@ export const RegressionTestsPanel = ({
               disabled={disabled}
               loading={Boolean(inProgress)}
             >
-              {inProgress ? `Running ${inProgress.current}/${inProgress.total}…` : 'Run regression suite'}
+              {inProgress ? `Running ${inProgress.current}/${inProgress.total}…` : 'Run all tests'}
             </Button>
           </div>
         )}
@@ -299,11 +292,11 @@ export const RegressionTestsPanel = ({
         )}
 
         <FailingTestsList
+          experimentId={experimentId}
           tests={failingTests ?? []}
           workersByIssueId={workersByIssueId}
           selectedIds={cleanSelected}
           onToggleSelection={toggleSelection}
-          onOpenIssue={onOpenIssue}
         />
 
         {recentRunsOpen && (
@@ -348,19 +341,34 @@ const formatRelativeTime = (timestampMs?: number): string => {
 };
 
 const FailingTestsList = ({
+  experimentId,
   tests,
   workersByIssueId,
   selectedIds,
   onToggleSelection,
-  onOpenIssue,
 }: {
+  experimentId: string | undefined;
   tests: IssueDetail[];
   workersByIssueId?: Map<string, AgentConnection>;
   selectedIds: Set<string>;
   onToggleSelection: (issueId: string) => void;
-  onOpenIssue?: (issueId: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
+  // Single open row at a time — feels less cluttered than a multi-expand
+  // accordion, and matches the "one focus, look at it, move on" review
+  // pattern. Click-again-to-collapse.
+  const [openIssueId, setOpenIssueId] = useState<string | null>(null);
+  const toggleOpen = (issueId: string) => setOpenIssueId((prev) => (prev === issueId ? null : issueId));
+
+  // Build a kanban deeplink. `?issue=<id>` is honored by the issues page
+  // (see `ExperimentIssuesPage.tsx`) to auto-open the drawer; without an
+  // experiment id we degrade to no link.
+  const kanbanUrlFor = (issueId: string): string | null =>
+    experimentId
+      ? `${window.location.origin}${window.location.pathname}#/experiments/${encodeURIComponent(
+          experimentId,
+        )}/issues?issue=${encodeURIComponent(issueId)}`
+      : null;
 
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
@@ -407,34 +415,20 @@ const FailingTestsList = ({
                 : inProgress
                   ? 'Fix in progress'
                   : 'Failing';
+            const isOpen = openIssueId === test.issue_id;
+            const kanbanUrl = kanbanUrlFor(test.issue_id);
             return (
               <div
                 key={test.issue_id}
                 data-selected={isSelected ? 'true' : undefined}
-                role={onOpenIssue ? 'button' : undefined}
-                tabIndex={onOpenIssue ? 0 : undefined}
-                onClick={() => onOpenIssue?.(test.issue_id)}
-                onKeyDown={(e) => {
-                  if ((e.key === 'Enter' || e.key === ' ') && onOpenIssue) {
-                    e.preventDefault();
-                    onOpenIssue(test.issue_id);
-                  }
-                }}
                 css={{
                   border: `1px solid ${isSelected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.border}`,
                   borderRadius: theme.borders.borderRadiusMd,
-                  padding: theme.spacing.sm,
-                  cursor: onOpenIssue ? 'pointer' : 'default',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
                   backgroundColor: isSelected ? theme.colors.backgroundSecondary : 'transparent',
-                  ':hover': onOpenIssue ? { backgroundColor: theme.colors.backgroundSecondary } : undefined,
-                  // Crossfade verdict icon ↔ checkbox. Both layers are
-                  // `pointer-events: none` so the wrapper's onClick is the
-                  // single source of truth — antd Checkbox would otherwise
-                  // fire its own onChange on the same click as the wrapper,
-                  // leaving selection unchanged.
+                  // Crossfade verdict icon ↔ checkbox on row hover. Same
+                  // CSS-only pattern as before — both layers are
+                  // `pointer-events: none` so the click target is whoever
+                  // wraps them.
                   '& .row-verdict-icon, & .row-checkbox': {
                     transition: 'opacity 150ms',
                     pointerEvents: 'none',
@@ -455,88 +449,247 @@ const FailingTestsList = ({
                   },
                 }}
               >
-                <span
-                  css={{
-                    position: 'relative',
-                    width: 16,
-                    height: 16,
-                    flexShrink: 0,
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isOpen}
+                  onClick={() => toggleOpen(test.issue_id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleOpen(test.issue_id);
+                    }
                   }}
-                  // Toggling selection shouldn't also open the drawer.
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleSelection(test.issue_id);
+                  css={{
+                    padding: theme.spacing.sm,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                    ':hover': { backgroundColor: theme.colors.backgroundSecondary },
+                    borderRadius: theme.borders.borderRadiusMd,
                   }}
                 >
                   <span
-                    className="row-verdict-icon"
                     css={{
-                      position: 'absolute',
-                      inset: 0,
-                      // Spinner ships its own sizing; clip to the same 16x16
-                      // slot so it doesn't push the row layout when it kicks in.
-                      '& > *': inProgress ? { width: 16, height: 16 } : undefined,
-                    }}
-                    aria-label={verdictLabel}
-                  >
-                    {passed ? (
-                      <CheckCircleFillIcon />
-                    ) : previewReady ? (
-                      <VisibleIcon />
-                    ) : inProgress ? (
-                      <Spinner size="small" />
-                    ) : (
-                      <XCircleFillIcon />
-                    )}
-                  </span>
-                  <span
-                    className="row-checkbox"
-                    css={{ position: 'absolute', inset: 0 }}
-                    aria-label={isSelected ? 'Deselect test' : 'Select test'}
-                  >
-                    {/* `onChange` is a no-op because the wrapper's onClick owns
-                        toggling; the Checkbox container has `pointer-events: none`
-                        via CSS so this handler should never fire anyway. Antd
-                        still requires the prop for the controlled-state contract. */}
-                    <Checkbox
-                      componentId="mlflow.playground.regression.failing.row-checkbox"
-                      isChecked={isSelected}
-                      onChange={() => {}}
-                    />
-                  </span>
-                </span>
-                <Typography.Text
-                  css={{
-                    flex: 1,
-                    fontWeight: 600,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={test.name || test.issue_id}
-                >
-                  {test.name || '(untitled issue)'}
-                </Typography.Text>
-                {previewReady && (
-                  <Typography.Text
-                    size="sm"
-                    css={{
+                      position: 'relative',
+                      width: 16,
+                      height: 16,
                       flexShrink: 0,
-                      color: theme.colors.blue500,
-                      fontWeight: 600,
+                    }}
+                    // Toggling selection shouldn't also open/close the row.
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelection(test.issue_id);
                     }}
                   >
-                    Preview
+                    <span
+                      className="row-verdict-icon"
+                      css={{
+                        position: 'absolute',
+                        inset: 0,
+                        // Spinner ships its own sizing; clip to the same 16x16
+                        // slot so it doesn't push the row layout when it kicks in.
+                        '& > *': inProgress ? { width: 16, height: 16 } : undefined,
+                      }}
+                      aria-label={verdictLabel}
+                    >
+                      {passed ? (
+                        <CheckCircleFillIcon />
+                      ) : previewReady ? (
+                        <VisibleIcon />
+                      ) : inProgress ? (
+                        <Spinner size="small" />
+                      ) : (
+                        <XCircleFillIcon />
+                      )}
+                    </span>
+                    <span
+                      className="row-checkbox"
+                      css={{ position: 'absolute', inset: 0 }}
+                      aria-label={isSelected ? 'Deselect test' : 'Select test'}
+                    >
+                      {/* `onChange` is a no-op because the wrapper's onClick owns
+                          toggling; the Checkbox container has `pointer-events: none`
+                          via CSS so this handler should never fire anyway. Antd
+                          still requires the prop for the controlled-state contract. */}
+                      <Checkbox
+                        componentId="mlflow.playground.regression.failing.row-checkbox"
+                        isChecked={isSelected}
+                        onChange={() => {}}
+                      />
+                    </span>
+                  </span>
+                  <Typography.Text
+                    css={{
+                      flex: 1,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={test.name || test.issue_id}
+                  >
+                    {test.name || '(untitled issue)'}
                   </Typography.Text>
+                  {previewReady && (
+                    <Typography.Text
+                      size="sm"
+                      css={{
+                        flexShrink: 0,
+                        color: theme.colors.blue500,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Preview
+                    </Typography.Text>
+                  )}
+                  <Typography.Text size="sm" color="secondary" css={{ flexShrink: 0 }}>
+                    {formatRelativeTime(test.last_updated_timestamp ?? test.created_timestamp)}
+                  </Typography.Text>
+                  {kanbanUrl && (
+                    <Tooltip
+                      componentId="mlflow.playground.regression.failing.row-open-kanban.tooltip"
+                      content="Open in issues board"
+                    >
+                      <Button
+                        componentId="mlflow.playground.regression.failing.row-open-kanban"
+                        size="small"
+                        type="tertiary"
+                        icon={<NewWindowIcon />}
+                        aria-label="Open in issues board"
+                        // Don't let the link click also toggle the row.
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(kanbanUrl, '_blank', 'noopener');
+                        }}
+                      />
+                    </Tooltip>
+                  )}
+                  <span
+                    aria-hidden
+                    css={{
+                      display: 'inline-flex',
+                      flexShrink: 0,
+                      transition: 'transform 150ms',
+                      transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                      color: theme.colors.textSecondary,
+                    }}
+                  >
+                    <ChevronRightIcon />
+                  </span>
+                </div>
+                {isOpen && (
+                  <ExpandedTestDetail issueId={test.issue_id} description={test.description} passed={passed} />
                 )}
-                <Typography.Text size="sm" color="secondary" css={{ flexShrink: 0 }}>
-                  {formatRelativeTime(test.last_updated_timestamp ?? test.created_timestamp)}
-                </Typography.Text>
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * Lazily renders the most recent verdict / system note for an issue.
+ * Lives inside the failing-tests accordion row so we don't pay the
+ * `/comments` fetch up-front for every row — only for the one the user
+ * actually expands.
+ *
+ * Shows the issue description (the original rationale that produced the
+ * test) plus the most recent system / claude comments — usually
+ * "Regression test still red: …" or "Regression test passed". For the
+ * full activity log the row's external-link button opens the kanban
+ * drawer.
+ */
+const ExpandedTestDetail = ({
+  issueId,
+  description,
+  passed,
+}: {
+  issueId: string;
+  description: string;
+  passed: boolean;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [comments, setComments] = useState<IssueCommentEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchIssueComments(issueId)
+      .then((rows) => {
+        if (!cancelled) setComments(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [issueId]);
+
+  // Pick the last verdict-shaped comment so the expanded row leads with
+  // "why this is failing/passing right now" instead of an arbitrary
+  // mid-thread note.
+  const recentVerdict = (comments ?? [])
+    .slice()
+    .reverse()
+    .find((c) => c.body.includes('Regression test'));
+
+  return (
+    <div
+      css={{
+        padding: theme.spacing.sm,
+        paddingTop: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+        borderTop: `1px solid ${theme.colors.borderDecorative}`,
+        marginTop: theme.spacing.xs,
+      }}
+    >
+      {description && (
+        <div>
+          <Typography.Text size="sm" color="secondary" css={{ fontWeight: 600 }}>
+            Why this test exists
+          </Typography.Text>
+          <Typography.Paragraph css={{ marginTop: theme.spacing.xs, whiteSpace: 'pre-wrap' }}>
+            {description}
+          </Typography.Paragraph>
+        </div>
+      )}
+      <div>
+        <Typography.Text size="sm" color="secondary" css={{ fontWeight: 600 }}>
+          Most recent run
+        </Typography.Text>
+        {loading && (
+          <div css={{ paddingTop: theme.spacing.xs }}>
+            <Spinner size="small" />
+          </div>
+        )}
+        {error && (
+          <Alert componentId="mlflow.playground.regression.failing.row-expand.error" type="error" message={error} />
+        )}
+        {!loading && !error && (
+          <Typography.Paragraph
+            css={{
+              marginTop: theme.spacing.xs,
+              whiteSpace: 'pre-wrap',
+              color: passed ? theme.colors.green600 : theme.colors.textPrimary,
+            }}
+          >
+            {recentVerdict?.body ?? 'No verdict yet. Run the test to see judge reasoning here.'}
+          </Typography.Paragraph>
+        )}
+      </div>
     </div>
   );
 };
