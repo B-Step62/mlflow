@@ -98,8 +98,10 @@ import {
 import { ConnectionPicker, useConnections } from './connections';
 import {
   IssueDetailDrawer,
+  dispatchWorker,
   evaluateExistingAgentResponse,
   fetchIssues,
+  rejectIssue,
   runIssueTest,
   type IssueDetail,
   type RunTestVerdict,
@@ -1056,18 +1058,72 @@ const BatchFailuresBanner = ({ conversations }: { conversations: ConvForBanner[]
   );
 };
 
+// Fire `dispatchWorker` for every failed verdict that has an associated
+// issue_id. Backend is idempotent (returns existing connection on dup),
+// so this is double-click safe and safe to re-fire after partial failure.
+// Returns a tally so the caller can summarize via toast.
+const dispatchWorkersForFailures = async (
+  failures: { verdict: BannerVerdict }[],
+): Promise<{ dispatched: number; reused: number; failed: number; missingIssue: number }> => {
+  const tally = { dispatched: 0, reused: 0, failed: 0, missingIssue: 0 };
+  const results = await Promise.allSettled(
+    failures.map(({ verdict }) => {
+      if (!verdict.issue_id) {
+        return Promise.reject(new Error('missing-issue'));
+      }
+      return dispatchWorker(verdict.issue_id);
+    }),
+  );
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      if (result.value.reused) tally.reused += 1;
+      else tally.dispatched += 1;
+    } else if ((result.reason as Error)?.message === 'missing-issue') {
+      tally.missingIssue += 1;
+    } else {
+      tally.failed += 1;
+    }
+  }
+  return tally;
+};
+
 const FixAllFailuresButton = ({
   failures,
 }: {
   failures: { verdict: BannerVerdict; question: string; agentResponse: string }[];
 }) => {
-  const [copied, setCopied] = useState(false);
-  const onClick = useCallback(async () => {
+  const [dispatching, setDispatching] = useState(false);
+
+  const onDispatchAll = useCallback(async () => {
+    setDispatching(true);
+    try {
+      const tally = await dispatchWorkersForFailures(failures);
+      const parts: string[] = [];
+      if (tally.dispatched) parts.push(`${tally.dispatched} dispatched`);
+      if (tally.reused) parts.push(`${tally.reused} already running`);
+      if (tally.failed) parts.push(`${tally.failed} failed`);
+      if (tally.missingIssue) parts.push(`${tally.missingIssue} skipped (no issue)`);
+      Utils.displayGlobalNotification({
+        severity: tally.failed > 0 ? 'warning' : 'success',
+        message: 'Fix it with Claude Code',
+        description: parts.join(', ') || 'No failures to dispatch.',
+        placement: 'topRight',
+      });
+    } finally {
+      setDispatching(false);
+    }
+  }, [failures]);
+
+  const onCopyPrompt = useCallback(async () => {
     const prompt = buildBatchFixAllPrompt(failures);
     try {
       await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      Utils.displayGlobalNotification({
+        severity: 'info',
+        message: 'Copied multi-fix prompt to clipboard',
+        placement: 'topRight',
+        duration: 2,
+      });
     } catch (e) {
       Utils.displayGlobalNotification({
         severity: 'error',
@@ -1077,16 +1133,31 @@ const FixAllFailuresButton = ({
       });
     }
   }, [failures]);
+
   return (
-    <Button
-      componentId="mlflow.playground.regression.fix-all-failures"
-      type="primary"
-      size="small"
-      icon={copied ? <CheckIcon /> : <CopyIcon />}
-      onClick={onClick}
-    >
-      {copied ? `Copied prompt for ${failures.length}` : `Fix all (${failures.length})`}
-    </Button>
+    <div css={{ display: 'flex', gap: 4 }}>
+      <Button
+        componentId="mlflow.playground.regression.fix-all-failures"
+        type="primary"
+        size="small"
+        onClick={onDispatchAll}
+        loading={dispatching}
+      >
+        {dispatching ? 'Dispatching…' : `Fix all (${failures.length}) with Claude`}
+      </Button>
+      <Tooltip
+        componentId="mlflow.playground.regression.fix-all-failures.copy.tooltip"
+        content="Copy multi-fix prompt to clipboard (manual fix flow)"
+      >
+        <Button
+          componentId="mlflow.playground.regression.fix-all-failures.copy"
+          size="small"
+          icon={<CopyIcon />}
+          aria-label="Copy multi-fix prompt"
+          onClick={onCopyPrompt}
+        />
+      </Tooltip>
+    </div>
   );
 };
 
@@ -1099,13 +1170,51 @@ const FixFailedTestButton = ({
   question: string;
   agentResponse: string;
 }) => {
-  const [copied, setCopied] = useState(false);
-  const onClick = useCallback(async () => {
+  const [dispatching, setDispatching] = useState(false);
+
+  const onDispatch = useCallback(async () => {
+    if (!verdict.issue_id) {
+      Utils.displayGlobalNotification({
+        severity: 'warning',
+        message: 'No issue linked to this verdict',
+        description: 'This failure was not dispatched — only test cases tied to an Issue can be auto-fixed.',
+        placement: 'topRight',
+      });
+      return;
+    }
+    setDispatching(true);
+    try {
+      const result = await dispatchWorker(verdict.issue_id);
+      Utils.displayGlobalNotification({
+        severity: 'success',
+        message: result.reused
+          ? `Worker already running for ${verdict.issue_id}`
+          : `Worker dispatched for ${verdict.issue_id}`,
+        description: 'Open the issue drawer to watch turns stream in.',
+        placement: 'topRight',
+      });
+    } catch (e) {
+      Utils.displayGlobalNotification({
+        severity: 'error',
+        message: 'Dispatch failed',
+        description: e instanceof Error ? e.message : String(e),
+        placement: 'topRight',
+      });
+    } finally {
+      setDispatching(false);
+    }
+  }, [verdict.issue_id]);
+
+  const onCopyPrompt = useCallback(async () => {
     const prompt = buildBatchFixPrompt({ verdict, question, agentResponse });
     try {
       await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      Utils.displayGlobalNotification({
+        severity: 'info',
+        message: 'Copied fix prompt to clipboard',
+        placement: 'topRight',
+        duration: 2,
+      });
     } catch (e) {
       Utils.displayGlobalNotification({
         severity: 'error',
@@ -1115,15 +1224,30 @@ const FixFailedTestButton = ({
       });
     }
   }, [verdict, question, agentResponse]);
+
   return (
-    <Button
-      componentId="mlflow.playground.regression.fix-failed-test"
-      size="small"
-      icon={copied ? <CheckIcon /> : <CopyIcon />}
-      onClick={onClick}
-    >
-      {copied ? 'Copied prompt' : 'Fix failed test'}
-    </Button>
+    <div css={{ display: 'flex', gap: 4 }}>
+      <Button
+        componentId="mlflow.playground.regression.fix-failed-test"
+        size="small"
+        onClick={onDispatch}
+        loading={dispatching}
+      >
+        {dispatching ? 'Dispatching…' : 'Fix with Claude Code'}
+      </Button>
+      <Tooltip
+        componentId="mlflow.playground.regression.fix-failed-test.copy.tooltip"
+        content="Copy fix prompt to clipboard (manual fix flow)"
+      >
+        <Button
+          componentId="mlflow.playground.regression.fix-failed-test.copy"
+          size="small"
+          icon={<CopyIcon />}
+          aria-label="Copy fix prompt"
+          onClick={onCopyPrompt}
+        />
+      </Tooltip>
+    </div>
   );
 };
 
@@ -1663,10 +1787,23 @@ const PlaygroundPageImpl = () => {
   // wrong — the suite is a per-experiment dataset that outlives any single
   // chat session, so we need the actual row count.
   const [regressionCasesCount, setRegressionCasesCount] = useState(0);
+  // Set of `issue_id`s that currently have a row in the regression dataset.
+  // Used to filter the "Failing on current agent" list to only show issues
+  // whose backing test still exists — otherwise deleting a case from the
+  // suite leaves an orphaned issue showing up in the triage list with no
+  // runnable test behind it. Keyed on issue_id (carried in each dataset
+  // row's tags) rather than test_case_id, because the issue entity itself
+  // doesn't currently round-trip the test_case_id from `dispatchFeedback`.
+  const [issueIdsWithTestCase, setIssueIdsWithTestCase] = useState<Set<string>>(new Set());
   const reloadRegressionCount = useCallback(() => {
     if (!experimentId) return;
     fetchRegressionCases(experimentId)
-      .then((cases) => setRegressionCasesCount(cases.length))
+      .then((cases) => {
+        setRegressionCasesCount(cases.length);
+        setIssueIdsWithTestCase(
+          new Set(cases.map((c) => c.issue_id).filter((id): id is string => Boolean(id))),
+        );
+      })
       .catch(() => {
         // Same silent-failure rationale as the question bank reload — a
         // stale count is fine; a flaky tracking server shouldn't break
@@ -1760,6 +1897,13 @@ const PlaygroundPageImpl = () => {
       setTasksLoading(false);
     }
   }, [experimentId]);
+  // Drop issues whose backing test case has been removed from the suite —
+  // they're stale and have no runnable test left. Done as a derived value
+  // so a refresh of the regression cases is enough to prune the list.
+  const visibleFailingTests = useMemo(
+    () => failingTests.filter((i) => issueIdsWithTestCase.has(i.issue_id)),
+    [failingTests, issueIdsWithTestCase],
+  );
   useEffect(() => {
     void reloadTasks();
   }, [reloadTasks]);
@@ -1915,6 +2059,131 @@ const PlaygroundPageImpl = () => {
       });
     }
   }, []);
+
+  /**
+   * Selection-bar actions on the failing-tests triage list. Each receives
+   * the set of selected issue ids; the inner helpers fan out to the
+   * existing single-issue endpoints/helpers and surface a single toast.
+   * Triage-bar specific (kept here so they can refresh `reloadTasks`).
+   */
+  const buildMultiIssueFixPrompt = useCallback(
+    (issues: IssueDetail[], mode: 'together' | 'separately'): string => {
+      const lines: string[] = [];
+      lines.push(
+        mode === 'together'
+          ? `# Fix ${issues.length} failing regression tests (single root cause)`
+          : `# Fix ${issues.length} failing regression tests (one commit per fix)`,
+      );
+      lines.push('');
+      lines.push(
+        mode === 'together'
+          ? 'These tests are all failing on the current agent. Look for the common ' +
+              'underlying behaviour gap and fix it once - assume the listed tests are ' +
+              'variations of a single root cause unless the evidence forces otherwise.'
+          : 'These tests are all failing on the current agent. Treat each as a ' +
+              'SEPARATE behaviour gap: address them one at a time with one commit per ' +
+              'fix so the diffs stay reviewable.',
+      );
+      lines.push('');
+      issues.forEach((issue, idx) => {
+        lines.push(`## ${idx + 1}. ${issue.name || '(untitled)'} (${issue.issue_id})`);
+        if (issue.description?.trim()) {
+          lines.push('');
+          lines.push(`**Rationale (user feedback):** ${issue.description.trim()}`);
+        }
+        if (issue.source_trace_id) {
+          lines.push(`**Trace:** \`${issue.source_trace_id}\``);
+        }
+        lines.push('');
+        lines.push('Verify:');
+        lines.push('```bash');
+        lines.push(
+          `MLFLOW_TRACKING_URI=http://localhost:5000 uv run mlflow agent test run --issue ${issue.issue_id}`,
+        );
+        lines.push('```');
+        lines.push('');
+      });
+      lines.push('## Hard rules');
+      lines.push('- Do NOT special-case the exact phrasing or hard-code expected outputs.');
+      lines.push('- Do NOT modify the test rows; fix the agent.');
+      lines.push(
+        '- After each fix, run the verify command and confirm exit code 0 before moving on.',
+      );
+      return lines.join('\n');
+    },
+    [],
+  );
+
+  const copyMultiIssueFixPrompt = useCallback(
+    async (issueIds: string[], mode: 'together' | 'separately') => {
+      const selected = visibleFailingTests.filter((t) => issueIds.includes(t.issue_id));
+      if (selected.length === 0) return;
+      const prompt = buildMultiIssueFixPrompt(selected, mode);
+      try {
+        await navigator.clipboard.writeText(prompt);
+        Utils.displayGlobalNotification({
+          severity: 'success',
+          message:
+            mode === 'together'
+              ? `Fix-together prompt copied (${selected.length} tests)`
+              : `Fix-separately prompt copied (${selected.length} tests)`,
+          description: 'Paste into Claude Code to start fixing.',
+          duration: 3,
+          placement: 'topRight',
+        });
+      } catch (e) {
+        Utils.displayGlobalNotification({
+          severity: 'error',
+          message: 'Could not copy to clipboard',
+          description: e instanceof Error ? e.message : String(e),
+          placement: 'topRight',
+        });
+      }
+    },
+    [buildMultiIssueFixPrompt, visibleFailingTests],
+  );
+
+  const rerunSelectedFailingTests = useCallback(
+    async (issueIds: string[]) => {
+      Utils.displayGlobalNotification({
+        severity: 'info',
+        message: `Re-running ${issueIds.length} test${issueIds.length === 1 ? '' : 's'}…`,
+        placement: 'topRight',
+        duration: 2,
+      });
+      const results = await Promise.allSettled(issueIds.map((id) => runIssueTest(id)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const passed = results.filter(
+        (r) => r.status === 'fulfilled' && (r.value as RunTestVerdict).passed,
+      ).length;
+      Utils.displayGlobalNotification({
+        severity: failed > 0 ? 'warning' : 'success',
+        message: `Re-run complete: ${passed} pass, ${issueIds.length - passed - failed} fail${failed > 0 ? `, ${failed} errored` : ''}`,
+        placement: 'topRight',
+        duration: 4,
+      });
+      void reloadTasks();
+    },
+    [reloadTasks],
+  );
+
+  const deleteSelectedFailingTests = useCallback(
+    async (issueIds: string[]) => {
+      const results = await Promise.allSettled(issueIds.map((id) => rejectIssue(id)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      Utils.displayGlobalNotification({
+        severity: failed > 0 ? 'warning' : 'success',
+        message:
+          failed > 0
+            ? `Deleted ${issueIds.length - failed} of ${issueIds.length} (${failed} failed)`
+            : `Deleted ${issueIds.length} test${issueIds.length === 1 ? '' : 's'}`,
+        placement: 'topRight',
+        duration: 3,
+      });
+      void reloadTasks();
+    },
+    [reloadTasks],
+  );
 
   /**
    * Copy a single-failure fix prompt for the inline popover's [Fix] button.
@@ -2125,7 +2394,21 @@ const PlaygroundPageImpl = () => {
           ),
         );
         void tagFeedbackWithIssueId(feedback.trace_id, feedback.assessment_id, result.issue_id);
+        // Optimistically widen the set of issue_ids that have a backing
+        // test case so the new issue passes `visibleFailingTests`'s filter
+        // immediately — otherwise it races with the `reloadRegressionCount`
+        // fetch below and the user briefly sees "Failing on current agent
+        // (0)" right after saving feedback.
+        setIssueIdsWithTestCase((prev) => {
+          const next = new Set(prev);
+          next.add(result.issue_id);
+          return next;
+        });
         reloadRegressionCount();
+        // Also refresh the issue list so the new issue shows up in
+        // `failingTests`; without this the panel stays stale until the
+        // user opens / closes a drawer.
+        void reloadTasks();
         Utils.closeGlobalNotification(progressKey);
         return result.issue_id;
       } catch (e) {
@@ -2140,7 +2423,7 @@ const PlaygroundPageImpl = () => {
         return null;
       }
     },
-    [messages, experimentId, reloadRegressionCount],
+    [messages, experimentId, reloadRegressionCount, reloadTasks],
   );
 
   /**
@@ -3376,8 +3659,12 @@ const PlaygroundPageImpl = () => {
               recentRuns={regressionRecentRuns}
               inProgress={regressionInProgress}
               canRun
-              failingTests={failingTests}
+              failingTests={visibleFailingTests}
               onOpenIssue={(issueId) => setOpenIssueId(issueId)}
+              onFixSelectedTogether={(ids) => copyMultiIssueFixPrompt(ids, 'together')}
+              onFixSelectedSeparately={(ids) => copyMultiIssueFixPrompt(ids, 'separately')}
+              onRerunSelected={rerunSelectedFailingTests}
+              onDeleteSelected={deleteSelectedFailingTests}
               onRunSuite={() => void runRegressionSuite()}
               onCasesChanged={reloadRegressionCount}
               onSelectRun={(runId) => void onSelectRecentRun(runId)}

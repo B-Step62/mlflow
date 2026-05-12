@@ -62,6 +62,10 @@ export type DispatchWorkerResponse = {
   branch: string;
   base_commit: string;
   base_branch: string;
+  // True when the server returned an existing pending/ready connection
+  // for this issue rather than creating a new worktree. Lets the UI
+  // distinguish "queued a new worker" from "already running."
+  reused: boolean;
 };
 
 export const dispatchWorker = async (issueId: string): Promise<DispatchWorkerResponse> => {
