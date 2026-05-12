@@ -9,7 +9,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Alert, Button, Drawer, Spinner, Tag, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  Alert,
+  Button,
+  ChevronDownIcon,
+  Drawer,
+  DropdownMenu,
+  Spinner,
+  Tag,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 
 import {
   getAjaxUrl,
@@ -70,9 +80,7 @@ export type DispatchWorkerResponse = {
 
 export const dispatchWorker = async (issueId: string): Promise<DispatchWorkerResponse> => {
   const response = await fetch(
-    getAjaxUrl(
-      `ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/dispatch-worker`,
-    ),
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/dispatch-worker`),
     {
       method: 'POST',
       headers: getDefaultHeaders(document.cookie),
@@ -90,9 +98,7 @@ const _connectionAction = async (
   body?: Record<string, unknown>,
 ): Promise<unknown> => {
   const response = await fetch(
-    getAjaxUrl(
-      `ajax-api/3.0/mlflow/playground/agent-connections/${encodeURIComponent(connectionId)}/${action}`,
-    ),
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/agent-connections/${encodeURIComponent(connectionId)}/${action}`),
     {
       method: 'POST',
       headers: { ...getDefaultHeaders(document.cookie), 'Content-Type': 'application/json' },
@@ -115,13 +121,9 @@ export const acceptWorker = (connectionId: string) =>
 export const reworkWorker = (connectionId: string, feedback: string) =>
   _connectionAction(connectionId, 'rework', { feedback });
 
-export const discardWorker = (connectionId: string) =>
-  _connectionAction(connectionId, 'discard');
+export const discardWorker = (connectionId: string) => _connectionAction(connectionId, 'discard');
 
-export const fetchIssues = async (
-  experimentId: string,
-  state?: string,
-): Promise<IssueDetail[]> => {
+export const fetchIssues = async (experimentId: string, state?: string): Promise<IssueDetail[]> => {
   const params = new URLSearchParams({ experiment_id: experimentId });
   if (state) params.set('state', state);
   const response = await fetch(getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues?${params}`), {
@@ -177,10 +179,7 @@ export const fetchIssueComments = async (issueId: string): Promise<IssueCommentE
   return body.comments ?? [];
 };
 
-export const postIssueComment = async (
-  issueId: string,
-  body: string,
-): Promise<IssueCommentEntry> => {
+export const postIssueComment = async (issueId: string, body: string): Promise<IssueCommentEntry> => {
   const response = await fetch(
     getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/comments`),
     {
@@ -211,6 +210,27 @@ export const rejectIssue = async (issueId: string): Promise<void> => {
   }
 };
 
+/** Manually move an Issue to a new playground state. The server validates
+ *  the transition (e.g. `done -> todo` is rejected as 400), so callers
+ *  should surface any error message rather than retrying blindly. */
+export const transitionIssue = async (
+  issueId: string,
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'rejected',
+): Promise<IssueDetail> => {
+  const response = await fetch(
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/transition`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
+      body: JSON.stringify({ status }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Transition failed (${response.status}): ${await response.text()}`);
+  }
+  return (await response.json()) as IssueDetail;
+};
+
 export type EvaluateExistingVerdict = {
   passed: boolean;
   reasons: string[];
@@ -230,9 +250,7 @@ export const evaluateExistingAgentResponse = async (
   agentToolCalls: string[],
 ): Promise<EvaluateExistingVerdict> => {
   const response = await fetch(
-    getAjaxUrl(
-      `ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/evaluate-existing-response`,
-    ),
+    getAjaxUrl(`ajax-api/3.0/mlflow/playground/issues/${encodeURIComponent(issueId)}/evaluate-existing-response`),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getDefaultHeaders(document.cookie) },
@@ -447,8 +465,8 @@ export const buildFixPrompt = (
   lines.push('');
   lines.push('## Environment');
   lines.push(
-    '**Critical:** always run the verify command via `uv run` so it uses the project\'s ' +
-      "pinned MLflow + agent dependencies - invoking `mlflow` directly picks up whatever " +
+    "**Critical:** always run the verify command via `uv run` so it uses the project's " +
+      'pinned MLflow + agent dependencies - invoking `mlflow` directly picks up whatever ' +
       'is on PATH and silently diverges from the env the agent itself runs in. Also set ' +
       '`MLFLOW_TRACKING_URI=http://localhost:5000` so the command talks to the running ' +
       'playground server rather than a worktree-local sqlite; without it, ' +
@@ -458,9 +476,7 @@ export const buildFixPrompt = (
   lines.push('');
   lines.push('## Verify');
   lines.push('```bash');
-  lines.push(
-    `MLFLOW_TRACKING_URI=http://localhost:5000 uv run mlflow agent test run --issue ${issue.issue_id}`,
-  );
+  lines.push(`MLFLOW_TRACKING_URI=http://localhost:5000 uv run mlflow agent test run --issue ${issue.issue_id}`);
   lines.push('```');
   lines.push('Exit code 0 = pass. Iterate until it passes, then return to the playground and click "I fixed this".');
   return lines.join('\n');
@@ -591,22 +607,14 @@ const WorkerReviewActions = ({
     >
       <Typography.Text css={{ fontWeight: 600 }}>Worker ready for review</Typography.Text>
       <Typography.Text color="secondary" size="sm">
-        {worker.name} (<code>{worker.branch}</code>) is up. Test it in the playground, then accept
-        to merge into the base agent branch, rework with feedback, or discard.
+        {worker.name} (<code>{worker.branch}</code>) is up. Test it in the playground, then accept to merge into the
+        base agent branch, rework with feedback, or discard.
       </Typography.Text>
       <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-        <Button
-          componentId="mlflow.playground.issue-detail.test-in-playground"
-          type="primary"
-          href={playgroundHref}
-        >
+        <Button componentId="mlflow.playground.issue-detail.test-in-playground" type="primary" href={playgroundHref}>
           Test in playground →
         </Button>
-        <Button
-          componentId="mlflow.playground.issue-detail.accept-worker"
-          onClick={onAccept}
-          disabled={busy !== null}
-        >
+        <Button componentId="mlflow.playground.issue-detail.accept-worker" onClick={onAccept} disabled={busy !== null}>
           {busy === 'accept' ? 'Accepting…' : 'Accept'}
         </Button>
         <Button
@@ -667,10 +675,7 @@ const WorkerReviewActions = ({
 
 // --- Worker section (Epic 8 / YUK-54) ---------------------------------------
 
-const findWorkerConnection = (
-  issueId: string | null,
-  connections: AgentConnection[],
-): AgentConnection | null => {
+const findWorkerConnection = (issueId: string | null, connections: AgentConnection[]): AgentConnection | null => {
   if (!issueId) return null;
   // Prefer ready, then pending, then failed — newest within each bucket.
   const candidates = connections.filter((c) => c.source_issue_id === issueId);
@@ -695,10 +700,7 @@ const WorkerSection = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const { connections } = useConnections();
-  const worker = useMemo(
-    () => findWorkerConnection(issue.issue_id, connections),
-    [issue.issue_id, connections],
-  );
+  const worker = useMemo(() => findWorkerConnection(issue.issue_id, connections), [issue.issue_id, connections]);
   const [dispatching, setDispatching] = useState(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -745,10 +747,9 @@ const WorkerSection = ({
       >
         <Typography.Text css={{ fontWeight: 600 }}>Fix it with Claude Code</Typography.Text>
         <Typography.Text color="secondary" size="sm">
-          Dispatches a local Claude Code session into an isolated worktree, iterates on the
-          regression test until green, then connects the fixed agent here for you to test.
-          Experimental — your code stays on disk in <code>.mlflow-worktrees/</code> until you
-          accept or discard.
+          Dispatches a local Claude Code session into an isolated worktree, iterates on the regression test until green,
+          then connects the fixed agent here for you to test. Experimental — your code stays on disk in{' '}
+          <code>.mlflow-worktrees/</code> until you accept or discard.
         </Typography.Text>
         <div>
           <Button
@@ -792,8 +793,8 @@ const WorkerSection = ({
           <div css={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
             <Typography.Text css={{ fontWeight: 600 }}>Worker iterating…</Typography.Text>
             <Typography.Text color="secondary" size="sm">
-              {worker.name} (<code>{worker.branch}</code>). Test runs locally; the connection will
-              flip to ready once the test goes green.
+              {worker.name} (<code>{worker.branch}</code>). Test runs locally; the connection will flip to ready once
+              the test goes green.
             </Typography.Text>
           </div>
           <Button
@@ -820,14 +821,7 @@ const WorkerSection = ({
 
   // Worker ready — surface the deeplink + accept/rework/discard actions.
   if (worker && worker.status === 'ready') {
-    return (
-      <WorkerReviewActions
-        worker={worker}
-        issue={issue}
-        experimentId={experimentId}
-        onChange={onDispatched}
-      />
-    );
+    return <WorkerReviewActions worker={worker} issue={issue} experimentId={experimentId} onChange={onDispatched} />;
   }
 
   // Worker failed — give the user a Discard button to clear it so they can
@@ -843,9 +837,7 @@ const WorkerSection = ({
           gap: theme.spacing.sm,
         }}
       >
-        <Typography.Text css={{ fontWeight: 600, color: theme.colors.red600 }}>
-          Worker failed
-        </Typography.Text>
+        <Typography.Text css={{ fontWeight: 600, color: theme.colors.red600 }}>Worker failed</Typography.Text>
         <Typography.Text color="secondary" size="sm">
           {worker.status_message ?? 'Claude could not get the test green.'}
         </Typography.Text>
@@ -900,10 +892,7 @@ const IssueComments = ({ issueId }: { issueId: string }) => {
   // user is watching the thread stream).
   const { connections } = useConnections();
   const isWorkerPending = useMemo(
-    () =>
-      connections.some(
-        (c) => c.source_issue_id === issueId && c.status === 'pending',
-      ),
+    () => connections.some((c) => c.source_issue_id === issueId && c.status === 'pending'),
     [connections, issueId],
   );
   const pollIntervalMs = isWorkerPending ? 2000 : 5000;
@@ -982,8 +971,7 @@ const IssueComments = ({ issueId }: { issueId: string }) => {
                 fontSize: theme.typography.fontSizeBase,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
-                color:
-                  c.kind === 'system' ? theme.colors.textSecondary : theme.colors.textPrimary,
+                color: c.kind === 'system' ? theme.colors.textSecondary : theme.colors.textPrimary,
               }}
             >
               {c.body}
@@ -1030,6 +1018,90 @@ const STATUS_TAG_COLOR = {
   rejected: 'coral',
 } as const satisfies Record<string, 'default' | 'indigo' | 'lemon' | 'lime' | 'coral'>;
 
+// Playground state-machine — keep in lockstep with
+// `mlflow/entities/issue.py::_PLAYGROUND_TRANSITIONS`. `done` and
+// `rejected` are terminal (no outgoing edges); the dropdown disables the
+// trigger when the issue is in one of them.
+type PlaygroundStatus = 'todo' | 'in_progress' | 'review' | 'done' | 'rejected';
+
+const STATUS_TRANSITIONS: Record<PlaygroundStatus, PlaygroundStatus[]> = {
+  todo: ['in_progress', 'rejected'],
+  in_progress: ['review', 'rejected'],
+  review: ['done', 'in_progress', 'rejected'],
+  done: [],
+  rejected: [],
+};
+
+const STATUS_LABEL: Record<PlaygroundStatus, string> = {
+  todo: 'Todo',
+  in_progress: 'In progress',
+  review: 'Review',
+  done: 'Done',
+  rejected: 'Rejected',
+};
+
+const isPlaygroundStatus = (s: string): s is PlaygroundStatus =>
+  s === 'todo' || s === 'in_progress' || s === 'review' || s === 'done' || s === 'rejected';
+
+const IssueStatusDropdown = ({
+  status,
+  busy,
+  onTransition,
+}: {
+  status: string;
+  busy: boolean;
+  onTransition: (next: PlaygroundStatus) => void;
+}) => {
+  const playgroundStatus = isPlaygroundStatus(status) ? status : null;
+  const allowedNext = playgroundStatus ? STATUS_TRANSITIONS[playgroundStatus] : [];
+  const tagColor =
+    (STATUS_TAG_COLOR as Record<string, 'default' | 'indigo' | 'lemon' | 'lime' | 'coral'>)[status] ?? 'default';
+
+  // Legacy detection states (`pending`/`resolved`) and terminal states
+  // (`done`/`rejected`) get a static tag — the state machine has no
+  // legal next move from there.
+  if (!playgroundStatus || allowedNext.length === 0) {
+    return (
+      <Tag componentId="mlflow.playground.issue-detail.status" color={tagColor}>
+        {status}
+      </Tag>
+    );
+  }
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button componentId="mlflow.playground.issue-detail.status-dropdown" size="small" loading={busy}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Tag componentId="mlflow.playground.issue-detail.status" color={tagColor}>
+              {status}
+            </Tag>
+            <ChevronDownIcon />
+          </span>
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="start">
+        <DropdownMenu.Label>Move to…</DropdownMenu.Label>
+        {allowedNext.map((next) => (
+          <DropdownMenu.Item
+            key={next}
+            componentId={`mlflow.playground.issue-detail.status-dropdown.item-${next}`}
+            onClick={() => onTransition(next)}
+          >
+            <Tag
+              componentId={`mlflow.playground.issue-detail.status-dropdown.tag-${next}`}
+              color={STATUS_TAG_COLOR[next]}
+            >
+              {next}
+            </Tag>
+            <span style={{ marginLeft: 8 }}>{STATUS_LABEL[next]}</span>
+          </DropdownMenu.Item>
+        ))}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  );
+};
+
 export const IssueDetailDrawer = ({
   issueId,
   visible,
@@ -1053,6 +1125,26 @@ export const IssueDetailDrawer = ({
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [verdict, setVerdict] = useState<RunTestVerdict | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
+
+  const onTransitionStatus = useCallback(
+    async (next: PlaygroundStatus) => {
+      if (!issueId) return;
+      setTransitioning(true);
+      setTransitionError(null);
+      try {
+        const updated = await transitionIssue(issueId, next);
+        setIssue(updated);
+        onIssueUpdated?.(updated);
+      } catch (e) {
+        setTransitionError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setTransitioning(false);
+      }
+    },
+    [issueId, onIssueUpdated],
+  );
 
   useEffect(() => {
     if (!visible || !issueId) {
@@ -1137,18 +1229,18 @@ export const IssueDetailDrawer = ({
           {issue && (
             <>
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <Tag
-                  componentId="mlflow.playground.issue-detail.status"
-                  color={
-                    (STATUS_TAG_COLOR as Record<string, 'default' | 'indigo' | 'lemon' | 'lime' | 'coral'>)[
-                      issue.status
-                    ] ?? 'default'
-                  }
-                >
-                  {issue.status}
-                </Tag>
+                <IssueStatusDropdown status={issue.status} busy={transitioning} onTransition={onTransitionStatus} />
                 <Typography.Text css={{ fontWeight: 600 }}>{issue.name}</Typography.Text>
               </div>
+              {transitionError && (
+                <Alert
+                  componentId="mlflow.playground.issue-detail.transition-error"
+                  type="error"
+                  message={transitionError}
+                  closable
+                  onClose={() => setTransitionError(null)}
+                />
+              )}
               <div>
                 <Typography.Text color="secondary" size="sm">
                   Description

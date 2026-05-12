@@ -490,6 +490,32 @@ def create_playground_api_router(
             raise HTTPException(status_code=status, detail=str(exc)) from exc
         return issue.to_dictionary()
 
+    @router.post("/issues/{issue_id}/transition")
+    async def transition_issue(issue_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        """Manually move an Issue to a new playground state. Wraps the
+        store's state-machine `transition_issue`, so illegal edges (e.g.
+        ``done -> todo``) come back as 400. Used by the kanban / issue
+        detail "Change status" dropdown.
+        """
+        from mlflow.entities.issue import IssueStatus
+        from mlflow.exceptions import MlflowException
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        raw = request.get("status")
+        if not isinstance(raw, str) or not raw:
+            raise HTTPException(status_code=400, detail="Missing 'status' in request body")
+        try:
+            target = IssueStatus(raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown issue status: {raw!r}") from exc
+
+        try:
+            issue = await asyncio.to_thread(_get_store().transition_issue, issue_id, target)
+        except MlflowException as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        return issue.to_dictionary()
+
     @router.get("/issues/{issue_id}/comments")
     async def list_issue_comments(issue_id: str) -> dict[str, Any]:
         """Return the issue's activity thread (Linear-style), oldest first."""
@@ -859,9 +885,7 @@ def create_playground_api_router(
         }
 
     @router.post("/issues/{issue_id}/evaluate-existing-response")
-    async def evaluate_existing_response(
-        issue_id: str, request: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def evaluate_existing_response(issue_id: str, request: dict[str, Any]) -> dict[str, Any]:
         """Evaluate the issue's test spec against an *already-produced* agent
         response, without invoking the agent again.
 
@@ -875,8 +899,8 @@ def create_playground_api_router(
         (no extra trace / no MLflow run). Body shape::
 
             {
-              "agent_response_text": "<the failing assistant message text>",
-              "agent_tool_calls": ["tool_name", ...]   # optional
+                "agent_response_text": "<the failing assistant message text>",
+                "agent_tool_calls": ["tool_name", ...],  # optional
             }
         """
         from mlflow.entities.issue import IssueStatus
@@ -887,9 +911,7 @@ def create_playground_api_router(
 
         agent_response_text = request.get("agent_response_text")
         if not isinstance(agent_response_text, str):
-            raise HTTPException(
-                status_code=400, detail="`agent_response_text` must be a string."
-            )
+            raise HTTPException(status_code=400, detail="`agent_response_text` must be a string.")
         raw_tool_calls = request.get("agent_tool_calls") or []
         if not isinstance(raw_tool_calls, list):
             raise HTTPException(
@@ -907,10 +929,7 @@ def create_playground_api_router(
         if issue.status in (IssueStatus.PENDING, IssueStatus.RESOLVED):
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Legacy detection-path issues aren't runnable through the "
-                    "playground."
-                ),
+                detail=("Legacy detection-path issues aren't runnable through the playground."),
             )
 
         dataset = await asyncio.to_thread(
@@ -1221,6 +1240,7 @@ def create_playground_api_router(
                     # plain `@invoke()` agent. The tag is the universal escape
                     # hatch (same pattern the chat handler uses).
                     import uuid as _uuid
+
                     group_request_id = f"reg-{parent_run_id}-{gi}-{_uuid.uuid4().hex[:8]}"
                     try:
                         raw, _protocol = await _invoke_agent(
@@ -1232,11 +1252,13 @@ def create_playground_api_router(
                     except Exception as exc:
                         snapshot_slots[gi]["status"] = "failed"
                         snapshot_slots[gi]["error"] = f"Agent invocation failed: {exc}"
-                        await queue.put(_emit({
-                            "type": "group_error",
-                            "group_index": gi,
-                            "detail": f"Agent invocation failed: {exc}",
-                        }))
+                        await queue.put(
+                            _emit({
+                                "type": "group_error",
+                                "group_index": gi,
+                                "detail": f"Agent invocation failed: {exc}",
+                            })
+                        )
                         return
 
                     response = normalize_agent_response(raw)
@@ -1303,17 +1325,19 @@ def create_playground_api_router(
                     if trace_id:
                         snapshot_slots[gi]["trace_id"] = trace_id
 
-                    await queue.put(_emit({
-                        "type": "group_verdict",
-                        "group_index": gi,
-                        "agent_response_text": response.text,
-                        "agent_tool_calls": response.tool_calls,
-                        "verdicts": verdicts,
-                        # Trace produced by this group's agent invocation, so the
-                        # playground can advance the Live Trace pane in lock-step
-                        # with the "Question m/N" navigator.
-                        "trace_id": trace_id,
-                    }))
+                    await queue.put(
+                        _emit({
+                            "type": "group_verdict",
+                            "group_index": gi,
+                            "agent_response_text": response.text,
+                            "agent_tool_calls": response.tool_calls,
+                            "verdicts": verdicts,
+                            # Trace produced by this group's agent invocation, so the
+                            # playground can advance the Live Trace pane in lock-step
+                            # with the "Question m/N" navigator.
+                            "trace_id": trace_id,
+                        })
+                    )
 
             tasks = [
                 asyncio.create_task(run_one(gi, messages, group_rows))
