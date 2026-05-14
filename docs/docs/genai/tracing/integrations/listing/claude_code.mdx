@@ -1,9 +1,9 @@
 ---
 title: Tracing Claude Code
-description: Trace Claude Code CLI conversations and Claude Agent SDK usage with MLflow for full observability into AI-assisted software development workflows.
+description: Trace Claude Code CLI conversations and Claude Agent SDK usage in Python or TypeScript with MLflow for full observability into AI-assisted software development workflows.
 sidebar_position: 9
 sidebar_label: Claude Code
-keywords: [claude code, tracing, mlflow, anthropic, ai agent, coding assistant]
+keywords: [claude code, tracing, mlflow, anthropic, ai agent, coding assistant, typescript]
 image: /images/llms/anthropic/claude-code-tracing.png
 ---
 
@@ -12,14 +12,14 @@ import TabItem from "@theme/TabItem";
 
 # Tracing Claude Code
 
-![Claude Code Tracing via CLI autolog](/images/llms/anthropic/claude-code-tracing.png)
+![Claude Code Tracing via the MLflow plugin](/images/llms/anthropic/claude-code-tracing.png)
 
 [MLflow Tracing](/genai/tracing) provides automatic tracing for Claude Code:
 
 1. **CLI tracing**: Automatically trace interactive Claude Code CLI conversations
-2. **SDK tracing**: Trace Claude Agent SDK usage in Python applications
+2. **SDK tracing**: Trace Claude Agent SDK usage in Python or TypeScript applications
 
-After setting up auto tracing, MLflow will automatically capture traces of your Claude Code conversations and log them to the active MLflow experiment. The trace automatically captures information such as:
+After setup, MLflow automatically captures traces of your Claude Code workflows and logs them to the active MLflow experiment. Traces include:
 
 - User prompts and assistant responses
 - Tool usage (file operations, code execution, web searches, etc.)
@@ -30,83 +30,116 @@ After setting up auto tracing, MLflow will automatically capture traces of your 
 
 ## Setup
 
-Claude Code tracing can be configured using either CLI commands (for interactive use) or Python SDK imports (for programmatic use).
+Claude Code tracing can be configured either for the Claude Code CLI or for programmatic Claude Agent SDK usage.
 
-<Tabs>
-<TabItem value="cli" label="CLI Tracing" default>
+## Claude Code CLI
 
 ### CLI Tracing Setup
 
-Use CLI tracing to automatically capture your interactive Claude Code CLI conversations.
+Use CLI tracing to automatically capture your interactive Claude Code sessions without depending on the Python environment that launched `claude`.
 
-#### Requirements
+### Step 1. Start Claude Code
 
-- MLflow >= 3.4 (`pip install 'mlflow>=3.4'`)
-- [Claude Code CLI](https://claude.com/product/claude-code) installed and configured
-
-#### Basic Setup
+Launch Claude Code in the repo you want to trace.
 
 ```bash
-# Set up tracing in current directory
-mlflow autolog claude
-
-# Set up tracing in specific directory
-mlflow autolog claude -d ~/my-project
-
-# Check tracing status
-mlflow autolog claude --status
-
-# Disable tracing
-mlflow autolog claude --disable
+claude
 ```
 
-#### Configuration Examples
+### Step 2. Install the MLflow Tracing Plugin
+
+Inside Claude Code, add the MLflow plugin marketplace, install the plugin, then reload plugins:
+
+```text
+/plugin marketplace add mlflow/mlflow
+/plugin install mlflow-tracing@mlflow-plugins
+/reload-plugins
+```
+
+:::note
+If you prefer to manage plugins from the shell instead of inside Claude Code, you can use the corresponding CLI commands:
 
 ```bash
-# Set up with custom tracking URI
-mlflow autolog claude -u file://./custom-mlruns
-mlflow autolog claude -u sqlite:///mlflow.db
+claude plugin marketplace add mlflow/mlflow
+claude plugin install mlflow-tracing@mlflow-plugins --scope user
+```
+:::
 
-# Set up with Databricks backend and a specific experiment ID
-mlflow autolog claude -u databricks -e 123456789
+### Step 3. Run the Setup Command
 
-# Set up with specific experiment
-mlflow autolog claude -n "My AI Project"
+Ask Claude to run the plugin's setup command:
+
+```text
+/mlflow-tracing:setup
 ```
 
-#### How It Works
+The setup flow requires:
 
-1. **Setup Phase**: The `mlflow autolog claude` command configures Claude Code hooks in a `.claude/settings.json` file in your project directory
-2. **Automatic Tracing**: When you use the `claude` command in the configured directory, your conversations are automatically traced
-3. **View Results**: Use the MLflow UI to explore your traces
+- Exactly one scope: `--project` or `--user`
+- A tracking backend via `--tracking-uri`
+- Exactly one experiment selector: `--experiment-id` or `--experiment-name`
 
-#### Basic Example
+For example, you can tell Claude:
 
-```bash
-# Set up tracing in your project
-mlflow autolog claude -d ~/my-project
-
-# Navigate to project directory
-cd ~/my-project
-
-# Use Claude Code normally - tracing happens automatically
-claude "help me refactor this Python function to be more efficient"
-
-# View traces in MLflow UI
-mlflow server
+```text
+Configure MLflow tracing for this repo using:
+- scope: --project
+- tracking URI: http://localhost:5000
+- experiment name: claude-code-traces
 ```
 
-</TabItem>
-<TabItem value="sdk" label="SDK Tracing">
+Supported tracking URIs are:
+
+- `http://...` or `https://...`
+- `databricks`
+- `databricks://<profile>`
+
+Behind the scenes, the plugin's setup skill runs `mlflow-claude-code setup`. If you pass `--experiment-name` and the experiment does not exist, it creates the experiment and writes the resolved experiment ID into Claude's settings.
+
+### Step 4. Confirm the Configuration
+
+Ask Claude to run the plugin's status command:
+
+```text
+/mlflow-tracing:status
+```
+
+The installed plugin's status skill reports:
+
+- Whether tracing is enabled
+- Where configuration came from: `environment`, `project`, `user`, or `none`
+- The active tracking URI
+- The active experiment ID and experiment name
+
+### Step 5. Ask Questions as Usual
+
+Once setup is complete, use Claude Code normally:
+
+```text
+Can you summarize this repo using subagents?
+```
+
+### How It Works
+
+1. Claude Code installs the `mlflow-tracing` plugin from the `mlflow-plugins` marketplace. The marketplace entry resolves to the published npm package `@mlflow/claude-code`.
+2. The plugin provides setup and status skills plus a Stop hook.
+3. The setup skill writes MLflow tracing settings into either `./.claude/settings.json` or `~/.claude/settings.json`.
+4. The Stop hook reads the session transcript and exports a trace to MLflow when the Claude Code session ends.
+5. At runtime, configuration precedence is: shell environment variables, then project settings, then user settings.
+
+## Claude Agent SDK
 
 ### SDK Tracing Setup
 
 Use SDK tracing when building applications that programmatically use the Claude Agent SDK.
 
+<Tabs>
+<TabItem value="python" label="Python" default>
+
 #### Requirements
 
 - MLflow >= 3.5 (`pip install 'mlflow>=3.5'`)
-- [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) >= 0.1.0 (`pip install claude-agent-sdk >= 0.1.0`)
+- [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) >= 0.1.0 (`pip install claude-agent-sdk>=0.1.0`)
 
 #### Basic Setup
 
@@ -117,23 +150,21 @@ import mlflow.anthropic
 mlflow.anthropic.autolog()
 ```
 
-Once enabled, all Claude Agent SDK interactions will be automatically traced.
+Once enabled, Claude Agent SDK interactions created through `ClaudeSDKClient` are automatically traced.
 
 :::note
-Only `ClaudeSDKClient` supports tracing. Directly calling `query` will not be traced!
+Python SDK tracing currently supports `ClaudeSDKClient`. Directly calling `query()` is not traced.
 :::
 
 #### Complete Example
 
 ```python
 import asyncio
+import mlflow
 import mlflow.anthropic
 from claude_agent_sdk import ClaudeSDKClient
 
-# Enable autologging
 mlflow.anthropic.autolog()
-
-# Optionally configure MLflow experiment
 mlflow.set_experiment("my_claude_app")
 
 
@@ -151,7 +182,7 @@ if __name__ == "__main__":
 
 #### Claude Tracing with MLflow Evaluation
 
-You can also use SDK tracing with MLflow's evaluation framework:
+You can also use Python SDK tracing with MLflow's evaluation framework:
 
 ```python
 import asyncio
@@ -159,15 +190,15 @@ import pandas as pd
 from claude_agent_sdk import ClaudeSDKClient
 from typing import Literal
 
+import mlflow
 import mlflow.anthropic
-from mlflow.genai import evaluate, scorer
+from mlflow.genai import evaluate
 from mlflow.genai.judges import make_judge
 
 mlflow.anthropic.autolog()
 
 
 async def run_agent(query: str) -> str:
-    """Run Claude Agent SDK and return response"""
     async with ClaudeSDKClient() as client:
         await client.query(query)
 
@@ -179,7 +210,6 @@ async def run_agent(query: str) -> str:
 
 
 def predict_fn(query: str) -> str:
-    """Synchronous wrapper for evaluation"""
     return asyncio.run(run_agent(query))
 
 
@@ -193,84 +223,148 @@ relevance = make_judge(
     model="openai:/gpt-4o",
 )
 
-# Create evaluation dataset
 eval_data = pd.DataFrame([
     {"inputs": {"query": "What is machine learning?"}},
     {"inputs": {"query": "Explain neural networks"}},
 ])
 
-# Run evaluation with automatic tracing
 mlflow.set_experiment("claude_evaluation")
 evaluate(data=eval_data, predict_fn=predict_fn, scorers=[relevance])
 ```
+
+</TabItem>
+<TabItem value="typescript" label="JS / TS">
+
+#### Requirements
+
+- Node.js 18+
+- [Claude Agent SDK for TypeScript](https://docs.claude.com/en/api/agent-sdk/typescript)
+- MLflow TypeScript packages:
+
+```bash
+npm install @mlflow/core @mlflow/claude-code @anthropic-ai/claude-agent-sdk
+```
+
+#### Basic Setup
+
+Wrap the Claude Agent SDK `query()` function with `createTracedQuery()` and initialize the MLflow TypeScript SDK once at process startup.
+
+```typescript
+import * as mlflow from "@mlflow/core";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createTracedQuery } from "@mlflow/claude-code";
+
+mlflow.init({
+  trackingUri: "http://localhost:5000",
+  experimentId: "0",
+});
+
+const tracedQuery = createTracedQuery(query);
+```
+
+#### Complete Example
+
+```typescript
+import * as mlflow from "@mlflow/core";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createTracedQuery } from "@mlflow/claude-code";
+
+mlflow.init({
+  trackingUri: "http://localhost:5000",
+  experimentId: "0",
+});
+
+const tracedQuery = createTracedQuery(query);
+
+const result = tracedQuery({
+  prompt: "List the files in this directory",
+  options: {
+    permissionMode: "bypassPermissions",
+  },
+});
+
+for await (const message of result) {
+  if (message.type === "result") {
+    console.log("Result:", message.result);
+  }
+}
+```
+
+:::note
+The TypeScript wrapper automatically enables `forwardSubagentText` so nested sub-agent activity can be reconstructed in the MLflow trace.
+:::
 
 </TabItem>
 </Tabs>
 
 ## Tracking Token Usage and Cost
 
-MLflow automatically tracks token usage and cost for Claude Code conversations. The token usage for each LLM call will be logged in each Trace/Span and the aggregated cost and time trend are displayed in the built-in dashboard. See the [Token Usage and Cost Tracking](/genai/tracing/token-usage-cost) documentation for details on accessing this information programmatically.
+MLflow automatically tracks token usage and cost for Claude Code conversations. Token usage for each LLM call is logged in the relevant Trace and Span, and the aggregated cost and time trends appear in the built-in dashboard. See [Token Usage and Cost Tracking](/genai/tracing/token-usage-cost) for details.
 
 ## Troubleshooting
 
-<Tabs>
-<TabItem value="cli" label="CLI Tracing" default>
-
 ### Check CLI Status
 
-```bash
-mlflow autolog claude --status
+```text
+/mlflow-tracing:status
 ```
-
-This shows:
-
-- Whether tracing is enabled
-- Current tracking URI
-- Configured experiment
-- Any configuration issues
 
 ### Common CLI Issues
 
 **Tracing not working:**
 
-- Ensure you're in the configured directory
-- Check that `.claude/settings.json` exists
-- Review logs in `.claude/mlflow/claude_tracing.log`
+- Confirm the marketplace was added and the plugin is installed:
+  `claude plugin marketplace list`
+  `claude plugin list`
+- Reload plugins after installation with `/reload-plugins` or restart Claude Code.
+- Ask Claude to run `/mlflow-tracing:status`.
+- Verify the correct scope was configured: `./.claude/settings.json` for `--project` or `~/.claude/settings.json` for `--user`.
+- Confirm the tracking URI is reachable.
 
 **Missing traces:**
 
-- Check if `MLFLOW_CLAUDE_TRACING_ENABLED=true` in your configuration
-- Verify the tracking URI is accessible
-- Review logs in `.claude/mlflow/claude_tracing.log`
+- Claude Code traces are exported from the Stop hook, so traces appear when the Claude Code session ends.
+- Check whether shell-level `MLFLOW_*` environment variables are overriding the project or user settings you expected.
+- Verify the configured experiment exists and that the resolved experiment ID is valid.
 
 ### Disable CLI Tracing
 
-To stop automatic CLI tracing:
+There is no dedicated disable command yet. To disable tracing:
 
-```bash
-mlflow autolog claude --disable
-```
-
-This removes the hooks from `.claude/settings.json` but preserves existing traces.
-
-</TabItem>
-<TabItem value="sdk" label="SDK Tracing">
+- Uninstall or disable the Claude plugin:
+  `claude plugin uninstall mlflow-tracing@mlflow-plugins`
+  or `claude plugin disable mlflow-tracing@mlflow-plugins`
+- Remove the MLflow tracing environment keys from the relevant `.claude/settings.json`.
+- Or override with `MLFLOW_CLAUDE_TRACING_ENABLED=false` in the environment that launches `claude`.
 
 ### Common SDK Issues
 
+<Tabs>
+<TabItem value="python" label="Python" default>
+
 **No traces appearing:**
 
-- Tracing only works with `ClaudeSDKClient` - direct usage of `query()` is not supported
-- Verify `mlflow.anthropic.autolog()` is called before creating the `ClaudeSDKClient`
-- Check that the tracking URI and experiment ID are configured correctly
+- Tracing only works with `ClaudeSDKClient`; direct usage of `query()` is not supported.
+- Verify `mlflow.anthropic.autolog()` is called before creating the `ClaudeSDKClient`.
+- Check that the tracking URI and experiment are configured correctly.
 
 ### Disable SDK Tracing
 
-To disable SDK tracing:
+To disable Python SDK tracing:
 
 ```python
 mlflow.anthropic.autolog(disable=True)
 ```
+
+</TabItem>
+<TabItem value="typescript" label="JS / TS">
+
+**No traces appearing:**
+
+- Make sure you are calling the wrapped function returned by `createTracedQuery(query)`, not the raw SDK `query()` function.
+- Verify `mlflow.init({ trackingUri, experimentId })` runs before the first traced query.
+- Confirm you are running in a Node.js environment and that the MLflow tracking server is reachable.
+- Consume the query result stream so the trace can be finalized and flushed.
 
 </TabItem>
 </Tabs>
