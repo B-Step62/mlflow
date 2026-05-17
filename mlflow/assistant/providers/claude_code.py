@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable
 
+import mlflow
 from mlflow.assistant.providers.base import (
     AssistantProvider,
     CLINotInstalledError,
@@ -29,6 +30,7 @@ from mlflow.assistant.types import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from mlflow.entities import SpanType
 from mlflow.server.assistant.session import clear_process_pid, save_process_pid
 
 _logger = logging.getLogger(__name__)
@@ -327,6 +329,7 @@ class ClaudeCodeProvider(AssistantProvider):
         """Resolve the path to the skills directory."""
         return base_directory / ".claude" / "skills"
 
+    @mlflow.trace(span_type=SpanType.AGENT)
     async def astream(
         self,
         prompt: str,

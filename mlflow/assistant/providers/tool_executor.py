@@ -5,7 +5,9 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+import mlflow
 from mlflow.assistant.config import PermissionsConfig
+from mlflow.entities import SpanType
 
 _logger = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ def _resolve_file_path(raw_path: str, cwd: Path | None) -> Path:
     return p.resolve()
 
 
+@mlflow.trace(span_type=SpanType.TOOL)
 async def execute_tool(
     tool_name: str,
     tool_input: dict[str, Any],

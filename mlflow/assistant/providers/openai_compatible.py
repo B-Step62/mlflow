@@ -18,6 +18,7 @@ from typing import Any, AsyncGenerator
 
 import aiohttp
 
+import mlflow
 from mlflow.assistant.providers.base import (
     AssistantProvider,
     NotAuthenticatedError,
@@ -27,6 +28,7 @@ from mlflow.assistant.providers.base import (
 from mlflow.assistant.providers.prompts import ASSISTANT_SYSTEM_PROMPT
 from mlflow.assistant.providers.tool_executor import build_tools_schema, execute_tool
 from mlflow.assistant.types import Event, Message, ToolResultBlock, ToolUseBlock
+from mlflow.entities import SpanType
 
 _logger = logging.getLogger(__name__)
 
@@ -209,9 +211,7 @@ class OpenAICompatibleProvider(AssistantProvider):
 
     def list_models(self, base_url: str | None = None, api_key: str | None = None) -> list[str]:
         if self._list_models_fn is None:
-            raise NotImplementedError(
-                f"Model listing is not supported for provider '{self.name}'"
-            )
+            raise NotImplementedError(f"Model listing is not supported for provider '{self.name}'")
         resolved = self._resolve_base_url(base_url)
         if not resolved:
             raise ProviderNotConfiguredError(f"{self._display_name} base URL is not configured.")
@@ -228,6 +228,7 @@ class OpenAICompatibleProvider(AssistantProvider):
     def resolve_skills_path(self, base_directory: Path) -> Path:
         return base_directory / self._skills_dirname / "skills"
 
+    @mlflow.trace(span_type=SpanType.AGENT)
     async def astream(
         self,
         prompt: str,
@@ -306,55 +307,65 @@ class OpenAICompatibleProvider(AssistantProvider):
                         "tools": tools,
                         "stream": True,
                     }
-                    async with session.post(
-                        chat_url,
-                        json=payload,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=300),
-                    ) as resp:
-                        if resp.status != 200:
-                            body = await resp.text()
-                            yield Event.from_error(
-                                f"{self._display_name} error {resp.status}: {body}"
-                            )
-                            return
+                    with mlflow.start_span(
+                        name="chat_completion", span_type=SpanType.LLM
+                    ) as llm_span:
+                        llm_span.set_inputs({"model": model, "messages": messages, "tools": tools})
+                        async with session.post(
+                            chat_url,
+                            json=payload,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=300),
+                        ) as resp:
+                            if resp.status != 200:
+                                body = await resp.text()
+                                yield Event.from_error(
+                                    f"{self._display_name} error {resp.status}: {body}"
+                                )
+                                return
 
-                        async for raw_line in resp.content:
-                            line = raw_line.strip()
-                            if not line:
-                                continue
-                            # SSE frames start with `data: `. Skip event-name lines
-                            # and comments, tolerate vanilla JSONL too.
-                            if line.startswith(b"data:"):
-                                line = line[len(b"data:") :].strip()
-                            if line == b"[DONE]":
-                                continue
-                            if not line or line.startswith(b":"):
-                                continue
-                            try:
-                                chunk = json.loads(line)
-                            except json.JSONDecodeError:
-                                _logger.debug("Skipping non-JSON stream line: %r", line)
-                                continue
+                            async for raw_line in resp.content:
+                                line = raw_line.strip()
+                                if not line:
+                                    continue
+                                # SSE frames start with `data: `. Skip event-name lines
+                                # and comments, tolerate vanilla JSONL too.
+                                if line.startswith(b"data:"):
+                                    line = line[len(b"data:") :].strip()
+                                if line == b"[DONE]":
+                                    continue
+                                if not line or line.startswith(b":"):
+                                    continue
+                                try:
+                                    chunk = json.loads(line)
+                                except json.JSONDecodeError:
+                                    _logger.debug("Skipping non-JSON stream line: %r", line)
+                                    continue
 
-                            choices = chunk.get("choices") or []
-                            if not choices:
-                                continue
-                            delta = choices[0].get("delta") or {}
+                                choices = chunk.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta = choices[0].get("delta") or {}
 
-                            if text := delta.get("content") or "":
-                                accumulated_text += text
-                                think_buf += text
-                                emit, think_buf, in_think = _strip_think_blocks(think_buf, in_think)
-                                if emit:
-                                    yield Event.from_stream_event({
-                                        "type": "content_delta",
-                                        "delta": {"text": emit},
-                                    })
+                                if text := delta.get("content") or "":
+                                    accumulated_text += text
+                                    think_buf += text
+                                    emit, think_buf, in_think = _strip_think_blocks(
+                                        think_buf, in_think
+                                    )
+                                    if emit:
+                                        yield Event.from_stream_event({
+                                            "type": "content_delta",
+                                            "delta": {"text": emit},
+                                        })
 
-                            if tcs := delta.get("tool_calls"):
-                                for tc in tcs:
-                                    _merge_tool_call_chunk(tool_calls_acc, tc)
+                                if tcs := delta.get("tool_calls"):
+                                    for tc in tcs:
+                                        _merge_tool_call_chunk(tool_calls_acc, tc)
+                        llm_span.set_outputs({
+                            "content": accumulated_text,
+                            "tool_calls": tool_calls_acc,
+                        })
 
                     if not tool_calls_acc:
                         if accumulated_text:
