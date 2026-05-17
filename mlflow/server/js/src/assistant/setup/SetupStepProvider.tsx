@@ -4,6 +4,7 @@ import { Button, Typography, useDesignSystemTheme } from '@databricks/design-sys
 import { toRGBA } from '@mlflow/mlflow/src/common/utils/toRGBA';
 import AnthropicLogo from '@mlflow/mlflow/src/common/static/logos/anthropic.svg';
 import GeminiLogo from '@mlflow/mlflow/src/common/static/logos/gemini.png';
+import MLflowGatewayLogo from '@mlflow/mlflow/src/common/static/logos/mlflow-gateway.svg';
 import OllamaLogo from '@mlflow/mlflow/src/common/static/logos/ollama.png';
 
 interface Provider {
@@ -20,6 +21,13 @@ const PROVIDERS: Provider[] = [
     name: 'Claude Code',
     description: "AI assistant powered by Anthropic's Claude. Requires Claude Code CLI installed locally.",
     logo: AnthropicLogo,
+    available: true,
+  },
+  {
+    id: 'mlflow_gateway',
+    name: 'MLflow AI Gateway',
+    description: 'AI assistant backed by an MLflow AI Gateway deployment. Routes to any configured chat endpoint.',
+    logo: MLflowGatewayLogo,
     available: true,
   },
   {
