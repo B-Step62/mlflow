@@ -303,6 +303,82 @@ def _resolve_trace_output(trace_id: str) -> Any:
     return root.outputs
 
 
+@dataclass
+class _TestCase:
+    """One executable regression case derived from either a dataset record or a trace."""
+
+    trace_id: str
+    inputs: Any
+    original_output: Any
+    source: str  # "dataset" or "trace"
+
+
+def _load_test_cases(issue_description: str, lineage: dict[str, Any]) -> list[_TestCase]:
+    """Load test cases for this issue.
+
+    Prefers the dataset records pointed to by ``test_dataset_id`` in the
+    lineage block (created by :func:`create_from_categories`). Falls back to
+    re-reading the representative trace inputs directly for issues created
+    before regression-test datasets existed.
+    """
+    dataset_id = lineage.get("test_dataset_id")
+    if dataset_id:
+        try:
+            from mlflow.genai import datasets as ds
+
+            dataset = ds.get_dataset(dataset_id=dataset_id)
+            df = dataset.to_df()
+        except Exception:
+            _logger.debug(
+                "Failed to load test dataset %s; falling back to trace IDs",
+                dataset_id,
+                exc_info=True,
+            )
+        else:
+            cases: list[_TestCase] = []
+            for _, row in df.iterrows():
+                expectations = row.get("expectations") or {}
+                source = row.get("source") or {}
+                source_data = source.get("source_data") if isinstance(source, dict) else None
+                trace_id = (
+                    source_data.get("trace_id")
+                    if isinstance(source_data, dict)
+                    else None
+                ) or row.get("source_id") or ""
+                cases.append(
+                    _TestCase(
+                        trace_id=str(trace_id),
+                        inputs=row.get("inputs"),
+                        original_output=(
+                            expectations.get("original_output")
+                            if isinstance(expectations, dict)
+                            else None
+                        ),
+                        source="dataset",
+                    )
+                )
+            if cases:
+                return cases
+
+    # Fall back to representative trace IDs (legacy path for issues with no dataset).
+    trace_ids: list[str] = lineage.get("representative_trace_ids") or []
+    cases = []
+    for tid in trace_ids:
+        original_input = _resolve_trace_input(tid)
+        original_output = _resolve_trace_output(tid)
+        if original_input is None:
+            continue
+        cases.append(
+            _TestCase(
+                trace_id=tid,
+                inputs=original_input,
+                original_output=original_output,
+                source="trace",
+            )
+        )
+    return cases
+
+
 def verify(
     issue_id: str,
     agent_callable: Callable[[Any], Any],
@@ -310,15 +386,21 @@ def verify(
     model: str | None = None,
     resolve_if_passing: bool = True,
 ) -> VerificationResult:
-    """Re-run the issue's representative traces against ``agent_callable`` and judge each.
+    """Run the issue's regression test cases against ``agent_callable``.
 
-    For each linked trace:
-        1. Fetch the trace's root-span input.
-        2. Call ``agent_callable`` with that input.
-        3. Ask an LLM judge whether the new output addresses the failure
-           described by the issue.
+    Each test case carries an input plus the original failing output. The
+    function:
 
-    If every trace passes and ``resolve_if_passing`` is true, the issue
+        1. Calls ``agent_callable`` with the input.
+        2. Asks an LLM judge whether the new output addresses the failure
+           pattern described by the issue.
+        3. Aggregates per-case verdicts.
+
+    Test cases come from the issue's regression-test dataset when one was
+    created (via :func:`create_from_categories`); otherwise the original
+    representative trace inputs are used as a fallback.
+
+    If every case passes and ``resolve_if_passing`` is true, the issue
     status is updated to :attr:`IssueStatus.DONE` and a verification
     comment is appended.
 
@@ -328,7 +410,7 @@ def verify(
             original trace and returns the agent's output.
         model: Optional LLM model URI for the verdict judge.
         resolve_if_passing: When true (default), set the issue status to
-            ``RESOLVED`` on full pass.
+            :attr:`IssueStatus.DONE` on full pass.
 
     Returns:
         :class:`VerificationResult` summarising the outcome.
@@ -336,36 +418,25 @@ def verify(
     client = TracingClient()
     issue = client._get_issue(issue_id)
     lineage = _parse_lineage(issue.description or "")
-    trace_ids: list[str] = lineage.get("representative_trace_ids") or []
-    if not trace_ids:
+    cases = _load_test_cases(issue.description or "", lineage)
+    if not cases:
         return VerificationResult(
             issue_id=issue_id,
             overall_pass=False,
             pass_rate=0.0,
             per_trace=[],
-            error="No representative trace IDs found on this issue.",
+            error="No test cases found for this issue (no dataset and no representative traces).",
         )
 
     judge = ScorerLLMClient(model or DEFAULT_MODEL)
     per_trace: list[TraceVerification] = []
-    for tid in trace_ids:
-        original_input = _resolve_trace_input(tid)
-        original_output = _resolve_trace_output(tid)
-        if original_input is None:
-            per_trace.append(
-                TraceVerification(
-                    trace_id=tid,
-                    passed=False,
-                    rationale="Could not read original trace input.",
-                )
-            )
-            continue
+    for case in cases:
         try:
-            new_output = agent_callable(original_input)
+            new_output = agent_callable(case.inputs)
         except Exception as exc:
             per_trace.append(
                 TraceVerification(
-                    trace_id=tid,
+                    trace_id=case.trace_id,
                     passed=False,
                     rationale=f"agent_callable raised: {exc!r}",
                 )
@@ -380,8 +451,8 @@ def verify(
                     "content": (
                         f"Issue: {issue.name}\n"
                         f"Description: {issue.description}\n\n"
-                        f"Original input: {original_input}\n"
-                        f"Original output: {original_output}\n\n"
+                        f"Original input: {case.inputs}\n"
+                        f"Original output: {case.original_output}\n\n"
                         f"New output: {new_output}\n"
                     ),
                 },
@@ -391,7 +462,7 @@ def verify(
         verdict = _JudgeVerdict.model_validate_json(verdict_json)
         per_trace.append(
             TraceVerification(
-                trace_id=tid,
+                trace_id=case.trace_id,
                 passed=verdict.passed,
                 rationale=verdict.rationale,
             )
