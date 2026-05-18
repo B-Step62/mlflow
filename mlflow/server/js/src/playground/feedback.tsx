@@ -217,12 +217,16 @@ export const FloatingAnnotateButton = ({
 
 // --- Persistence -------------------------------------------------------------
 
-const ASSESSMENT_NAME = 'playground.feedback';
+export const ASSESSMENT_NAME = 'playground.feedback';
 
 /**
  * Persist a new feedback as a Feedback assessment on the source trace.
  * Returns the server's authoritative assessment_id so the optimistic UI
  * row can be reconciled.
+ *
+ * ``assessment_name`` and ``source_id`` are configurable so the same
+ * machinery can be reused for inline comments in the trace UI (or any
+ * other surface) with its own namespace.
  */
 export const persistFeedback = async (input: {
   trace_id: string;
@@ -230,6 +234,8 @@ export const persistFeedback = async (input: {
   aspect: Aspect;
   expected_output?: string;
   anchor: AssistantMessageAnchor;
+  assessment_name?: string;
+  source_id?: string;
 }): Promise<{ assessment_id: string }> => {
   const metadata: { [k: string]: string } = {
     anchor: JSON.stringify(input.anchor),
@@ -241,9 +247,9 @@ export const persistFeedback = async (input: {
   }
   const body = {
     assessment: {
-      assessment_name: ASSESSMENT_NAME,
+      assessment_name: input.assessment_name ?? ASSESSMENT_NAME,
       trace_id: input.trace_id,
-      source: { source_type: 'HUMAN', source_id: 'playground-cockpit' },
+      source: { source_type: 'HUMAN', source_id: input.source_id ?? 'playground-cockpit' },
       rationale: input.rationale,
       metadata,
       feedback: { value: input.aspect },
@@ -283,11 +289,12 @@ export const feedbacksFromTraceAssessments = (
         valid?: boolean;
       }>
     | undefined,
+  assessmentName: string = ASSESSMENT_NAME,
 ): PlaygroundFeedback[] => {
   if (!assessments) return [];
   const out: PlaygroundFeedback[] = [];
   for (const a of assessments) {
-    if (a.assessment_name !== ASSESSMENT_NAME) continue;
+    if (a.assessment_name !== assessmentName) continue;
     if (a.valid === false) continue;
     const rawAnchor = a.metadata?.['anchor'];
     if (!rawAnchor) continue;
@@ -555,10 +562,19 @@ export const InlineCommentMarks = ({
   feedbacks,
   onClickMark,
   children,
+  className,
+  containerProps,
 }: {
   feedbacks: PlaygroundFeedback[];
   onClickMark: (click: InlineCommentClick) => void;
   children: ReactNode;
+  // Optional class on the wrapping `<div>` so consumers can opt into
+  // flex / overflow layouts without breaking the playground usage.
+  className?: string;
+  // Additional attributes (e.g. `data-mlflow-feedback-anchor`) spread onto
+  // the wrapping `<div>`. Lets a single element carry both the marks
+  // overlay and the selection anchor.
+  containerProps?: React.HTMLAttributes<HTMLDivElement>;
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Stable source for the click handler — the rendered <mark> nodes look up
@@ -602,7 +618,7 @@ export const InlineCommentMarks = ({
   );
 
   return (
-    <div ref={containerRef} onClick={handleClick}>
+    <div ref={containerRef} onClick={handleClick} className={className} {...containerProps}>
       {children}
     </div>
   );

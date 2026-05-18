@@ -11,21 +11,52 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   Alert,
+  BeakerIcon,
   Button,
   ChevronDownIcon,
+  ChevronUpIcon,
   Drawer,
   DropdownMenu,
+  LinkIcon,
+  Modal,
+  RobotIcon,
+  SparkleIcon,
   Spinner,
   Tag,
   Typography,
+  UserIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 
+import { GenAIMarkdownRenderer } from '../shared/web-shared/genai-markdown-renderer/GenAIMarkdownRenderer';
 import {
   getAjaxUrl,
   getDefaultHeaders,
 } from '../shared/web-shared/model-trace-explorer/ModelTraceExplorer.request.utils';
 import { useConnections, type AgentConnection } from './connections';
+
+// Build a hash-router URL for a trace detail page given an experiment id.
+const _traceUrl = (experimentId: string, traceId: string): string =>
+  `#/experiments/${encodeURIComponent(experimentId)}/traces/${encodeURIComponent(traceId)}`;
+
+const _datasetsUrl = (experimentId: string): string =>
+  `#/experiments/${encodeURIComponent(experimentId)}/datasets`;
+
+// Truncate an MLflow ID for display so the rail stays scannable. Keeps the
+// type prefix (e.g. ``tr-`` / ``d-`` / ``iss-``) plus 10 characters of the
+// id body and appends an ellipsis. The full id is still available via the
+// link href and `title` tooltip.
+const _truncateId = (id: string): string => {
+  if (!id) return '';
+  const dashIdx = id.indexOf('-');
+  if (dashIdx === -1 || dashIdx > 5) {
+    return id.length > 10 ? `${id.slice(0, 10)}…` : id;
+  }
+  const prefix = id.slice(0, dashIdx + 1);
+  const rest = id.slice(dashIdx + 1);
+  if (rest.length <= 10) return id;
+  return `${prefix}${rest.slice(0, 10)}…`;
+};
 
 // --- Types -------------------------------------------------------------------
 
@@ -928,6 +959,12 @@ const IssueComments = ({ issueId }: { issueId: string }) => {
     }
   }, [draft, issueId, refresh]);
 
+  // Show the most-recent 2 comments by default; "Show all" reveals the rest.
+  const [expanded, setExpanded] = useState(false);
+  const COLLAPSED_COUNT = 2;
+  const collapsedHidden = Math.max(0, comments.length - COLLAPSED_COUNT);
+  const visibleComments = expanded ? comments : comments.slice(-COLLAPSED_COUNT);
+
   return (
     <div
       css={{
@@ -948,38 +985,88 @@ const IssueComments = ({ issueId }: { issueId: string }) => {
           onClose={() => setError(null)}
         />
       )}
-      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-        {comments.length === 0 && (
-          <Typography.Text color="secondary" size="sm">
-            No activity yet.
-          </Typography.Text>
-        )}
-        {comments.map((c) => (
-          <div key={c.comment_id} css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'baseline' }}>
-              <Typography.Text css={{ fontWeight: 600 }} size="sm">
-                {c.author}
-              </Typography.Text>
-              <Typography.Text color="secondary" size="sm">
-                {formatRelativeTime(c.created_timestamp)}
-              </Typography.Text>
-            </div>
-            <pre
+      {comments.length === 0 && (
+        <Typography.Text color="secondary" size="sm">
+          No activity yet.
+        </Typography.Text>
+      )}
+      {/* Collapse toggle, shown only when we're hiding older comments. */}
+      {!expanded && collapsedHidden > 0 && (
+        <Button
+          componentId="mlflow.issue-detail.activity-expand"
+          type="link"
+          onClick={() => setExpanded(true)}
+          css={{ alignSelf: 'flex-start', paddingLeft: 0 }}
+        >
+          {`Show ${collapsedHidden} older comment${collapsedHidden === 1 ? '' : 's'}`}
+        </Button>
+      )}
+      {expanded && comments.length > COLLAPSED_COUNT && (
+        <Button
+          componentId="mlflow.issue-detail.activity-collapse"
+          type="link"
+          onClick={() => setExpanded(false)}
+          css={{ alignSelf: 'flex-start', paddingLeft: 0 }}
+        >
+          Collapse
+        </Button>
+      )}
+      <div css={{ display: 'flex', flexDirection: 'column' }}>
+        {visibleComments.map((c, i) => {
+          const isLast = i === visibleComments.length - 1;
+          return (
+            <div
+              key={c.comment_id}
               css={{
-                margin: 0,
-                fontFamily: 'inherit',
-                fontSize: theme.typography.fontSizeBase,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                color: c.kind === 'system' ? theme.colors.textSecondary : theme.colors.textPrimary,
+                position: 'relative',
+                display: 'flex',
+                gap: theme.spacing.sm,
+                paddingBottom: isLast ? 0 : theme.spacing.md,
+                // Vertical connecting line between consecutive avatars. The
+                // line starts just below the avatar (28px = 24px avatar + 4px
+                // gap) and extends to the next row, mirroring Linear / Jira
+                // activity feeds.
+                ...(!isLast && {
+                  '::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 11,
+                    top: 28,
+                    bottom: 0,
+                    width: 1,
+                    backgroundColor: theme.colors.border,
+                  },
+                }),
               }}
             >
-              {c.body}
-            </pre>
-          </div>
-        ))}
+              <ActivityIcon author={c.author} kind={c.kind} />
+              <div css={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'baseline' }}>
+                  <Typography.Text css={{ fontWeight: 600 }} size="sm">
+                    {c.author}
+                  </Typography.Text>
+                  <Typography.Text color="secondary" size="sm">
+                    · {formatRelativeTime(c.created_timestamp)}
+                  </Typography.Text>
+                </div>
+                <pre
+                  css={{
+                    margin: 0,
+                    fontFamily: 'inherit',
+                    fontSize: theme.typography.fontSizeBase,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    color: c.kind === 'system' ? theme.colors.textSecondary : theme.colors.textPrimary,
+                  }}
+                >
+                  {c.body}
+                </pre>
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, marginTop: theme.spacing.sm }}>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -1107,29 +1194,158 @@ const IssueStatusDropdown = ({
   );
 };
 
+// --- Issue description parsing ----------------------------------------------
+//
+// Issues created by the failure-driven loop carry a machine-readable lineage
+// block at the bottom of their description (see `mlflow.genai.issues`). We
+// parse it out here so the right rail can render the structured fields and
+// the left column can show only the human-readable body.
+
+const _LINEAGE_MARKER = '<!-- mlflow.issue.lineage -->';
+
+type IssueLineage = {
+  member_feedback_ids?: string[];
+  representative_trace_ids?: string[];
+  confidence?: number;
+  test_dataset_id?: string;
+};
+
+const _parseLineage = (description: string): IssueLineage => {
+  if (!description.includes(_LINEAGE_MARKER)) return {};
+  const match = description.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+  if (!match) return {};
+  try {
+    return JSON.parse(match[1]) as IssueLineage;
+  } catch {
+    return {};
+  }
+};
+
+const _bodyWithoutLineage = (description: string): string => {
+  if (!description.includes(_LINEAGE_MARKER)) return description;
+  return description.split(_LINEAGE_MARKER)[0].trimEnd();
+};
+
+const _formatTimestamp = (ms: number | undefined): string => {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleString();
+};
+
+// Renders one row in the Details rail. Keeps the label / value alignment
+// consistent across both populated and empty values. Accepts an optional
+// leading icon to make the rail scannable at a glance.
+const DetailRow = ({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+        {icon && (
+          <span css={{ color: theme.colors.textSecondary, display: 'inline-flex' }}>{icon}</span>
+        )}
+        <Typography.Text color="secondary" size="sm">
+          {label}
+        </Typography.Text>
+      </div>
+      <div css={{ fontSize: theme.typography.fontSizeSm }}>{children}</div>
+    </div>
+  );
+};
+
+// Deterministic hue for an author so two people don't get the same avatar.
+const _avatarHue = (name: string): number => {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+};
+
+const _isSystemActor = (author: string): boolean =>
+  author.includes('.') || /verify|agent|claude|bot|mlflow|gpt|model/i.test(author);
+
+const _authorInitials = (name: string): string => {
+  const parts = name.replace(/[._-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+const ActivityIcon = ({ author, kind }: { author: string; kind?: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const sz = 24;
+  if (kind === 'system' || _isSystemActor(author)) {
+    return (
+      <div
+        css={{
+          width: sz,
+          height: sz,
+          borderRadius: '50%',
+          backgroundColor: theme.colors.backgroundSecondary,
+          color: theme.colors.textSecondary,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          fontSize: 14,
+        }}
+      >
+        <RobotIcon />
+      </div>
+    );
+  }
+  const hue = _avatarHue(author);
+  return (
+    <div
+      css={{
+        width: sz,
+        height: sz,
+        borderRadius: '50%',
+        backgroundColor: `hsl(${hue}, 55%, 55%)`,
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: 0.5,
+      }}
+    >
+      {_authorInitials(author)}
+    </div>
+  );
+};
+
 export const IssueDetailDrawer = ({
   issueId,
   visible,
   onClose,
   onIssueUpdated,
-  experimentId,
+  onNavigate,
 }: {
   issueId: string | null;
   visible: boolean;
   onClose: () => void;
   onIssueUpdated?: (issue: IssueDetail) => void;
-  // Used to build the "Test in playground →" deeplink on workers in review.
-  // When omitted (legacy callers) the worker section degrades gracefully —
-  // dispatch + status display still work, only the deeplink button hides.
+  // Reserved for future use (e.g. trace deeplinks). Accepted to preserve
+  // existing call sites without forcing them to drop the prop.
   experimentId?: string;
+  // Called when the user navigates to a sibling issue in the same column
+  // via arrow keys or the header up/down buttons. Parent updates its
+  // ``issueId`` state to the new id.
+  onNavigate?: (issueId: string) => void;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [issue, setIssue] = useState<IssueDetail | null>(null);
-  const [testCase, setTestCase] = useState<TestCaseRow | null>(null);
+  const [siblings, setSiblings] = useState<IssueDetail[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [verdict, setVerdict] = useState<RunTestVerdict | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
@@ -1154,20 +1370,15 @@ export const IssueDetailDrawer = ({
   useEffect(() => {
     if (!visible || !issueId) {
       setIssue(null);
-      setTestCase(null);
       setLoadError(null);
-      setVerdict(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    // Fetch issue and test case in parallel; a missing test case (404) is
-    // expected for issues whose generation hasn't completed yet.
-    Promise.all([fetchIssue(issueId), fetchIssueTestCase(issueId).catch(() => null)])
-      .then(([issueData, testCaseData]) => {
+    fetchIssue(issueId)
+      .then((issueData) => {
         if (cancelled) return;
         setIssue(issueData);
-        setTestCase(testCaseData);
         setLoadError(null);
       })
       .catch((e) => {
@@ -1182,164 +1393,296 @@ export const IssueDetailDrawer = ({
     };
   }, [visible, issueId]);
 
-  const onRunTest = useCallback(async () => {
-    if (!issueId) return;
-    setRunning(true);
-    setVerdict(null);
-    try {
-      const result = await runIssueTest(issueId);
-      setVerdict(result);
-      // Refresh the issue so the status reflects any transition.
-      const refreshed = await fetchIssue(issueId);
-      setIssue(refreshed);
-      onIssueUpdated?.(refreshed);
-    } catch (e) {
-      setVerdict({
-        passed: false,
-        reasons: [e instanceof Error ? e.message : String(e)],
-        strategy: 'error',
-        judge_reasoning: null,
-        issue_status: issue?.status ?? 'unknown',
-        agent_response_text: '',
-        agent_tool_calls: [],
+  // Fetch the column siblings whenever the active issue's experiment changes,
+  // so up/down navigation can target only issues in the same column. We
+  // intentionally don't refetch on every status transition — the order is
+  // stable enough for keyboard nav within a single session.
+  const experimentForSiblings = issue?.experiment_id;
+  useEffect(() => {
+    if (!visible || !experimentForSiblings) return;
+    let cancelled = false;
+    fetchIssues(experimentForSiblings)
+      .then((all) => {
+        if (!cancelled) setSiblings(all);
+      })
+      .catch(() => {
+        // Navigation is a nicety; failing to load siblings is non-fatal.
+        if (!cancelled) setSiblings([]);
       });
-    } finally {
-      setRunning(false);
-    }
-  }, [issueId, issue?.status, onIssueUpdated]);
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, experimentForSiblings]);
+
+  const lineage = useMemo<IssueLineage>(() => (issue ? _parseLineage(issue.description) : {}), [issue]);
+  const body = useMemo(() => (issue ? _bodyWithoutLineage(issue.description) : ''), [issue]);
+  const representativeTraces = lineage.representative_trace_ids ?? [];
+  const memberFeedbackIds = lineage.member_feedback_ids ?? [];
+
+  // Compute prev / next issue in the same column. Mirrors the kanban sort
+  // (last_updated_timestamp desc) so the keyboard order matches what the
+  // user sees on the board.
+  const issueStatus = issue?.status;
+  const columnSorted = useMemo(() => {
+    if (!issueStatus) return [] as IssueDetail[];
+    return siblings
+      .filter((s) => s.status === issueStatus)
+      .sort((a, b) => (b.last_updated_timestamp ?? 0) - (a.last_updated_timestamp ?? 0));
+  }, [siblings, issueStatus]);
+
+  const currentIssueId = issue?.issue_id;
+  const navIndex = useMemo(
+    () => (currentIssueId ? columnSorted.findIndex((s) => s.issue_id === currentIssueId) : -1),
+    [columnSorted, currentIssueId],
+  );
+  const prevId = navIndex > 0 ? columnSorted[navIndex - 1].issue_id : null;
+  const nextId = navIndex >= 0 && navIndex < columnSorted.length - 1 ? columnSorted[navIndex + 1].issue_id : null;
+
+  const goTo = useCallback(
+    (target: string | null) => {
+      if (!target || !onNavigate) return;
+      onNavigate(target);
+    },
+    [onNavigate],
+  );
+
+  // Arrow-key navigation. Only fires when the modal is visible and focus
+  // isn't inside an editable element (so typing in the comment textarea
+  // doesn't accidentally jump issues).
+  useEffect(() => {
+    if (!visible) return undefined;
+    const isEditable = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target)) return;
+      if (e.key === 'ArrowDown' && nextId) {
+        e.preventDefault();
+        goTo(nextId);
+      } else if (e.key === 'ArrowUp' && prevId) {
+        e.preventDefault();
+        goTo(prevId);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible, prevId, nextId, goTo]);
 
   return (
-    <Drawer.Root open={visible} onOpenChange={(open) => !open && onClose()}>
-      <Drawer.Content
-        componentId="mlflow.playground.issue-detail.drawer"
-        title={issue ? `Issue ${issue.issue_id}` : 'Issue'}
-        width="640px"
-      >
-        <div
-          css={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: theme.spacing.md,
-            padding: theme.spacing.md,
-            height: '100%',
-            overflowY: 'auto',
-          }}
-        >
-          {loading && (
-            <div css={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.lg }}>
-              <Spinner />
-            </div>
-          )}
-          {loadError && <Alert componentId="mlflow.playground.issue-detail.error" type="error" message={loadError} />}
-          {issue && (
+    <Modal
+      visible={visible}
+      onCancel={onClose}
+      componentId="mlflow.issue-detail.modal"
+      title={
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <Typography.Text color="secondary" size="sm">
+            ISSUE / <code title={issueId ?? ''}>{issueId ? _truncateId(issueId) : ''}</code>
+          </Typography.Text>
+          {columnSorted.length > 1 && (
             <>
-              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <IssueStatusDropdown status={issue.status} busy={transitioning} onTransition={onTransitionStatus} />
-                <Typography.Text css={{ fontWeight: 600 }}>{issue.name}</Typography.Text>
-              </div>
-              {transitionError && (
-                <Alert
-                  componentId="mlflow.playground.issue-detail.transition-error"
-                  type="error"
-                  message={transitionError}
-                  closable
-                  onClose={() => setTransitionError(null)}
-                />
-              )}
-              <div>
-                <Typography.Text color="secondary" size="sm">
-                  Description
-                </Typography.Text>
-                <Typography.Paragraph>{issue.description}</Typography.Paragraph>
-              </div>
-              <div
-                css={{
-                  display: 'grid',
-                  gridTemplateColumns: 'auto 1fr',
-                  columnGap: theme.spacing.md,
-                  rowGap: theme.spacing.xs,
-                  fontFamily: 'monospace',
-                  fontSize: theme.typography.fontSizeSm,
-                }}
-              >
-                {issue.source_trace_id && (
-                  <>
-                    <Typography.Text color="secondary">trace</Typography.Text>
-                    <Typography.Text>{issue.source_trace_id}</Typography.Text>
-                  </>
-                )}
-                {issue.source_feedback_id && (
-                  <>
-                    <Typography.Text color="secondary">feedback</Typography.Text>
-                    <Typography.Text>{issue.source_feedback_id}</Typography.Text>
-                  </>
-                )}
-                {issue.test_case_id && (
-                  <>
-                    <Typography.Text color="secondary">test_case</Typography.Text>
-                    <Typography.Text>{issue.test_case_id}</Typography.Text>
-                  </>
-                )}
-                {issue.assignee && (
-                  <>
-                    <Typography.Text color="secondary">assignee</Typography.Text>
-                    <Typography.Text>{issue.assignee}</Typography.Text>
-                  </>
-                )}
-              </div>
-
-              <TestCasePanel testCase={testCase} />
-
-              <IssueComments issueId={issue.issue_id} />
-
-              <div
-                css={{
-                  borderTop: `1px solid ${theme.colors.border}`,
-                  paddingTop: theme.spacing.md,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: theme.spacing.sm,
-                }}
-              >
-                <Typography.Text css={{ fontWeight: 600 }}>Manual fix (escape hatch)</Typography.Text>
-                <Typography.Text color="secondary" size="sm">
-                  Replays this Issue's test against the local agent. On a pass, the Issue auto-transitions to{' '}
-                  <code>done</code>.
-                </Typography.Text>
-                <div>
-                  <Button
-                    componentId="mlflow.playground.issue-detail.run-test"
-                    type="primary"
-                    onClick={onRunTest}
-                    disabled={running || issue.status === 'done' || issue.status === 'rejected'}
-                  >
-                    {running ? 'Running…' : 'I fixed this — run test'}
-                  </Button>
-                </div>
-                {verdict && <VerdictView verdict={verdict} />}
-                {verdict && !verdict.passed && (
-                  <div
-                    css={{
-                      borderTop: `1px solid ${theme.colors.border}`,
-                      paddingTop: theme.spacing.sm,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: theme.spacing.xs,
-                    }}
-                  >
-                    <Typography.Text size="sm" color="secondary">
-                      Need a hand fixing this? Copy a ready-made prompt and paste it into a local Claude Code session —
-                      it includes the test spec, the conversation prefix, and what just failed.
-                    </Typography.Text>
-                    <CopyFixPromptButton issue={issue} testCase={testCase} verdict={verdict} />
-                  </div>
-                )}
-              </div>
+              <Typography.Text color="secondary" size="sm">
+                {navIndex >= 0 && issue
+                  ? `${navIndex + 1} / ${columnSorted.length} in ${STATUS_LABEL[issue.status as PlaygroundStatus] ?? issue.status}`
+                  : ''}
+              </Typography.Text>
+              <Button
+                componentId="mlflow.issue-detail.nav-prev"
+                size="small"
+                icon={<ChevronUpIcon />}
+                disabled={!prevId}
+                onClick={() => goTo(prevId)}
+                aria-label="Previous issue in column (↑)"
+                title="Previous issue in column (↑)"
+              />
+              <Button
+                componentId="mlflow.issue-detail.nav-next"
+                size="small"
+                icon={<ChevronDownIcon />}
+                disabled={!nextId}
+                onClick={() => goTo(nextId)}
+                aria-label="Next issue in column (↓)"
+                title="Next issue in column (↓)"
+              />
             </>
           )}
         </div>
-      </Drawer.Content>
-    </Drawer.Root>
+      }
+      size="wide"
+      verticalSizing="maxed_out"
+      footer={null}
+    >
+      {loading && (
+        <div css={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.lg }}>
+          <Spinner />
+        </div>
+      )}
+      {loadError && (
+        <Alert componentId="mlflow.issue-detail.error" type="error" message={loadError} />
+      )}
+      {issue && (
+        <div
+          css={{
+            display: 'grid',
+            // Jira-style: wider left column for content, narrower right rail.
+            gridTemplateColumns: 'minmax(0, 1fr) 280px',
+            columnGap: theme.spacing.lg,
+            paddingTop: theme.spacing.md,
+          }}
+        >
+          {/* ---- Left column: title, description (markdown), comments ---- */}
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, minWidth: 0 }}>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, lineHeight: 1 }}>
+              <SparkleIcon
+                css={{
+                  color: theme.colors.purple,
+                  fontSize: 22,
+                  flexShrink: 0,
+                }}
+                aria-hidden="true"
+              />
+              <Typography.Title level={3} css={{ margin: 0, lineHeight: 1.2 }}>
+                {issue.name}
+              </Typography.Title>
+            </div>
+            {transitionError && (
+              <Alert
+                componentId="mlflow.issue-detail.transition-error"
+                type="error"
+                message={transitionError}
+                closable
+                onClose={() => setTransitionError(null)}
+              />
+            )}
+
+            {body ? (
+              <div
+                css={{
+                  backgroundColor: theme.colors.backgroundSecondary,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.borders.borderRadiusSm,
+                  padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+                }}
+              >
+                <GenAIMarkdownRenderer>{body}</GenAIMarkdownRenderer>
+              </div>
+            ) : (
+              <Typography.Text color="secondary" size="sm">
+                <em>(no description)</em>
+              </Typography.Text>
+            )}
+
+            {/* IssueComments renders its own "Activity" heading + border. */}
+            <IssueComments issueId={issue.issue_id} />
+          </div>
+
+          {/* ---- Right rail: details + linked artifacts ---- */}
+          <div
+            css={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.md,
+              borderLeft: `1px solid ${theme.colors.border}`,
+              paddingLeft: theme.spacing.lg,
+              minWidth: 0,
+            }}
+          >
+            <Typography.Text css={{ fontWeight: 600 }}>Details</Typography.Text>
+            <DetailRow label="Status">
+              <IssueStatusDropdown
+                status={issue.status}
+                busy={transitioning}
+                onTransition={onTransitionStatus}
+              />
+            </DetailRow>
+            {typeof lineage.confidence === 'number' && (
+              <DetailRow
+                label="Confidence"
+                icon={<SparkleIcon />}
+              >{`${Math.round(lineage.confidence * 100)}%`}</DetailRow>
+            )}
+            <DetailRow label="Reporter" icon={<UserIcon />}>
+              {issue.assignee || '—'}
+            </DetailRow>
+            <DetailRow label="Created">{_formatTimestamp(issue.created_timestamp)}</DetailRow>
+            <DetailRow label="Updated">{_formatTimestamp(issue.last_updated_timestamp)}</DetailRow>
+
+            <div
+              css={{
+                borderTop: `1px solid ${theme.colors.border}`,
+                paddingTop: theme.spacing.sm,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: theme.spacing.sm,
+              }}
+            >
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                <LinkIcon css={{ color: theme.colors.textSecondary }} />
+                <Typography.Text css={{ fontWeight: 600 }}>Linked artifacts</Typography.Text>
+              </div>
+              {issue.source_trace_id && (
+                <DetailRow label="Source trace">
+                  <Typography.Link
+                    componentId="mlflow.issue-detail.linked.source-trace"
+                    href={_traceUrl(issue.experiment_id, issue.source_trace_id)}
+                    openInNewTab
+                    title={issue.source_trace_id}
+                    css={{ fontFamily: 'monospace' }}
+                  >
+                    {_truncateId(issue.source_trace_id)}
+                  </Typography.Link>
+                </DetailRow>
+              )}
+              {representativeTraces.length > 0 && (
+                <DetailRow label={`Representative traces (${representativeTraces.length})`}>
+                  <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {representativeTraces.map((tid) => (
+                      <Typography.Link
+                        componentId="mlflow.issue-detail.linked.repr-trace"
+                        key={tid}
+                        href={_traceUrl(issue.experiment_id, tid)}
+                        openInNewTab
+                        title={tid}
+                        css={{ fontFamily: 'monospace', fontSize: theme.typography.fontSizeSm }}
+                      >
+                        {_truncateId(tid)}
+                      </Typography.Link>
+                    ))}
+                  </div>
+                </DetailRow>
+              )}
+              {memberFeedbackIds.length > 0 && (
+                <DetailRow label="Source feedback">{memberFeedbackIds.length} item(s)</DetailRow>
+              )}
+              {lineage.test_dataset_id && (
+                <DetailRow label="Test dataset" icon={<BeakerIcon />}>
+                  <Typography.Link
+                    componentId="mlflow.issue-detail.linked.test-dataset"
+                    href={_datasetsUrl(issue.experiment_id)}
+                    openInNewTab
+                    title={lineage.test_dataset_id}
+                    css={{ fontFamily: 'monospace' }}
+                  >
+                    {_truncateId(lineage.test_dataset_id)}
+                  </Typography.Link>
+                </DetailRow>
+              )}
+              {issue.test_case_id && (
+                <DetailRow label="Test case">
+                  <code css={{ wordBreak: 'break-all' }}>{issue.test_case_id}</code>
+                </DetailRow>
+              )}
+              {issue.source_feedback_id && (
+                <DetailRow label="Source feedback id">
+                  <code css={{ wordBreak: 'break-all' }}>{issue.source_feedback_id}</code>
+                </DetailRow>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 };
 
