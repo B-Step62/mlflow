@@ -75,6 +75,20 @@ export const isWorkspaceAdminRole = (role: Role): boolean =>
   ) ?? false;
 
 /**
+ * Matches the backend's reserved ``__user_<id>__`` namespace for per-user
+ * synthetic roles. These rows back direct (non-role) permission grants
+ * and should never appear in human-facing role tables or pickers; direct
+ * grants are surfaced via the per-user permission APIs instead. Kept in
+ * sync with ``SqlAlchemyStore._SYNTHETIC_ROLE_NAME_RE``.
+ */
+const SYNTHETIC_ROLE_NAME_RE = /^__user_\d+__$/;
+
+export const isSyntheticRoleName = (name: string | null | undefined): boolean =>
+  typeof name === 'string' && SYNTHETIC_ROLE_NAME_RE.test(name);
+
+export const isSyntheticRole = (role: Role): boolean => isSyntheticRoleName(role.name);
+
+/**
  * Mirrors ``mlflow.utils.workspace_utils.DEFAULT_WORKSPACE_NAME``. Used
  * to filter out stale non-default rows in single-tenant mode, where the
  * Workspace column is hidden.
