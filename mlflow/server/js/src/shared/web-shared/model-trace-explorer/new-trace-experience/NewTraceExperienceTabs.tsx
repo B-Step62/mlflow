@@ -106,27 +106,42 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
         },
       }}
     >
-      <Tabs.List css={{ paddingLeft: theme.spacing.md, flexShrink: 0 }}>
+      <Tabs.List
+        css={{
+          paddingLeft: theme.spacing.lg,
+          flexShrink: 0,
+          // DS Tabs default is tight, with the selected underline butting up
+          // against the trigger label. Push the strip down so the labels and
+          // their underline indicator have breathing room.
+          minHeight: 48,
+          '& [role="tab"]': {
+            height: 48,
+            marginRight: theme.spacing.lg,
+            // Lift the label off the bottom underline indicator.
+            paddingBottom: theme.spacing.sm,
+          },
+        }}
+      >
         <Tabs.Trigger value="trace">
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <ListBorderIcon />
             {traceLabel}
           </span>
         </Tabs.Trigger>
         <Tabs.Trigger value="timeline">
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <BarsAscendingVerticalIcon />
             {timelineLabel}
           </span>
         </Tabs.Trigger>
         <Tabs.Trigger value="graph">
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <WorkflowsIcon />
             {graphLabel}
           </span>
         </Tabs.Trigger>
         <Tabs.Trigger value="lineage">
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <BranchIcon />
             {lineageLabel}
           </span>
