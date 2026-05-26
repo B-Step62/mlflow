@@ -1,7 +1,7 @@
 import { values } from 'lodash';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { useDesignSystemTheme } from '@databricks/design-system';
+import { ChevronRightIcon, Tooltip, useDesignSystemTheme } from '@databricks/design-system';
 
 import type { ModelTrace, ModelTraceSpanNode } from '../ModelTrace.types';
 import ModelTraceExplorerResizablePane from '../ModelTraceExplorerResizablePane';
@@ -32,6 +32,7 @@ export const NewTraceExperienceTraceTab = ({
   const { topLevelNodes, selectedNode, setSelectedNode } = useModelTraceExplorerViewState();
   const paneRef = useRef<ModelTraceExplorerResizablePaneRef>(null);
   const [paneWidth, setPaneWidth] = useState(() => Math.round(window.innerWidth * DEFAULT_TREE_PANE_RATIO * 0.5));
+  const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
 
   useLayoutEffect(() => {
     const list = values(getTimelineTreeNodesMap(filteredTreeNodes, DEFAULT_EXPAND_DEPTH)).map((node) => node.key);
@@ -90,6 +91,46 @@ export const NewTraceExperienceTraceTab = ({
     </div>
   );
 
+  if (isTreeCollapsed) {
+    return (
+      <div css={{ display: 'flex', flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <Tooltip componentId="trace-ui.expand-tree" content="Expand span tree">
+          <button
+            type="button"
+            aria-label="Expand span tree"
+            onClick={() => setIsTreeCollapsed(false)}
+            css={{
+              position: 'absolute',
+              top: '50%',
+              left: theme.spacing.sm,
+              transform: 'translateY(-50%)',
+              width: 24,
+              height: 24,
+              padding: 0,
+              borderRadius: '50%',
+              border: `1px solid ${theme.colors.border}`,
+              backgroundColor: theme.colors.backgroundPrimary,
+              color: theme.colors.textSecondary,
+              boxShadow: theme.shadows.sm,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 2,
+              ':hover': {
+                color: theme.colors.textPrimary,
+                backgroundColor: theme.colors.backgroundSecondary,
+              },
+            }}
+          >
+            <ChevronRightIcon css={{ fontSize: 12 }} />
+          </button>
+        </Tooltip>
+        <NewTraceExperienceRightPane modelTraceInfo={modelTraceInfo} />
+      </div>
+    );
+  }
+
   return (
     <ModelTraceExplorerResizablePane
       ref={paneRef}
@@ -100,6 +141,8 @@ export const NewTraceExperienceTraceTab = ({
       leftMinWidth={TREE_MIN_WIDTH}
       rightChild={<NewTraceExperienceRightPane modelTraceInfo={modelTraceInfo} />}
       rightMinWidth={RIGHT_MIN_WIDTH}
+      onCollapseLeft={() => setIsTreeCollapsed(true)}
+      collapseLeftAriaLabel="Collapse span tree"
     />
   );
 };

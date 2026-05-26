@@ -4,7 +4,7 @@ import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, u
 import { ResizableBox } from 'react-resizable';
 import { useDebouncedCallback } from 'use-debounce';
 
-import { useDesignSystemTheme } from '@databricks/design-system';
+import { ChevronLeftIcon, useDesignSystemTheme } from '@databricks/design-system';
 
 import { useResizeObserver } from '../hooks/useResizeObserver';
 
@@ -17,6 +17,10 @@ interface ModelTraceExplorerResizablePaneProps {
   rightChild: React.ReactNode;
   rightMinWidth: number;
   onRatioChange?: (ratio: number) => void;
+  // Optional: when provided, the splitter renders a hover-revealed
+  // circled chevron button that collapses the left pane.
+  onCollapseLeft?: () => void;
+  collapseLeftAriaLabel?: string;
 }
 
 export interface ModelTraceExplorerResizablePaneRef {
@@ -37,8 +41,18 @@ const ModelTraceExplorerResizablePane = forwardRef<
   ModelTraceExplorerResizablePaneProps
   // eslint-disable-next-line react-component-name/react-component-name -- TODO(FEINF-4716)
 >((props, ref) => {
-  const { initialRatio, paneWidth, setPaneWidth, leftChild, leftMinWidth, rightChild, rightMinWidth, onRatioChange } =
-    props;
+  const {
+    initialRatio,
+    paneWidth,
+    setPaneWidth,
+    leftChild,
+    leftMinWidth,
+    rightChild,
+    rightMinWidth,
+    onRatioChange,
+    onCollapseLeft,
+    collapseLeftAriaLabel,
+  } = props;
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const containerWidth = useResizeObserver({ ref: containerRef })?.width;
@@ -112,8 +126,56 @@ const ModelTraceExplorerResizablePane = forwardRef<
                 ':hover': {
                   backgroundColor: `rgba(0,0,0,0.1)`,
                 },
+                '&:hover .splitter-collapse-btn, & .splitter-collapse-btn:hover': {
+                  opacity: 1,
+                  pointerEvents: 'auto',
+                },
               }}
-            />
+            >
+              {onCollapseLeft && (
+                <button
+                  type="button"
+                  aria-label={collapseLeftAriaLabel ?? 'Collapse left pane'}
+                  className="splitter-collapse-btn"
+                  onMouseDown={(e) => {
+                    // Prevent the ResizableBox handle from starting a drag.
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCollapseLeft();
+                  }}
+                  css={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 24,
+                    height: 24,
+                    padding: 0,
+                    borderRadius: '50%',
+                    border: `1px solid ${theme.colors.border}`,
+                    backgroundColor: theme.colors.backgroundPrimary,
+                    color: theme.colors.textSecondary,
+                    boxShadow: theme.shadows.sm,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0,
+                    pointerEvents: 'none',
+                    transition: 'opacity 0.12s ease',
+                    zIndex: 2,
+                    ':hover': {
+                      color: theme.colors.textPrimary,
+                      backgroundColor: theme.colors.backgroundSecondary,
+                    },
+                  }}
+                >
+                  <ChevronLeftIcon css={{ fontSize: 12 }} />
+                </button>
+              )}
+            </div>
           </div>
         }
         onResize={(e, { size }) => {
