@@ -57,20 +57,19 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
     >
       <div
         css={{
-          // Left pane wrapper = visible content width + gutter for the
-          // scrollbar. The visible content (tree rows) lives in the
-          // LEFT_PANE_WIDTH area; the vertical scrollbar lives in the
-          // SCROLLBAR_GUTTER strip to the right of that content, before the
-          // divider. So the scrollbar never overlaps the visible left panel.
+          // Left pane wrapper. Width = visible tree column + a fixed-width
+          // empty strip on the right where the scrollbar lives. The
+          // scrollable area itself is constrained to LEFT_PANE_WIDTH, so the
+          // scrollbar sits at x = LEFT_PANE_WIDTH with a clear gutter of
+          // SCROLLBAR_GUTTER pixels between it and the divider. The
+          // scrollbar therefore never sits flush against the left panel's
+          // right border, and never visually overlaps the tree rows.
           width: LEFT_PANE_WIDTH + SCROLLBAR_GUTTER,
           flexShrink: 0,
           borderRight: `1px solid ${theme.colors.borderDecorative}`,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          // Inset the selected-row background so it reads as a rounded chip
-          // with breathing room from the pane edges, instead of a full-bleed
-          // blue bar.
           '& [data-testid^="timeline-tree-node-"]': {
             marginLeft: theme.spacing.xs,
             marginRight: theme.spacing.xs,
@@ -83,8 +82,12 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
       >
         <div
           css={{
+            // Constrain the scrollable column so the scrollbar lives at
+            // x = LEFT_PANE_WIDTH, not at the wrapper's right border.
+            width: LEFT_PANE_WIDTH,
             flex: 1,
             overflow: 'auto',
+            scrollbarGutter: 'stable',
             paddingTop: theme.spacing.xs,
           }}
         >
