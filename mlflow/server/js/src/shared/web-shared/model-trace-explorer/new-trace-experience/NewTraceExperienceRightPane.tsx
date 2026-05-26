@@ -347,7 +347,7 @@ const StructuredDump = ({
 // chevron, URLs rendered as links, null/undefined dimmed.
 const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s);
 
-const KEY_COLOR = '#7c3aed';
+const KEY_COLOR = '#2272b4';
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 const PrettyPrimitive = ({ value }: { value: unknown }) => {
