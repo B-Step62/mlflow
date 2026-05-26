@@ -1,5 +1,5 @@
 import { keys } from 'lodash';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import yaml from 'js-yaml';
@@ -109,29 +109,40 @@ const SpanTitleHeader = ({ activeSpan, isRootSpan }: { activeSpan: ModelTraceSpa
   );
 };
 
-type Row = { label: ReactNode; value: ReactNode };
+type Row = { label: ReactNode; value: ReactNode; wide?: boolean };
 
 const InfoRows = ({ rows }: { rows: Row[] }) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div
       css={{
+        // Two key/value pairs per row to keep the Info block vertically
+        // compact. Tags spans both columns when present.
         display: 'grid',
-        gridTemplateColumns: 'max-content 1fr',
+        gridTemplateColumns: 'max-content minmax(0, 1fr) max-content minmax(0, 1fr)',
         columnGap: theme.spacing.md,
         rowGap: theme.spacing.xs,
+        alignItems: 'baseline',
       }}
     >
-      {rows.map(({ label, value }, i) => (
-        <>
-          <div key={`l-${i}`} css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
-            {label}
-          </div>
-          <div key={`v-${i}`} css={{ color: theme.colors.textPrimary, fontSize: theme.typography.fontSizeSm }}>
-            {value}
-          </div>
-        </>
-      ))}
+      {rows.map((row, i) => {
+        const isWide = (row as { wide?: boolean }).wide;
+        return (
+          <Fragment key={i}>
+            <div css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>{row.label}</div>
+            <div
+              css={{
+                color: theme.colors.textPrimary,
+                fontSize: theme.typography.fontSizeSm,
+                gridColumn: isWide ? 'span 3' : undefined,
+                wordBreak: 'break-word',
+              }}
+            >
+              {row.value}
+            </div>
+          </Fragment>
+        );
+      })}
     </div>
   );
 };
@@ -480,19 +491,42 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     return all.filter((a): a is FeedbackAssessment => 'feedback' in a);
   }, [activeSpan?.assessments]);
 
-  // Split chat messages into input (the conversation context sent to the
-  // model) vs output (the new assistant turn produced by the model). Prefer
-  // the raw `inputs.messages` array if present so the boundary lines up with
-  // the actual request payload; otherwise fall back to "all-but-last".
+  // Build input vs output chat-message lists directly from the raw span
+  // payload so the two sections never duplicate. Input messages come from
+  // `inputs.messages` (the conversation context sent to the model). Output
+  // messages come from `outputs` itself when it is a message-shaped object
+  // (Anthropic) or from `outputs.choices[*].message` (OpenAI).
   const { inputChatMessages, outputChatMessages } = useMemo(() => {
-    const all = chatMessages ?? [];
-    const rawInputMessages = (activeSpan?.inputs as { messages?: unknown } | undefined)?.messages;
-    const inputCount = Array.isArray(rawInputMessages) ? rawInputMessages.length : Math.max(all.length - 1, 0);
-    return {
-      inputChatMessages: all.slice(0, inputCount),
-      outputChatMessages: all.slice(inputCount),
-    };
-  }, [chatMessages, activeSpan?.inputs]);
+    const inputs = activeSpan?.inputs as { messages?: unknown } | undefined;
+    const outputs = activeSpan?.outputs as
+      | { role?: string; content?: unknown; choices?: { message?: unknown }[] }
+      | undefined;
+
+    const input: ModelTraceChatMessage[] = Array.isArray(inputs?.messages)
+      ? (inputs?.messages as ModelTraceChatMessage[])
+      : [];
+
+    let output: ModelTraceChatMessage[] = [];
+    if (outputs && typeof outputs === 'object') {
+      if (typeof outputs.role === 'string') {
+        output = [outputs as unknown as ModelTraceChatMessage];
+      } else if (Array.isArray(outputs.choices)) {
+        output = outputs.choices
+          .map((c) => c?.message)
+          .filter((m): m is ModelTraceChatMessage => Boolean(m && typeof m === 'object'));
+      }
+    }
+
+    // Fallback: if neither side extracted anything but chatMessages has data,
+    // treat the last message as output and the rest as input.
+    if (input.length === 0 && output.length === 0 && Array.isArray(chatMessages) && chatMessages.length > 0) {
+      return {
+        inputChatMessages: chatMessages.slice(0, -1),
+        outputChatMessages: chatMessages.slice(-1),
+      };
+    }
+    return { inputChatMessages: input, outputChatMessages: output };
+  }, [activeSpan?.inputs, activeSpan?.outputs, chatMessages]);
 
   const tokenUsage = useMemo(() => {
     try {
@@ -604,6 +638,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       infoRows.push({
         label: <FormattedMessage defaultMessage="Tags" description="Info label - tags" />,
         value: <TagsValue tags={tagPairs} />,
+        wide: true,
       });
     }
   }
@@ -621,22 +656,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     >
       <SpanTitleHeader activeSpan={activeSpan} isRootSpan={isRootSpan} />
 
-      <Section
-        title={
-          <FormattedMessage
-            defaultMessage="Feedback"
-            description="Section heading for the Feedback section at the top of the new trace experience right pane"
-          />
-        }
-      >
-        <AssessmentsPaneFeedbackSection
-          enableRunScorer
-          feedbacks={feedbacks}
-          activeSpanId={String(activeSpan.key)}
-          traceId={traceId}
-        />
-      </Section>
-
       {infoRows.length > 0 && (
         <Section
           title={
@@ -649,6 +668,33 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           <InfoRows rows={infoRows} />
         </Section>
       )}
+
+      <Section
+        title={
+          <span css={{ display: 'inline-flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
+            <FormattedMessage
+              defaultMessage="Feedback"
+              description="Section heading for the Feedback section below Info in the new trace experience right pane"
+            />
+            <span css={{ color: theme.colors.textSecondary, fontWeight: 400, fontSize: theme.typography.fontSizeSm }}>
+              <FormattedMessage
+                defaultMessage="{count} feedback"
+                description="Subtitle counter for the Feedback section header in the new trace experience right pane"
+                values={{ count: feedbacks.length }}
+              />
+            </span>
+          </span>
+        }
+        defaultOpen={false}
+      >
+        <AssessmentsPaneFeedbackSection
+          enableRunScorer
+          feedbacks={feedbacks}
+          activeSpanId={String(activeSpan.key)}
+          traceId={traceId}
+          hideTitle
+        />
+      </Section>
 
       {hasInputs && (
         <Section

@@ -133,12 +133,20 @@ export const AssessmentsPaneFeedbackSection = ({
   activeSpanId,
   traceId,
   sessionId,
+  hideTitle = false,
 }: {
   enableRunScorer: boolean;
   feedbacks: FeedbackAssessment[];
   activeSpanId?: string;
   traceId: string;
   sessionId?: string;
+  /**
+   * When true, suppress the section's own "Feedback (N)" heading row.
+   * Use when the caller renders its own section header for this content
+   * (e.g. the new trace experience right pane, which already has a
+   * "Feedback" Section wrapper around this component).
+   */
+  hideTitle?: boolean;
 }) => {
   const visibleFeedbacks = useMemo(
     () =>
@@ -206,7 +214,7 @@ export const AssessmentsPaneFeedbackSection = ({
     <>
       <div
         css={{
-          display: 'flex',
+          display: hideTitle ? 'none' : 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           marginTop: theme.spacing.sm,
