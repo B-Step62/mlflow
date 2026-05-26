@@ -181,6 +181,7 @@ export const ModelTraceExplorerDrawer = ({
         componentId="mlflow.evaluations_review.modal"
         width={drawerWidth}
         title={isNewTraceExperience ? null : legacyTitleBar}
+        hideClose={isNewTraceExperience}
         expandContentToFullHeight
         css={[
           {
@@ -197,7 +198,7 @@ export const ModelTraceExplorerDrawer = ({
             },
           },
           isNewTraceExperience && {
-            // Hide the design-system drawer header chrome (title row + close button)
+            // Hide the design-system drawer header row (title + side close button)
             // when the new shell owns the top bar.
             '&>div:first-child': {
               display: 'none',

@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 
-import { getLargeTraceDisplaySizeThreshold, shouldBlockLargeTraceDisplay } from './FeatureUtils';
+import {
+  getLargeTraceDisplaySizeThreshold,
+  shouldBlockLargeTraceDisplay,
+  shouldUseNewTraceExperience,
+} from './FeatureUtils';
 import type { ModelTrace } from './ModelTrace.types';
 import { getModelTraceId, getModelTraceSize } from './ModelTraceExplorer.utils';
 import { ModelTraceExplorerContent } from './ModelTraceExplorerContent';
@@ -97,7 +101,7 @@ export const ModelTraceExplorerImpl = ({
           <ModelTraceExplorerSkeleton />
         ) : (
           <>
-            <ModelTraceHeaderDetails modelTraceInfo={modelTrace.info} />
+            {!shouldUseNewTraceExperience() && <ModelTraceHeaderDetails modelTraceInfo={modelTrace.info} />}
             <ModelTraceExplorerContent
               modelTraceInfo={modelTrace.info}
               className={className}
