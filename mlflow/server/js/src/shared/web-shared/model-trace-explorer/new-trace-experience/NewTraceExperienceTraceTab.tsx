@@ -86,9 +86,11 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
         <div
           css={{
             flex: 1,
-            // overflow-y: scroll forces the scrollbar to always be present
-            // and to take physical space (instead of macOS-style overlay).
-            overflowY: 'scroll',
+            // overflow-y: auto so the scrollbar column only exists when
+            // there is actually content to scroll. When the scrollbar is
+            // present, the custom ::-webkit-scrollbar rules below force it
+            // to take a fixed physical column instead of overlaying.
+            overflowY: 'auto',
             overflowX: 'hidden',
             paddingTop: theme.spacing.xs,
             // Pin the webkit scrollbar to exactly SCROLLBAR_WIDTH so the
