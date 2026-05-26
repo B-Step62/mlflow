@@ -2,22 +2,28 @@ import { values } from 'lodash';
 import { useCallback, useLayoutEffect, useMemo } from 'react';
 
 import { useDesignSystemTheme } from '@databricks/design-system';
-import { FormattedMessage } from '@databricks/i18n';
 
-import type { ModelTraceSpanNode } from '../ModelTrace.types';
+import type { ModelTrace, ModelTraceSpanNode } from '../ModelTrace.types';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { TimelineTreeNode } from '../timeline-tree/TimelineTreeNode';
 import { DEFAULT_EXPAND_DEPTH, getTimelineTreeNodesMap } from '../timeline-tree/TimelineTree.utils';
+import { NewTraceExperienceRightPane } from './NewTraceExperienceRightPane';
 
 const LEFT_PANE_WIDTH = 360;
 
 type Props = {
+  modelTraceInfo: ModelTrace['info'];
   filteredTreeNodes: ModelTraceSpanNode[];
   expandedKeys: Set<string | number>;
   setExpandedKeys: React.Dispatch<React.SetStateAction<Set<string | number>>>;
 };
 
-export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, setExpandedKeys }: Props) => {
+export const NewTraceExperienceTraceTab = ({
+  modelTraceInfo,
+  filteredTreeNodes,
+  expandedKeys,
+  setExpandedKeys,
+}: Props) => {
   const { theme } = useDesignSystemTheme();
   const { topLevelNodes, selectedNode, setSelectedNode } = useModelTraceExplorerViewState();
 
@@ -85,22 +91,7 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
           ))}
         </div>
       </div>
-      <div
-        css={{
-          flex: 1,
-          minWidth: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: theme.colors.textSecondary,
-          padding: theme.spacing.lg,
-        }}
-      >
-        <FormattedMessage
-          defaultMessage="Right pane (Feedback / Expectations / Metrics / Inputs+Outputs / Attributes / Events) coming in the next step."
-          description="Placeholder shown in the new trace experience Trace tab right pane while the stacked sections are being wired"
-        />
-      </div>
+      <NewTraceExperienceRightPane modelTraceInfo={modelTraceInfo} />
     </div>
   );
 };

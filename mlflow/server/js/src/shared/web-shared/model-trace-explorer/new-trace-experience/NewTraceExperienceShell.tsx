@@ -37,6 +37,7 @@ export const NewTraceExperienceShell = ({ modelTraceInfo, className }: Props) =>
 
   const renderTraceTab = () => (
     <NewTraceExperienceTraceTab
+      modelTraceInfo={modelTraceInfo}
       filteredTreeNodes={filteredTreeNodes}
       expandedKeys={expandedKeys}
       setExpandedKeys={setExpandedKeys}
