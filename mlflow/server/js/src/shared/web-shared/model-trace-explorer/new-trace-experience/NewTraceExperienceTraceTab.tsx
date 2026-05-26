@@ -9,6 +9,7 @@ import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateCo
 import { useModelTraceSearch } from '../hooks/useModelTraceSearch';
 import { TimelineTreeNode } from '../timeline-tree/TimelineTreeNode';
 import { DEFAULT_EXPAND_DEPTH, getTimelineTreeNodesMap } from '../timeline-tree/TimelineTree.utils';
+import { NewTraceExperienceTreeHeader } from './NewTraceExperienceTreeHeader';
 
 const LEFT_PANE_WIDTH = 360;
 
@@ -21,8 +22,9 @@ export const NewTraceExperienceTraceTab = ({ modelTraceInfo }: Props) => {
   const { topLevelNodes, selectedNode, setSelectedNode, setActiveTab } = useModelTraceExplorerViewState();
 
   const [expandedKeys, setExpandedKeys] = useState<Set<string | number>>(new Set());
+  const [isTreeOpen, setIsTreeOpen] = useState(true);
 
-  const { filteredTreeNodes } = useModelTraceSearch({
+  const { spanFilterState, setSpanFilterState, filteredTreeNodes } = useModelTraceSearch({
     treeNodes: topLevelNodes,
     selectedNode,
     setSelectedNode,
@@ -64,27 +66,50 @@ export const NewTraceExperienceTraceTab = ({ modelTraceInfo }: Props) => {
     >
       <div
         css={{
-          width: LEFT_PANE_WIDTH,
+          width: isTreeOpen ? LEFT_PANE_WIDTH : 'auto',
           flexShrink: 0,
           borderRight: `1px solid ${theme.colors.borderDecorative}`,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'auto',
+          overflow: 'hidden',
+          // Inset the selected-row background so it reads as a rounded
+          // chip with breathing room from the pane edges, instead of
+          // a full-bleed blue bar.
+          '& [data-testid^="timeline-tree-node-"]': {
+            marginLeft: theme.spacing.xs,
+            marginRight: theme.spacing.xs,
+            marginTop: 1,
+            marginBottom: 1,
+            borderRadius: theme.legacyBorders.borderRadiusMd,
+            // Re-apply rounded corners on the hover background that DS sets
+            // inline on the same div.
+            overflow: 'hidden',
+          },
         }}
       >
-        {filteredTreeNodes.map((node) => (
-          <TimelineTreeNode
-            key={node.key}
-            node={node}
-            expandedKeys={expandedKeys}
-            setExpandedKeys={setExpandedKeys}
-            selectedKey={selectedNode?.key ?? ''}
-            traceStartTime={traceStartTime}
-            traceEndTime={traceEndTime}
-            onSelect={handleSelectNode}
-            linesToRender={[]}
-          />
-        ))}
+        <NewTraceExperienceTreeHeader
+          isOpen={isTreeOpen}
+          onToggle={() => setIsTreeOpen((v) => !v)}
+          spanFilterState={spanFilterState}
+          setSpanFilterState={setSpanFilterState}
+        />
+        {isTreeOpen && (
+          <div css={{ flex: 1, overflow: 'auto' }}>
+            {filteredTreeNodes.map((node) => (
+              <TimelineTreeNode
+                key={node.key}
+                node={node}
+                expandedKeys={expandedKeys}
+                setExpandedKeys={setExpandedKeys}
+                selectedKey={selectedNode?.key ?? ''}
+                traceStartTime={traceStartTime}
+                traceEndTime={traceEndTime}
+                onSelect={handleSelectNode}
+                linesToRender={[]}
+              />
+            ))}
+          </div>
+        )}
       </div>
       <div
         css={{
