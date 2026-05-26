@@ -3,8 +3,10 @@ import { useCallback } from 'react';
 import type { ModelTrace } from './ModelTrace.types';
 import { Tabs, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
+import { shouldUseNewTraceExperience } from './FeatureUtils';
 import { ModelTraceExplorerDetailView } from './ModelTraceExplorerDetailView';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
+import { NewTraceExperienceShell } from './new-trace-experience/NewTraceExperienceShell';
 import { ModelTraceExplorerSummaryView } from './summary-view/ModelTraceExplorerSummaryView';
 import { ModelTraceExplorerLinkedPromptsView } from './linked-prompts/ModelTraceExplorerLinkedPromptsView';
 
@@ -31,6 +33,17 @@ export const ModelTraceExplorerContent = ({
       setActiveView,
     ],
   );
+
+  if (shouldUseNewTraceExperience()) {
+    return (
+      <NewTraceExperienceShell
+        modelTraceInfo={modelTraceInfo}
+        className={className}
+        selectedSpanId={selectedSpanId}
+        onSelectSpan={onSelectSpan}
+      />
+    );
+  }
 
   return (
     <Tabs.Root

@@ -58,3 +58,15 @@ export const shouldUseUnifiedModelTraceComparisonUI = () => {
 export const isEvaluatingTracesInDetailsViewEnabled = () => {
   return true;
 };
+
+/**
+ * Determines if the redesigned trace experience shell is rendered.
+ *
+ * When enabled, the trace drawer shows a new top bar, top-level tabs
+ * (Trace / Timeline / Graph / Lineage), and a left-tree + stacked-right-pane
+ * layout instead of the current Summary / Details & Timeline / Linked prompts
+ * tabs. Users can opt back to the classic experience from the in-trace menu.
+ */
+export const shouldUseNewTraceExperience = () => {
+  return true;
+};

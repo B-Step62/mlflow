@@ -415,6 +415,10 @@
     "defaultMessage": "Irrelevant",
     "description": "Evaluation results > relevancy assessment > negative value label. Displayed if evaluation result is considered as irrelevant to the query."
   },
+  "0Nipu4": {
+    "defaultMessage": "Trace: {traceId}",
+    "description": "Placeholder line showing the trace id while the new trace experience is being built"
+  },
   "0QTEQi": {
     "defaultMessage": "Usage",
     "description": "Tab label for usage charts"
@@ -2250,6 +2254,10 @@
   "BFzsMn": {
     "defaultMessage": "No runs selected",
     "description": "Experiment page > artifact compare view > empty state for no runs selected > title"
+  },
+  "BLE3VG": {
+    "defaultMessage": "New trace experience",
+    "description": "Placeholder title for the redesigned trace experience shell, shown before the full layout is wired up"
   },
   "BMUd0e": {
     "defaultMessage": "Create evaluation datasets in order to iteratively evaluate and improve your app. For example, build a dataset from production traces with negative feedback. {learnMoreLink}",
