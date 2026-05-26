@@ -71,33 +71,17 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
           }}
         >
           {filteredTreeNodes.map((node) => (
-            <div
+            <TimelineTreeNode
               key={node.key}
-              css={{
-                // Wrap each row so the row's full-bleed background lives
-                // inside a chip with margin + rounded corners on BOTH sides.
-                // (TimelineTreeNode sets width: 100% on its outer div, which
-                // ignores margin and lets the bg paint flush against the
-                // pane edges otherwise.)
-                marginLeft: theme.spacing.sm,
-                marginRight: theme.spacing.sm,
-                marginTop: 1,
-                marginBottom: 1,
-                borderRadius: theme.legacyBorders.borderRadiusMd,
-                overflow: 'hidden',
-              }}
-            >
-              <TimelineTreeNode
-                node={node}
-                expandedKeys={expandedKeys}
-                setExpandedKeys={setExpandedKeys}
-                selectedKey={selectedNode?.key ?? ''}
-                traceStartTime={traceStartTime}
-                traceEndTime={traceEndTime}
-                onSelect={handleSelectNode}
-                linesToRender={[]}
-              />
-            </div>
+              node={node}
+              expandedKeys={expandedKeys}
+              setExpandedKeys={setExpandedKeys}
+              selectedKey={selectedNode?.key ?? ''}
+              traceStartTime={traceStartTime}
+              traceEndTime={traceEndTime}
+              onSelect={handleSelectNode}
+              linesToRender={[]}
+            />
           ))}
         </div>
       </div>
