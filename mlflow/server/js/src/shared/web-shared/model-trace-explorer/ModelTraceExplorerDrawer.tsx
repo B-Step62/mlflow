@@ -56,7 +56,7 @@ export const ModelTraceExplorerDrawer = ({
   // The new shell renders narrower by default and ignores any width supplied by
   // upstream context (e.g. TracesV3View passes 80vw, which is too wide for the
   // new layout). Legacy mode keeps the previous behaviour.
-  const newExperienceDrawerWidth = '50vw';
+  const newExperienceDrawerWidth = '70vw';
   const legacyDrawerWidth = contextDrawerWidth ?? '60vw';
   const restingDrawerWidth = isNewTraceExperience ? newExperienceDrawerWidth : legacyDrawerWidth;
   const drawerWidth = isFullscreen ? '100vw' : restingDrawerWidth;

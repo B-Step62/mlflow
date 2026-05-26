@@ -5,13 +5,12 @@ import type { ReactNode } from 'react';
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  DropdownMenu,
   Empty,
-  SegmentedControlButton,
-  SegmentedControlGroup,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
-import { FormattedMessage } from '@databricks/i18n';
+import { FormattedMessage, useIntl } from '@databricks/i18n';
 
 import type {
   ModelTrace,
@@ -19,7 +18,12 @@ import type {
   ModelTraceInfoV3,
   ModelTraceSpanNode,
 } from '../ModelTrace.types';
-import { createListFromObject, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
+import {
+  createListFromObject,
+  getIconTypeForSpan,
+  getTraceCost,
+  getTraceTokenUsage,
+} from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { AssessmentsPane } from '../assessments-pane/AssessmentsPane';
@@ -27,7 +31,6 @@ import { ModelTraceExplorerFieldRenderer } from '../field-renderers/ModelTraceEx
 import { ModelTraceExplorerAttributesTab } from '../right-pane/ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
-import { getIconTypeForSpan } from '../ModelTraceExplorer.utils';
 
 type Props = {
   modelTraceInfo: ModelTrace['info'];
@@ -66,7 +69,7 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
           css={{
             display: 'flex',
             alignItems: 'center',
-            gap: theme.spacing.xs,
+            justifyContent: 'space-between',
             flex: 1,
             background: 'transparent',
             border: 'none',
@@ -76,8 +79,9 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
             textAlign: 'left',
           }}
         >
-          {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
           <Typography.Text bold>{title}</Typography.Text>
+          {/* Chevron lives on the right side of the section header. */}
+          {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
         </button>
         {open && actions}
       </div>
@@ -86,7 +90,7 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
   );
 };
 
-// Span name + type header at the top of the right pane.
+// Span name header (no type label) at the top of the right pane.
 const SpanTitleHeader = ({ activeSpan }: { activeSpan: ModelTraceSpanNode }) => {
   const { theme } = useDesignSystemTheme();
   const name = typeof activeSpan.title === 'string' ? activeSpan.title : String(activeSpan.key);
@@ -94,33 +98,32 @@ const SpanTitleHeader = ({ activeSpan }: { activeSpan: ModelTraceSpanNode }) => 
     <div
       css={{
         display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.xs,
+        alignItems: 'center',
+        gap: theme.spacing.sm,
         padding: `${theme.spacing.md}px ${theme.spacing.md}px ${theme.spacing.sm}px`,
       }}
     >
-      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-        <ModelTraceExplorerIcon type={getIconTypeForSpan(activeSpan.type ?? '')} />
-        <Typography.Title level={3} withoutMargins>
-          {name}
-        </Typography.Title>
-      </div>
-      {activeSpan.type && (
-        <Typography.Text color="secondary" css={{ textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 11 }}>
-          {String(activeSpan.type)}
-        </Typography.Text>
-      )}
+      <ModelTraceExplorerIcon type={getIconTypeForSpan(activeSpan.type ?? '')} />
+      <Typography.Title level={3} withoutMargins>
+        {name}
+      </Typography.Title>
     </div>
   );
 };
 
-// Render a key-value list for the metrics card.
 type Row = { label: ReactNode; value: ReactNode };
 
-const MetricsRows = ({ rows }: { rows: Row[] }) => {
+const InfoRows = ({ rows }: { rows: Row[] }) => {
   const { theme } = useDesignSystemTheme();
   return (
-    <div css={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: theme.spacing.md, rowGap: theme.spacing.xs }}>
+    <div
+      css={{
+        display: 'grid',
+        gridTemplateColumns: 'max-content 1fr',
+        columnGap: theme.spacing.md,
+        rowGap: theme.spacing.xs,
+      }}
+    >
       {rows.map(({ label, value }, i) => (
         <>
           <div key={`l-${i}`} css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>
@@ -135,13 +138,6 @@ const MetricsRows = ({ rows }: { rows: Row[] }) => {
   );
 };
 
-const formatDuration = (ms?: number) => {
-  if (typeof ms !== 'number' || Number.isNaN(ms)) return '-';
-  if (ms < 1000) return `${ms.toFixed(0)} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(2)} s`;
-  return `${(ms / 60_000).toFixed(2)} min`;
-};
-
 const formatNumber = (n?: number | null) => (typeof n === 'number' ? n.toLocaleString('en-US') : '-');
 
 const formatCost = (n?: number | null) => {
@@ -151,13 +147,49 @@ const formatCost = (n?: number | null) => {
   return `$${n.toFixed(4)}`;
 };
 
-const formatTimestamp = (ts?: number) => {
-  if (typeof ts !== 'number') return '-';
-  return new Date(ts).toLocaleString();
+const TagsValue = ({ tags }: { tags: { key: string; value: string }[] }) => {
+  const { theme } = useDesignSystemTheme();
+  const [showAll, setShowAll] = useState(false);
+  const VISIBLE = 2;
+  const visible = showAll ? tags : tags.slice(0, VISIBLE);
+  const remaining = tags.length - visible.length;
+  return (
+    <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, alignItems: 'center' }}>
+      {visible.map(({ key, value }) => (
+        <span
+          key={key}
+          css={{
+            fontSize: theme.typography.fontSizeSm,
+            padding: `0 ${theme.spacing.xs}px`,
+            borderRadius: theme.legacyBorders.borderRadiusMd,
+            backgroundColor: theme.colors.backgroundSecondary,
+            color: theme.colors.textSecondary,
+          }}
+        >
+          {key}: {value}
+        </span>
+      ))}
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          css={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            color: theme.colors.actionDefaultTextDefault,
+            fontSize: theme.typography.fontSizeSm,
+          }}
+        >
+          +{remaining} more
+        </button>
+      )}
+    </div>
+  );
 };
 
-// Render chat messages as left/right-aligned bubbles. No outer chrome,
-// no per-message borders — just stacked bubbles in a column.
+// Chat bubbles aligned right for assistant, left for user/tool/system.
 const ChatBubbles = ({ messages }: { messages: ModelTraceChatMessage[] }) => {
   const { theme } = useDesignSystemTheme();
   return (
@@ -186,10 +218,73 @@ const ChatBubbles = ({ messages }: { messages: ModelTraceChatMessage[] }) => {
 
 type InputsOutputsRenderMode = 'default' | 'chat';
 
+const RenderModeMenu = ({
+  value,
+  onChange,
+  hasChat,
+}: {
+  value: InputsOutputsRenderMode;
+  onChange: (next: InputsOutputsRenderMode) => void;
+  hasChat: boolean;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const intl = useIntl();
+  const labels: Record<InputsOutputsRenderMode, string> = {
+    default: intl.formatMessage({
+      defaultMessage: 'Default',
+      description: 'Default render-mode label for the Inputs/Outputs section in the new trace experience',
+    }),
+    chat: intl.formatMessage({
+      defaultMessage: 'Chat',
+      description: 'Chat render-mode label for the Inputs/Outputs section in the new trace experience',
+    }),
+  };
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          css={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            color: theme.colors.textSecondary,
+            fontSize: theme.typography.fontSizeSm,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+          }}
+        >
+          {labels[value]}
+          <ChevronDownIcon />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.Item
+          componentId="mlflow.new-trace-experience.io.render-mode.default"
+          onClick={() => onChange('default')}
+        >
+          {labels.default}
+        </DropdownMenu.Item>
+        {hasChat && (
+          <DropdownMenu.Item
+            componentId="mlflow.new-trace-experience.io.render-mode.chat"
+            onClick={() => onChange('chat')}
+          >
+            {labels.chat}
+          </DropdownMenu.Item>
+        )}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  );
+};
+
 export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const { theme } = useDesignSystemTheme();
-  const { selectedNode } = useModelTraceExplorerViewState();
+  const { selectedNode, rootNode } = useModelTraceExplorerViewState();
   const activeSpan = selectedNode;
+  const isRootSpan = Boolean(rootNode && activeSpan && rootNode.key === activeSpan.key);
 
   const traceId =
     (modelTraceInfo as { trace_id?: string } | undefined)?.trace_id ??
@@ -204,17 +299,12 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const chatMessages = activeSpan?.chatMessages;
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
 
-  // Render-mode toggle for the Inputs / Outputs section. "chat" only enabled
-  // when the active span has chat messages; defaults to chat when present.
   const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>('default');
   const effectiveRenderMode: InputsOutputsRenderMode = hasChat ? renderMode : 'default';
-
-  // Default to chat mode when the user lands on a span that has chat messages.
   useMemo(() => {
     setRenderMode(hasChat ? 'chat' : 'default');
   }, [hasChat]);
 
-  // Token usage + cost from the V3 trace metadata, if present.
   const tokenUsage = useMemo(() => {
     try {
       return getTraceTokenUsage(modelTraceInfo as ModelTraceInfoV3);
@@ -271,66 +361,55 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['mlflow.trace.session'] ??
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['session_id'];
 
-  // Trace-level start time and duration come from modelTraceInfo. V1 stores
-  // these as ms numbers (`timestamp_ms`, `execution_time_ms`); V3 stores them
-  // as ISO-string + formatted string.
-  const infoV1 = modelTraceInfo as
-    | { timestamp_ms?: number; execution_time_ms?: number }
-    | undefined;
-  const infoV3 = modelTraceInfo as ModelTraceInfoV3 | undefined;
-  const startTs = infoV1?.timestamp_ms ?? (infoV3?.request_time ? Date.parse(infoV3.request_time) : undefined);
-  const durationMs = infoV1?.execution_time_ms;
+  // Tokens consolidated into one row. Show total with input/output breakdown
+  // inline if available.
+  const totalTokens = tokenUsage.total_tokens;
+  const inputTokens = tokenUsage.input_tokens;
+  const outputTokens = tokenUsage.output_tokens;
+  const tokensValue =
+    typeof totalTokens === 'number'
+      ? typeof inputTokens === 'number' || typeof outputTokens === 'number'
+        ? `${formatNumber(totalTokens)} (in: ${formatNumber(inputTokens ?? 0)}, out: ${formatNumber(outputTokens ?? 0)})`
+        : formatNumber(totalTokens)
+      : null;
 
-  const metricsRows: Row[] = [
-    { label: <FormattedMessage defaultMessage="Start" description="Metrics label - start time" />, value: formatTimestamp(startTs) },
-    {
-      label: <FormattedMessage defaultMessage="Duration" description="Metrics label - duration" />,
-      value: infoV3?.execution_duration ?? formatDuration(durationMs),
-    },
-    activeSpan.modelName
-      ? { label: <FormattedMessage defaultMessage="Model" description="Metrics label - model name" />, value: activeSpan.modelName }
-      : null,
-    typeof tokenUsage.total_tokens === 'number'
-      ? { label: <FormattedMessage defaultMessage="Total tokens" description="Metrics label - total tokens" />, value: formatNumber(tokenUsage.total_tokens) }
-      : null,
-    typeof tokenUsage.input_tokens === 'number'
-      ? { label: <FormattedMessage defaultMessage="Input tokens" description="Metrics label - input tokens" />, value: formatNumber(tokenUsage.input_tokens) }
-      : null,
-    typeof tokenUsage.output_tokens === 'number'
-      ? { label: <FormattedMessage defaultMessage="Output tokens" description="Metrics label - output tokens" />, value: formatNumber(tokenUsage.output_tokens) }
-      : null,
-    typeof traceCost.total_cost === 'number'
-      ? { label: <FormattedMessage defaultMessage="Cost" description="Metrics label - cost" />, value: formatCost(traceCost.total_cost) }
-      : activeSpan.cost?.total_cost !== undefined
-        ? { label: <FormattedMessage defaultMessage="Cost" description="Metrics label - cost" />, value: formatCost(activeSpan.cost.total_cost) }
-        : null,
-    sessionId
-      ? { label: <FormattedMessage defaultMessage="Session" description="Metrics label - session" />, value: sessionId }
-      : null,
-    tagPairs.length > 0
-      ? {
-          label: <FormattedMessage defaultMessage="Tags" description="Metrics label - tags" />,
-          value: (
-            <div css={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs }}>
-              {tagPairs.map(({ key, value }) => (
-                <span
-                  key={key}
-                  css={{
-                    fontSize: theme.typography.fontSizeSm,
-                    padding: `0 ${theme.spacing.xs}px`,
-                    borderRadius: theme.legacyBorders.borderRadiusMd,
-                    backgroundColor: theme.colors.backgroundSecondary,
-                    color: theme.colors.textSecondary,
-                  }}
-                >
-                  {key}: {value}
-                </span>
-              ))}
-            </div>
-          ),
-        }
-      : null,
-  ].filter(Boolean) as Row[];
+  const cost = typeof traceCost.total_cost === 'number' ? traceCost.total_cost : activeSpan.cost?.total_cost;
+
+  const infoRows: Row[] = [];
+
+  if (activeSpan.modelName) {
+    infoRows.push({
+      label: <FormattedMessage defaultMessage="Model" description="Info label - model name" />,
+      value: activeSpan.modelName,
+    });
+  }
+  if (tokensValue) {
+    infoRows.push({
+      label: <FormattedMessage defaultMessage="Tokens" description="Info label - tokens" />,
+      value: tokensValue,
+    });
+  }
+  if (typeof cost === 'number') {
+    infoRows.push({
+      label: <FormattedMessage defaultMessage="Cost" description="Info label - cost" />,
+      value: formatCost(cost),
+    });
+  }
+  // Trace-level rows only on the root span.
+  if (isRootSpan) {
+    if (sessionId) {
+      infoRows.push({
+        label: <FormattedMessage defaultMessage="Session" description="Info label - session" />,
+        value: sessionId,
+      });
+    }
+    if (tagPairs.length > 0) {
+      infoRows.push({
+        label: <FormattedMessage defaultMessage="Tags" description="Info label - tags" />,
+        value: <TagsValue tags={tagPairs} />,
+      });
+    }
+  }
 
   return (
     <div
@@ -345,16 +424,16 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     >
       <SpanTitleHeader activeSpan={activeSpan} />
 
-      {metricsRows.length > 0 && (
+      {infoRows.length > 0 && (
         <Section
           title={
             <FormattedMessage
-              defaultMessage="Metrics"
-              description="Section heading for the metrics card (start, duration, tokens, cost, session, tags) in the new trace experience right pane"
+              defaultMessage="Info"
+              description="Section heading for the Info (Model / Tokens / Cost / Session / Tags) section in the new trace experience right pane"
             />
           }
         >
-          <MetricsRows rows={metricsRows} />
+          <InfoRows rows={infoRows} />
         </Section>
       )}
 
@@ -368,26 +447,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           }
           actions={
             hasChat ? (
-              <SegmentedControlGroup
-                componentId="mlflow.new-trace-experience.io.render-mode"
-                name="io-render-mode"
-                size="small"
-                value={effectiveRenderMode}
-                onChange={(e) => setRenderMode(e.target.value as InputsOutputsRenderMode)}
-              >
-                <SegmentedControlButton value="default">
-                  <FormattedMessage
-                    defaultMessage="Default"
-                    description="Render-mode label - default field renderer for the new trace experience Inputs/Outputs section"
-                  />
-                </SegmentedControlButton>
-                <SegmentedControlButton value="chat">
-                  <FormattedMessage
-                    defaultMessage="Chat"
-                    description="Render-mode label - chat-bubble renderer for the new trace experience Inputs/Outputs section"
-                  />
-                </SegmentedControlButton>
-              </SegmentedControlGroup>
+              <RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />
             ) : undefined
           }
         >
