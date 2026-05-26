@@ -1,30 +1,39 @@
 import {
   Button,
+  Checkbox,
   ChevronDownIcon,
   ChevronUpIcon,
   CloseIcon,
+  FilterIcon,
   FullscreenExitIcon,
   FullscreenIcon,
   LinkIcon,
   NewWindowIcon,
+  Popover,
   SearchIcon,
   Tooltip,
+  Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 
+import type { SpanFilterState } from '../ModelTrace.types';
+import { getDisplayNameForSpanType, getIconTypeForSpan } from '../ModelTraceExplorer.utils';
+import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useNewTraceExperienceShellContext } from './NewTraceExperienceShellContext';
-
-type Props = {
-  traceId: string;
-};
 
 const TRACE_ID_DISPLAY_PREFIX_LENGTH = 12;
 
 const truncateTraceId = (id: string) =>
   id.length > TRACE_ID_DISPLAY_PREFIX_LENGTH + 1 ? `${id.slice(0, TRACE_ID_DISPLAY_PREFIX_LENGTH)}…` : id;
 
-export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
+type Props = {
+  traceId: string;
+  spanFilterState: SpanFilterState;
+  setSpanFilterState: (state: SpanFilterState) => void;
+};
+
+export const NewTraceExperienceTopBar = ({ traceId, spanFilterState, setSpanFilterState }: Props) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const shell = useNewTraceExperienceShellContext();
@@ -49,6 +58,10 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
   const searchLabel = intl.formatMessage({
     defaultMessage: 'Search in trace',
     description: 'Tooltip for the search button that reveals the in-trace search field',
+  });
+  const filterLabel = intl.formatMessage({
+    defaultMessage: 'Filter spans',
+    description: 'Tooltip for the filter button in the new trace experience top bar',
   });
   const shareLabel = intl.formatMessage({
     defaultMessage: 'Copy link to trace',
@@ -76,10 +89,10 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
         paddingTop: theme.spacing.sm,
         paddingBottom: theme.spacing.sm,
         flexShrink: 0,
-        // Give every icon-button in the top bar a subtle rounded border so
-        // they read as discrete affordances instead of floating glyphs.
-        // DS Button hard-codes `border: none`, so we draw the border with an
-        // inset box-shadow that lives outside the border-style cascade.
+        // Give every icon-button in the top bar a subtle rounded outline.
+        // DS Button hard-sets `border: none`, so paint the outline with an
+        // inset box-shadow and compound the selector for enough specificity
+        // to beat DS's own !important rule.
         '& button.du-bois-light-btn': {
           boxShadow: `inset 0 0 0 1px ${theme.colors.actionDefaultBorderDefault} !important`,
           borderRadius: `${theme.legacyBorders.borderRadiusMd}px !important`,
@@ -149,6 +162,85 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
           disabled
         />
       </Tooltip>
+      <Popover.Root componentId="mlflow.new-trace-experience.filter-popover">
+        <Popover.Trigger asChild>
+          <Tooltip componentId="mlflow.new-trace-experience.filter.tooltip" content={filterLabel}>
+            <Button
+              componentId="mlflow.new-trace-experience.filter"
+              aria-label={filterLabel}
+              icon={<FilterIcon />}
+              size="small"
+            />
+          </Tooltip>
+        </Popover.Trigger>
+        <Popover.Content align="end">
+          <div
+            css={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.sm,
+              width: 240,
+              paddingBottom: theme.spacing.xs,
+            }}
+          >
+            <Typography.Text bold>
+              <FormattedMessage
+                defaultMessage="Filter spans"
+                description="Heading for the span filter popover in the new trace experience"
+              />
+            </Typography.Text>
+            <Typography.Text color="secondary">
+              <FormattedMessage
+                defaultMessage="Span type"
+                description="Section label for span type filters in the new trace experience"
+              />
+            </Typography.Text>
+            {Object.entries(spanFilterState.spanTypeDisplayState).map(([spanType, shouldDisplay]) => (
+              <Checkbox
+                key={spanType}
+                componentId="mlflow.new-trace-experience.filter.span-type"
+                isChecked={shouldDisplay}
+                onChange={() =>
+                  setSpanFilterState({
+                    ...spanFilterState,
+                    spanTypeDisplayState: {
+                      ...spanFilterState.spanTypeDisplayState,
+                      [spanType]: !shouldDisplay,
+                    },
+                  })
+                }
+              >
+                <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <ModelTraceExplorerIcon type={getIconTypeForSpan(spanType)} />
+                  <Typography.Text>{getDisplayNameForSpanType(spanType)}</Typography.Text>
+                </span>
+              </Checkbox>
+            ))}
+            <Checkbox
+              componentId="mlflow.new-trace-experience.filter.show-parents"
+              isChecked={spanFilterState.showParents}
+              onChange={() => setSpanFilterState({ ...spanFilterState, showParents: !spanFilterState.showParents })}
+            >
+              <FormattedMessage
+                defaultMessage="Always show parents"
+                description="Checkbox label for showing parent spans regardless of filter in the new trace experience"
+              />
+            </Checkbox>
+            <Checkbox
+              componentId="mlflow.new-trace-experience.filter.show-exceptions"
+              isChecked={spanFilterState.showExceptions}
+              onChange={() =>
+                setSpanFilterState({ ...spanFilterState, showExceptions: !spanFilterState.showExceptions })
+              }
+            >
+              <FormattedMessage
+                defaultMessage="Always show exceptions"
+                description="Checkbox label for showing spans with exceptions regardless of filter in the new trace experience"
+              />
+            </Checkbox>
+          </div>
+        </Popover.Content>
+      </Popover.Root>
       {shell && (
         <Tooltip componentId="mlflow.new-trace-experience.share.tooltip" content={shareLabel}>
           <Button
@@ -181,12 +273,6 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
             size="small"
           />
         </Tooltip>
-      )}
-      {!shell && (
-        <FormattedMessage
-          defaultMessage="(unwired)"
-          description="Inline label rendered next to the trace id when the new trace experience shell is not yet wired to drawer-level actions"
-        />
       )}
     </div>
   );
