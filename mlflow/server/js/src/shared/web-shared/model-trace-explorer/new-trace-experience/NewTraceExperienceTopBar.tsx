@@ -19,10 +19,16 @@ type Props = {
   traceId: string;
 };
 
+const TRACE_ID_DISPLAY_PREFIX_LENGTH = 12;
+
+const truncateTraceId = (id: string) =>
+  id.length > TRACE_ID_DISPLAY_PREFIX_LENGTH + 1 ? `${id.slice(0, TRACE_ID_DISPLAY_PREFIX_LENGTH)}…` : id;
+
 export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const shell = useNewTraceExperienceShellContext();
+  const displayedTraceId = truncateTraceId(traceId);
 
   const previousLabel = intl.formatMessage({
     defaultMessage: 'Previous trace',
@@ -63,8 +69,22 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
         display: 'flex',
         alignItems: 'center',
         gap: theme.spacing.xs,
-        padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+        // Align the left edge of the top-bar buttons with the left edge of the
+        // tab strip labels below (Tabs.List uses paddingLeft: lg).
+        paddingLeft: theme.spacing.lg,
+        paddingRight: theme.spacing.md,
+        paddingTop: theme.spacing.sm,
+        paddingBottom: theme.spacing.sm,
         flexShrink: 0,
+        // Give every icon-button in the top bar a subtle rounded border so
+        // they read as discrete affordances instead of floating glyphs.
+        // DS Button hard-codes `border: none`, so we draw the border with an
+        // inset box-shadow that lives outside the border-style cascade.
+        '& button.du-bois-light-btn': {
+          boxShadow: `inset 0 0 0 1px ${theme.colors.actionDefaultBorderDefault} !important`,
+          borderRadius: `${theme.legacyBorders.borderRadiusMd}px !important`,
+          backgroundColor: 'transparent !important',
+        },
       }}
     >
       {shell && (
@@ -118,7 +138,7 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
         }}
         title={traceId}
       >
-        {traceId}
+        {displayedTraceId}
       </div>
       <Tooltip componentId="mlflow.new-trace-experience.search.tooltip" content={searchLabel}>
         <Button
