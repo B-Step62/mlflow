@@ -53,9 +53,13 @@ export const ModelTraceExplorerDrawer = ({
     drawerWidth: contextDrawerWidth,
   } = useModelTraceExplorerContext();
   const isNewTraceExperience = shouldUseNewTraceExperience();
-  // The new shell renders narrower by default; the legacy chrome keeps its 60vw default.
-  const defaultDrawerWidth = isNewTraceExperience ? '50vw' : '60vw';
-  const drawerWidth = isFullscreen ? '100vw' : (contextDrawerWidth ?? defaultDrawerWidth);
+  // The new shell renders narrower by default and ignores any width supplied by
+  // upstream context (e.g. TracesV3View passes 80vw, which is too wide for the
+  // new layout). Legacy mode keeps the previous behaviour.
+  const newExperienceDrawerWidth = '50vw';
+  const legacyDrawerWidth = contextDrawerWidth ?? '60vw';
+  const restingDrawerWidth = isNewTraceExperience ? newExperienceDrawerWidth : legacyDrawerWidth;
+  const drawerWidth = isFullscreen ? '100vw' : restingDrawerWidth;
 
   const handleShareClick = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
