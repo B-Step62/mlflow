@@ -1,5 +1,5 @@
 import { values } from 'lodash';
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 
 import { useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
@@ -7,7 +7,7 @@ import { FormattedMessage } from '@databricks/i18n';
 import type { ModelTrace, ModelTraceSpanNode } from '../ModelTrace.types';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { useModelTraceSearch } from '../hooks/useModelTraceSearch';
-import { TimelineTree } from '../timeline-tree/TimelineTree';
+import { TimelineTreeNode } from '../timeline-tree/TimelineTreeNode';
 import { DEFAULT_EXPAND_DEPTH, getTimelineTreeNodesMap } from '../timeline-tree/TimelineTree.utils';
 
 const LEFT_PANE_WIDTH = 360;
@@ -22,7 +22,7 @@ export const NewTraceExperienceTraceTab = ({ modelTraceInfo }: Props) => {
 
   const [expandedKeys, setExpandedKeys] = useState<Set<string | number>>(new Set());
 
-  const { spanFilterState, setSpanFilterState, filteredTreeNodes } = useModelTraceSearch({
+  const { filteredTreeNodes } = useModelTraceSearch({
     treeNodes: topLevelNodes,
     selectedNode,
     setSelectedNode,
@@ -46,9 +46,12 @@ export const NewTraceExperienceTraceTab = ({ modelTraceInfo }: Props) => {
     };
   }, [topLevelNodes]);
 
-  const handleSelectNode = (node?: ModelTraceSpanNode) => {
-    setSelectedNode(node);
-  };
+  const handleSelectNode = useCallback(
+    (node: ModelTraceSpanNode) => {
+      setSelectedNode(node);
+    },
+    [setSelectedNode],
+  );
 
   return (
     <div
@@ -66,20 +69,22 @@ export const NewTraceExperienceTraceTab = ({ modelTraceInfo }: Props) => {
           borderRight: `1px solid ${theme.colors.borderDecorative}`,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
+          overflow: 'auto',
         }}
       >
-        <TimelineTree
-          rootNodes={filteredTreeNodes}
-          selectedNode={selectedNode}
-          setSelectedNode={handleSelectNode}
-          traceStartTime={traceStartTime}
-          traceEndTime={traceEndTime}
-          expandedKeys={expandedKeys}
-          setExpandedKeys={setExpandedKeys}
-          spanFilterState={spanFilterState}
-          setSpanFilterState={setSpanFilterState}
-        />
+        {filteredTreeNodes.map((node) => (
+          <TimelineTreeNode
+            key={node.key}
+            node={node}
+            expandedKeys={expandedKeys}
+            setExpandedKeys={setExpandedKeys}
+            selectedKey={selectedNode?.key ?? ''}
+            traceStartTime={traceStartTime}
+            traceEndTime={traceEndTime}
+            onSelect={handleSelectNode}
+            linesToRender={[]}
+          />
+        ))}
       </div>
       <div
         css={{
