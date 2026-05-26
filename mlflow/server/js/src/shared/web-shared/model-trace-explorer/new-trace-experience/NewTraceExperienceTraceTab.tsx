@@ -10,9 +10,11 @@ import { TimelineTreeNode } from '../timeline-tree/TimelineTreeNode';
 import { DEFAULT_EXPAND_DEPTH, getTimelineTreeNodesMap } from '../timeline-tree/TimelineTree.utils';
 
 const LEFT_PANE_WIDTH = 360;
-// Reserve a strip on the right of the left pane that holds the vertical
-// scrollbar, so the bar is never inside the visible content area.
-const SCROLLBAR_GUTTER = 14;
+// The scrollbar lives in a dedicated column to the right of the row content.
+// The scroll container is `LEFT_PANE_WIDTH + SCROLLBAR_WIDTH` wide; the
+// scrollbar physically occupies SCROLLBAR_WIDTH pixels on the right, so the
+// row content area is exactly LEFT_PANE_WIDTH pixels with no overlap.
+const SCROLLBAR_WIDTH = 12;
 
 type Props = {
   filteredTreeNodes: ModelTraceSpanNode[];
@@ -57,19 +59,20 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
     >
       <div
         css={{
-          // Left pane wrapper. Width = visible tree column + a fixed-width
-          // empty strip on the right where the scrollbar lives. The
-          // scrollable area itself is constrained to LEFT_PANE_WIDTH, so the
-          // scrollbar sits at x = LEFT_PANE_WIDTH with a clear gutter of
-          // SCROLLBAR_GUTTER pixels between it and the divider. The
-          // scrollbar therefore never sits flush against the left panel's
-          // right border, and never visually overlaps the tree rows.
-          width: LEFT_PANE_WIDTH + SCROLLBAR_GUTTER,
+          // Wrapper width = visible row column + a physical column for the
+          // scrollbar. The scroll container below is `width: 100%` with
+          // `overflow-y: scroll`, and forces ::-webkit-scrollbar to take a
+          // fixed SCROLLBAR_WIDTH on its right. Rows live in the content
+          // box (LEFT_PANE_WIDTH wide); the scrollbar lives in its own
+          // SCROLLBAR_WIDTH column to the right of the rows. They never
+          // share a column, so the left panel and the scrollbar do not
+          // overlap.
+          width: LEFT_PANE_WIDTH + SCROLLBAR_WIDTH,
           flexShrink: 0,
           borderRight: `1px solid ${theme.colors.borderDecorative}`,
+          boxSizing: 'content-box',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
           '& [data-testid^="timeline-tree-node-"]': {
             marginLeft: theme.spacing.xs,
             marginRight: theme.spacing.xs,
@@ -82,13 +85,30 @@ export const NewTraceExperienceTraceTab = ({ filteredTreeNodes, expandedKeys, se
       >
         <div
           css={{
-            // Constrain the scrollable column so the scrollbar lives at
-            // x = LEFT_PANE_WIDTH, not at the wrapper's right border.
-            width: LEFT_PANE_WIDTH,
             flex: 1,
-            overflow: 'auto',
-            scrollbarGutter: 'stable',
+            // overflow-y: scroll forces the scrollbar to always be present
+            // and to take physical space (instead of macOS-style overlay).
+            overflowY: 'scroll',
+            overflowX: 'hidden',
             paddingTop: theme.spacing.xs,
+            // Pin the webkit scrollbar to exactly SCROLLBAR_WIDTH so the
+            // column math above always lines up regardless of the OS
+            // "Show scroll bars" preference.
+            '&::-webkit-scrollbar': {
+              width: SCROLLBAR_WIDTH,
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: 'transparent',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: theme.colors.actionDefaultBorderDefault,
+              borderRadius: SCROLLBAR_WIDTH / 2,
+              border: `3px solid transparent`,
+              backgroundClip: 'padding-box',
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              backgroundColor: theme.colors.actionDefaultBorderHover,
+            },
           }}
         >
           {filteredTreeNodes.map((node) => (
