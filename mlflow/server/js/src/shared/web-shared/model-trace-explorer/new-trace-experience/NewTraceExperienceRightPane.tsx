@@ -362,11 +362,15 @@ const PrettyPrimitive = ({ value }: { value: unknown }) => {
 };
 
 type PrettyEntryProps = {
-  label: string | number;
+  label?: string | number;
   value: unknown;
   initialExpanded?: boolean;
 };
 
+// Renders a single key/value pair (when `label` is provided) or an unlabeled
+// array item (when `label` is omitted). Array items deliberately do not show
+// their numeric index — the count next to the parent "Array(N)" already
+// conveys cardinality, and per-item "0/1/2" labels add visual noise.
 const PrettyEntry = ({ label, value, initialExpanded = true }: PrettyEntryProps) => {
   const { theme } = useDesignSystemTheme();
   const [expanded, setExpanded] = useState(initialExpanded);
@@ -394,15 +398,25 @@ const PrettyEntry = ({ label, value, initialExpanded = true }: PrettyEntryProps)
           }}
         >
           {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
-          <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
+          {label !== undefined && (
+            <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
+          )}
           <span css={{ color: theme.colors.textSecondary, fontFamily: MONO, fontSize: theme.typography.fontSizeSm }}>
             {isArray ? `Array(${count})` : `{${count}}`}
           </span>
         </button>
         {expanded && (
-          <div css={{ paddingLeft: theme.spacing.lg, marginTop: theme.spacing.xs, display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+          <div
+            css={{
+              paddingLeft: theme.spacing.lg,
+              marginTop: theme.spacing.xs,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.sm,
+            }}
+          >
             {isArray
-              ? (value as unknown[]).map((v, i) => <PrettyEntry key={i} label={i} value={v} />)
+              ? (value as unknown[]).map((v, i) => <PrettyEntry key={i} value={v} />)
               : Object.entries(value as Record<string, unknown>).map(([k, v]) => (
                   <PrettyEntry key={k} label={k} value={v} />
                 ))}
@@ -412,6 +426,12 @@ const PrettyEntry = ({ label, value, initialExpanded = true }: PrettyEntryProps)
     );
   }
 
+  // Primitive. With a label, key on its own line and value below (matches
+  // existing object-entry layout). Without a label (array item), render the
+  // value flush.
+  if (label === undefined) {
+    return <PrettyPrimitive value={value} />;
+  }
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
@@ -439,7 +459,7 @@ const PrettyView = ({ value }: { value: unknown }) => {
       {value !== null && typeof value === 'object' && !Array.isArray(value) ? (
         Object.entries(value as Record<string, unknown>).map(([k, v]) => <PrettyEntry key={k} label={k} value={v} />)
       ) : Array.isArray(value) ? (
-        value.map((v, i) => <PrettyEntry key={i} label={i} value={v} />)
+        value.map((v, i) => <PrettyEntry key={i} value={v} />)
       ) : (
         <PrettyPrimitive value={value} />
       )}
