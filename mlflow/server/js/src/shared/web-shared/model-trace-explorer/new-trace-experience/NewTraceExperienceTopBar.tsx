@@ -64,7 +64,6 @@ export const NewTraceExperienceTopBar = ({ traceId }: Props) => {
         alignItems: 'center',
         gap: theme.spacing.xs,
         padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-        borderBottom: `1px solid ${theme.colors.border}`,
         flexShrink: 0,
       }}
     >

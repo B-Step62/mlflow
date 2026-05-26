@@ -1,6 +1,14 @@
 import { useState } from 'react';
 
-import { Empty, Tabs, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  BarsAscendingVerticalIcon,
+  BranchIcon,
+  Empty,
+  ListBorderIcon,
+  Tabs,
+  WorkflowsIcon,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 
 import type { ModelTrace } from '../ModelTrace.types';
@@ -99,10 +107,30 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
       }}
     >
       <Tabs.List css={{ paddingLeft: theme.spacing.md, flexShrink: 0 }}>
-        <Tabs.Trigger value="trace">{traceLabel}</Tabs.Trigger>
-        <Tabs.Trigger value="timeline">{timelineLabel}</Tabs.Trigger>
-        <Tabs.Trigger value="graph">{graphLabel}</Tabs.Trigger>
-        <Tabs.Trigger value="lineage">{lineageLabel}</Tabs.Trigger>
+        <Tabs.Trigger value="trace">
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <ListBorderIcon />
+            {traceLabel}
+          </span>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="timeline">
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <BarsAscendingVerticalIcon />
+            {timelineLabel}
+          </span>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="graph">
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <WorkflowsIcon />
+            {graphLabel}
+          </span>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="lineage">
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <BranchIcon />
+            {lineageLabel}
+          </span>
+        </Tabs.Trigger>
       </Tabs.List>
       <Tabs.Content value="trace" css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         {renderTraceTab()}
