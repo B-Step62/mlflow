@@ -212,7 +212,7 @@ const ChatBubbles = ({ messages }: { messages: ModelTraceChatMessage[] }) => {
   );
 };
 
-type InputsOutputsRenderMode = 'yaml' | 'json' | 'chat';
+type InputsOutputsRenderMode = 'pretty' | 'yaml' | 'json' | 'chat';
 
 const RenderModeMenu = ({
   value,
@@ -226,6 +226,10 @@ const RenderModeMenu = ({
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const labels: Record<InputsOutputsRenderMode, string> = {
+    pretty: intl.formatMessage({
+      defaultMessage: 'Pretty',
+      description: 'Pretty (interactive tree) render-mode label for the Inputs/Outputs section in the new trace experience',
+    }),
     yaml: intl.formatMessage({
       defaultMessage: 'YAML',
       description: 'YAML render-mode label for the Inputs/Outputs section in the new trace experience',
@@ -261,6 +265,12 @@ const RenderModeMenu = ({
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
+        <DropdownMenu.Item
+          componentId="mlflow.new-trace-experience.io.render-mode.pretty"
+          onClick={() => onChange('pretty')}
+        >
+          {labels.pretty}
+        </DropdownMenu.Item>
         <DropdownMenu.Item componentId="mlflow.new-trace-experience.io.render-mode.yaml" onClick={() => onChange('yaml')}>
           {labels.yaml}
         </DropdownMenu.Item>
@@ -280,8 +290,7 @@ const RenderModeMenu = ({
   );
 };
 
-// Flat YAML / JSON dump of the entire inputs+outputs payload. One block,
-// no per-field separators or accordions.
+// Flat YAML / JSON dump for the YAML / JSON render modes.
 const StructuredDump = ({
   inputs,
   outputs,
@@ -333,6 +342,126 @@ const StructuredDump = ({
   );
 };
 
+// "Pretty" interactive tree view, similar to Braintrust/DevTools — keys in
+// violet monospace, nested objects/arrays collapsible on the left with a
+// chevron, URLs rendered as links, null/undefined dimmed.
+const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s);
+
+const KEY_COLOR = '#7c3aed';
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
+const PrettyPrimitive = ({ value }: { value: unknown }) => {
+  const { theme } = useDesignSystemTheme();
+  if (value === null || value === undefined) {
+    return <span css={{ color: theme.colors.textPlaceholder, fontFamily: MONO }}>null</span>;
+  }
+  if (typeof value === 'string') {
+    if (isUrl(value)) {
+      return (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          css={{ color: theme.colors.textPrimary, textDecoration: 'underline', wordBreak: 'break-all' }}
+        >
+          {value}
+        </a>
+      );
+    }
+    return <span css={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{value}</span>;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return <span css={{ fontFamily: MONO }}>{String(value)}</span>;
+  }
+  return <span css={{ fontFamily: MONO }}>{String(value)}</span>;
+};
+
+type PrettyEntryProps = {
+  label: string | number;
+  value: unknown;
+  initialExpanded?: boolean;
+};
+
+const PrettyEntry = ({ label, value, initialExpanded = true }: PrettyEntryProps) => {
+  const { theme } = useDesignSystemTheme();
+  const [expanded, setExpanded] = useState(initialExpanded);
+
+  const isObject = value !== null && typeof value === 'object';
+  const isArray = Array.isArray(value);
+
+  if (isObject) {
+    const count = isArray ? (value as unknown[]).length : Object.keys(value as object).length;
+    return (
+      <div css={{ display: 'flex', flexDirection: 'column' }}>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          css={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            color: theme.colors.textPrimary,
+            textAlign: 'left',
+          }}
+        >
+          {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
+          <span css={{ color: theme.colors.textSecondary, fontFamily: MONO, fontSize: theme.typography.fontSizeSm }}>
+            {isArray ? `Array(${count})` : `{${count}}`}
+          </span>
+        </button>
+        {expanded && (
+          <div css={{ paddingLeft: theme.spacing.lg, marginTop: theme.spacing.xs, display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            {isArray
+              ? (value as unknown[]).map((v, i) => <PrettyEntry key={i} label={i} value={v} />)
+              : Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+                  <PrettyEntry key={k} label={k} value={v} />
+                ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
+      <div css={{ paddingLeft: theme.spacing.lg, color: theme.colors.textPrimary }}>
+        <PrettyPrimitive value={value} />
+      </div>
+    </div>
+  );
+};
+
+const PrettyView = ({ inputs, outputs }: { inputs: unknown; outputs: unknown }) => {
+  const { theme } = useDesignSystemTheme();
+  const entries: { label: string; value: unknown }[] = [];
+  if (inputs !== undefined && inputs !== null) {
+    entries.push({ label: 'inputs', value: inputs });
+  }
+  if (outputs !== undefined && outputs !== null) {
+    entries.push({ label: 'outputs', value: outputs });
+  }
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.md,
+        fontSize: theme.typography.fontSizeSm,
+      }}
+    >
+      {entries.map(({ label, value }) => (
+        <PrettyEntry key={label} label={label} value={value} />
+      ))}
+    </div>
+  );
+};
+
 export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const { theme } = useDesignSystemTheme();
   const { selectedNode, rootNode } = useModelTraceExplorerViewState();
@@ -352,12 +481,12 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const chatMessages = activeSpan?.chatMessages;
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
 
-  const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>('yaml');
+  const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>('pretty');
   // When the active span has chat messages, default to chat view.
   useMemo(() => {
-    setRenderMode(hasChat ? 'chat' : 'yaml');
+    setRenderMode(hasChat ? 'chat' : 'pretty');
   }, [hasChat]);
-  const effectiveRenderMode: InputsOutputsRenderMode = renderMode === 'chat' && !hasChat ? 'yaml' : renderMode;
+  const effectiveRenderMode: InputsOutputsRenderMode = renderMode === 'chat' && !hasChat ? 'pretty' : renderMode;
 
   const tokenUsage = useMemo(() => {
     try {
@@ -511,6 +640,8 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
             <ChatBubbles messages={chatMessages ?? []} />
+          ) : effectiveRenderMode === 'pretty' ? (
+            <PrettyView inputs={activeSpan?.inputs} outputs={activeSpan?.outputs} />
           ) : (
             <StructuredDump
               inputs={activeSpan?.inputs}
