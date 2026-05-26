@@ -147,6 +147,10 @@
     "defaultMessage": "Cancel",
     "description": "Button text for canceling evaluation"
   },
+  "+vu3t7": {
+    "defaultMessage": "Copy link to trace",
+    "description": "Tooltip for the share button that copies the trace URL to the clipboard"
+  },
   "+w9a+1": {
     "defaultMessage": "Open runs in this group in the new tab",
     "description": "Experiment page > grouped runs table > tooltip for a button that opens runs in a group in a new tab"
@@ -414,10 +418,6 @@
   "0M7VVC": {
     "defaultMessage": "Irrelevant",
     "description": "Evaluation results > relevancy assessment > negative value label. Displayed if evaluation result is considered as irrelevant to the query."
-  },
-  "0Nipu4": {
-    "defaultMessage": "Trace: {traceId}",
-    "description": "Placeholder line showing the trace id while the new trace experience is being built"
   },
   "0QTEQi": {
     "defaultMessage": "Usage",
@@ -871,6 +871,10 @@
     "defaultMessage": "Edit",
     "description": "Text for the edit button next to the description section title on\n             the model view page"
   },
+  "36kR+o": {
+    "defaultMessage": "Next trace",
+    "description": "Tooltip for the down-arrow button that navigates to the next trace in the list"
+  },
   "37ReeZ": {
     "defaultMessage": "On",
     "description": "Usage tracking enabled state"
@@ -894,6 +898,10 @@
   "3N1zOb": {
     "defaultMessage": "Disabled",
     "description": "Webhook disabled label"
+  },
+  "3OmDyP": {
+    "defaultMessage": "Trace content coming in the next step.",
+    "description": "Placeholder shown in the new trace experience body while the layout is being built"
   },
   "3PBIB8": {
     "defaultMessage": "Appearance, product feedback, telemetry, and workspace demo data.",
@@ -1435,6 +1443,10 @@
     "defaultMessage": "Learn more",
     "description": "Link text for production monitoring documentation"
   },
+  "6sKuem": {
+    "defaultMessage": "Enter full screen",
+    "description": "Tooltip for the button that expands the trace drawer to full screen"
+  },
   "6tKW1I": {
     "defaultMessage": "Automatically log traces for Bedrock conversations by calling the {code} function. For example:",
     "description": "Description of how to log traces for the Bedrock package using MLflow autologging. This message is followed by a code example."
@@ -1834,6 +1846,10 @@
   "93iLUV": {
     "defaultMessage": "{timeSince, plural, =1 {1 second} other {# seconds}} ago",
     "description": "Text for time in seconds since given date for MLflow views"
+  },
+  "94WqjQ": {
+    "defaultMessage": "(unwired)",
+    "description": "Inline label rendered next to the trace id when the new trace experience shell is not yet wired to drawer-level actions"
   },
   "961sxj": {
     "defaultMessage": "Success Rate",
@@ -2254,10 +2270,6 @@
   "BFzsMn": {
     "defaultMessage": "No runs selected",
     "description": "Experiment page > artifact compare view > empty state for no runs selected > title"
-  },
-  "BLE3VG": {
-    "defaultMessage": "New trace experience",
-    "description": "Placeholder title for the redesigned trace experience shell, shown before the full layout is wired up"
   },
   "BMUd0e": {
     "defaultMessage": "Create evaluation datasets in order to iteratively evaluate and improve your app. For example, build a dataset from production traces with negative feedback. {learnMoreLink}",
@@ -3078,6 +3090,10 @@
   "GdtTc/": {
     "defaultMessage": "Run evaluation",
     "description": "Home page quick action title for running evaluations"
+  },
+  "GfR8LK": {
+    "defaultMessage": "Open trace in new tab",
+    "description": "Tooltip for the button that opens the current trace in a new browser tab"
   },
   "Gg/vLZ": {
     "defaultMessage": "Delete Model",
@@ -4407,6 +4423,10 @@
     "defaultMessage": "Add expectation",
     "description": "Label for the button to add a new expectation"
   },
+  "OwT7Y3": {
+    "defaultMessage": "Close trace",
+    "description": "Tooltip for the button that closes the trace drawer"
+  },
   "OxQK9l": {
     "defaultMessage": "Key name is required",
     "description": "Error message when key name is empty"
@@ -5254,6 +5274,10 @@
   "U82iv6": {
     "defaultMessage": "Registered Models",
     "description": "Text for registered model link in the title for model comparison page"
+  },
+  "UAkHLJ": {
+    "defaultMessage": "Exit full screen",
+    "description": "Tooltip for the button that shrinks the trace drawer back from full screen"
   },
   "UCQwvo": {
     "defaultMessage": "Registered prompts",
@@ -7183,6 +7207,10 @@
     "defaultMessage": "No images found",
     "description": "Title for the empty state when no images are found in the currently visible runs"
   },
+  "ezKvBl": {
+    "defaultMessage": "Search in trace",
+    "description": "Tooltip for the search button that reveals the in-trace search field"
+  },
   "f/3uBA": {
     "defaultMessage": "Select an endpoint to use for this judge.",
     "description": "Hint text for endpoint selection"
@@ -8802,6 +8830,10 @@
   "o21MFS": {
     "defaultMessage": "Invalid log value",
     "description": "Experiment tracking > runs charts > line chart configuration > invalid log value message"
+  },
+  "o265zu": {
+    "defaultMessage": "Previous trace",
+    "description": "Tooltip for the up-arrow button that navigates to the previous trace in the list"
   },
   "o2q4XV": {
     "defaultMessage": "Active",

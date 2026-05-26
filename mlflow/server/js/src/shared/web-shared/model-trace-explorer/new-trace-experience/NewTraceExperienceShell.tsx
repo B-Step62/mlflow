@@ -2,6 +2,7 @@ import { useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import type { ModelTrace } from '../ModelTrace.types';
+import { NewTraceExperienceTopBar } from './NewTraceExperienceTopBar';
 
 type Props = {
   modelTraceInfo: ModelTrace['info'];
@@ -27,21 +28,22 @@ export const NewTraceExperienceShell = ({ modelTraceInfo, className }: Props) =>
         overflow: 'hidden',
         backgroundColor: theme.colors.backgroundPrimary,
         color: theme.colors.textPrimary,
-        padding: theme.spacing.lg,
-        gap: theme.spacing.md,
       }}
     >
-      <div css={{ fontSize: theme.typography.fontSizeXl, fontWeight: theme.typography.typographyBoldFontWeight }}>
+      <NewTraceExperienceTopBar traceId={traceId} />
+      <div
+        css={{
+          display: 'flex',
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: theme.colors.textSecondary,
+          padding: theme.spacing.lg,
+        }}
+      >
         <FormattedMessage
-          defaultMessage="New trace experience"
-          description="Placeholder title for the redesigned trace experience shell, shown before the full layout is wired up"
-        />
-      </div>
-      <div css={{ color: theme.colors.textSecondary }}>
-        <FormattedMessage
-          defaultMessage="Trace: {traceId}"
-          description="Placeholder line showing the trace id while the new trace experience is being built"
-          values={{ traceId }}
+          defaultMessage="Trace content coming in the next step."
+          description="Placeholder shown in the new trace experience body while the layout is being built"
         />
       </div>
     </div>

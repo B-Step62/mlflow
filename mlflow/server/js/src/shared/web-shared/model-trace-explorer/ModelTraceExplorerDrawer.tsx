@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   ApplyDesignSystemContextOverrides,
@@ -12,9 +12,11 @@ import {
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
+import { shouldUseNewTraceExperience } from './FeatureUtils';
 import { ModelTraceExplorerSkeleton } from './ModelTraceExplorerSkeleton';
 import { useModelTraceExplorerContext } from './ModelTraceExplorerContext';
 import type { ModelTraceInfoV3 } from './ModelTrace.types';
+import { NewTraceExperienceShellProvider } from './new-trace-experience/NewTraceExperienceShellContext';
 
 export interface ModelTraceExplorerDrawerProps {
   children: React.ReactNode;
@@ -44,13 +46,24 @@ export const ModelTraceExplorerDrawer = ({
   const { theme } = useDesignSystemTheme();
   const [showDatasetModal, setShowDatasetModal] = useState(false);
   const [showCopiedNotification, setShowCopiedNotification] = useState(false);
-  const { renderExportTracesToDatasetsModal, DrawerComponent, drawerWidth = '60vw' } = useModelTraceExplorerContext();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const {
+    renderExportTracesToDatasetsModal,
+    DrawerComponent,
+    drawerWidth: contextDrawerWidth,
+  } = useModelTraceExplorerContext();
+  const isNewTraceExperience = shouldUseNewTraceExperience();
+  // The new shell renders narrower by default; the legacy chrome keeps its 60vw default.
+  const defaultDrawerWidth = isNewTraceExperience ? '50vw' : '60vw';
+  const drawerWidth = isFullscreen ? '100vw' : (contextDrawerWidth ?? defaultDrawerWidth);
 
   const handleShareClick = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
     setShowCopiedNotification(true);
     setTimeout(() => setShowCopiedNotification(false), 2000);
   }, []);
+
+  const toggleFullscreen = useCallback(() => setIsFullscreen((prev) => !prev), []);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -63,15 +76,17 @@ export const ModelTraceExplorerDrawer = ({
           return;
         }
       }
-      if (e.key === 'ArrowLeft' && isPreviousAvailable) {
+      const previousKey = isNewTraceExperience ? 'ArrowUp' : 'ArrowLeft';
+      const nextKey = isNewTraceExperience ? 'ArrowDown' : 'ArrowRight';
+      if (e.key === previousKey && isPreviousAvailable) {
         e.stopPropagation();
         selectPreviousEval();
-      } else if (e.key === 'ArrowRight' && isNextAvailable) {
+      } else if (e.key === nextKey && isNextAvailable) {
         e.stopPropagation();
         selectNextEval();
       }
     },
-    [isPreviousAvailable, isNextAvailable, selectPreviousEval, selectNextEval],
+    [isNewTraceExperience, isPreviousAvailable, isNextAvailable, selectPreviousEval, selectNextEval],
   );
 
   useEffect(() => {
@@ -83,6 +98,75 @@ export const ModelTraceExplorerDrawer = ({
 
   const showAddToDatasetButton = Boolean(renderExportTracesToDatasetsModal && experimentId && traceInfo);
   const handleAddToDatasetClick = useCallback(() => setShowDatasetModal(true), []);
+
+  const newShellContextValue = useMemo(
+    () => ({
+      selectPreviousTrace: selectPreviousEval,
+      selectNextTrace: selectNextEval,
+      isPreviousAvailable,
+      isNextAvailable,
+      onShare: handleShareClick,
+      onClose: handleClose,
+      isFullscreen,
+      toggleFullscreen,
+    }),
+    [
+      selectPreviousEval,
+      selectNextEval,
+      isPreviousAvailable,
+      isNextAvailable,
+      handleShareClick,
+      handleClose,
+      isFullscreen,
+      toggleFullscreen,
+    ],
+  );
+
+  const legacyTitleBar = (
+    <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
+      <Button
+        componentId="mlflow.evaluations_review.modal.previous_eval"
+        disabled={!isPreviousAvailable}
+        onClick={() => selectPreviousEval()}
+      >
+        <ChevronLeftIcon />
+      </Button>
+      <Button
+        componentId="mlflow.evaluations_review.modal.next_eval"
+        disabled={!isNextAvailable}
+        onClick={() => selectNextEval()}
+      >
+        <ChevronRightIcon />
+      </Button>
+      <div css={{ flex: 1, overflow: 'hidden' }}>{renderModalTitle()}</div>
+      {showAddToDatasetButton && (
+        <Button
+          componentId="mlflow.evaluations_review.modal.add_to_dataset"
+          onClick={handleAddToDatasetClick}
+          icon={<PlusIcon />}
+        >
+          <FormattedMessage defaultMessage="Add to dataset" description="Button text for adding a trace to a dataset" />
+        </Button>
+      )}
+      <Tooltip
+        componentId="mlflow.evaluations_review.modal.share-tooltip"
+        content={
+          <FormattedMessage defaultMessage="Copy link to trace" description="Tooltip for the share trace button" />
+        }
+      >
+        <Button componentId="mlflow.evaluations_review.modal.share-button" onClick={handleShareClick}>
+          <FormattedMessage defaultMessage="Share" description="Label for the share trace button" />
+        </Button>
+      </Tooltip>
+    </div>
+  );
+
+  const renderedChildren = isLoading ? <ModelTraceExplorerSkeleton /> : children;
+  const wrappedChildren = isNewTraceExperience ? (
+    <NewTraceExperienceShellProvider value={newShellContextValue}>{renderedChildren}</NewTraceExperienceShellProvider>
+  ) : (
+    renderedChildren
+  );
 
   return (
     <DrawerComponent.Root
@@ -96,50 +180,7 @@ export const ModelTraceExplorerDrawer = ({
       <DrawerComponent.Content
         componentId="mlflow.evaluations_review.modal"
         width={drawerWidth}
-        title={
-          <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
-            <Button
-              componentId="mlflow.evaluations_review.modal.previous_eval"
-              disabled={!isPreviousAvailable}
-              onClick={() => selectPreviousEval()}
-            >
-              <ChevronLeftIcon />
-            </Button>
-            <Button
-              componentId="mlflow.evaluations_review.modal.next_eval"
-              disabled={!isNextAvailable}
-              onClick={() => selectNextEval()}
-            >
-              <ChevronRightIcon />
-            </Button>
-            <div css={{ flex: 1, overflow: 'hidden' }}>{renderModalTitle()}</div>
-            {showAddToDatasetButton && (
-              <Button
-                componentId="mlflow.evaluations_review.modal.add_to_dataset"
-                onClick={handleAddToDatasetClick}
-                icon={<PlusIcon />}
-              >
-                <FormattedMessage
-                  defaultMessage="Add to dataset"
-                  description="Button text for adding a trace to a dataset"
-                />
-              </Button>
-            )}
-            <Tooltip
-              componentId="mlflow.evaluations_review.modal.share-tooltip"
-              content={
-                <FormattedMessage
-                  defaultMessage="Copy link to trace"
-                  description="Tooltip for the share trace button"
-                />
-              }
-            >
-              <Button componentId="mlflow.evaluations_review.modal.share-button" onClick={handleShareClick}>
-                <FormattedMessage defaultMessage="Share" description="Label for the share trace button" />
-              </Button>
-            </Tooltip>
-          </div>
-        }
+        title={isNewTraceExperience ? null : legacyTitleBar}
         expandContentToFullHeight
         css={[
           {
@@ -155,10 +196,17 @@ export const ModelTraceExplorerDrawer = ({
               },
             },
           },
+          isNewTraceExperience && {
+            // Hide the design-system drawer header chrome (title row + close button)
+            // when the new shell owns the top bar.
+            '&>div:first-child': {
+              display: 'none',
+            },
+          },
         ]}
       >
         <ApplyDesignSystemContextOverrides zIndexBase={2 * theme.options.zIndexBase}>
-          {isLoading ? <ModelTraceExplorerSkeleton /> : <>{children}</>}
+          {wrappedChildren}
         </ApplyDesignSystemContextOverrides>
         {renderExportTracesToDatasetsModal?.({
           selectedTraceInfos: traceInfo ? [traceInfo] : [],
