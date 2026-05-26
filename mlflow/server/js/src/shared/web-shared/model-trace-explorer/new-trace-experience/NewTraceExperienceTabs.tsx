@@ -98,11 +98,18 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
         flex: 1,
         flexDirection: 'column',
         overflow: 'hidden',
-        // Remove the default bottom margin under <Tabs.List/> so the body
-        // sits flush against the tab strip.
+        // The DS Tabs.List is wrapped in two fixed-height Radix ScrollArea
+        // divs (~31-32 px). They clip a taller Tabs.List underneath. Force
+        // the nav wrapper and its scroll-area child to match the taller
+        // strip so labels and the underline indicator are not cropped.
         '& > div:nth-of-type(1)': {
           marginBottom: 0,
           flexShrink: 0,
+          height: 64,
+          '& > div': {
+            height: 64,
+            maxHeight: 64,
+          },
         },
       }}
     >
@@ -110,15 +117,20 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
         css={{
           paddingLeft: theme.spacing.lg,
           flexShrink: 0,
-          // DS Tabs default is tight, with the selected underline butting up
-          // against the trigger label. Push the strip down so the labels and
-          // their underline indicator have breathing room.
-          minHeight: 48,
+          // DS Tabs paints the active indicator as a 4px inset box-shadow on
+          // the very bottom of the trigger; the trigger's flex layout then
+          // vertically centres the label, so the gap between text and the
+          // colored underline is just a few pixels at the default height.
+          // Make the strip taller and pin the label to the top of the cell so
+          // text + indicator have real breathing room.
+          minHeight: 64,
           '& [role="tab"]': {
-            height: 48,
+            height: 64,
             marginRight: theme.spacing.lg,
-            // Lift the label off the bottom underline indicator.
-            paddingBottom: theme.spacing.sm,
+            // Align label content to the top of the cell, leaving the active
+            // underline well below it.
+            alignItems: 'flex-start',
+            paddingTop: theme.spacing.md,
           },
         }}
       >
