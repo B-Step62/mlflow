@@ -2891,6 +2891,10 @@
     "defaultMessage": "Stop Sequences",
     "description": "Experiment page > prompt lab > stop parameter label"
   },
+  "FB5+EU": {
+    "defaultMessage": "Lineage",
+    "description": "Tab label for the lineage view (linked prompts, runs, datasets) in the new trace experience"
+  },
   "FBR3Q/": {
     "defaultMessage": "Overview",
     "description": "Label for the overview tab on the logged model details page"
@@ -3370,6 +3374,10 @@
   "IJbauF": {
     "defaultMessage": "Add tag \"{tagKey}\"",
     "description": "Key-value tag editor modal > Tag dropdown Manage Modal > Add new tag button"
+  },
+  "IKoUkN": {
+    "defaultMessage": "Timeline view",
+    "description": "Empty-state heading for the Timeline tab placeholder in the new trace experience"
   },
   "IKx3DN": {
     "defaultMessage": "Predict on a Pandas DataFrame.",
@@ -4587,6 +4595,10 @@
     "defaultMessage": "Model configuration",
     "description": "Label for model configuration section"
   },
+  "PpRdIO": {
+    "defaultMessage": "Lineage view",
+    "description": "Empty-state heading for the Lineage tab placeholder in the new trace experience"
+  },
   "PtjdJS": {
     "defaultMessage": "Graph",
     "description": "Label for the graph toggle button in the trace explorer."
@@ -5083,6 +5095,10 @@
     "defaultMessage": "Resolve",
     "description": "Button to resolve an issue"
   },
+  "Su5i3+": {
+    "defaultMessage": "Timeline",
+    "description": "Tab label for the timeline (gantt) view of a trace in the new trace experience"
+  },
   "SuVsDp": {
     "defaultMessage": "Custom code judge feedback",
     "description": "Tooltip content for custom code judge feedback"
@@ -5490,6 +5506,10 @@
   "VN5B4N": {
     "defaultMessage": "General",
     "description": "Accordion section header for general settings"
+  },
+  "VNcwUA": {
+    "defaultMessage": "Graph",
+    "description": "Tab label for the graph (node/edge) view of a trace in the new trace experience"
   },
   "VOP7Y5": {
     "defaultMessage": "No guardrails match your search.",
@@ -8655,6 +8675,10 @@
     "defaultMessage": "Close",
     "description": "Button for closing modal with the logged models quickstart example code"
   },
+  "n2x1XQ": {
+    "defaultMessage": "Trace",
+    "description": "Tab label for the main trace view (tree + stacked detail) in the new trace experience"
+  },
   "n4on5x": {
     "defaultMessage": "Create",
     "description": "Gateway > API keys list > Create button"
@@ -9763,6 +9787,10 @@
     "defaultMessage": "Issue ID",
     "description": "Label for issue ID in popover"
   },
+  "tFnzwJ": {
+    "defaultMessage": "Graph view",
+    "description": "Empty-state heading for the Graph tab placeholder in the new trace experience"
+  },
   "tGqJL4": {
     "defaultMessage": "Output",
     "description": "Label for the output tokens in the tooltip for the tokens cell."
@@ -10162,6 +10190,10 @@
   "w4bpXQ": {
     "defaultMessage": "Use a custom model name",
     "description": "Label for custom model input section"
+  },
+  "w5JxBm": {
+    "defaultMessage": "Coming in a later step of the redesign.",
+    "description": "Empty-state body shown under tabs that have not been wired up yet in the new trace experience"
   },
   "w80phd": {
     "defaultMessage": "Error",

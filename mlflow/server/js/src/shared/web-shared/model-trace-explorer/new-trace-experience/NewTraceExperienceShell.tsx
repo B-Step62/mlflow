@@ -2,6 +2,7 @@ import { useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import type { ModelTrace } from '../ModelTrace.types';
+import { NewTraceExperienceTabs } from './NewTraceExperienceTabs';
 import { NewTraceExperienceTopBar } from './NewTraceExperienceTopBar';
 
 type Props = {
@@ -18,6 +19,24 @@ export const NewTraceExperienceShell = ({ modelTraceInfo, className }: Props) =>
     (modelTraceInfo as { request_id?: string } | undefined)?.request_id ??
     '-';
 
+  const renderTraceTab = () => (
+    <div
+      css={{
+        display: 'flex',
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: theme.colors.textSecondary,
+        padding: theme.spacing.lg,
+      }}
+    >
+      <FormattedMessage
+        defaultMessage="Trace content coming in the next step."
+        description="Placeholder shown in the new trace experience body while the layout is being built"
+      />
+    </div>
+  );
+
   return (
     <div
       className={className}
@@ -31,21 +50,7 @@ export const NewTraceExperienceShell = ({ modelTraceInfo, className }: Props) =>
       }}
     >
       <NewTraceExperienceTopBar traceId={traceId} />
-      <div
-        css={{
-          display: 'flex',
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: theme.colors.textSecondary,
-          padding: theme.spacing.lg,
-        }}
-      >
-        <FormattedMessage
-          defaultMessage="Trace content coming in the next step."
-          description="Placeholder shown in the new trace experience body while the layout is being built"
-        />
-      </div>
+      <NewTraceExperienceTabs modelTraceInfo={modelTraceInfo} renderTraceTab={renderTraceTab} />
     </div>
   );
 };
