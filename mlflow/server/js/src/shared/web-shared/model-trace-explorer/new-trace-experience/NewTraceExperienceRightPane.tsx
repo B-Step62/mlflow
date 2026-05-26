@@ -227,8 +227,8 @@ const RenderModeMenu = ({
   const intl = useIntl();
   const labels: Record<InputsOutputsRenderMode, string> = {
     pretty: intl.formatMessage({
-      defaultMessage: 'Pretty',
-      description: 'Pretty (interactive tree) render-mode label for the Inputs/Outputs section in the new trace experience',
+      defaultMessage: 'Default',
+      description: 'Default (interactive tree) render-mode label for the Inputs/Outputs section in the new trace experience',
     }),
     yaml: intl.formatMessage({
       defaultMessage: 'YAML',
