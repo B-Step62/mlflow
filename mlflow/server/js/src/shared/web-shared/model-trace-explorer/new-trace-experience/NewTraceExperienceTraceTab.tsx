@@ -94,7 +94,17 @@ export const NewTraceExperienceTraceTab = ({ modelTraceInfo }: Props) => {
           setSpanFilterState={setSpanFilterState}
         />
         {isTreeOpen && (
-          <div css={{ flex: 1, overflow: 'auto' }}>
+          <div
+            css={{
+              flex: 1,
+              overflow: 'auto',
+              // Reserve a gutter for the vertical scrollbar so it does not
+              // visually collide with the three-dot button in the header,
+              // and so the right edge of the tree rows does not jump when
+              // the scrollbar appears.
+              scrollbarGutter: 'stable',
+            }}
+          >
             {filteredTreeNodes.map((node) => (
               <TimelineTreeNode
                 key={node.key}

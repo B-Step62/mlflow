@@ -1,8 +1,6 @@
 import {
   Button,
   Checkbox,
-  ChevronDownIcon,
-  ChevronRightIcon,
   OverflowIcon,
   Popover,
   Typography,
@@ -45,10 +43,18 @@ export const NewTraceExperienceTreeHeader = ({ isOpen, onToggle, spanFilterState
     >
       <Button
         componentId="mlflow.new-trace-experience.tree.toggle"
-        type="tertiary"
         size="small"
-        icon={isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
         onClick={onToggle}
+        css={{
+          // Default-typed button (bordered, neutral text color).
+          color: `${theme.colors.textPrimary} !important`,
+          fontWeight: theme.typography.typographyRegularFontWeight,
+          // Force a visible bordered chip. DS Button hard-codes
+          // `border: none`, so paint the outline with inset box-shadow.
+          boxShadow: `inset 0 0 0 1px ${theme.colors.actionDefaultBorderDefault} !important`,
+          borderRadius: `${theme.legacyBorders.borderRadiusMd}px !important`,
+          backgroundColor: 'transparent !important',
+        }}
       >
         <FormattedMessage
           defaultMessage="Trace breakdown"
