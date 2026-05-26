@@ -2,6 +2,8 @@ import { keys } from 'lodash';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import yaml from 'js-yaml';
+
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -18,16 +20,10 @@ import type {
   ModelTraceInfoV3,
   ModelTraceSpanNode,
 } from '../ModelTrace.types';
-import {
-  createListFromObject,
-  getIconTypeForSpan,
-  getTraceCost,
-  getTraceTokenUsage,
-} from '../ModelTraceExplorer.utils';
+import { getIconTypeForSpan, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { AssessmentsPane } from '../assessments-pane/AssessmentsPane';
-import { ModelTraceExplorerFieldRenderer } from '../field-renderers/ModelTraceExplorerFieldRenderer';
 import { ModelTraceExplorerAttributesTab } from '../right-pane/ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
@@ -216,7 +212,7 @@ const ChatBubbles = ({ messages }: { messages: ModelTraceChatMessage[] }) => {
   );
 };
 
-type InputsOutputsRenderMode = 'default' | 'chat';
+type InputsOutputsRenderMode = 'yaml' | 'json' | 'chat';
 
 const RenderModeMenu = ({
   value,
@@ -230,9 +226,13 @@ const RenderModeMenu = ({
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const labels: Record<InputsOutputsRenderMode, string> = {
-    default: intl.formatMessage({
-      defaultMessage: 'Default',
-      description: 'Default render-mode label for the Inputs/Outputs section in the new trace experience',
+    yaml: intl.formatMessage({
+      defaultMessage: 'YAML',
+      description: 'YAML render-mode label for the Inputs/Outputs section in the new trace experience',
+    }),
+    json: intl.formatMessage({
+      defaultMessage: 'JSON',
+      description: 'JSON render-mode label for the Inputs/Outputs section in the new trace experience',
     }),
     chat: intl.formatMessage({
       defaultMessage: 'Chat',
@@ -261,11 +261,11 @@ const RenderModeMenu = ({
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
-        <DropdownMenu.Item
-          componentId="mlflow.new-trace-experience.io.render-mode.default"
-          onClick={() => onChange('default')}
-        >
-          {labels.default}
+        <DropdownMenu.Item componentId="mlflow.new-trace-experience.io.render-mode.yaml" onClick={() => onChange('yaml')}>
+          {labels.yaml}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item componentId="mlflow.new-trace-experience.io.render-mode.json" onClick={() => onChange('json')}>
+          {labels.json}
         </DropdownMenu.Item>
         {hasChat && (
           <DropdownMenu.Item
@@ -280,6 +280,59 @@ const RenderModeMenu = ({
   );
 };
 
+// Flat YAML / JSON dump of the entire inputs+outputs payload. One block,
+// no per-field separators or accordions.
+const StructuredDump = ({
+  inputs,
+  outputs,
+  mode,
+}: {
+  inputs: unknown;
+  outputs: unknown;
+  mode: 'yaml' | 'json';
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const text = useMemo(() => {
+    const payload: Record<string, unknown> = {};
+    if (inputs !== undefined && inputs !== null) {
+      payload['inputs'] = inputs;
+    }
+    if (outputs !== undefined && outputs !== null) {
+      payload['outputs'] = outputs;
+    }
+    if (mode === 'json') {
+      try {
+        return JSON.stringify(payload, null, 2);
+      } catch {
+        return String(payload);
+      }
+    }
+    try {
+      return yaml.dump(payload, { lineWidth: 100, noRefs: true, sortKeys: false });
+    } catch {
+      return JSON.stringify(payload, null, 2);
+    }
+  }, [inputs, outputs, mode]);
+
+  return (
+    <pre
+      css={{
+        margin: 0,
+        padding: theme.spacing.md,
+        backgroundColor: theme.colors.backgroundSecondary,
+        borderRadius: theme.legacyBorders.borderRadiusMd,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: theme.typography.fontSizeSm,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        color: theme.colors.textPrimary,
+      }}
+    >
+      {text}
+    </pre>
+  );
+};
+
 export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const { theme } = useDesignSystemTheme();
   const { selectedNode, rootNode } = useModelTraceExplorerViewState();
@@ -291,19 +344,20 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     (modelTraceInfo as { request_id?: string } | undefined)?.request_id ??
     '';
 
-  const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
-  const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
-  const hasInputsOrOutputs = inputList.length > 0 || outputList.length > 0;
+  const hasInputs = activeSpan?.inputs !== undefined && activeSpan?.inputs !== null;
+  const hasOutputs = activeSpan?.outputs !== undefined && activeSpan?.outputs !== null;
+  const hasInputsOrOutputs = hasInputs || hasOutputs;
   const hasAttributes = keys(activeSpan?.attributes).length > 0;
   const hasEvents = Array.isArray(activeSpan?.events) && (activeSpan?.events?.length ?? 0) > 0;
   const chatMessages = activeSpan?.chatMessages;
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
 
-  const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>('default');
-  const effectiveRenderMode: InputsOutputsRenderMode = hasChat ? renderMode : 'default';
+  const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>('yaml');
+  // When the active span has chat messages, default to chat view.
   useMemo(() => {
-    setRenderMode(hasChat ? 'chat' : 'default');
+    setRenderMode(hasChat ? 'chat' : 'yaml');
   }, [hasChat]);
+  const effectiveRenderMode: InputsOutputsRenderMode = renderMode === 'chat' && !hasChat ? 'yaml' : renderMode;
 
   const tokenUsage = useMemo(() => {
     try {
@@ -373,30 +427,38 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         : formatNumber(totalTokens)
       : null;
 
-  const cost = typeof traceCost.total_cost === 'number' ? traceCost.total_cost : activeSpan.cost?.total_cost;
-
   const infoRows: Row[] = [];
 
+  // Span-level rows (apply to any span where present).
   if (activeSpan.modelName) {
     infoRows.push({
       label: <FormattedMessage defaultMessage="Model" description="Info label - model name" />,
       value: activeSpan.modelName,
     });
   }
-  if (tokensValue) {
+  if (activeSpan.cost?.total_cost !== undefined) {
     infoRows.push({
-      label: <FormattedMessage defaultMessage="Tokens" description="Info label - tokens" />,
-      value: tokensValue,
+      label: <FormattedMessage defaultMessage="Cost" description="Info label - span cost" />,
+      value: formatCost(activeSpan.cost.total_cost),
     });
   }
-  if (typeof cost === 'number') {
-    infoRows.push({
-      label: <FormattedMessage defaultMessage="Cost" description="Info label - cost" />,
-      value: formatCost(cost),
-    });
-  }
-  // Trace-level rows only on the root span.
+
+  // Trace-level rows (tokens, total cost, session, tags) only on the root
+  // span. Showing trace-level tokens on a child tool/retriever span is
+  // misleading because those spans don't generate tokens themselves.
   if (isRootSpan) {
+    if (tokensValue) {
+      infoRows.push({
+        label: <FormattedMessage defaultMessage="Tokens" description="Info label - trace-level tokens" />,
+        value: tokensValue,
+      });
+    }
+    if (typeof traceCost.total_cost === 'number' && activeSpan.cost?.total_cost === undefined) {
+      infoRows.push({
+        label: <FormattedMessage defaultMessage="Cost" description="Info label - trace cost" />,
+        value: formatCost(traceCost.total_cost),
+      });
+    }
     if (sessionId) {
       infoRows.push({
         label: <FormattedMessage defaultMessage="Session" description="Info label - session" />,
@@ -445,53 +507,16 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
               description="Section heading for the inputs+outputs section in the new trace experience right pane"
             />
           }
-          actions={
-            hasChat ? (
-              <RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />
-            ) : undefined
-          }
+          actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
             <ChatBubbles messages={chatMessages ?? []} />
           ) : (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-              {inputList.length > 0 && (
-                <div>
-                  <Typography.Text bold css={{ marginBottom: theme.spacing.xs, display: 'block' }}>
-                    <FormattedMessage defaultMessage="Inputs" description="Sub-heading for inputs in the new trace experience" />
-                  </Typography.Text>
-                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-                    {inputList.map(({ key, value }, index) => (
-                      <ModelTraceExplorerFieldRenderer
-                        key={key || index}
-                        title={key}
-                        data={value}
-                        renderMode="default"
-                        assessments={activeSpan?.assessments}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {outputList.length > 0 && (
-                <div>
-                  <Typography.Text bold css={{ marginBottom: theme.spacing.xs, display: 'block' }}>
-                    <FormattedMessage defaultMessage="Outputs" description="Sub-heading for outputs in the new trace experience" />
-                  </Typography.Text>
-                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-                    {outputList.map(({ key, value }, index) => (
-                      <ModelTraceExplorerFieldRenderer
-                        key={key || index}
-                        title={key}
-                        data={value}
-                        renderMode="default"
-                        assessments={activeSpan?.assessments}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <StructuredDump
+              inputs={activeSpan?.inputs}
+              outputs={activeSpan?.outputs}
+              mode={effectiveRenderMode === 'json' ? 'json' : 'yaml'}
+            />
           )}
         </Section>
       )}
