@@ -1,5 +1,5 @@
 import { keys } from 'lodash';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import yaml from 'js-yaml';
@@ -15,6 +15,7 @@ import {
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 
 import type {
+  FeedbackAssessment,
   ModelTrace,
   ModelTraceChatMessage,
   ModelTraceInfoV3,
@@ -24,6 +25,7 @@ import { getIconTypeForSpan, getTraceCost, getTraceTokenUsage } from '../ModelTr
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { AssessmentsPane } from '../assessments-pane/AssessmentsPane';
+import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
 import { ModelTraceExplorerAttributesTab } from '../right-pane/ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
@@ -87,7 +89,7 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
 };
 
 // Span name header (no type label) at the top of the right pane.
-const SpanTitleHeader = ({ activeSpan }: { activeSpan: ModelTraceSpanNode }) => {
+const SpanTitleHeader = ({ activeSpan, isRootSpan }: { activeSpan: ModelTraceSpanNode; isRootSpan: boolean }) => {
   const { theme } = useDesignSystemTheme();
   const name = typeof activeSpan.title === 'string' ? activeSpan.title : String(activeSpan.key);
   return (
@@ -99,7 +101,7 @@ const SpanTitleHeader = ({ activeSpan }: { activeSpan: ModelTraceSpanNode }) => 
         padding: `${theme.spacing.md}px ${theme.spacing.md}px ${theme.spacing.sm}px`,
       }}
     >
-      <ModelTraceExplorerIcon type={getIconTypeForSpan(activeSpan.type ?? '')} />
+      <ModelTraceExplorerIcon type={getIconTypeForSpan(activeSpan.type ?? '')} isRootSpan={isRootSpan} />
       <Typography.Title level={3} withoutMargins>
         {name}
       </Typography.Title>
@@ -291,37 +293,22 @@ const RenderModeMenu = ({
 };
 
 // Flat YAML / JSON dump for the YAML / JSON render modes.
-const StructuredDump = ({
-  inputs,
-  outputs,
-  mode,
-}: {
-  inputs: unknown;
-  outputs: unknown;
-  mode: 'yaml' | 'json';
-}) => {
+const StructuredDump = ({ value, mode }: { value: unknown; mode: 'yaml' | 'json' }) => {
   const { theme } = useDesignSystemTheme();
   const text = useMemo(() => {
-    const payload: Record<string, unknown> = {};
-    if (inputs !== undefined && inputs !== null) {
-      payload['inputs'] = inputs;
-    }
-    if (outputs !== undefined && outputs !== null) {
-      payload['outputs'] = outputs;
-    }
     if (mode === 'json') {
       try {
-        return JSON.stringify(payload, null, 2);
+        return JSON.stringify(value, null, 2);
       } catch {
-        return String(payload);
+        return String(value);
       }
     }
     try {
-      return yaml.dump(payload, { lineWidth: 100, noRefs: true, sortKeys: false });
+      return yaml.dump(value, { lineWidth: 100, noRefs: true, sortKeys: false });
     } catch {
-      return JSON.stringify(payload, null, 2);
+      return JSON.stringify(value, null, 2);
     }
-  }, [inputs, outputs, mode]);
+  }, [value, mode]);
 
   return (
     <pre
@@ -437,27 +424,27 @@ const PrettyEntry = ({ label, value, initialExpanded = true }: PrettyEntryProps)
   );
 };
 
-const PrettyView = ({ inputs, outputs }: { inputs: unknown; outputs: unknown }) => {
+// Renders a single payload's pretty tree. If the payload is itself an object,
+// renders each top-level key as an entry at the root (no surrounding "inputs"
+// or "outputs" wrapper). Primitive payloads render their own value.
+const PrettyView = ({ value }: { value: unknown }) => {
   const { theme } = useDesignSystemTheme();
-  const entries: { label: string; value: unknown }[] = [];
-  if (inputs !== undefined && inputs !== null) {
-    entries.push({ label: 'inputs', value: inputs });
-  }
-  if (outputs !== undefined && outputs !== null) {
-    entries.push({ label: 'outputs', value: outputs });
-  }
   return (
     <div
       css={{
         display: 'flex',
         flexDirection: 'column',
-        gap: theme.spacing.md,
+        gap: theme.spacing.sm,
         fontSize: theme.typography.fontSizeSm,
       }}
     >
-      {entries.map(({ label, value }) => (
-        <PrettyEntry key={label} label={label} value={value} />
-      ))}
+      {value !== null && typeof value === 'object' && !Array.isArray(value) ? (
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => <PrettyEntry key={k} label={k} value={v} />)
+      ) : Array.isArray(value) ? (
+        value.map((v, i) => <PrettyEntry key={i} label={i} value={v} />)
+      ) : (
+        <PrettyPrimitive value={value} />
+      )}
     </div>
   );
 };
@@ -475,18 +462,37 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
   const hasInputs = activeSpan?.inputs !== undefined && activeSpan?.inputs !== null;
   const hasOutputs = activeSpan?.outputs !== undefined && activeSpan?.outputs !== null;
-  const hasInputsOrOutputs = hasInputs || hasOutputs;
   const hasAttributes = keys(activeSpan?.attributes).length > 0;
   const hasEvents = Array.isArray(activeSpan?.events) && (activeSpan?.events?.length ?? 0) > 0;
   const chatMessages = activeSpan?.chatMessages;
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
 
-  const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>('pretty');
-  // When the active span has chat messages, default to chat view.
-  useMemo(() => {
+  const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>(hasChat ? 'chat' : 'pretty');
+  // Default to chat view whenever the selected span has chat messages.
+  useEffect(() => {
     setRenderMode(hasChat ? 'chat' : 'pretty');
   }, [hasChat]);
   const effectiveRenderMode: InputsOutputsRenderMode = renderMode === 'chat' && !hasChat ? 'pretty' : renderMode;
+
+  // Feedback assessments to render at the top of the right pane.
+  const feedbacks = useMemo<FeedbackAssessment[]>(() => {
+    const all = activeSpan?.assessments ?? [];
+    return all.filter((a): a is FeedbackAssessment => 'feedback' in a);
+  }, [activeSpan?.assessments]);
+
+  // Split chat messages into input (the conversation context sent to the
+  // model) vs output (the new assistant turn produced by the model). Prefer
+  // the raw `inputs.messages` array if present so the boundary lines up with
+  // the actual request payload; otherwise fall back to "all-but-last".
+  const { inputChatMessages, outputChatMessages } = useMemo(() => {
+    const all = chatMessages ?? [];
+    const rawInputMessages = (activeSpan?.inputs as { messages?: unknown } | undefined)?.messages;
+    const inputCount = Array.isArray(rawInputMessages) ? rawInputMessages.length : Math.max(all.length - 1, 0);
+    return {
+      inputChatMessages: all.slice(0, inputCount),
+      outputChatMessages: all.slice(inputCount),
+    };
+  }, [chatMessages, activeSpan?.inputs]);
 
   const tokenUsage = useMemo(() => {
     try {
@@ -613,7 +619,23 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <SpanTitleHeader activeSpan={activeSpan} />
+      <SpanTitleHeader activeSpan={activeSpan} isRootSpan={isRootSpan} />
+
+      <Section
+        title={
+          <FormattedMessage
+            defaultMessage="Feedback"
+            description="Section heading for the Feedback section at the top of the new trace experience right pane"
+          />
+        }
+      >
+        <AssessmentsPaneFeedbackSection
+          enableRunScorer
+          feedbacks={feedbacks}
+          activeSpanId={String(activeSpan.key)}
+          traceId={traceId}
+        />
+      </Section>
 
       {infoRows.length > 0 && (
         <Section
@@ -628,26 +650,41 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         </Section>
       )}
 
-      {(hasInputsOrOutputs || hasChat) && (
+      {hasInputs && (
         <Section
           title={
             <FormattedMessage
-              defaultMessage="Inputs / Outputs"
-              description="Section heading for the inputs+outputs section in the new trace experience right pane"
+              defaultMessage="Input"
+              description="Section heading for the span inputs section in the new trace experience right pane"
             />
           }
           actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
-            <ChatBubbles messages={chatMessages ?? []} />
+            <ChatBubbles messages={inputChatMessages} />
           ) : effectiveRenderMode === 'pretty' ? (
-            <PrettyView inputs={activeSpan?.inputs} outputs={activeSpan?.outputs} />
+            <PrettyView value={activeSpan?.inputs} />
           ) : (
-            <StructuredDump
-              inputs={activeSpan?.inputs}
-              outputs={activeSpan?.outputs}
-              mode={effectiveRenderMode === 'json' ? 'json' : 'yaml'}
+            <StructuredDump value={activeSpan?.inputs} mode={effectiveRenderMode === 'json' ? 'json' : 'yaml'} />
+          )}
+        </Section>
+      )}
+      {hasOutputs && (
+        <Section
+          title={
+            <FormattedMessage
+              defaultMessage="Output"
+              description="Section heading for the span outputs section in the new trace experience right pane"
             />
+          }
+          actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
+        >
+          {effectiveRenderMode === 'chat' && hasChat ? (
+            <ChatBubbles messages={outputChatMessages} />
+          ) : effectiveRenderMode === 'pretty' ? (
+            <PrettyView value={activeSpan?.outputs} />
+          ) : (
+            <StructuredDump value={activeSpan?.outputs} mode={effectiveRenderMode === 'json' ? 'json' : 'yaml'} />
           )}
         </Section>
       )}
