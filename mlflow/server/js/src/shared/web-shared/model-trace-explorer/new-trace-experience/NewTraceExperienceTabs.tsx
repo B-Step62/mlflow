@@ -105,10 +105,10 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
         '& > div:nth-of-type(1)': {
           marginBottom: 0,
           flexShrink: 0,
-          height: 64,
+          height: 52,
           '& > div': {
-            height: 64,
-            maxHeight: 64,
+            height: 52,
+            maxHeight: 52,
           },
         },
       }}
@@ -123,14 +123,14 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
           // colored underline is just a few pixels at the default height.
           // Make the strip taller and pin the label to the top of the cell so
           // text + indicator have real breathing room.
-          minHeight: 64,
+          minHeight: 52,
           '& [role="tab"]': {
-            height: 64,
+            height: 52,
             marginRight: theme.spacing.lg,
             // Align label content to the top of the cell, leaving the active
             // underline well below it.
             alignItems: 'flex-start',
-            paddingTop: theme.spacing.md,
+            paddingTop: theme.spacing.sm,
           },
         }}
       >
