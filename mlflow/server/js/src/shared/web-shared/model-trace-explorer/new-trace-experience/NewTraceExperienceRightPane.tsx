@@ -109,40 +109,27 @@ const SpanTitleHeader = ({ activeSpan, isRootSpan }: { activeSpan: ModelTraceSpa
   );
 };
 
-type Row = { label: ReactNode; value: ReactNode; wide?: boolean };
+type Row = { label: ReactNode; value: ReactNode };
 
 const InfoRows = ({ rows }: { rows: Row[] }) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div
       css={{
-        // Two key/value pairs per row to keep the Info block vertically
-        // compact. Tags spans both columns when present.
         display: 'grid',
-        gridTemplateColumns: 'max-content minmax(0, 1fr) max-content minmax(0, 1fr)',
+        gridTemplateColumns: 'max-content 1fr',
         columnGap: theme.spacing.md,
         rowGap: theme.spacing.xs,
-        alignItems: 'baseline',
       }}
     >
-      {rows.map((row, i) => {
-        const isWide = (row as { wide?: boolean }).wide;
-        return (
-          <Fragment key={i}>
-            <div css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>{row.label}</div>
-            <div
-              css={{
-                color: theme.colors.textPrimary,
-                fontSize: theme.typography.fontSizeSm,
-                gridColumn: isWide ? 'span 3' : undefined,
-                wordBreak: 'break-word',
-              }}
-            >
-              {row.value}
-            </div>
-          </Fragment>
-        );
-      })}
+      {rows.map((row, i) => (
+        <Fragment key={i}>
+          <div css={{ color: theme.colors.textSecondary, fontSize: theme.typography.fontSizeSm }}>{row.label}</div>
+          <div css={{ color: theme.colors.textPrimary, fontSize: theme.typography.fontSizeSm, wordBreak: 'break-word' }}>
+            {row.value}
+          </div>
+        </Fragment>
+      ))}
     </div>
   );
 };
@@ -491,42 +478,20 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     return all.filter((a): a is FeedbackAssessment => 'feedback' in a);
   }, [activeSpan?.assessments]);
 
-  // Build input vs output chat-message lists directly from the raw span
-  // payload so the two sections never duplicate. Input messages come from
-  // `inputs.messages` (the conversation context sent to the model). Output
-  // messages come from `outputs` itself when it is a message-shaped object
-  // (Anthropic) or from `outputs.choices[*].message` (OpenAI).
+  // Split the already-parsed chatMessages array so the two sections never
+  // duplicate and the message shapes stay compatible with the existing
+  // ChatMessage renderer (which expects content as a string, not Anthropic-
+  // style content blocks). Convention: the last message is the assistant
+  // turn the span produced; everything before it is the conversation
+  // context that was sent in.
   const { inputChatMessages, outputChatMessages } = useMemo(() => {
-    const inputs = activeSpan?.inputs as { messages?: unknown } | undefined;
-    const outputs = activeSpan?.outputs as
-      | { role?: string; content?: unknown; choices?: { message?: unknown }[] }
-      | undefined;
-
-    const input: ModelTraceChatMessage[] = Array.isArray(inputs?.messages)
-      ? (inputs?.messages as ModelTraceChatMessage[])
-      : [];
-
-    let output: ModelTraceChatMessage[] = [];
-    if (outputs && typeof outputs === 'object') {
-      if (typeof outputs.role === 'string') {
-        output = [outputs as unknown as ModelTraceChatMessage];
-      } else if (Array.isArray(outputs.choices)) {
-        output = outputs.choices
-          .map((c) => c?.message)
-          .filter((m): m is ModelTraceChatMessage => Boolean(m && typeof m === 'object'));
-      }
-    }
-
-    // Fallback: if neither side extracted anything but chatMessages has data,
-    // treat the last message as output and the rest as input.
-    if (input.length === 0 && output.length === 0 && Array.isArray(chatMessages) && chatMessages.length > 0) {
-      return {
-        inputChatMessages: chatMessages.slice(0, -1),
-        outputChatMessages: chatMessages.slice(-1),
-      };
-    }
-    return { inputChatMessages: input, outputChatMessages: output };
-  }, [activeSpan?.inputs, activeSpan?.outputs, chatMessages]);
+    const all = chatMessages ?? [];
+    if (all.length === 0) return { inputChatMessages: [], outputChatMessages: [] };
+    return {
+      inputChatMessages: all.slice(0, -1),
+      outputChatMessages: all.slice(-1),
+    };
+  }, [chatMessages]);
 
   const tokenUsage = useMemo(() => {
     try {
@@ -638,7 +603,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       infoRows.push({
         label: <FormattedMessage defaultMessage="Tags" description="Info label - tags" />,
         value: <TagsValue tags={tagPairs} />,
-        wide: true,
       });
     }
   }
