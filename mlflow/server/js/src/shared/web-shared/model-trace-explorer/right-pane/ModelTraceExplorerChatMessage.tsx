@@ -314,9 +314,15 @@ function ModelTraceExplorerAudioPlayer({ audioParts }: { audioParts: ModelTraceI
 export function ModelTraceExplorerChatMessage({
   message,
   className,
+  // When true, the message renders without its role/avatar header row and
+  // with a transparent background so it can sit cleanly inside a bubble
+  // wrapper styled by the caller (used by the new trace experience chat
+  // bubbles).
+  hideHeader = false,
 }: {
   message: ModelTraceChatMessage;
   className?: string;
+  hideHeader?: boolean;
 }) {
   const { theme } = useDesignSystemTheme();
   const [expanded, setExpanded] = useState(false);
@@ -341,17 +347,19 @@ export function ModelTraceExplorerChatMessage({
         display: 'flex',
         flexDirection: 'column',
         width: '100%',
-        backgroundColor: theme.colors.backgroundPrimary,
+        backgroundColor: hideHeader ? 'transparent' : theme.colors.backgroundPrimary,
         overflow: 'hidden',
       }}
       className={className}
     >
-      <ModelTraceExplorerChatMessageHeader
-        isExpandable={isExpandable}
-        expanded={expanded}
-        setExpanded={setExpanded}
-        message={message}
-      />
+      {!hideHeader && (
+        <ModelTraceExplorerChatMessageHeader
+          isExpandable={isExpandable}
+          expanded={expanded}
+          setExpanded={setExpanded}
+          message={message}
+        />
+      )}
       <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
         {message.reasoning && <ModelTraceExplorerReasoningSection reasoning={message.reasoning} />}
         {!isNil(message.tool_calls) &&

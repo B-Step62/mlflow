@@ -201,26 +201,111 @@ const TagsValue = ({ tags }: { tags: { key: string; value: string }[] }) => {
   );
 };
 
-// Chat bubbles aligned right for assistant, left for user/tool/system.
+// iMessage / Slack-style chat bubbles. Right-aligned blue bubbles for the
+// user, left-aligned neutral bubbles for assistant/tool, and a quiet
+// inline note for system messages (which are usually instructions and
+// don't need a full bubble).
+//
+// The inner ModelTraceExplorerChatMessage is reused for content rendering
+// (markdown, attachments, reasoning, tool calls) but with `hideHeader`
+// so the role label only appears once -- as a small caption above the
+// bubble -- not duplicated inside it.
+const roleDisplayName = (role: string, name?: string): string => {
+  switch (role) {
+    case 'user':
+      return 'User';
+    case 'assistant':
+      return 'Assistant';
+    case 'tool':
+    case 'function':
+      return name ? `Tool · ${name}` : 'Tool';
+    case 'system':
+      return 'System';
+    default:
+      return role;
+  }
+};
+
 const ChatBubbles = ({ messages }: { messages: ModelTraceChatMessage[] }) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
       {messages.map((message, index) => {
         const role = message.role ?? 'user';
-        const isAssistant = role === 'assistant';
+
+        // System messages are usually instructions -- render as a small
+        // centered note rather than a full bubble.
+        if (role === 'system') {
+          return (
+            <div
+              key={index}
+              css={{
+                alignSelf: 'center',
+                maxWidth: '90%',
+                padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+                borderRadius: theme.legacyBorders.borderRadiusLg,
+                backgroundColor: 'transparent',
+                color: theme.colors.textSecondary,
+                fontSize: theme.typography.fontSizeSm,
+                fontStyle: 'italic',
+                textAlign: 'center',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              <Typography.Text color="secondary" css={{ fontStyle: 'italic' }}>
+                {typeof message.content === 'string' ? message.content : roleDisplayName(role)}
+              </Typography.Text>
+            </div>
+          );
+        }
+
+        const isUser = role === 'user';
+        const isTool = role === 'tool' || role === 'function';
+        const alignSelf = isUser ? 'flex-end' : 'flex-start';
+
+        const bubbleBg = isUser
+          ? theme.colors.actionPrimaryBackgroundDefault
+          : theme.colors.backgroundSecondary;
+        const bubbleColor = isUser ? theme.colors.actionPrimaryTextDefault : theme.colors.textPrimary;
+        const accentBorder = isTool ? `2px solid ${theme.colors.blue500}` : undefined;
+
         return (
           <div
             key={index}
             css={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: alignSelf === 'flex-end' ? 'flex-end' : 'flex-start',
+              alignSelf,
               maxWidth: '85%',
-              alignSelf: isAssistant ? 'flex-end' : 'flex-start',
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.legacyBorders.borderRadiusLg,
-              overflow: 'hidden',
+              gap: 2,
             }}
           >
-            <ModelTraceExplorerChatMessage message={message} />
+            <Typography.Text
+              color="secondary"
+              css={{
+                fontSize: theme.typography.fontSizeSm,
+                paddingLeft: theme.spacing.sm,
+                paddingRight: theme.spacing.sm,
+              }}
+            >
+              {roleDisplayName(role, message.name)}
+            </Typography.Text>
+            <div
+              css={{
+                backgroundColor: bubbleBg,
+                color: bubbleColor,
+                borderRadius: 16,
+                borderTopRightRadius: isUser ? 4 : 16,
+                borderTopLeftRadius: isUser ? 16 : 4,
+                padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+                width: '100%',
+                overflow: 'hidden',
+                ...(accentBorder ? { borderLeft: accentBorder } : {}),
+              }}
+            >
+              <ModelTraceExplorerChatMessage message={message} hideHeader />
+            </div>
           </div>
         );
       })}
