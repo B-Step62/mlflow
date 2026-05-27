@@ -214,7 +214,8 @@ export const TimelineTreeNode = ({
                       data-testid={`span-metrics-${node.key}`}
                       css={{
                         color: theme.colors.textSecondary,
-                        fontSize: theme.typography.fontSizeSm,
+                        fontSize: 11,
+                        lineHeight: '14px',
                         fontVariantNumeric: 'tabular-nums',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',

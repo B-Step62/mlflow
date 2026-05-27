@@ -507,11 +507,12 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['mlflow.trace.session'] ??
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['session_id'];
 
-  // Per-span tokens come from OTel attributes. On the root span we fall
-  // back to the trace-level metadata so traces whose root span doesn't
-  // mirror usage attrs still show a number.
+  // Per-span tokens come from OTel attributes when present (LLM spans
+  // instrumented with gen_ai.usage.*). When they aren't, fall back to
+  // the trace-level metadata so the row still shows a number -- this
+  // matches the trace-level cost fallback we already do below.
   const spanTokens = getSpanTokenUsage(activeSpan.attributes);
-  const effectiveTokens = spanTokens.total_tokens !== undefined ? spanTokens : isRootSpan ? tokenUsage : {};
+  const effectiveTokens = spanTokens.total_tokens !== undefined ? spanTokens : tokenUsage;
   const totalTokens = effectiveTokens.total_tokens;
   const inputTokens = effectiveTokens.input_tokens;
   const outputTokens = effectiveTokens.output_tokens;
