@@ -652,27 +652,23 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           {effectiveRenderMode === 'chat' && hasChat ? (
             <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
               {hasChatTools && (
-                <details css={{ marginBottom: theme.spacing.xs }}>
-                  <summary
-                    css={{
-                      cursor: 'pointer',
-                      padding: `${theme.spacing.xs}px 0`,
-                      color: theme.colors.textSecondary,
-                      fontSize: theme.typography.fontSizeSm,
-                    }}
-                  >
+                <ModelTraceExplorerCollapsibleSection
+                  withBorder
+                  sectionKey="new-trace-experience.chat-tools"
+                  defaultOpen={false}
+                  title={
                     <FormattedMessage
-                      defaultMessage="Tools ({count})"
-                      description="Collapsible header above the chat input that lists tools available to the model"
-                      values={{ count: chatTools!.length }}
+                      defaultMessage="Tools"
+                      description="Section header above the chat input that lists tools available to the model"
                     />
-                  </summary>
-                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginTop: theme.spacing.xs }}>
+                  }
+                >
+                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
                     {chatTools!.map((tool) => (
                       <ModelTraceExplorerChatTool key={tool.function.name} tool={tool} />
                     ))}
                   </div>
-                </details>
+                </ModelTraceExplorerCollapsibleSection>
               )}
               <ModelTraceExplorerConversation messages={inputChatMessages} />
             </div>
