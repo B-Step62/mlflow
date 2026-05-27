@@ -72,6 +72,18 @@ export const NewTraceExperienceTraceTab = ({
           overflowY: 'auto',
           overflowX: 'hidden',
           paddingTop: theme.spacing.xs,
+          // Slimmer scrollbar than the platform default. Firefox uses the
+          // standard property; WebKit uses the vendor pseudo-elements.
+          scrollbarWidth: 'thin',
+          '&::-webkit-scrollbar': { width: 6, height: 6 },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: theme.colors.actionDisabledBackground,
+            borderRadius: 3,
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            backgroundColor: theme.colors.actionDefaultBorderHover,
+          },
+          '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
         }}
       >
         {filteredTreeNodes.map((node) => (
