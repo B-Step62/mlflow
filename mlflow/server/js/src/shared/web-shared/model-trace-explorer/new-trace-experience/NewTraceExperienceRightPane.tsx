@@ -40,7 +40,7 @@ import { AssessmentsPaneExpectationsSection } from '../assessments-pane/Assessme
 import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
 import { AssessmentsPaneNotesSection } from '../assessments-pane/AssessmentsPaneNotesSection';
 import { useModelTraceExplorerRunJudgesContext } from '../contexts/RunJudgesContext';
-import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
+import { ModelTraceExplorerConversation } from '../right-pane/ModelTraceExplorerConversation';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
 import { PrettyView } from './PrettyView';
 
@@ -284,33 +284,6 @@ const TagsValue = ({ tags }: { tags: { key: string; value: string }[] }) => {
           +{remaining} more
         </button>
       )}
-    </div>
-  );
-};
-
-// Chat bubbles aligned right for assistant, left for user/tool/system.
-const ChatBubbles = ({ messages }: { messages: ModelTraceChatMessage[] }) => {
-  const { theme } = useDesignSystemTheme();
-  return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-      {messages.map((message, index) => {
-        const role = message.role ?? 'user';
-        const isAssistant = role === 'assistant';
-        return (
-          <div
-            key={index}
-            css={{
-              maxWidth: '85%',
-              alignSelf: isAssistant ? 'flex-end' : 'flex-start',
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.legacyBorders.borderRadiusLg,
-              overflow: 'hidden',
-            }}
-          >
-            <ModelTraceExplorerChatMessage message={message} />
-          </div>
-        );
-      })}
     </div>
   );
 };
@@ -663,7 +636,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
-            <ChatBubbles messages={inputChatMessages} />
+            <ModelTraceExplorerConversation messages={inputChatMessages} />
           ) : effectiveRenderMode === 'pretty' ? (
             <PrettyView value={activeSpan?.inputs} />
           ) : (
@@ -684,7 +657,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
-            <ChatBubbles messages={outputChatMessages} />
+            <ModelTraceExplorerConversation messages={outputChatMessages} />
           ) : effectiveRenderMode === 'pretty' ? (
             <PrettyView value={activeSpan?.outputs} />
           ) : (
