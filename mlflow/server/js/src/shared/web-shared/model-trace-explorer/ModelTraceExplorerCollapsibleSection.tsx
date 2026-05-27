@@ -9,6 +9,7 @@ export const ModelTraceExplorerCollapsibleSection = ({
   withBorder = false,
   isExceptionSection = false,
   className,
+  defaultOpen = true,
 }: {
   sectionKey: string;
   title: React.ReactNode;
@@ -16,8 +17,14 @@ export const ModelTraceExplorerCollapsibleSection = ({
   withBorder?: boolean;
   isExceptionSection?: boolean;
   className?: string;
+  /**
+   * Initial open/closed state. Defaults to true so legacy callers
+   * (Inputs/Outputs banners) stay open out of the box. Set to false for
+   * secondary sections that the user should opt into expanding.
+   */
+  defaultOpen?: boolean;
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultOpen);
   const { theme } = useDesignSystemTheme();
 
   const borderColor = isExceptionSection ? theme.colors.actionDangerPrimaryBackgroundDefault : theme.colors.border;
