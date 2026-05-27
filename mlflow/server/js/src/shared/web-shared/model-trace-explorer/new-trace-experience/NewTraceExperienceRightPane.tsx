@@ -26,8 +26,15 @@ import type {
 } from '../ModelTrace.types';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
 import { useModelTraceExplorerContext } from '../ModelTraceExplorerContext';
-import { getIconTypeForSpan, getSpanTokenUsage, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
+import {
+  createListFromObject,
+  getIconTypeForSpan,
+  getSpanTokenUsage,
+  getTraceCost,
+  getTraceTokenUsage,
+} from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
+import { ModelTraceExplorerFieldRenderer } from '../field-renderers/ModelTraceExplorerFieldRenderer';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { AssessmentsPaneExpectationsSection } from '../assessments-pane/AssessmentsPaneExpectationsSection';
 import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
@@ -35,7 +42,6 @@ import { AssessmentsPaneNotesSection } from '../assessments-pane/AssessmentsPane
 import { useModelTraceExplorerRunJudgesContext } from '../contexts/RunJudgesContext';
 import { ModelTraceExplorerConversation } from '../right-pane/ModelTraceExplorerConversation';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
-import { PrettyView } from './PrettyView';
 
 type Props = {
   modelTraceInfo: ModelTrace['info'];
@@ -49,11 +55,11 @@ type SectionProps = {
   children: ReactNode;
 };
 
-// Thin wrapper around the legacy Inputs/Outputs collapsible. We call the
-// no-border variant (withBorder=false) so the header shows only the
-// chevron + bold title -- no tinted background, no top/bottom hairline.
-// The actions slot (e.g. the render-mode dropdown) is packed into the
-// title node since the widget doesn't expose a separate actions area.
+// Thin wrapper around the legacy Inputs/Outputs collapsible used by the
+// classic trace UI: same banner header (backgroundSecondary fill with a
+// borderBlock) and same body padding. The actions slot (e.g. the
+// render-mode dropdown) is packed into the title node since the widget
+// doesn't expose a separate actions area.
 //
 // flex-shrink: 0 is on the outer wrapper so expanding one section
 // doesn't compress neighbors when the pane is in a flex-column parent.
@@ -63,6 +69,7 @@ const Section = ({ sectionKey, title, defaultOpen = true, actions, children }: S
     <div css={{ flexShrink: 0 }}>
       <ModelTraceExplorerCollapsibleSection
         sectionKey={sectionKey}
+        withBorder
         defaultOpen={defaultOpen}
         title={
           <div
@@ -441,6 +448,8 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   }, [chatMessages]);
 
   const attributeRows = useMemo(() => buildAttributeRows(activeSpan?.attributes), [activeSpan?.attributes]);
+  const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan?.inputs]);
+  const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan?.outputs]);
 
   const tokenUsage = useMemo(() => {
     try {
@@ -619,7 +628,17 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           {effectiveRenderMode === 'chat' && hasChat ? (
             <ModelTraceExplorerConversation messages={inputChatMessages} />
           ) : effectiveRenderMode === 'pretty' ? (
-            <PrettyView value={activeSpan?.inputs} />
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              {inputList.map(({ key, value }, index) => (
+                <ModelTraceExplorerFieldRenderer
+                  key={key || index}
+                  title={key}
+                  data={value}
+                  renderMode="default"
+                  assessments={activeSpan?.assessments}
+                />
+              ))}
+            </div>
           ) : (
             <StructuredDump value={activeSpan?.inputs} mode={effectiveRenderMode === 'json' ? 'json' : 'yaml'} />
           )}
@@ -639,7 +658,17 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           {effectiveRenderMode === 'chat' && hasChat ? (
             <ModelTraceExplorerConversation messages={outputChatMessages} />
           ) : effectiveRenderMode === 'pretty' ? (
-            <PrettyView value={activeSpan?.outputs} />
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              {outputList.map(({ key, value }, index) => (
+                <ModelTraceExplorerFieldRenderer
+                  key={key || index}
+                  title={key}
+                  data={value}
+                  renderMode="default"
+                  assessments={activeSpan?.assessments}
+                />
+              ))}
+            </div>
           ) : (
             <StructuredDump value={activeSpan?.outputs} mode={effectiveRenderMode === 'json' ? 'json' : 'yaml'} />
           )}
