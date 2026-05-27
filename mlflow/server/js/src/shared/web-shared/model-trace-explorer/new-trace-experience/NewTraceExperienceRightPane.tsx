@@ -55,48 +55,30 @@ type SectionProps = {
   defaultOpen?: boolean;
   actions?: ReactNode;
   children: ReactNode;
-  /**
-   * 'plain' (default): borderless, separated from neighboring sections by
-   *   a hairline divider.
-   * 'card': framed with a border, rounded corners, and a soft shadow so
-   *   the section reads as a self-contained block. Used for Input and
-   *   Output where the inner content can be visually heavy and benefits
-   *   from a clear container.
-   */
-  variant?: 'plain' | 'card';
 };
 
 // Chevron sits on the LEFT of the title; section content is indented so it
-// aligns horizontally with the title text (not the chevron). Sections are
-// separated by a single hairline divider; the first section has no top
-// border so it doesn't conflict with the span title / action row above.
+// aligns horizontally with the title text (not the chevron). Every section
+// renders as a self-contained card -- border + rounded corners + soft
+// shadow + a small outer margin -- so the whole right pane reads as a
+// vertical stack of cards.
 const SECTION_CHEVRON_GUTTER = 20;
 
-const Section = ({ title, icon, defaultOpen = true, actions, children, variant = 'plain' }: SectionProps) => {
+const Section = ({ title, icon, defaultOpen = true, actions, children }: SectionProps) => {
   const { theme } = useDesignSystemTheme();
   const [open, setOpen] = useState(defaultOpen);
-  const isCard = variant === 'card';
 
   return (
     <section
       css={{
         display: 'flex',
         flexDirection: 'column',
-        ...(isCard
-          ? {
-              margin: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.legacyBorders.borderRadiusMd,
-              boxShadow: theme.shadows.sm,
-              backgroundColor: theme.colors.backgroundPrimary,
-              overflow: 'hidden',
-            }
-          : {
-              borderTop: `1px solid ${theme.colors.borderDecorative}`,
-              '&:first-of-type': {
-                borderTop: 'none',
-              },
-            }),
+        margin: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.legacyBorders.borderRadiusMd,
+        boxShadow: theme.shadows.sm,
+        backgroundColor: theme.colors.backgroundPrimary,
+        overflow: 'hidden',
       }}
     >
       <div
@@ -706,7 +688,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       {hasInputs && (
         <Section
           icon={<ArrowDownIcon />}
-          variant="card"
           title={
             <FormattedMessage
               defaultMessage="Input"
@@ -727,7 +708,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       {hasOutputs && (
         <Section
           icon={<ArrowUpIcon />}
-          variant="card"
           title={
             <FormattedMessage
               defaultMessage="Output"
