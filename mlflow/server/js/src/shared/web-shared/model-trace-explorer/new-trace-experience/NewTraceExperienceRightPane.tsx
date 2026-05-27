@@ -11,6 +11,7 @@ import {
   Empty,
   GavelIcon,
   Typography,
+  WrenchIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
@@ -108,6 +109,83 @@ const Section = ({ sectionKey, title, defaultOpen = true, actions, children }: S
       >
         {children}
       </ModelTraceExplorerCollapsibleSection>
+    </div>
+  );
+};
+
+// Tools section above the Input section. Visually distinct from a
+// regular section: the wrench icon doubles as the expand/collapse
+// toggle (no separate chevron). Tools whose names appear in the
+// assistant's tool_calls for this span are highlighted so users can
+// see at a glance which tools were actually picked from the menu.
+const ToolsSection = ({
+  tools,
+  calledToolNames,
+}: {
+  tools: NonNullable<ModelTraceSpanNode['chatTools']>;
+  calledToolNames: Set<string>;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const [open, setOpen] = useState(true);
+  return (
+    <div css={{ flexShrink: 0 }}>
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.xs,
+          padding: theme.spacing.sm,
+        }}
+      >
+        <Button
+          componentId="mlflow.new-trace-experience.tools.toggle"
+          type="tertiary"
+          size="small"
+          icon={<WrenchIcon />}
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? 'Collapse tools' : 'Expand tools'}
+        />
+        <Typography.Title withoutMargins level={4} css={{ width: '100%' }}>
+          <FormattedMessage
+            defaultMessage="Tools"
+            description="Section header above the Input section listing tools available to the LLM"
+          />
+        </Typography.Title>
+      </div>
+      {open && (
+        <div
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing.sm,
+            padding: `0 ${theme.spacing.md}px ${theme.spacing.sm}px`,
+            paddingLeft: theme.spacing.md,
+          }}
+        >
+          {tools.map((tool) => {
+            const isCalled = calledToolNames.has(tool.function.name);
+            return (
+              <div
+                key={tool.function.name}
+                css={
+                  isCalled
+                    ? {
+                        // Accent the tools the assistant actually called.
+                        // Slight blue tint + left rail so they stand out
+                        // from the rest of the menu without shouting.
+                        borderRadius: theme.borders.borderRadiusMd,
+                        boxShadow: `inset 3px 0 0 0 ${theme.colors.actionPrimaryBackgroundDefault}`,
+                        backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                      }
+                    : undefined
+                }
+              >
+                <ModelTraceExplorerChatTool tool={tool} />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -429,6 +507,20 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const chatMessages = activeSpan?.chatMessages;
   const chatTools = activeSpan?.chatTools;
   const hasChatTools = Array.isArray(chatTools) && chatTools.length > 0;
+  // Names of tools the assistant actually invoked in this span's output
+  // message(s). The Tools section uses this set to accent the called
+  // tools so users can spot which item from the menu was picked.
+  const calledToolNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const msg of chatMessages ?? []) {
+      if (msg.role !== 'assistant') continue;
+      for (const tc of msg.tool_calls ?? []) {
+        const name = tc?.function?.name;
+        if (typeof name === 'string' && name) names.add(name);
+      }
+    }
+    return names;
+  }, [chatMessages]);
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
 
   const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>(hasChat ? 'chat' : 'pretty');
@@ -638,6 +730,8 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         />
       </Section>
 
+      {hasChatTools && <ToolsSection tools={chatTools!} calledToolNames={calledToolNames} />}
+
       {hasInputs && (
         <Section
           sectionKey="new-trace-experience.input"
@@ -650,28 +744,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-              {hasChatTools && (
-                <ModelTraceExplorerCollapsibleSection
-                  withBorder
-                  sectionKey="new-trace-experience.chat-tools"
-                  defaultOpen={false}
-                  title={
-                    <FormattedMessage
-                      defaultMessage="Tools"
-                      description="Section header above the chat input that lists tools available to the model"
-                    />
-                  }
-                >
-                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-                    {chatTools!.map((tool) => (
-                      <ModelTraceExplorerChatTool key={tool.function.name} tool={tool} />
-                    ))}
-                  </div>
-                </ModelTraceExplorerCollapsibleSection>
-              )}
-              <ModelTraceExplorerConversation messages={inputChatMessages} />
-            </div>
+            <ModelTraceExplorerConversation messages={inputChatMessages} />
           ) : effectiveRenderMode === 'pretty' ? (
             <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
               {inputList.map(({ key, value }, index) => (
