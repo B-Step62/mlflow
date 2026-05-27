@@ -1515,6 +1515,56 @@ export const getTraceCost = (
 ): { input_cost?: number; output_cost?: number; total_cost?: number } =>
   parseJSONSafe(traceInfo?.trace_metadata?.[COST_METADATA_KEY] ?? '{}');
 
+// Pull per-span token usage from OTel attributes. Tries the common GenAI
+// semconv keys and a couple of legacy variants; returns undefined for
+// the field when nothing usable is present (most non-LLM spans).
+const SPAN_TOTAL_TOKEN_ATTR_KEYS = [
+  'gen_ai.usage.total_tokens',
+  'llm.token_count.total',
+  'usage.total_tokens',
+];
+const SPAN_INPUT_TOKEN_ATTR_KEYS = [
+  'gen_ai.usage.input_tokens',
+  'llm.token_count.prompt',
+  'usage.prompt_tokens',
+];
+const SPAN_OUTPUT_TOKEN_ATTR_KEYS = [
+  'gen_ai.usage.output_tokens',
+  'llm.token_count.completion',
+  'usage.completion_tokens',
+];
+
+const coerceNumber = (raw: unknown): number | undefined => {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim() !== '' && !Number.isNaN(Number(raw))) return Number(raw);
+  return undefined;
+};
+
+const pickFirstNumber = (attrs: Record<string, unknown>, keys: string[]): number | undefined => {
+  for (const key of keys) {
+    const value = coerceNumber(attrs[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
+export const getSpanTokenUsage = (
+  attributes: unknown,
+): { input_tokens?: number; output_tokens?: number; total_tokens?: number } => {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return {};
+  const attrs = attributes as Record<string, unknown>;
+  const total = pickFirstNumber(attrs, SPAN_TOTAL_TOKEN_ATTR_KEYS);
+  const input = pickFirstNumber(attrs, SPAN_INPUT_TOKEN_ATTR_KEYS);
+  const output = pickFirstNumber(attrs, SPAN_OUTPUT_TOKEN_ATTR_KEYS);
+  // Synthesize total when only input/output are reported.
+  const totalSynth =
+    total ?? (input !== undefined || output !== undefined ? (input ?? 0) + (output ?? 0) : undefined);
+  return { input_tokens: input, output_tokens: output, total_tokens: totalSynth };
+};
+
+export const getSpanTotalTokens = (attributes: unknown): number | undefined =>
+  getSpanTokenUsage(attributes).total_tokens;
+
 export const isSessionLevelAssessment = (assessment: Assessment): boolean => {
   return !isEmpty(assessment.metadata?.[ASSESSMENT_SESSION_METADATA_KEY]);
 };

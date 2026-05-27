@@ -50,7 +50,7 @@ const IconLeftConnector = ({ active }: { active: boolean }) => {
   );
 };
 
-const VerticalConnector = ({ active }: { active: boolean }) => {
+const VerticalConnector = ({ active, rowHeight }: { active: boolean; rowHeight: number }) => {
   const { theme } = useDesignSystemTheme();
   const borderColor = active ? theme.colors.blue500 : theme.colors.border;
 
@@ -60,7 +60,7 @@ const VerticalConnector = ({ active }: { active: boolean }) => {
         position: 'absolute',
         width: SPAN_INDENT_WIDTH / 2,
         left: '50%',
-        height: SPAN_ROW_HEIGHT,
+        height: rowHeight,
         borderLeft: `1px solid ${borderColor}`,
         boxSizing: 'border-box',
         zIndex: active ? TimelineTreeZIndex.NORMAL : TimelineTreeZIndex.LOW,
@@ -79,6 +79,7 @@ export const TimelineTreeHierarchyBars = ({
   linesToRender,
   hasChildren,
   isExpanded,
+  rowHeight = SPAN_ROW_HEIGHT,
 }: {
   // whether or not the current span is active
   isActiveSpan: boolean;
@@ -88,13 +89,18 @@ export const TimelineTreeHierarchyBars = ({
   linesToRender: Array<HierarchyBar>;
   hasChildren: boolean;
   isExpanded: boolean;
+  // Override the row height (defaults to the legacy SPAN_ROW_HEIGHT).
+  // The new trace experience uses a taller row to fit metrics beneath
+  // the span name; the connectors stay anchored to the row's top/bottom
+  // so vertical lines remain continuous between rows.
+  rowHeight?: number;
 }) => {
   if (linesToRender.length === 0) {
     return (
       <div
         css={{
           width: 0,
-          height: SPAN_ROW_HEIGHT,
+          height: rowHeight,
           boxSizing: 'border-box',
           position: 'relative',
         }}
@@ -114,14 +120,14 @@ export const TimelineTreeHierarchyBars = ({
           key={idx}
           css={{
             width: SPAN_INDENT_WIDTH,
-            height: SPAN_ROW_HEIGHT,
+            height: rowHeight,
             boxSizing: 'border-box',
             position: 'relative',
           }}
         >
           {shouldRender && (
             // render a vertical bar in the middle of the spacer
-            <VerticalConnector active={isActive} />
+            <VerticalConnector active={isActive} rowHeight={rowHeight} />
           )}
           {idx === linesToRender.length - 1 && (
             // at the last spacer, render a curved

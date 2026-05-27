@@ -4,7 +4,6 @@ import {
   useDesignSystemTheme,
   ChevronDownIcon,
   ChevronRightIcon,
-  HashIcon,
   Tag,
   GavelIcon,
   LinkIcon,
@@ -17,46 +16,27 @@ import { TimelineTreeHierarchyBars } from './TimelineTreeHierarchyBars';
 import { TimelineTreeSpanTooltip } from './TimelineTreeSpanTooltip';
 import { shouldUseNewTraceExperience } from '../FeatureUtils';
 import { type ModelTraceSpanNode } from '../ModelTrace.types';
-import { getSpanExceptionCount } from '../ModelTraceExplorer.utils';
+import { getSpanExceptionCount, getSpanTotalTokens } from '../ModelTraceExplorer.utils';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { useGatewayTraceLink } from '../hooks/useGatewayTraceLink';
 import { Link } from '../RoutingUtils';
 
-// Pull a "tokens used" number from a span's OTel attributes. Tries the
-// common GenAI semconv keys and a couple of legacy variants; returns
-// undefined when nothing usable is present (most non-LLM spans).
-const NEW_TRACE_TOKEN_ATTR_KEYS = [
-  'gen_ai.usage.total_tokens',
-  'llm.token_count.total',
-  'usage.total_tokens',
-];
+// New-experience rows are taller so they can stack latency / tokens /
+// cost under the span name. The hierarchy connectors stay anchored to
+// the row's top/bottom edges so vertical lines remain continuous between
+// rows of the new height.
+const NEW_TRACE_ROW_HEIGHT = 52;
 
-const getSpanTotalTokens = (attributes: unknown): number | undefined => {
-  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return undefined;
-  const attrs = attributes as Record<string, unknown>;
-  for (const key of NEW_TRACE_TOKEN_ATTR_KEYS) {
-    const raw = attrs[key];
-    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-    if (typeof raw === 'string' && raw.trim() !== '' && !Number.isNaN(Number(raw))) return Number(raw);
-  }
-  // Fall back to input + output if a total isn't recorded explicitly.
-  const input = attrs['gen_ai.usage.input_tokens'] ?? attrs['llm.token_count.prompt'] ?? attrs['usage.prompt_tokens'];
-  const output =
-    attrs['gen_ai.usage.output_tokens'] ?? attrs['llm.token_count.completion'] ?? attrs['usage.completion_tokens'];
-  const inputNum = typeof input === 'number' ? input : typeof input === 'string' ? Number(input) : NaN;
-  const outputNum = typeof output === 'number' ? output : typeof output === 'string' ? Number(output) : NaN;
-  if (Number.isFinite(inputNum) || Number.isFinite(outputNum)) {
-    return (Number.isFinite(inputNum) ? inputNum : 0) + (Number.isFinite(outputNum) ? outputNum : 0);
-  }
-  return undefined;
+const formatSpanCost = (n?: number | null): string | null => {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  if (n === 0) return '$0';
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(3)}`;
 };
 
-// Compact "1.2k" / "850" / "12.3M" formatter for the token-count chip.
-const compactTokens = (n: number): string => {
-  if (n < 1000) return String(n);
-  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
-  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
+const formatSpanTokens = (n?: number): string | null => {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  return `${n.toLocaleString('en-US')} tok`;
 };
 
 export const TimelineTreeNode = ({
@@ -97,10 +77,17 @@ export const TimelineTreeNode = ({
 
   const backgroundColor = isActive ? theme.colors.actionDefaultBackgroundHover : 'transparent';
 
-  // Metrics shown only in the new experience; latency is always available
-  // from start/end, tokens depend on the span carrying OTel usage attrs.
-  const latencyText = useNewExperience ? spanTimeFormatter(node.end - node.start) : null;
-  const totalTokens = useNewExperience ? getSpanTotalTokens(node.attributes) : undefined;
+  // Sub-line metrics shown only in the new experience; latency is always
+  // available, tokens / cost depend on the span carrying usage attrs.
+  const metricsParts: string[] = [];
+  if (useNewExperience) {
+    metricsParts.push(spanTimeFormatter(node.end - node.start));
+    const tokens = formatSpanTokens(getSpanTotalTokens(node.attributes));
+    if (tokens) metricsParts.push(tokens);
+    const cost = formatSpanCost(node.cost?.total_cost);
+    if (cost) metricsParts.push(cost);
+  }
+  const metricsLine = metricsParts.join(', ');
 
   const expandToggle = hasChildren ? (
     <Button
@@ -166,6 +153,7 @@ export const TimelineTreeNode = ({
               justifyContent: 'space-between',
               overflow: 'hidden',
               flex: 1,
+              ...(useNewExperience && { minHeight: NEW_TRACE_ROW_HEIGHT }),
             }}
           >
             <div css={{ display: 'flex', flexDirection: 'row', alignItems: 'center', overflow: 'hidden', flex: 1 }}>
@@ -181,6 +169,7 @@ export const TimelineTreeNode = ({
                 linesToRender={linesToRender}
                 hasChildren={hasChildren}
                 isExpanded={expanded}
+                rowHeight={useNewExperience ? NEW_TRACE_ROW_HEIGHT : undefined}
               />
               <span
                 css={{
@@ -195,17 +184,60 @@ export const TimelineTreeNode = ({
               >
                 {node.icon}
               </span>
-              <Typography.Text
-                color={hasException ? 'error' : 'primary'}
-                css={{
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                  flex: 1,
-                }}
-              >
-                {node.title}
-              </Typography.Text>
+              {useNewExperience ? (
+                <div
+                  css={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    flex: 1,
+                    minWidth: 0,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, overflow: 'hidden' }}>
+                    <Typography.Text
+                      color={hasException ? 'error' : 'primary'}
+                      css={{
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
+                      {node.title}
+                    </Typography.Text>
+                  </div>
+                  {metricsLine && (
+                    <div
+                      data-testid={`span-metrics-${node.key}`}
+                      css={{
+                        color: theme.colors.textSecondary,
+                        fontSize: theme.typography.fontSizeSm,
+                        fontVariantNumeric: 'tabular-nums',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {metricsLine}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Typography.Text
+                  color={hasException ? 'error' : 'primary'}
+                  css={{
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                    flex: 1,
+                  }}
+                >
+                  {node.title}
+                </Typography.Text>
+              )}
               {gatewayTraceHref && (
                 <Tooltip
                   content="View linked gateway trace"
@@ -245,35 +277,13 @@ export const TimelineTreeNode = ({
                   <Typography.Text css={{ marginLeft: theme.spacing.xs }}>{node.assessments.length}</Typography.Text>
                 </Tag>
               )}
-              {useNewExperience && (
-                <div
-                  css={{
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    marginLeft: theme.spacing.sm,
-                    color: theme.colors.textSecondary,
-                    fontSize: theme.typography.fontSizeSm,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
+              {useNewExperience && hasChildren && (
+                <span
+                  className="timeline-tree-row-expand"
+                  css={{ display: 'inline-flex', flexShrink: 0, marginLeft: theme.spacing.sm }}
                 >
-                  {latencyText && <span data-testid={`span-latency-${node.key}`}>{latencyText}</span>}
-                  {typeof totalTokens === 'number' && (
-                    <span
-                      data-testid={`span-tokens-${node.key}`}
-                      css={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
-                    >
-                      <HashIcon css={{ fontSize: 12 }} />
-                      {compactTokens(totalTokens)}
-                    </span>
-                  )}
-                  {hasChildren && (
-                    <span className="timeline-tree-row-expand" css={{ display: 'inline-flex' }}>
-                      {expandToggle}
-                    </span>
-                  )}
-                </div>
+                  {expandToggle}
+                </span>
               )}
             </div>
           </div>
