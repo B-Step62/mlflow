@@ -17,11 +17,17 @@ export const AssessmentsPaneExpectationsSection = ({
   activeSpanId,
   traceId,
   sessionId,
+  hideTitle = false,
 }: {
   expectations: ExpectationAssessment[];
   activeSpanId?: string;
   traceId: string;
   sessionId?: string;
+  /**
+   * When true, suppress the section's own "Expectations (N)" heading row.
+   * Use when the caller renders its own section header for this content.
+   */
+  hideTitle?: boolean;
 }) => {
   const sortedExpectations = useMemo(
     () => expectations.toSorted((left, right) => left.assessment_name.localeCompare(right.assessment_name)),
@@ -35,7 +41,7 @@ export const AssessmentsPaneExpectationsSection = ({
     <>
       <div
         css={{
-          display: 'flex',
+          display: hideTitle ? 'none' : 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           marginTop: theme.spacing.sm,

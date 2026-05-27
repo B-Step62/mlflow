@@ -22,9 +22,15 @@ export const NOTES_ASSESSMENT_NAME = 'mlflow.notes';
 export const AssessmentsPaneNotesSection = ({
   traceId,
   feedbacks,
+  hideTitle = false,
 }: {
   traceId: string;
   feedbacks: FeedbackAssessment[];
+  /**
+   * When true, suppress the section's own "Notes" heading row. Use when the
+   * caller renders its own section header for this content.
+   */
+  hideTitle?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
   const user = getUser() ?? '';
@@ -79,26 +85,34 @@ export const AssessmentsPaneNotesSection = ({
 
   return (
     <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, marginTop: 'auto' }}>
-      <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-          <Typography.Text bold>
-            <FormattedMessage
-              defaultMessage="Notes"
-              description="Header for the notes section in the assessments pane"
-            />
-          </Typography.Text>
-          <Tooltip
-            componentId="shared.model-trace-explorer.assessment-notes-info-tooltip"
-            content={
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: hideTitle ? 'flex-end' : 'space-between',
+        }}
+      >
+        {!hideTitle && (
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <Typography.Text bold>
               <FormattedMessage
-                defaultMessage="Add personal notes about this trace."
-                description="Tooltip describing the notes section in the assessments pane"
+                defaultMessage="Notes"
+                description="Header for the notes section in the assessments pane"
               />
-            }
-          >
-            <InfoSmallIcon css={{ color: theme.colors.textSecondary }} />
-          </Tooltip>
-        </div>
+            </Typography.Text>
+            <Tooltip
+              componentId="shared.model-trace-explorer.assessment-notes-info-tooltip"
+              content={
+                <FormattedMessage
+                  defaultMessage="Add personal notes about this trace."
+                  description="Tooltip describing the notes section in the assessments pane"
+                />
+              }
+            >
+              <InfoSmallIcon css={{ color: theme.colors.textSecondary }} />
+            </Tooltip>
+          </div>
+        )}
         <Button
           componentId="shared.model-trace-explorer.assessment-notes-save"
           size="small"

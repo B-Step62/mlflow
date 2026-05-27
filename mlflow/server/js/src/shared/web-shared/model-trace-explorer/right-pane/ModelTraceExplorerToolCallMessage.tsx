@@ -1,11 +1,27 @@
 import { FunctionIcon, Tag, Tooltip, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
+import { shouldUseNewTraceExperience } from '../FeatureUtils';
 import type { ModelTraceToolCall } from '../ModelTrace.types';
 import { ModelTraceExplorerCodeSnippetBody } from '../ModelTraceExplorerCodeSnippetBody';
+import { PrettyView } from '../new-trace-experience/PrettyView';
+
+// Try to parse a possibly-JSON-string `arguments` payload into a JS value so
+// it can be rendered as a Pretty tree. If parsing fails, fall back to the
+// raw string.
+const parseToolArgs = (raw: unknown): unknown => {
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
 
 export function ModelTraceExplorerToolCallMessage({ toolCall }: { toolCall: ModelTraceToolCall }) {
   const { theme } = useDesignSystemTheme();
+  const useNewTraceExperience = shouldUseNewTraceExperience();
+  const parsedArgs = useNewTraceExperience ? parseToolArgs(toolCall.function.arguments) : null;
 
   return (
     <div key={toolCall.id} css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
@@ -54,7 +70,13 @@ export function ModelTraceExplorerToolCallMessage({ toolCall }: { toolCall: Mode
           }}
         />
       </Typography.Text>
-      <ModelTraceExplorerCodeSnippetBody data={toolCall.function.arguments} />
+      {useNewTraceExperience ? (
+        <div css={{ padding: `0 ${theme.spacing.sm + theme.spacing.xs}px` }}>
+          <PrettyView value={parsedArgs} />
+        </div>
+      ) : (
+        <ModelTraceExplorerCodeSnippetBody data={toolCall.function.arguments} />
+      )}
     </div>
   );
 }

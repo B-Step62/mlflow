@@ -1,4 +1,3 @@
-import { keys } from 'lodash';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -15,6 +14,7 @@ import {
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 
 import type {
+  ExpectationAssessment,
   FeedbackAssessment,
   ModelTrace,
   ModelTraceChatMessage,
@@ -24,11 +24,13 @@ import type {
 import { getIconTypeForSpan, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
-import { AssessmentsPane } from '../assessments-pane/AssessmentsPane';
+import { AssessmentsPaneExpectationsSection } from '../assessments-pane/AssessmentsPaneExpectationsSection';
 import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
+import { AssessmentsPaneNotesSection } from '../assessments-pane/AssessmentsPaneNotesSection';
 import { ModelTraceExplorerAttributesTab } from '../right-pane/ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
+import { PrettyView } from './PrettyView';
 
 type Props = {
   modelTraceInfo: ModelTrace['info'];
@@ -41,6 +43,11 @@ type SectionProps = {
   children: ReactNode;
 };
 
+// Chevron sits on the LEFT of the title; section content is indented so it
+// aligns horizontally with the title text (not the chevron). Section divider
+// borders intentionally omitted -- whitespace alone separates sections.
+const SECTION_CHEVRON_GUTTER = 20;
+
 const Section = ({ title, defaultOpen = true, actions, children }: SectionProps) => {
   const { theme } = useDesignSystemTheme();
   const [open, setOpen] = useState(defaultOpen);
@@ -48,7 +55,6 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
   return (
     <section
       css={{
-        borderTop: `1px solid ${theme.colors.borderDecorative}`,
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -67,23 +73,33 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
           css={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            gap: theme.spacing.xs,
             flex: 1,
             background: 'transparent',
             border: 'none',
             padding: 0,
             cursor: 'pointer',
-            color: theme.colors.textPrimary,
+            color: theme.colors.textSecondary,
             textAlign: 'left',
           }}
         >
-          <Typography.Text bold>{title}</Typography.Text>
-          {/* Chevron lives on the right side of the section header. */}
-          {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          <span css={{ display: 'inline-flex', width: SECTION_CHEVRON_GUTTER - theme.spacing.xs, alignItems: 'center' }}>
+            {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          </span>
+          <Typography.Text color="secondary">{title}</Typography.Text>
         </button>
         {open && actions}
       </div>
-      {open && <div css={{ padding: `0 ${theme.spacing.md}px ${theme.spacing.md}px` }}>{children}</div>}
+      {open && (
+        <div
+          css={{
+            padding: `0 ${theme.spacing.md}px ${theme.spacing.md}px`,
+            paddingLeft: theme.spacing.md + SECTION_CHEVRON_GUTTER,
+          }}
+        >
+          {children}
+        </div>
+      )}
     </section>
   );
 };
@@ -327,146 +343,6 @@ const StructuredDump = ({ value, mode }: { value: unknown; mode: 'yaml' | 'json'
   );
 };
 
-// "Pretty" interactive tree view, similar to Braintrust/DevTools — keys in
-// violet monospace, nested objects/arrays collapsible on the left with a
-// chevron, URLs rendered as links, null/undefined dimmed.
-const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s);
-
-const KEY_COLOR = '#2272b4';
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-
-const PrettyPrimitive = ({ value }: { value: unknown }) => {
-  const { theme } = useDesignSystemTheme();
-  if (value === null || value === undefined) {
-    return <span css={{ color: theme.colors.textPlaceholder, fontFamily: MONO }}>null</span>;
-  }
-  if (typeof value === 'string') {
-    if (isUrl(value)) {
-      return (
-        <a
-          href={value}
-          target="_blank"
-          rel="noopener noreferrer"
-          css={{ color: theme.colors.textPrimary, textDecoration: 'underline', wordBreak: 'break-all' }}
-        >
-          {value}
-        </a>
-      );
-    }
-    return <span css={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{value}</span>;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return <span css={{ fontFamily: MONO }}>{String(value)}</span>;
-  }
-  return <span css={{ fontFamily: MONO }}>{String(value)}</span>;
-};
-
-type PrettyEntryProps = {
-  label?: string | number;
-  value: unknown;
-  initialExpanded?: boolean;
-};
-
-// Renders a single key/value pair (when `label` is provided) or an unlabeled
-// array item (when `label` is omitted). Array items deliberately do not show
-// their numeric index — the count next to the parent "Array(N)" already
-// conveys cardinality, and per-item "0/1/2" labels add visual noise.
-const PrettyEntry = ({ label, value, initialExpanded = true }: PrettyEntryProps) => {
-  const { theme } = useDesignSystemTheme();
-  const [expanded, setExpanded] = useState(initialExpanded);
-
-  const isObject = value !== null && typeof value === 'object';
-  const isArray = Array.isArray(value);
-
-  if (isObject) {
-    const count = isArray ? (value as unknown[]).length : Object.keys(value as object).length;
-    return (
-      <div css={{ display: 'flex', flexDirection: 'column' }}>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          css={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: theme.spacing.xs,
-            background: 'transparent',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            color: theme.colors.textPrimary,
-            textAlign: 'left',
-          }}
-        >
-          {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
-          {label !== undefined && (
-            <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
-          )}
-          <span css={{ color: theme.colors.textSecondary, fontFamily: MONO, fontSize: theme.typography.fontSizeSm }}>
-            {isArray ? `Array(${count})` : `{${count}}`}
-          </span>
-        </button>
-        {expanded && (
-          <div
-            css={{
-              paddingLeft: theme.spacing.lg,
-              marginTop: theme.spacing.xs,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: theme.spacing.sm,
-            }}
-          >
-            {isArray
-              ? (value as unknown[]).map((v, i) => <PrettyEntry key={i} value={v} />)
-              : Object.entries(value as Record<string, unknown>).map(([k, v]) => (
-                  <PrettyEntry key={k} label={k} value={v} />
-                ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Primitive. With a label, key on its own line and value below (matches
-  // existing object-entry layout). Without a label (array item), render the
-  // value flush.
-  if (label === undefined) {
-    return <PrettyPrimitive value={value} />;
-  }
-  return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span css={{ color: KEY_COLOR, fontFamily: MONO, fontWeight: 600 }}>{String(label)}</span>
-      <div css={{ paddingLeft: theme.spacing.lg, color: theme.colors.textPrimary }}>
-        <PrettyPrimitive value={value} />
-      </div>
-    </div>
-  );
-};
-
-// Renders a single payload's pretty tree. If the payload is itself an object,
-// renders each top-level key as an entry at the root (no surrounding "inputs"
-// or "outputs" wrapper). Primitive payloads render their own value.
-const PrettyView = ({ value }: { value: unknown }) => {
-  const { theme } = useDesignSystemTheme();
-  return (
-    <div
-      css={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.sm,
-        fontSize: theme.typography.fontSizeSm,
-      }}
-    >
-      {value !== null && typeof value === 'object' && !Array.isArray(value) ? (
-        Object.entries(value as Record<string, unknown>).map(([k, v]) => <PrettyEntry key={k} label={k} value={v} />)
-      ) : Array.isArray(value) ? (
-        value.map((v, i) => <PrettyEntry key={i} value={v} />)
-      ) : (
-        <PrettyPrimitive value={value} />
-      )}
-    </div>
-  );
-};
-
 export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const { theme } = useDesignSystemTheme();
   const { selectedNode, rootNode } = useModelTraceExplorerViewState();
@@ -480,7 +356,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
   const hasInputs = activeSpan?.inputs !== undefined && activeSpan?.inputs !== null;
   const hasOutputs = activeSpan?.outputs !== undefined && activeSpan?.outputs !== null;
-  const hasAttributes = keys(activeSpan?.attributes).length > 0;
   const hasEvents = Array.isArray(activeSpan?.events) && (activeSpan?.events?.length ?? 0) > 0;
   const chatMessages = activeSpan?.chatMessages;
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
@@ -492,10 +367,19 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   }, [hasChat]);
   const effectiveRenderMode: InputsOutputsRenderMode = renderMode === 'chat' && !hasChat ? 'pretty' : renderMode;
 
-  // Feedback assessments to render at the top of the right pane.
-  const feedbacks = useMemo<FeedbackAssessment[]>(() => {
+  // Split assessments by type so each appears under its own section.
+  const { feedbacks, expectations } = useMemo<{
+    feedbacks: FeedbackAssessment[];
+    expectations: ExpectationAssessment[];
+  }>(() => {
     const all = activeSpan?.assessments ?? [];
-    return all.filter((a): a is FeedbackAssessment => 'feedback' in a);
+    const fb: FeedbackAssessment[] = [];
+    const ex: ExpectationAssessment[] = [];
+    for (const a of all) {
+      if ('feedback' in a) fb.push(a);
+      else if ('expectation' in a) ex.push(a);
+    }
+    return { feedbacks: fb, expectations: ex };
   }, [activeSpan?.assessments]);
 
   // Split the already-parsed chatMessages array so the two sections never
@@ -677,6 +561,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           activeSpanId={String(activeSpan.key)}
           traceId={traceId}
           hideTitle
+          splitJudgeAction
         />
       </Section>
 
@@ -719,19 +604,17 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         </Section>
       )}
 
-      {hasAttributes && (
-        <Section
-          title={
-            <FormattedMessage
-              defaultMessage="Attributes"
-              description="Section heading for the attributes section in the new trace experience right pane"
-            />
-          }
-          defaultOpen={false}
-        >
-          <ModelTraceExplorerAttributesTab activeSpan={activeSpan} searchFilter="" activeMatch={null} />
-        </Section>
-      )}
+      <Section
+        title={
+          <FormattedMessage
+            defaultMessage="Attributes"
+            description="Section heading for the attributes section in the new trace experience right pane"
+          />
+        }
+        defaultOpen={false}
+      >
+        <ModelTraceExplorerAttributesTab activeSpan={activeSpan} searchFilter="" activeMatch={null} />
+      </Section>
 
       {hasEvents && (
         <Section
@@ -750,18 +633,30 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       <Section
         title={
           <FormattedMessage
-            defaultMessage="Assessments"
-            description="Section heading for the assessments umbrella (Feedback / Expectations / Notes / Issues) at the bottom of the new trace experience right pane"
+            defaultMessage="Expectations"
+            description="Section heading for the Expectations section at the bottom of the new trace experience right pane"
           />
         }
         defaultOpen={false}
       >
-        <AssessmentsPane
-          assessments={activeSpan.assessments ?? []}
-          traceId={traceId}
+        <AssessmentsPaneExpectationsSection
+          expectations={expectations}
           activeSpanId={String(activeSpan.key)}
-          disableCloseButton
+          traceId={traceId}
+          hideTitle
         />
+      </Section>
+
+      <Section
+        title={
+          <FormattedMessage
+            defaultMessage="Comments"
+            description="Section heading for the Comments (personal notes) section at the bottom of the new trace experience right pane"
+          />
+        }
+        defaultOpen={false}
+      >
+        <AssessmentsPaneNotesSection key={traceId} traceId={traceId} feedbacks={feedbacks} hideTitle />
       </Section>
     </div>
   );

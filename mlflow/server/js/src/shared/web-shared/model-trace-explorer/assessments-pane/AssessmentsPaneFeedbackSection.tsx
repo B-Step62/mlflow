@@ -65,15 +65,63 @@ const AddFeedbackButton = ({
   onClick,
   traceId,
   sessionId,
+  splitJudgeAction = false,
 }: {
   onClick: () => void;
   traceId: string;
   sessionId?: string;
+  /**
+   * When true, surface the LLM-judge action as a sibling "Score trace" button
+   * instead of folding it into a dropdown under "Add feedback". The "Add
+   * feedback" button becomes a plain button that directly opens the
+   * human-feedback form.
+   */
+  splitJudgeAction?: boolean;
 }) => {
   const runJudgeConfiguration = useModelTraceExplorerRunJudgesContext();
   const [judgeModalVisible, setJudgeModalVisible] = useState(false);
 
-  if (runJudgeConfiguration.renderRunJudgeModal && isEvaluatingTracesInDetailsViewEnabled()) {
+  const judgeAvailable = Boolean(
+    runJudgeConfiguration.renderRunJudgeModal && isEvaluatingTracesInDetailsViewEnabled(),
+  );
+
+  if (splitJudgeAction) {
+    return (
+      <>
+        <div css={{ display: 'inline-flex', gap: 4 }}>
+          {judgeAvailable && (
+            <Button
+              componentId="shared.model-trace-explorer.score-trace"
+              size="small"
+              onClick={() => setJudgeModalVisible(true)}
+            >
+              <FormattedMessage
+                defaultMessage="Score trace"
+                description="Label for the button that opens the LLM judge modal to score a trace"
+              />
+            </Button>
+          )}
+          <Button
+            type="primary"
+            componentId="shared.model-trace-explorer.add-feedback"
+            size="small"
+            icon={<PlusIcon />}
+            onClick={onClick}
+          >
+            <FormattedMessage defaultMessage="Add feedback" description="Label for the button to add new feedback" />
+          </Button>
+        </div>
+        {judgeAvailable &&
+          runJudgeConfiguration.renderRunJudgeModal?.({
+            itemId: sessionId ?? traceId,
+            visible: judgeModalVisible,
+            onClose: () => setJudgeModalVisible(false),
+          })}
+      </>
+    );
+  }
+
+  if (judgeAvailable) {
     return (
       <>
         <DropdownMenu.Root>
@@ -134,6 +182,7 @@ export const AssessmentsPaneFeedbackSection = ({
   traceId,
   sessionId,
   hideTitle = false,
+  splitJudgeAction = false,
 }: {
   enableRunScorer: boolean;
   feedbacks: FeedbackAssessment[];
@@ -147,6 +196,12 @@ export const AssessmentsPaneFeedbackSection = ({
    * "Feedback" Section wrapper around this component).
    */
   hideTitle?: boolean;
+  /**
+   * When true, surface the LLM-judge action as a separate "Score trace"
+   * button alongside "Add feedback" instead of nesting it inside a
+   * dropdown under "Add feedback".
+   */
+  splitJudgeAction?: boolean;
 }) => {
   const visibleFeedbacks = useMemo(
     () =>
@@ -230,7 +285,12 @@ export const AssessmentsPaneFeedbackSection = ({
           {!isEmpty(groupedFeedbacks) && <>({visibleFeedbacks.length})</>}
         </Typography.Text>
         {!isSectionEmpty && (
-          <AddFeedbackButton traceId={traceId} sessionId={sessionId} onClick={() => setCreateFormVisible(true)} />
+          <AddFeedbackButton
+            traceId={traceId}
+            sessionId={sessionId}
+            onClick={() => setCreateFormVisible(true)}
+            splitJudgeAction={splitJudgeAction}
+          />
         )}
       </div>
 
@@ -329,7 +389,12 @@ export const AssessmentsPaneFeedbackSection = ({
           </Typography.Hint>
           <Spacer size="sm" />
           <div css={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-            <AddFeedbackButton traceId={traceId} sessionId={sessionId} onClick={() => setCreateFormVisible(true)} />
+            <AddFeedbackButton
+            traceId={traceId}
+            sessionId={sessionId}
+            onClick={() => setCreateFormVisible(true)}
+            splitJudgeAction={splitJudgeAction}
+          />
           </div>
         </div>
       )}
