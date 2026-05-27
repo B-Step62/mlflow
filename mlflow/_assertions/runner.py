@@ -41,11 +41,25 @@ class AssertionResult:
         return f"{self.scorer_name}: value={self.value!r}"
 
 
-def make_verify(scorers: list[Any]):
+def make_verify(
+    scorers: list[Any],
+    *,
+    trace_tags: dict[str, str] | None = None,
+    on_results: Any = None,
+):
     """Build a ``verify(outputs, ...)`` callable bound to a specific scorer list.
 
     Used by both the pytest fixture and the bundle dispatcher so failure
     formatting stays consistent.
+
+    Args:
+        scorers: Scorers to run on each ``verify(...)`` call.
+        trace_tags: When set, applied to the trace before scorer feedbacks
+            attach. Typical keys: ``mlflow.test.name``, ``mlflow.test.session_id``,
+            ``mlflow.test.case_id``.
+        on_results: Optional callable invoked with the ``list[AssertionResult]``
+            after each ``verify`` call. The pytest plugin uses this to feed
+            its end-of-session per-scorer summary.
     """
 
     def _verify(outputs, *, inputs=None, expectations=None):
@@ -54,7 +68,11 @@ def make_verify(scorers: list[Any]):
             inputs=inputs,
             outputs=outputs,
             expectations=expectations,
+            trace_tags=trace_tags,
         )
+        if on_results is not None:
+            on_results(results)
+
         failures = [r for r in results if not r.passed]
         if not failures:
             return
@@ -80,6 +98,7 @@ def run_assertions(
     inputs: Any = None,
     expectations: dict[str, Any] | None = None,
     trace_id: str | None = None,
+    trace_tags: dict[str, str] | None = None,
     max_workers: int = _DEFAULT_JUDGE_CONCURRENCY,
 ) -> list[AssertionResult]:
     """Run all scorers concurrently. Attach feedback to the trace. Return results.
@@ -89,6 +108,16 @@ def run_assertions(
     """
     if trace_id is None:
         trace_id = mlflow.get_last_active_trace_id()
+
+    # Tag the trace before attaching feedback so the per-test identifiers are
+    # visible on the trace even if a scorer raises mid-run.
+    if trace_id and trace_tags:
+        for key, value in trace_tags.items():
+            if value is not None:
+                try:
+                    mlflow.set_trace_tag(trace_id, key, str(value))
+                except Exception as e:
+                    _logger.warning("Failed to set trace tag %s=%r on %s: %s", key, value, trace_id, e)
 
     results: list[AssertionResult] = []
     workers = min(max_workers, len(scorers)) or 1

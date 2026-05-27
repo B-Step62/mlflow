@@ -21,24 +21,116 @@ shared across all parallel test bodies because we stay in a single process.
 
 Set ``MLFLOW_GENAI_EVAL_MAX_WORKERS=1`` to disable bundling-based
 parallelism (tests still bundle but execute sequentially).
+
+This plugin also:
+
+- Tags every trace produced inside a ``verify(...)`` call with
+  ``mlflow.test.name``, ``mlflow.test.session_id`` and (for parametrized
+  cases) ``mlflow.test.case_id`` so test traces are findable in MLflow UI.
+- Prints a per-scorer pass/fail summary at the end of every pytest run
+  that used ``@mlflow.assertions``. Set ``MLFLOW_TEST_SESSION_ID`` to
+  override the auto-generated session id (useful in CI).
 """
 
 from __future__ import annotations
 
+import datetime
 import inspect
 import logging
+import os
+import threading
+import uuid
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from mlflow._assertions.decorator import ASSERTIONS_ATTR
-from mlflow._assertions.runner import make_verify
+from mlflow._assertions.runner import AssertionResult, make_verify
 from mlflow.environment_variables import MLFLOW_GENAI_EVAL_MAX_WORKERS
 
 _logger = logging.getLogger(__name__)
 
 _THREAD_PREFIX = "MlflowAssertions"
 _BUNDLE_FUNC_NAME = "_mlflow_assertions_bundle"
+
+TAG_TEST_NAME = "mlflow.test.name"
+TAG_SESSION_ID = "mlflow.test.session_id"
+TAG_CASE_ID = "mlflow.test.case_id"
+
+# Module-level session state. Reset at sessionstart; collected from across
+# threads under a lock; flushed by the terminal-summary hook.
+_session_id: str | None = None
+_results_lock = threading.Lock()
+_results: list[tuple[str, AssertionResult]] = []
+
+
+def _record_results(test_name: str, results: list[AssertionResult]) -> None:
+    with _results_lock:
+        for r in results:
+            _results.append((test_name, r))
+
+
+def _case_id_from_item_name(item_name: str) -> str | None:
+    """Pull the parametrize id out of ``test_x[case1-case2]``. None when absent."""
+    if "[" not in item_name or not item_name.endswith("]"):
+        return None
+    return item_name[item_name.index("[") + 1 : -1]
+
+
+def _build_trace_tags(test_name: str, case_id: str | None) -> dict[str, str]:
+    tags: dict[str, str] = {TAG_TEST_NAME: test_name}
+    if _session_id is not None:
+        tags[TAG_SESSION_ID] = _session_id
+    if case_id is not None:
+        tags[TAG_CASE_ID] = case_id
+    return tags
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    global _session_id
+    override = os.environ.get("MLFLOW_TEST_SESSION_ID")
+    if override:
+        _session_id = override
+    else:
+        stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+        _session_id = f"{stamp}-{uuid.uuid4().hex[:6]}"
+    with _results_lock:
+        _results.clear()
+
+
+def pytest_terminal_summary(
+    terminalreporter, exitstatus: int, config: pytest.Config
+) -> None:
+    """Print per-scorer pass/fail rollup across the whole session."""
+    with _results_lock:
+        snapshot = list(_results)
+    if not snapshot:
+        return
+
+    by_scorer: dict[str, dict] = defaultdict(
+        lambda: {"pass": 0, "fail": 0, "fails": []}
+    )
+    for test_name, result in snapshot:
+        bucket = by_scorer[result.scorer_name]
+        if result.passed:
+            bucket["pass"] += 1
+        else:
+            bucket["fail"] += 1
+            bucket["fails"].append(test_name)
+
+    terminalreporter.write_sep("=", "mlflow.assertions summary")
+    for scorer_name in sorted(by_scorer):
+        s = by_scorer[scorer_name]
+        total = s["pass"] + s["fail"]
+        status = "PASS" if s["fail"] == 0 else "FAIL"
+        terminalreporter.write_line(f"  {status}  {scorer_name}  {s['pass']}/{total}")
+        if s["fails"]:
+            # Dedupe in case the same test produced the same scorer failure
+            # via multiple verify() calls in one test body.
+            unique = sorted(set(s["fails"]))
+            terminalreporter.write_line(f"        failed: {', '.join(unique)}")
+    terminalreporter.write_line(f"  session_id: {_session_id}")
 
 
 @pytest.fixture
@@ -66,7 +158,15 @@ def verify(request: pytest.FixtureRequest):
             f"@mlflow.assertions(...) decorator declared. Add "
             f"@mlflow.assertions(scorer1, scorer2, ...) to the test function."
         )
-    return make_verify(scorers)
+
+    test_name = test_func.__name__
+    case_id = _case_id_from_item_name(request.node.name)
+    trace_tags = _build_trace_tags(test_name, case_id)
+
+    def on_results(results: list[AssertionResult]) -> None:
+        _record_results(test_name, results)
+
+    return make_verify(scorers, trace_tags=trace_tags, on_results=on_results)
 
 
 def _is_assertion_test(item: pytest.Item) -> bool:
@@ -152,7 +252,14 @@ def _execute_one(
     inside the per-test subtests context for proper per-test reporting.
     """
     scorers = getattr(item.function, ASSERTIONS_ATTR, [])
-    per_test_verify = make_verify(scorers)
+    test_name = item.function.__name__
+    case_id = _case_id_from_item_name(item.name)
+    trace_tags = _build_trace_tags(test_name, case_id)
+
+    def on_results(results: list[AssertionResult]) -> None:
+        _record_results(test_name, results)
+
+    per_test_verify = make_verify(scorers, trace_tags=trace_tags, on_results=on_results)
 
     # Use the function's signature, not item.fixturenames - the latter can
     # include plugin-injected extras (e.g. pytest-asyncio's
