@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   Empty,
   GavelIcon,
+  Tag,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -666,24 +667,26 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
             {chatTools!.map((tool) => {
               const isCalled = calledToolNames.has(tool.function.name);
               return (
-                <div
-                  key={tool.function.name}
-                  // Override the tool card's own border + background to
-                  // accent the tools the assistant actually called.
-                  // ChatTool's outer <div> is the only direct child.
-                  css={
-                    isCalled
-                      ? {
-                          '& > div': {
-                            borderColor: theme.colors.actionPrimaryBackgroundDefault,
-                            boxShadow: `inset 3px 0 0 0 ${theme.colors.actionPrimaryBackgroundDefault}`,
-                            backgroundColor: theme.colors.actionDefaultBackgroundHover,
-                          },
-                        }
-                      : undefined
-                  }
-                >
+                <div key={tool.function.name} css={{ position: 'relative' }}>
                   <ModelTraceExplorerChatTool tool={tool} />
+                  {isCalled && (
+                    <Tag
+                      componentId="mlflow.new-trace-experience.tools.called-badge"
+                      color="turquoise"
+                      css={{
+                        position: 'absolute',
+                        top: theme.spacing.sm,
+                        right: theme.spacing.sm,
+                        margin: 0,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Called"
+                        description="Small badge on a tool card indicating the assistant called this tool in the current span"
+                      />
+                    </Tag>
+                  )}
                 </div>
               );
             })}
