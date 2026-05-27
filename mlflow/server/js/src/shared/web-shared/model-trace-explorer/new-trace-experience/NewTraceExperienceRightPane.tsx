@@ -4,6 +4,9 @@ import type { ReactNode } from 'react';
 import yaml from 'js-yaml';
 
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BracketsCurlyIcon,
   Button,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -11,6 +14,11 @@ import {
   DropdownMenu,
   Empty,
   GavelIcon,
+  InfoIcon,
+  LightningIcon,
+  SpeechBubbleIcon,
+  TargetIcon,
+  ThumbsUpIcon,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -43,17 +51,19 @@ type Props = {
 
 type SectionProps = {
   title: ReactNode;
+  icon?: ReactNode;
   defaultOpen?: boolean;
   actions?: ReactNode;
   children: ReactNode;
 };
 
 // Chevron sits on the LEFT of the title; section content is indented so it
-// aligns horizontally with the title text (not the chevron). Section divider
-// borders intentionally omitted -- whitespace alone separates sections.
+// aligns horizontally with the title text (not the chevron). Sections are
+// separated by a single hairline divider; the first section has no top
+// border so it doesn't conflict with the span title / action row above.
 const SECTION_CHEVRON_GUTTER = 20;
 
-const Section = ({ title, defaultOpen = true, actions, children }: SectionProps) => {
+const Section = ({ title, icon, defaultOpen = true, actions, children }: SectionProps) => {
   const { theme } = useDesignSystemTheme();
   const [open, setOpen] = useState(defaultOpen);
 
@@ -62,6 +72,10 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
       css={{
         display: 'flex',
         flexDirection: 'column',
+        borderTop: `1px solid ${theme.colors.borderDecorative}`,
+        '&:first-of-type': {
+          borderTop: 'none',
+        },
       }}
     >
       <div
@@ -91,6 +105,11 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
           <span css={{ display: 'inline-flex', width: SECTION_CHEVRON_GUTTER - theme.spacing.xs, alignItems: 'center', color: theme.colors.textSecondary }}>
             {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
           </span>
+          {icon && (
+            <span css={{ display: 'inline-flex', alignItems: 'center', color: theme.colors.textSecondary }}>
+              {icon}
+            </span>
+          )}
           <Typography.Text bold>{title}</Typography.Text>
         </button>
         {open && actions}
@@ -622,6 +641,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       {infoRows.length > 0 && (
         <Section
+          icon={<InfoIcon />}
           title={
             <FormattedMessage
               defaultMessage="Info"
@@ -634,6 +654,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       )}
 
       <Section
+        icon={<ThumbsUpIcon />}
         title={
           <span css={{ display: 'inline-flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
             <FormattedMessage
@@ -663,6 +684,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       {hasInputs && (
         <Section
+          icon={<ArrowDownIcon />}
           title={
             <FormattedMessage
               defaultMessage="Input"
@@ -682,6 +704,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       )}
       {hasOutputs && (
         <Section
+          icon={<ArrowUpIcon />}
           title={
             <FormattedMessage
               defaultMessage="Output"
@@ -702,6 +725,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       {attributeRows.length > 0 && (
         <Section
+          icon={<BracketsCurlyIcon />}
           title={
             <FormattedMessage
               defaultMessage="Attributes"
@@ -721,6 +745,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       {hasEvents && (
         <Section
+          icon={<LightningIcon />}
           title={
             <FormattedMessage
               defaultMessage="Events"
@@ -734,6 +759,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       )}
 
       <Section
+        icon={<TargetIcon />}
         title={
           <FormattedMessage
             defaultMessage="Expectations"
@@ -751,6 +777,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       </Section>
 
       <Section
+        icon={<SpeechBubbleIcon />}
         title={
           <FormattedMessage
             defaultMessage="Comments"
