@@ -29,10 +29,16 @@ class AssertionResult:
     passed: bool
     error: Exception | None = None
 
-    def format_line(self) -> str:
-        icon = "PASS" if self.passed else "FAIL"
-        rationale = f'  "{self.rationale}"' if self.rationale else ""
-        return f"  {icon}  {self.scorer_name}  {self.value!r}{rationale}"
+    def summary(self) -> str:
+        """One-liner of the form ``<scorer>: <rationale or value>``.
+
+        Used in the AssertionError message so pytest's short summary
+        actually communicates *why* the assertion failed, not just *that*
+        it failed.
+        """
+        if self.rationale:
+            return f"{self.scorer_name}: {self.rationale}"
+        return f"{self.scorer_name}: value={self.value!r}"
 
 
 def make_verify(scorers: list[Any]):
@@ -50,11 +56,19 @@ def make_verify(scorers: list[Any]):
             expectations=expectations,
         )
         failures = [r for r in results if not r.passed]
-        if failures:
-            lines = ["verify() failed:"]
-            for r in results:
-                lines.append(r.format_line())
-            raise AssertionError("\n".join(lines))
+        if not failures:
+            return
+
+        # Pack the actionable signal onto the first line so pytest's short
+        # summary tells the user *why* the assertion failed, not just that
+        # ``verify()`` errored.
+        if len(failures) == 1:
+            raise AssertionError(failures[0].summary())
+
+        names = ", ".join(r.scorer_name for r in failures)
+        header = f"{len(failures)} assertions failed: {names}"
+        detail = "\n".join(f"  - {r.summary()}" for r in failures)
+        raise AssertionError(f"{header}\n{detail}")
 
     return _verify
 
