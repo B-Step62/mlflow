@@ -1,3 +1,4 @@
+import { Global } from '@emotion/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -181,6 +182,18 @@ export const ModelTraceExplorerDrawer = ({
         }
       }}
     >
+      {isNewTraceExperience && isFullscreen && (
+        <Global
+          styles={{
+            // DS Drawer hard-codes max-width: 90vw on its rendered Content
+            // element. Override globally so the fullscreen toggle actually
+            // expands edge-to-edge.
+            '[class*="dialogPrimitiveContentStyle-Content"]': {
+              maxWidth: '100vw !important',
+            },
+          }}
+        />
+      )}
       <DrawerComponent.Content
         componentId="mlflow.evaluations_review.modal"
         width={drawerWidth}
