@@ -18,9 +18,10 @@ export type NewTraceExperienceTabKey = 'trace' | 'timeline' | 'graph' | 'lineage
 type Props = {
   modelTraceInfo: ModelTrace['info'];
   renderTraceTab: () => React.ReactNode;
+  renderTimelineTab: () => React.ReactNode;
 };
 
-export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
+export const NewTraceExperienceTabs = ({ renderTraceTab, renderTimelineTab }: Props) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const [activeTab, setActiveTab] = useState<NewTraceExperienceTabKey>('trace');
@@ -42,7 +43,7 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
     description: 'Tab label for the lineage view (linked prompts, runs, datasets) in the new trace experience',
   });
 
-  const comingSoonEmptyState = (key: 'timeline' | 'graph' | 'lineage') => (
+  const comingSoonEmptyState = (key: 'graph' | 'lineage') => (
     <div
       css={{
         flex: 1,
@@ -61,12 +62,7 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
     >
       <Empty
         title={
-          key === 'timeline' ? (
-            <FormattedMessage
-              defaultMessage="Timeline view"
-              description="Empty-state heading for the Timeline tab placeholder in the new trace experience"
-            />
-          ) : key === 'graph' ? (
+          key === 'graph' ? (
             <FormattedMessage
               defaultMessage="Graph view"
               description="Empty-state heading for the Graph tab placeholder in the new trace experience"
@@ -167,7 +163,7 @@ export const NewTraceExperienceTabs = ({ renderTraceTab }: Props) => {
         {renderTraceTab()}
       </Tabs.Content>
       <Tabs.Content value="timeline" css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        {comingSoonEmptyState('timeline')}
+        {renderTimelineTab()}
       </Tabs.Content>
       <Tabs.Content value="graph" css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         {comingSoonEmptyState('graph')}

@@ -6,6 +6,7 @@ import type { ModelTrace } from '../ModelTrace.types';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { useModelTraceSearch } from '../hooks/useModelTraceSearch';
 import { NewTraceExperienceTabs } from './NewTraceExperienceTabs';
+import { NewTraceExperienceTimelineTab } from './NewTraceExperienceTimelineTab';
 import { NewTraceExperienceTopBar } from './NewTraceExperienceTopBar';
 import { NewTraceExperienceTraceTab } from './NewTraceExperienceTraceTab';
 
@@ -44,6 +45,14 @@ export const NewTraceExperienceShell = ({ modelTraceInfo, className }: Props) =>
     />
   );
 
+  const renderTimelineTab = () => (
+    <NewTraceExperienceTimelineTab
+      filteredTreeNodes={filteredTreeNodes}
+      expandedKeys={expandedKeys}
+      setExpandedKeys={setExpandedKeys}
+    />
+  );
+
   return (
     <div
       className={className}
@@ -61,7 +70,11 @@ export const NewTraceExperienceShell = ({ modelTraceInfo, className }: Props) =>
         spanFilterState={spanFilterState}
         setSpanFilterState={setSpanFilterState}
       />
-      <NewTraceExperienceTabs modelTraceInfo={modelTraceInfo} renderTraceTab={renderTraceTab} />
+      <NewTraceExperienceTabs
+        modelTraceInfo={modelTraceInfo}
+        renderTraceTab={renderTraceTab}
+        renderTimelineTab={renderTimelineTab}
+      />
     </div>
   );
 };
