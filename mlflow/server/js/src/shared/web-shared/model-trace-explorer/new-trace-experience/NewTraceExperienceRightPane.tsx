@@ -14,7 +14,6 @@ import {
   DropdownMenu,
   Empty,
   GavelIcon,
-  InfoIcon,
   LightningIcon,
   SpeechBubbleIcon,
   TargetIcon,
@@ -57,13 +56,11 @@ type SectionProps = {
   children: ReactNode;
 };
 
-// Chevron sits on the LEFT of the title; section content is indented so it
-// aligns horizontally with the title text (not the chevron). Every section
-// renders as a self-contained card -- border + rounded corners + soft
-// shadow + a small outer margin -- so the whole right pane reads as a
-// vertical stack of cards.
-const SECTION_CHEVRON_GUTTER = 20;
-
+// Section headers render as a tinted banner across the full pane width
+// (chevron + icon + bold title), with the body in white below.
+// flexShrink: 0 keeps sections at their natural height inside the
+// vertically-scrolling right pane -- without it, expanding one section
+// compresses the others into thin strips.
 const Section = ({ title, icon, defaultOpen = true, actions, children }: SectionProps) => {
   const { theme } = useDesignSystemTheme();
   const [open, setOpen] = useState(defaultOpen);
@@ -73,12 +70,7 @@ const Section = ({ title, icon, defaultOpen = true, actions, children }: Section
       css={{
         display: 'flex',
         flexDirection: 'column',
-        margin: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.legacyBorders.borderRadiusMd,
-        boxShadow: theme.shadows.sm,
-        backgroundColor: theme.colors.backgroundPrimary,
-        overflow: 'hidden',
+        flexShrink: 0,
       }}
     >
       <div
@@ -87,6 +79,9 @@ const Section = ({ title, icon, defaultOpen = true, actions, children }: Section
           alignItems: 'center',
           padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
           gap: theme.spacing.sm,
+          backgroundColor: theme.colors.backgroundSecondary,
+          borderTop: `1px solid ${theme.colors.borderDecorative}`,
+          borderBottom: open ? `1px solid ${theme.colors.borderDecorative}` : 'none',
         }}
       >
         <button
@@ -95,7 +90,7 @@ const Section = ({ title, icon, defaultOpen = true, actions, children }: Section
           css={{
             display: 'flex',
             alignItems: 'center',
-            gap: theme.spacing.xs,
+            gap: theme.spacing.sm,
             flex: 1,
             background: 'transparent',
             border: 'none',
@@ -105,7 +100,7 @@ const Section = ({ title, icon, defaultOpen = true, actions, children }: Section
             textAlign: 'left',
           }}
         >
-          <span css={{ display: 'inline-flex', width: SECTION_CHEVRON_GUTTER - theme.spacing.xs, alignItems: 'center', color: theme.colors.textSecondary }}>
+          <span css={{ display: 'inline-flex', alignItems: 'center', color: theme.colors.actionPrimaryBackgroundDefault }}>
             {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
           </span>
           {icon && (
@@ -118,12 +113,7 @@ const Section = ({ title, icon, defaultOpen = true, actions, children }: Section
         {open && actions}
       </div>
       {open && (
-        <div
-          css={{
-            padding: `0 ${theme.spacing.md}px ${theme.spacing.md}px`,
-            paddingLeft: theme.spacing.md + SECTION_CHEVRON_GUTTER,
-          }}
-        >
+        <div css={{ padding: theme.spacing.md, backgroundColor: theme.colors.backgroundPrimary }}>
           {children}
         </div>
       )}
@@ -643,17 +633,9 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       <SpanActionButtons traceId={traceId} />
 
       {infoRows.length > 0 && (
-        <Section
-          icon={<InfoIcon />}
-          title={
-            <FormattedMessage
-              defaultMessage="Info"
-              description="Section heading for the Info (Model / Tokens / Cost / Session / Tags) section in the new trace experience right pane"
-            />
-          }
-        >
+        <div css={{ padding: `0 ${theme.spacing.md}px ${theme.spacing.sm}px` }}>
           <InfoRows rows={infoRows} />
-        </Section>
+        </div>
       )}
 
       <Section
