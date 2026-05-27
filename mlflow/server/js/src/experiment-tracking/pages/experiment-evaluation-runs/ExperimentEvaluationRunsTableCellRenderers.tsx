@@ -85,13 +85,19 @@ export const RunNameCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
   const runUuid = row.original.info.runUuid;
   const experimentId = row.original.info.experimentId;
   const tags = row.original.data?.tags ?? [];
-  const isIssueDetectionRun = tags.some(
-    (tag) => tag.key === MLFLOW_RUN_TYPE_TAG && tag.value === MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION,
-  );
+  const runTypeTag = tags.find((tag) => tag.key === MLFLOW_RUN_TYPE_TAG);
+  const isIssueDetectionRun = runTypeTag?.value === MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION;
+  const isRegressionTestRun = runTypeTag?.value === MLFLOW_RUN_TYPE_VALUE_REGRESSION_TEST;
   const showIssuesPanelFlag = shouldShowEvalRunsIssuesPanel();
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Regression-test runs navigate to their dedicated page (with the three
+    // Test cases / History / Configuration tabs).
+    if (isRegressionTestRun) {
+      navigate(Routes.getRegressionTestRunDetailsRoute(experimentId, runUuid));
+      return;
+    }
     // When flag is ON and clicking on an issue detection run, navigate to the issue detection run details page
     if (isIssueDetectionRun && showIssuesPanelFlag) {
       const route = Routes.getIssueDetectionRunDetailsRoute(experimentId, runUuid);
