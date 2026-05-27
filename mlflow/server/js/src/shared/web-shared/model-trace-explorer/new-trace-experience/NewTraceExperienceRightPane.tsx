@@ -526,11 +526,13 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['session_id'];
 
   // Per-span tokens come from OTel attributes when present (LLM spans
-  // instrumented with gen_ai.usage.*). When they aren't, fall back to
-  // the trace-level metadata so the row still shows a number -- this
-  // matches the trace-level cost fallback we already do below.
+  // instrumented with gen_ai.usage.*). On the root span we fall back to
+  // the trace-level metadata so the root still shows the trace total;
+  // child spans without their own usage attrs show nothing (showing
+  // trace-level totals on a tool / retriever / child LLM span misleads
+  // -- the trace total doesn't belong to that span).
   const spanTokens = getSpanTokenUsage(activeSpan.attributes);
-  const effectiveTokens = spanTokens.total_tokens !== undefined ? spanTokens : tokenUsage;
+  const effectiveTokens = spanTokens.total_tokens !== undefined ? spanTokens : isRootSpan ? tokenUsage : {};
   const totalTokens = effectiveTokens.total_tokens;
   const inputTokens = effectiveTokens.input_tokens;
   const outputTokens = effectiveTokens.output_tokens;
