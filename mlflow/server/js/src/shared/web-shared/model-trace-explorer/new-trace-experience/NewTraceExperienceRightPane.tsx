@@ -79,14 +79,14 @@ const Section = ({ title, defaultOpen = true, actions, children }: SectionProps)
             border: 'none',
             padding: 0,
             cursor: 'pointer',
-            color: theme.colors.textSecondary,
+            color: theme.colors.textPrimary,
             textAlign: 'left',
           }}
         >
-          <span css={{ display: 'inline-flex', width: SECTION_CHEVRON_GUTTER - theme.spacing.xs, alignItems: 'center' }}>
+          <span css={{ display: 'inline-flex', width: SECTION_CHEVRON_GUTTER - theme.spacing.xs, alignItems: 'center', color: theme.colors.textSecondary }}>
             {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
           </span>
-          <Typography.Text color="secondary">{title}</Typography.Text>
+          <Typography.Text bold>{title}</Typography.Text>
         </button>
         {open && actions}
       </div>
