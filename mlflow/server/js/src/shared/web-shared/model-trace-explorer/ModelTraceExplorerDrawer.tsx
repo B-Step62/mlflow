@@ -15,7 +15,10 @@ import { FormattedMessage } from '@databricks/i18n';
 
 import { shouldUseNewTraceExperience } from './FeatureUtils';
 import { ModelTraceExplorerSkeleton } from './ModelTraceExplorerSkeleton';
-import { useModelTraceExplorerContext } from './ModelTraceExplorerContext';
+import {
+  ModelTraceExplorerAddToDatasetProvider,
+  useModelTraceExplorerContext,
+} from './ModelTraceExplorerContext';
 import type { ModelTraceInfoV3 } from './ModelTrace.types';
 import { NewTraceExperienceShellProvider } from './new-trace-experience/NewTraceExperienceShellContext';
 
@@ -167,8 +170,20 @@ export const ModelTraceExplorerDrawer = ({
   );
 
   const renderedChildren = isLoading ? <ModelTraceExplorerSkeleton /> : children;
+  // When add-to-dataset is available, expose the trigger to descendants so
+  // the new-experience right pane can render its own "Add to dataset"
+  // button next to the span title.
+  const childrenWithDatasetAction = showAddToDatasetButton ? (
+    <ModelTraceExplorerAddToDatasetProvider openModal={handleAddToDatasetClick}>
+      {renderedChildren}
+    </ModelTraceExplorerAddToDatasetProvider>
+  ) : (
+    renderedChildren
+  );
   const wrappedChildren = isNewTraceExperience ? (
-    <NewTraceExperienceShellProvider value={newShellContextValue}>{renderedChildren}</NewTraceExperienceShellProvider>
+    <NewTraceExperienceShellProvider value={newShellContextValue}>
+      {childrenWithDatasetAction}
+    </NewTraceExperienceShellProvider>
   ) : (
     renderedChildren
   );

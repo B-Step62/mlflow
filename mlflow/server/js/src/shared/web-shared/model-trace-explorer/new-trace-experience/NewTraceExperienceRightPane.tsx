@@ -4,15 +4,19 @@ import type { ReactNode } from 'react';
 import yaml from 'js-yaml';
 
 import {
+  Button,
   ChevronDownIcon,
   ChevronRightIcon,
+  DatabaseIcon,
   DropdownMenu,
   Empty,
+  GavelIcon,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 
+import { isEvaluatingTracesInDetailsViewEnabled } from '../FeatureUtils';
 import type {
   ExpectationAssessment,
   FeedbackAssessment,
@@ -21,12 +25,14 @@ import type {
   ModelTraceInfoV3,
   ModelTraceSpanNode,
 } from '../ModelTrace.types';
+import { useModelTraceExplorerContext } from '../ModelTraceExplorerContext';
 import { getIconTypeForSpan, getSpanTokenUsage, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { AssessmentsPaneExpectationsSection } from '../assessments-pane/AssessmentsPaneExpectationsSection';
 import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
 import { AssessmentsPaneNotesSection } from '../assessments-pane/AssessmentsPaneNotesSection';
+import { useModelTraceExplorerRunJudgesContext } from '../contexts/RunJudgesContext';
 import { ModelTraceExplorerAttributesTab } from '../right-pane/ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
@@ -121,6 +127,68 @@ const SpanTitleHeader = ({ activeSpan, isRootSpan }: { activeSpan: ModelTraceSpa
       <Typography.Title level={3} withoutMargins>
         {name}
       </Typography.Title>
+    </div>
+  );
+};
+
+// Trace-level actions ("Score trace", "Add to dataset") surfaced directly
+// under the span title so they're always reachable, independent of which
+// span is selected or whether the Feedback section is expanded. Buttons
+// are only rendered when the underlying capability is wired up.
+const SpanActionButtons = ({ traceId }: { traceId: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const runJudgeConfiguration = useModelTraceExplorerRunJudgesContext();
+  const { addToDatasetAction } = useModelTraceExplorerContext();
+  const [judgeModalVisible, setJudgeModalVisible] = useState(false);
+
+  const judgeAvailable = Boolean(
+    runJudgeConfiguration.renderRunJudgeModal && isEvaluatingTracesInDetailsViewEnabled(),
+  );
+  const datasetAvailable = Boolean(addToDatasetAction);
+
+  if (!judgeAvailable && !datasetAvailable) return null;
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        gap: theme.spacing.xs,
+        padding: `0 ${theme.spacing.md}px ${theme.spacing.sm}px`,
+      }}
+    >
+      {judgeAvailable && (
+        <>
+          <Button
+            componentId="mlflow.new-trace-experience.score-trace"
+            size="small"
+            icon={<GavelIcon />}
+            onClick={() => setJudgeModalVisible(true)}
+          >
+            <FormattedMessage
+              defaultMessage="Score trace"
+              description="Button under the span title that opens the LLM judge modal to score the current trace"
+            />
+          </Button>
+          {runJudgeConfiguration.renderRunJudgeModal?.({
+            itemId: traceId,
+            visible: judgeModalVisible,
+            onClose: () => setJudgeModalVisible(false),
+          })}
+        </>
+      )}
+      {datasetAvailable && (
+        <Button
+          componentId="mlflow.new-trace-experience.add-to-dataset"
+          size="small"
+          icon={<DatabaseIcon />}
+          onClick={() => addToDatasetAction?.openModal()}
+        >
+          <FormattedMessage
+            defaultMessage="Add to dataset"
+            description="Button under the span title that adds the current trace to a dataset"
+          />
+        </Button>
+      )}
     </div>
   );
 };
@@ -523,6 +591,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       }}
     >
       <SpanTitleHeader activeSpan={activeSpan} isRootSpan={isRootSpan} />
+      <SpanActionButtons traceId={traceId} />
 
       {infoRows.length > 0 && (
         <Section
@@ -561,7 +630,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           activeSpanId={String(activeSpan.key)}
           traceId={traceId}
           hideTitle
-          splitJudgeAction
+          hideJudgeAction
         />
       </Section>
 

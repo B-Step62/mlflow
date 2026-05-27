@@ -66,6 +66,7 @@ const AddFeedbackButton = ({
   traceId,
   sessionId,
   splitJudgeAction = false,
+  hideJudgeAction = false,
 }: {
   onClick: () => void;
   traceId: string;
@@ -77,13 +78,20 @@ const AddFeedbackButton = ({
    * human-feedback form.
    */
   splitJudgeAction?: boolean;
+  /**
+   * When true, suppress the LLM-judge action entirely. Used when the caller
+   * surfaces a "Score trace" button elsewhere (e.g. the new trace
+   * experience hoists it under the span title) and the feedback section
+   * should only offer "Add feedback".
+   */
+  hideJudgeAction?: boolean;
 }) => {
   const runJudgeConfiguration = useModelTraceExplorerRunJudgesContext();
   const [judgeModalVisible, setJudgeModalVisible] = useState(false);
 
-  const judgeAvailable = Boolean(
-    runJudgeConfiguration.renderRunJudgeModal && isEvaluatingTracesInDetailsViewEnabled(),
-  );
+  const judgeAvailable =
+    !hideJudgeAction &&
+    Boolean(runJudgeConfiguration.renderRunJudgeModal && isEvaluatingTracesInDetailsViewEnabled());
 
   if (splitJudgeAction) {
     return (
@@ -183,6 +191,7 @@ export const AssessmentsPaneFeedbackSection = ({
   sessionId,
   hideTitle = false,
   splitJudgeAction = false,
+  hideJudgeAction = false,
 }: {
   enableRunScorer: boolean;
   feedbacks: FeedbackAssessment[];
@@ -202,6 +211,11 @@ export const AssessmentsPaneFeedbackSection = ({
    * dropdown under "Add feedback".
    */
   splitJudgeAction?: boolean;
+  /**
+   * When true, suppress the LLM-judge action inside this section so the
+   * caller can surface it elsewhere without duplication.
+   */
+  hideJudgeAction?: boolean;
 }) => {
   const visibleFeedbacks = useMemo(
     () =>
@@ -290,6 +304,7 @@ export const AssessmentsPaneFeedbackSection = ({
             sessionId={sessionId}
             onClick={() => setCreateFormVisible(true)}
             splitJudgeAction={splitJudgeAction}
+            hideJudgeAction={hideJudgeAction}
           />
         )}
       </div>
@@ -394,6 +409,7 @@ export const AssessmentsPaneFeedbackSection = ({
             sessionId={sessionId}
             onClick={() => setCreateFormVisible(true)}
             splitJudgeAction={splitJudgeAction}
+            hideJudgeAction={hideJudgeAction}
           />
           </div>
         </div>
