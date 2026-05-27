@@ -52,7 +52,11 @@ from mlflow.environment_variables import MLFLOW_GENAI_EVAL_MAX_WORKERS
 _logger = logging.getLogger(__name__)
 
 _THREAD_PREFIX = "MlflowAssertions"
-_BUNDLE_FUNC_NAME = "_mlflow_assertions_bundle"
+# Name that shows up in pytest's nodeid after `::`. Short and human-readable
+# so the progress line is not full of internal jargon. Each file gets its
+# own bundle; the file path in the nodeid disambiguates between bundles.
+_BUNDLE_ITEM_NAME = "mlflow_assertions"
+_BUNDLE_COUNT_ATTR = "_mlflow_bundled_count"
 
 TAG_TEST_NAME = "mlflow.test.name"
 TAG_SESSION_ID = "mlflow.test.session_id"
@@ -97,6 +101,56 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         _session_id = f"{stamp}-{uuid.uuid4().hex[:6]}"
     with _results_lock:
         _results.clear()
+
+
+def pytest_report_collectionfinish(
+    config: pytest.Config, start_path, startdir, items
+) -> list[str] | None:
+    """Add a line after pytest's "collected N items" that reports the real
+    underlying test count (since bundles collapse many tests into one item).
+    """
+    bundles = [i for i in items if getattr(i, _BUNDLE_COUNT_ATTR, 0) > 0]
+    if not bundles:
+        return None
+    total = sum(getattr(b, _BUNDLE_COUNT_ATTR, 0) for b in bundles)
+    n_bundles = len(bundles)
+    bundle_word = "bundle" if n_bundles == 1 else "bundles"
+    return [
+        f"  ({total} @mlflow.assertions tests in {n_bundles} parallel {bundle_word})"
+    ]
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_report_teststatus(report, config: pytest.Config):
+    """Display subtests as if they were regular tests.
+
+    Without this, pytest-subtests renders every subtest as ``SUBPASSED[name]``
+    which (a) is verbose, (b) leaves a stale progress percentage on every
+    line because the bundle counts as one item. Returning the same shape as
+    a regular TestReport (".", "PASSED [name]") makes subtests blend into
+    the normal progress display.
+
+    The first character is what shows in non-verbose (``.`` / ``F``); the
+    verbose word still includes the subtest's ``msg`` so the user can read
+    which original test was the one that failed.
+    """
+    if report.when != "call":
+        return None
+    try:
+        from _pytest.subtests import SubtestReport
+    except ImportError:
+        return None
+    if not isinstance(report, SubtestReport):
+        return None
+
+    msg = getattr(report.context, "msg", None) or "?"
+    if report.passed:
+        return ("passed", ".", f"PASSED [{msg}]")
+    if report.failed:
+        return ("failed", "F", f"FAILED [{msg}]")
+    if report.skipped:
+        return ("skipped", "s", f"SKIPPED [{msg}]")
+    return None
 
 
 def pytest_terminal_summary(
@@ -239,7 +293,7 @@ def _make_bundle_callable(bundled_items: list[pytest.Function]):
         for name in sorted(union)
     ]
     bundle_body.__signature__ = inspect.Signature(parameters=sig_params)
-    bundle_body.__name__ = _BUNDLE_FUNC_NAME
+    bundle_body.__name__ = _BUNDLE_ITEM_NAME
     return bundle_body
 
 
@@ -313,9 +367,12 @@ def pytest_collection_modifyitems(
         parent = group[0].parent
         bundle_item = pytest.Function.from_parent(
             parent=parent,
-            name=f"{_BUNDLE_FUNC_NAME}_{module.__name__.replace('.', '_')}",
+            name=_BUNDLE_ITEM_NAME,
             callobj=bundle_body,
         )
+        # Stash the bundled count so pytest_report_collectionfinish can give
+        # an honest "N tests in M parallel bundles" message.
+        setattr(bundle_item, _BUNDLE_COUNT_ATTR, len(group))
 
         # Insert the bundle at the position of the first original item so
         # that tests written after the bundled set still run in order.
