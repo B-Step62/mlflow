@@ -668,13 +668,17 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
               return (
                 <div
                   key={tool.function.name}
+                  // Override the tool card's own border + background to
+                  // accent the tools the assistant actually called.
+                  // ChatTool's outer <div> is the only direct child.
                   css={
                     isCalled
                       ? {
-                          // Accent the tools the assistant actually called.
-                          borderRadius: theme.borders.borderRadiusMd,
-                          boxShadow: `inset 3px 0 0 0 ${theme.colors.actionPrimaryBackgroundDefault}`,
-                          backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                          '& > div': {
+                            borderColor: theme.colors.actionPrimaryBackgroundDefault,
+                            boxShadow: `inset 3px 0 0 0 ${theme.colors.actionPrimaryBackgroundDefault}`,
+                            backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                          },
                         }
                       : undefined
                   }
