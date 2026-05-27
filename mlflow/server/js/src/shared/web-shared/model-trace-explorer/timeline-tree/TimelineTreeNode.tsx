@@ -128,6 +128,13 @@ export const TimelineTreeNode = ({
             ':active': {
               backgroundColor: theme.colors.actionDefaultBackgroundPress,
             },
+            // Thin accent rail on the left edge of the currently
+            // selected row in the new-experience tree. Uses inset
+            // box-shadow so the row content doesn't shift.
+            ...(useNewExperience &&
+              isActive && {
+                boxShadow: `inset 3px 0 0 0 ${theme.colors.actionPrimaryBackgroundDefault}`,
+              }),
             // In the new experience, the expand chevron lives on the right
             // and is hidden until the row is hovered.
             ...(useNewExperience && {

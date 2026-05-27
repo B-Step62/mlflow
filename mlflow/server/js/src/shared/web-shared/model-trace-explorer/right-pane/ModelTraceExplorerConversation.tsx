@@ -18,7 +18,7 @@ export function ModelTraceExplorerConversation({ messages }: { messages: ModelTr
         display: 'flex',
         flexDirection: 'column',
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusSm,
+        borderRadius: theme.borders.borderRadiusMd,
       }}
     >
       {messages.map((message, index) => (
@@ -26,10 +26,10 @@ export function ModelTraceExplorerConversation({ messages }: { messages: ModelTr
           css={{
             borderTop: index > 0 ? `1px solid ${theme.colors.border}` : undefined,
             // need to set radius for first and last message, otherwise the border will be cut off
-            borderTopLeftRadius: index > 0 ? undefined : theme.borders.borderRadiusSm,
-            borderTopRightRadius: index > 0 ? undefined : theme.borders.borderRadiusSm,
-            borderBottomLeftRadius: index === messages.length - 1 ? theme.borders.borderRadiusSm : undefined,
-            borderBottomRightRadius: index === messages.length - 1 ? theme.borders.borderRadiusSm : undefined,
+            borderTopLeftRadius: index > 0 ? undefined : theme.borders.borderRadiusMd,
+            borderTopRightRadius: index > 0 ? undefined : theme.borders.borderRadiusMd,
+            borderBottomLeftRadius: index === messages.length - 1 ? theme.borders.borderRadiusMd : undefined,
+            borderBottomRightRadius: index === messages.length - 1 ? theme.borders.borderRadiusMd : undefined,
           }}
           key={index}
           message={message}
