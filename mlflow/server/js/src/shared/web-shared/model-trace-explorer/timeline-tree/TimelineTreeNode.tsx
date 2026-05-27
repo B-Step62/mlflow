@@ -114,6 +114,7 @@ export const TimelineTreeNode = ({
       <TimelineTreeSpanTooltip span={node}>
         <div
           data-testid={`timeline-tree-node-${node.key}`}
+          className="timeline-tree-row"
           css={{
             display: 'flex',
             flexDirection: 'column',
@@ -127,6 +128,16 @@ export const TimelineTreeNode = ({
             ':active': {
               backgroundColor: theme.colors.actionDefaultBackgroundPress,
             },
+            // In the new experience, the expand chevron lives on the right
+            // and is hidden until the row is hovered.
+            ...(useNewExperience && {
+              '& .timeline-tree-row-expand': {
+                visibility: 'hidden',
+              },
+              '&:hover .timeline-tree-row-expand': {
+                visibility: 'visible',
+              },
+            }),
           }}
           onClick={() => {
             onSelect?.(node);
@@ -146,11 +157,12 @@ export const TimelineTreeNode = ({
             }}
           >
             <div css={{ display: 'flex', flexDirection: 'row', alignItems: 'center', overflow: 'hidden', flex: 1 }}>
-              {hasChildren ? (
-                <span css={{ flexShrink: 0, marginRight: theme.spacing.xs }}>{expandToggle}</span>
-              ) : (
-                <div css={{ width: 24, marginRight: theme.spacing.xs }} />
-              )}
+              {!useNewExperience &&
+                (hasChildren ? (
+                  <span css={{ flexShrink: 0, marginRight: theme.spacing.xs }}>{expandToggle}</span>
+                ) : (
+                  <div css={{ width: 24, marginRight: theme.spacing.xs }} />
+                ))}
               <TimelineTreeHierarchyBars
                 isActiveSpan={isActive}
                 isInActiveChain={isInActiveChain}
@@ -265,6 +277,14 @@ export const TimelineTreeNode = ({
                   <GavelIcon />
                   <Typography.Text css={{ marginLeft: theme.spacing.xs }}>{node.assessments.length}</Typography.Text>
                 </Tag>
+              )}
+              {useNewExperience && hasChildren && (
+                <span
+                  className="timeline-tree-row-expand"
+                  css={{ display: 'inline-flex', flexShrink: 0, marginLeft: theme.spacing.sm }}
+                >
+                  {expandToggle}
+                </span>
               )}
             </div>
           </div>
