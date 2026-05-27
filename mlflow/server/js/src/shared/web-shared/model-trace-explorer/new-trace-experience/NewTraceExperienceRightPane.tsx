@@ -77,6 +77,12 @@ const Section = ({ sectionKey, title, defaultOpen = true, actions, children }: S
           backgroundColor: 'transparent',
           borderBlock: 'none',
         },
+        // Nudge the section body slightly to the right so its content
+        // sits visually under the title text instead of flush with the
+        // chevron. The second child is the body (only mounted when open).
+        '& > div > div:nth-of-type(2)': {
+          paddingLeft: theme.spacing.md,
+        },
       }}
     >
       <ModelTraceExplorerCollapsibleSection

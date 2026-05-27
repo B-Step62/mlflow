@@ -11,7 +11,7 @@ import { TimelineTreeNode } from '../timeline-tree/TimelineTreeNode';
 import { DEFAULT_EXPAND_DEPTH, getTimelineTreeNodesMap } from '../timeline-tree/TimelineTree.utils';
 import { NewTraceExperienceRightPane } from './NewTraceExperienceRightPane';
 
-const DEFAULT_TREE_PANE_RATIO = 0.4;
+const DEFAULT_TREE_PANE_RATIO = 0.3;
 const TREE_MIN_WIDTH = 200;
 const RIGHT_MIN_WIDTH = 320;
 

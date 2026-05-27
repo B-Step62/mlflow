@@ -164,7 +164,7 @@ function ModelTraceExplorerChatMessageContent({
   return (
     <div
       css={{
-        padding: theme.spacing.sm,
+        padding: theme.spacing.md,
         paddingTop: 0,
         // genai markdown renderer uses default paragraph sizing which has
         // a bottom margin that we can't get rid of. workaround by setting

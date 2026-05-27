@@ -92,7 +92,7 @@ export const ModelTraceExplorerChatMessageHeader = ({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        padding: theme.spacing.sm,
+        padding: theme.spacing.md,
         gap: theme.spacing.sm,
         ...hoverStyles,
       }}
