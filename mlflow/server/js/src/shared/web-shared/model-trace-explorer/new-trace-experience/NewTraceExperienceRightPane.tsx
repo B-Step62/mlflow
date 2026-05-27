@@ -613,6 +613,7 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: theme.colors.backgroundPrimary,
+        padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
       }}
     >
       <SpanTitleHeader activeSpan={activeSpan} isRootSpan={isRootSpan} />

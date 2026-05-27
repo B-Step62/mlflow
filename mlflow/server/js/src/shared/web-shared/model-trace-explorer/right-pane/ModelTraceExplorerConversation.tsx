@@ -17,19 +17,14 @@ export function ModelTraceExplorerConversation({ messages }: { messages: ModelTr
       css={{
         display: 'flex',
         flexDirection: 'column',
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusMd,
+        gap: theme.spacing.sm,
       }}
     >
       {messages.map((message, index) => (
         <ModelTraceExplorerChatMessage
           css={{
-            borderTop: index > 0 ? `1px solid ${theme.colors.border}` : undefined,
-            // need to set radius for first and last message, otherwise the border will be cut off
-            borderTopLeftRadius: index > 0 ? undefined : theme.borders.borderRadiusMd,
-            borderTopRightRadius: index > 0 ? undefined : theme.borders.borderRadiusMd,
-            borderBottomLeftRadius: index === messages.length - 1 ? theme.borders.borderRadiusMd : undefined,
-            borderBottomRightRadius: index === messages.length - 1 ? theme.borders.borderRadiusMd : undefined,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.borders.borderRadiusMd,
           }}
           key={index}
           message={message}
