@@ -33,7 +33,6 @@ import { AssessmentsPaneExpectationsSection } from '../assessments-pane/Assessme
 import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
 import { AssessmentsPaneNotesSection } from '../assessments-pane/AssessmentsPaneNotesSection';
 import { useModelTraceExplorerRunJudgesContext } from '../contexts/RunJudgesContext';
-import { ModelTraceExplorerAttributesTab } from '../right-pane/ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatMessage } from '../right-pane/ModelTraceExplorerChatMessage';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
 import { PrettyView } from './PrettyView';
@@ -219,6 +218,32 @@ const InfoRows = ({ rows }: { rows: Row[] }) => {
 };
 
 const formatNumber = (n?: number | null) => (typeof n === 'number' ? n.toLocaleString('en-US') : '-');
+
+// Render an arbitrary attribute value as a compact string for the
+// attributes key-value grid. Objects/arrays get one-line JSON; primitives
+// get their natural string form; null/undefined become an em-dash.
+const formatAttributeValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+// Build alphabetically-sorted key/value rows from a span's attributes
+// record. Returns [] when there's nothing to show so the section can
+// hide entirely.
+const buildAttributeRows = (attributes: unknown): { label: string; value: string }[] => {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return [];
+  const entries = Object.entries(attributes as Record<string, unknown>);
+  entries.sort(([a], [b]) => a.localeCompare(b));
+  return entries.map(([key, value]) => ({ label: key, value: formatAttributeValue(value) }));
+};
 
 const formatCost = (n?: number | null) => {
   if (typeof n !== 'number') return '-';
@@ -465,6 +490,8 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     };
   }, [chatMessages]);
 
+  const attributeRows = useMemo(() => buildAttributeRows(activeSpan?.attributes), [activeSpan?.attributes]);
+
   const tokenUsage = useMemo(() => {
     try {
       return getTraceTokenUsage(modelTraceInfo as ModelTraceInfoV3);
@@ -673,17 +700,24 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
         </Section>
       )}
 
-      <Section
-        title={
-          <FormattedMessage
-            defaultMessage="Attributes"
-            description="Section heading for the attributes section in the new trace experience right pane"
+      {attributeRows.length > 0 && (
+        <Section
+          title={
+            <FormattedMessage
+              defaultMessage="Attributes"
+              description="Section heading for the attributes section in the new trace experience right pane"
+            />
+          }
+          defaultOpen={false}
+        >
+          <InfoRows
+            rows={attributeRows.map((row) => ({
+              label: <span css={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{row.label}</span>,
+              value: <span css={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{row.value}</span>,
+            }))}
           />
-        }
-        defaultOpen={false}
-      >
-        <ModelTraceExplorerAttributesTab activeSpan={activeSpan} searchFilter="" activeMatch={null} />
-      </Section>
+        </Section>
+      )}
 
       {hasEvents && (
         <Section
