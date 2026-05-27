@@ -13,6 +13,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { Link, useParams } from '../../../common/utils/RoutingUtils';
 import Routes from '../../routes';
 import { ExperimentPageTabName } from '../../constants';
+import TestCasesTab from './regression-test-run/TestCasesTab';
 
 const RegressionTestRunPage = () => {
   const { theme } = useDesignSystemTheme();
@@ -75,12 +76,7 @@ const RegressionTestRunPage = () => {
         </Tabs.List>
 
         <Tabs.Content value="test-cases" css={{ paddingTop: theme.spacing.md }}>
-          <Typography.Text color="secondary">
-            {intl.formatMessage({
-              defaultMessage: 'Test cases table will go here (C3).',
-              description: 'Placeholder text for the empty Test cases tab on the regression-test run page',
-            })}
-          </Typography.Text>
+          <TestCasesTab />
         </Tabs.Content>
 
         <Tabs.Content value="history" css={{ paddingTop: theme.spacing.md }}>
