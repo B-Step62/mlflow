@@ -21,11 +21,11 @@ import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateCo
 import { useGatewayTraceLink } from '../hooks/useGatewayTraceLink';
 import { Link } from '../RoutingUtils';
 
-// New-experience rows are taller so they can stack latency / tokens /
-// cost under the span name. The hierarchy connectors stay anchored to
-// the row's top/bottom edges so vertical lines remain continuous between
-// rows of the new height.
-const NEW_TRACE_ROW_HEIGHT = 52;
+// New-experience rows are slightly taller than the classic row so they
+// can stack latency / tokens / cost under the span name. The hierarchy
+// connectors stay anchored to the row's top/bottom edges so vertical
+// lines remain continuous between rows of the new height.
+const NEW_TRACE_ROW_HEIGHT = 44;
 
 const formatSpanCost = (n?: number | null): string | null => {
   if (typeof n !== 'number' || !Number.isFinite(n)) return null;
@@ -202,20 +202,17 @@ export const TimelineTreeNode = ({
                     justifyContent: 'center',
                   }}
                 >
-                  <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, overflow: 'hidden' }}>
-                    <Typography.Text
-                      color={hasException ? 'error' : 'primary'}
-                      css={{
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap',
-                        textOverflow: 'ellipsis',
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      {node.title}
-                    </Typography.Text>
-                  </div>
+                  <Typography.Text
+                    color={hasException ? 'error' : 'primary'}
+                    css={{
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                      textOverflow: 'ellipsis',
+                      minWidth: 0,
+                    }}
+                  >
+                    {node.title}
+                  </Typography.Text>
                   {metricsLine && (
                     <div
                       data-testid={`span-metrics-${node.key}`}
