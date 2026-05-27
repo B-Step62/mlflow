@@ -66,7 +66,19 @@ type SectionProps = {
 const Section = ({ sectionKey, title, defaultOpen = true, actions, children }: SectionProps) => {
   const { theme } = useDesignSystemTheme();
   return (
-    <div css={{ flexShrink: 0 }}>
+    <div
+      css={{
+        flexShrink: 0,
+        // Strip the banner header's gray fill + top/bottom hairlines from
+        // CollapsibleSection's withBorder variant while keeping its
+        // padding and body layout intact. The first child of the widget's
+        // outer div is the header row.
+        '& > div > div:first-of-type': {
+          backgroundColor: 'transparent',
+          borderBlock: 'none',
+        },
+      }}
+    >
       <ModelTraceExplorerCollapsibleSection
         sectionKey={sectionKey}
         withBorder
