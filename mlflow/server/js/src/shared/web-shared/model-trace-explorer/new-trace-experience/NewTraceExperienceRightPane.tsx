@@ -21,7 +21,7 @@ import type {
   ModelTraceInfoV3,
   ModelTraceSpanNode,
 } from '../ModelTrace.types';
-import { getIconTypeForSpan, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
+import { getIconTypeForSpan, getSpanTokenUsage, getTraceCost, getTraceTokenUsage } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { AssessmentsPaneExpectationsSection } from '../assessments-pane/AssessmentsPaneExpectationsSection';
@@ -453,11 +453,14 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['mlflow.trace.session'] ??
     (modelTraceInfo as ModelTraceInfoV3 | undefined)?.trace_metadata?.['session_id'];
 
-  // Tokens consolidated into one row. Show total with input/output breakdown
-  // inline if available.
-  const totalTokens = tokenUsage.total_tokens;
-  const inputTokens = tokenUsage.input_tokens;
-  const outputTokens = tokenUsage.output_tokens;
+  // Per-span tokens come from OTel attributes. On the root span we fall
+  // back to the trace-level metadata so traces whose root span doesn't
+  // mirror usage attrs still show a number.
+  const spanTokens = getSpanTokenUsage(activeSpan.attributes);
+  const effectiveTokens = spanTokens.total_tokens !== undefined ? spanTokens : isRootSpan ? tokenUsage : {};
+  const totalTokens = effectiveTokens.total_tokens;
+  const inputTokens = effectiveTokens.input_tokens;
+  const outputTokens = effectiveTokens.output_tokens;
   const tokensValue =
     typeof totalTokens === 'number'
       ? typeof inputTokens === 'number' || typeof outputTokens === 'number'
@@ -467,11 +470,17 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
   const infoRows: Row[] = [];
 
-  // Span-level rows (apply to any span where present).
+  // Span-level rows -- shown on any span where the field is present.
   if (activeSpan.modelName) {
     infoRows.push({
       label: <FormattedMessage defaultMessage="Model" description="Info label - model name" />,
       value: activeSpan.modelName,
+    });
+  }
+  if (tokensValue) {
+    infoRows.push({
+      label: <FormattedMessage defaultMessage="Tokens" description="Info label - tokens" />,
+      value: tokensValue,
     });
   }
   if (activeSpan.cost?.total_cost !== undefined) {
@@ -479,24 +488,15 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       label: <FormattedMessage defaultMessage="Cost" description="Info label - span cost" />,
       value: formatCost(activeSpan.cost.total_cost),
     });
+  } else if (isRootSpan && typeof traceCost.total_cost === 'number') {
+    infoRows.push({
+      label: <FormattedMessage defaultMessage="Cost" description="Info label - trace cost" />,
+      value: formatCost(traceCost.total_cost),
+    });
   }
 
-  // Trace-level rows (tokens, total cost, session, tags) only on the root
-  // span. Showing trace-level tokens on a child tool/retriever span is
-  // misleading because those spans don't generate tokens themselves.
+  // Session / Tags are intrinsically trace-level; keep them on the root.
   if (isRootSpan) {
-    if (tokensValue) {
-      infoRows.push({
-        label: <FormattedMessage defaultMessage="Tokens" description="Info label - trace-level tokens" />,
-        value: tokensValue,
-      });
-    }
-    if (typeof traceCost.total_cost === 'number' && activeSpan.cost?.total_cost === undefined) {
-      infoRows.push({
-        label: <FormattedMessage defaultMessage="Cost" description="Info label - trace cost" />,
-        value: formatCost(traceCost.total_cost),
-      });
-    }
     if (sessionId) {
       infoRows.push({
         label: <FormattedMessage defaultMessage="Session" description="Info label - session" />,
