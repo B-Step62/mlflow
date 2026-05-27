@@ -4,19 +4,12 @@ import type { ReactNode } from 'react';
 import yaml from 'js-yaml';
 
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  BracketsCurlyIcon,
   Button,
   ChevronDownIcon,
   DatabaseIcon,
   DropdownMenu,
   Empty,
   GavelIcon,
-  LightningIcon,
-  SpeechBubbleIcon,
-  TargetIcon,
-  ThumbsUpIcon,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -51,28 +44,25 @@ type Props = {
 type SectionProps = {
   sectionKey: string;
   title: ReactNode;
-  icon?: ReactNode;
   defaultOpen?: boolean;
   actions?: ReactNode;
   children: ReactNode;
 };
 
-// Thin wrapper around the legacy Inputs/Outputs collapsible used by the
-// classic trace UI: same banner header (chevron + bold title on a
-// backgroundSecondary fill) and same body padding. Adds two slots the
-// shared widget doesn't expose directly -- a leading icon and a trailing
-// actions area (e.g. the render-mode dropdown) -- by packing them into
-// the title node.
+// Thin wrapper around the legacy Inputs/Outputs collapsible. We call the
+// no-border variant (withBorder=false) so the header shows only the
+// chevron + bold title -- no tinted background, no top/bottom hairline.
+// The actions slot (e.g. the render-mode dropdown) is packed into the
+// title node since the widget doesn't expose a separate actions area.
 //
 // flex-shrink: 0 is on the outer wrapper so expanding one section
 // doesn't compress neighbors when the pane is in a flex-column parent.
-const Section = ({ sectionKey, title, icon, defaultOpen = true, actions, children }: SectionProps) => {
+const Section = ({ sectionKey, title, defaultOpen = true, actions, children }: SectionProps) => {
   const { theme } = useDesignSystemTheme();
   return (
     <div css={{ flexShrink: 0 }}>
       <ModelTraceExplorerCollapsibleSection
         sectionKey={sectionKey}
-        withBorder
         defaultOpen={defaultOpen}
         title={
           <div
@@ -85,14 +75,7 @@ const Section = ({ sectionKey, title, icon, defaultOpen = true, actions, childre
               width: '100%',
             }}
           >
-            <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
-              {icon && (
-                <span css={{ display: 'inline-flex', alignItems: 'center', color: theme.colors.textSecondary }}>
-                  {icon}
-                </span>
-              )}
-              <span css={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
-            </span>
+            <span css={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{title}</span>
             {actions && <span css={{ display: 'inline-flex', alignItems: 'center' }}>{actions}</span>}
           </div>
         }
@@ -595,7 +578,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       <Section
         sectionKey="new-trace-experience.feedback"
-        icon={<ThumbsUpIcon />}
         title={
           <span css={{ display: 'inline-flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
             <FormattedMessage
@@ -626,7 +608,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       {hasInputs && (
         <Section
           sectionKey="new-trace-experience.input"
-          icon={<ArrowDownIcon />}
           title={
             <FormattedMessage
               defaultMessage="Input"
@@ -647,7 +628,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       {hasOutputs && (
         <Section
           sectionKey="new-trace-experience.output"
-          icon={<ArrowUpIcon />}
           title={
             <FormattedMessage
               defaultMessage="Output"
@@ -669,7 +649,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       {attributeRows.length > 0 && (
         <Section
           sectionKey="new-trace-experience.attributes"
-          icon={<BracketsCurlyIcon />}
           title={
             <FormattedMessage
               defaultMessage="Attributes"
@@ -690,7 +669,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
       {hasEvents && (
         <Section
           sectionKey="new-trace-experience.events"
-          icon={<LightningIcon />}
           title={
             <FormattedMessage
               defaultMessage="Events"
@@ -705,7 +683,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       <Section
         sectionKey="new-trace-experience.expectations"
-        icon={<TargetIcon />}
         title={
           <FormattedMessage
             defaultMessage="Expectations"
@@ -724,7 +701,6 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
 
       <Section
         sectionKey="new-trace-experience.comments"
-        icon={<SpeechBubbleIcon />}
         title={
           <FormattedMessage
             defaultMessage="Comments"
