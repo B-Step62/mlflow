@@ -35,6 +35,30 @@ class AssertionResult:
         return f"  {icon}  {self.scorer_name}  {self.value!r}{rationale}"
 
 
+def make_verify(scorers: list[Any]):
+    """Build a ``verify(outputs, ...)`` callable bound to a specific scorer list.
+
+    Used by both the pytest fixture and the bundle dispatcher so failure
+    formatting stays consistent.
+    """
+
+    def _verify(outputs, *, inputs=None, expectations=None):
+        results = run_assertions(
+            scorers,
+            inputs=inputs,
+            outputs=outputs,
+            expectations=expectations,
+        )
+        failures = [r for r in results if not r.passed]
+        if failures:
+            lines = ["verify() failed:"]
+            for r in results:
+                lines.append(r.format_line())
+            raise AssertionError("\n".join(lines))
+
+    return _verify
+
+
 def run_assertions(
     scorers: list[Any],
     *,
