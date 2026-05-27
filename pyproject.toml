@@ -137,6 +137,9 @@ basic-auth = "mlflow.server.auth.client:AuthServiceClient"
 databricks = "mlflow.deployments.databricks"
 http = "mlflow.deployments.mlflow"
 https = "mlflow.deployments.mlflow"
+
+[project.entry-points."pytest11"]
+mlflow_assertions = "mlflow._assertions.pytest_plugin"
 openai = "mlflow.deployments.openai"
 
 [tool.setuptools.package-data]

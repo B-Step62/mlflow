@@ -204,10 +204,13 @@ from mlflow.tracking import (
 )
 from mlflow.tracking.fluent import active_run, flush_trace_async_logging, set_experiment
 
+from mlflow._assertions import assertions
+
 # These are minimal set of APIs to be exposed via `mlflow-tracing` package.
 # APIs listed here must not depend on dependencies that are not part of `mlflow-tracing` package.
 __all__ = [
     "MlflowException",
+    "assertions",
     # Minimal tracking APIs required for tracing core functionality
     "set_experiment",
     "set_tracking_uri",
