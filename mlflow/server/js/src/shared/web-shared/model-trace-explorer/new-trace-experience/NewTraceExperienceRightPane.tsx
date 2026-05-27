@@ -40,6 +40,7 @@ import { AssessmentsPaneExpectationsSection } from '../assessments-pane/Assessme
 import { AssessmentsPaneFeedbackSection } from '../assessments-pane/AssessmentsPaneFeedbackSection';
 import { AssessmentsPaneNotesSection } from '../assessments-pane/AssessmentsPaneNotesSection';
 import { useModelTraceExplorerRunJudgesContext } from '../contexts/RunJudgesContext';
+import { ModelTraceExplorerChatTool } from '../right-pane/ModelTraceExplorerChatTool';
 import { ModelTraceExplorerConversation } from '../right-pane/ModelTraceExplorerConversation';
 import { ModelTraceExplorerEventsTab } from '../right-pane/ModelTraceExplorerEventsTab';
 
@@ -426,6 +427,8 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
   const hasOutputs = activeSpan?.outputs !== undefined && activeSpan?.outputs !== null;
   const hasEvents = Array.isArray(activeSpan?.events) && (activeSpan?.events?.length ?? 0) > 0;
   const chatMessages = activeSpan?.chatMessages;
+  const chatTools = activeSpan?.chatTools;
+  const hasChatTools = Array.isArray(chatTools) && chatTools.length > 0;
   const hasChat = Array.isArray(chatMessages) && chatMessages.length > 0;
 
   const [renderMode, setRenderMode] = useState<InputsOutputsRenderMode>(hasChat ? 'chat' : 'pretty');
@@ -647,7 +650,32 @@ export const NewTraceExperienceRightPane = ({ modelTraceInfo }: Props) => {
           actions={<RenderModeMenu value={effectiveRenderMode} onChange={setRenderMode} hasChat={hasChat} />}
         >
           {effectiveRenderMode === 'chat' && hasChat ? (
-            <ModelTraceExplorerConversation messages={inputChatMessages} />
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              {hasChatTools && (
+                <details css={{ marginBottom: theme.spacing.xs }}>
+                  <summary
+                    css={{
+                      cursor: 'pointer',
+                      padding: `${theme.spacing.xs}px 0`,
+                      color: theme.colors.textSecondary,
+                      fontSize: theme.typography.fontSizeSm,
+                    }}
+                  >
+                    <FormattedMessage
+                      defaultMessage="Tools ({count})"
+                      description="Collapsible header above the chat input that lists tools available to the model"
+                      values={{ count: chatTools!.length }}
+                    />
+                  </summary>
+                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginTop: theme.spacing.xs }}>
+                    {chatTools!.map((tool) => (
+                      <ModelTraceExplorerChatTool key={tool.function.name} tool={tool} />
+                    ))}
+                  </div>
+                </details>
+              )}
+              <ModelTraceExplorerConversation messages={inputChatMessages} />
+            </div>
           ) : effectiveRenderMode === 'pretty' ? (
             <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
               {inputList.map(({ key, value }, index) => (
