@@ -279,6 +279,26 @@ def test_make_judge_with_databricks_default(monkeypatch):
     assert judge.model == "databricks"
 
 
+def test_get_default_model_env_override_wins(monkeypatch):
+    from mlflow.genai.judges.utils import get_default_model
+
+    # MLFLOW_GENAI_JUDGE_DEFAULT_MODEL overrides both the databricks and the
+    # non-databricks fallbacks.
+    monkeypatch.setenv("MLFLOW_GENAI_JUDGE_DEFAULT_MODEL", "openai:/databricks-gpt-5")
+    monkeypatch.setattr("mlflow.genai.judges.utils.is_databricks_uri", lambda _: True)
+    assert get_default_model() == "openai:/databricks-gpt-5"
+    monkeypatch.setattr("mlflow.genai.judges.utils.is_databricks_uri", lambda _: False)
+    assert get_default_model() == "openai:/databricks-gpt-5"
+
+
+def test_get_default_model_falls_back_without_env(monkeypatch):
+    from mlflow.genai.judges.utils import get_default_model
+
+    monkeypatch.delenv("MLFLOW_GENAI_JUDGE_DEFAULT_MODEL", raising=False)
+    monkeypatch.setattr("mlflow.genai.judges.utils.is_databricks_uri", lambda _: False)
+    assert get_default_model() == "openai:/gpt-4.1-mini"
+
+
 def test_databricks_model_requires_databricks_agents(monkeypatch):
     # NB: Mock both the parent module and the specific module to simulate missing databricks-agents
     monkeypatch.setitem(sys.modules, "databricks.agents.evals", None)
