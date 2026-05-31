@@ -234,6 +234,24 @@ def _resolve_workers() -> int:
     return max(1, MLFLOW_GENAI_EVAL_MAX_WORKERS.get())
 
 
+def _bundle_needs_trace(bundled_items: list[pytest.Function]) -> bool:
+    """True if any bundled test declares a scorer that consumes the ``trace``.
+
+    Such scorers resolve the (thread-local) last-active trace, which is only
+    unambiguous when tests run serially - so a bundle containing one is executed
+    sequentially rather than in the thread pool.
+    """
+    for item in bundled_items:
+        for scorer in getattr(item.function, ASSERTIONS_ATTR, []) or []:
+            target = getattr(scorer, "__call__", scorer)
+            try:
+                if "trace" in inspect.signature(target).parameters:
+                    return True
+            except (TypeError, ValueError):
+                continue
+    return False
+
+
 def _make_bundle_callable(bundled_items: list[pytest.Function]):
     """Build a function whose signature lists the union of all bundled tests'
     fixtures (excluding ``verify``).
@@ -266,31 +284,50 @@ def _make_bundle_callable(bundled_items: list[pytest.Function]):
         subtests = fixtures.pop("subtests")
         results: list[tuple[pytest.Function, BaseException | None]] = []
 
-        if workers == 1:
-            # Sequential mode: still bundled (one pytest item) but no thread
-            # pool. Useful for debugging.
-            for item in bundled_items:
-                err = _execute_one(item, fixtures)
-                results.append((item, err))
-        else:
-            pool_size = min(workers, len(bundled_items))
-            with ThreadPoolExecutor(
-                max_workers=pool_size, thread_name_prefix=_THREAD_PREFIX
-            ) as executor:
-                future_to_item = {
-                    executor.submit(_execute_one, item, fixtures): item
-                    for item in bundled_items
-                }
-                # Maintain original collection order in reporting.
-                future_lookup = {future_to_item[f]: f for f in future_to_item}
-                try:
-                    for item in bundled_items:
-                        future = future_lookup[item]
-                        err = future.result()
-                        results.append((item, err))
-                except KeyboardInterrupt:
-                    executor.shutdown(cancel_futures=True)
-                    raise
+        # Enable tracing-only autologging for all installed flavors while the
+        # tests run, mirroring mlflow.genai.evaluate(). This way a test that
+        # exercises an instrumented agent produces a trace automatically, so
+        # span-introspecting @scorer(trace=...) assertions work without the
+        # user wiring up mlflow.<flavor>.autolog() themselves. Config is
+        # restored on exit.
+        from mlflow.models.evaluation.utils.trace import (
+            configure_autologging_for_evaluation,
+        )
+
+        # Scorers that introspect the trace resolve the last-active trace, which
+        # MLflow tracks in OS-thread-local storage. The thread pool reuses worker
+        # threads across tests, so a trace-introspecting scorer could observe
+        # another (or a stale) test's trace. Run such bundles sequentially, where
+        # each test's trace is unambiguously the last-active one. Output-only
+        # scorer bundles keep the parallel fast path.
+        effective_workers = 1 if _bundle_needs_trace(bundled_items) else workers
+
+        with configure_autologging_for_evaluation(enable_tracing=True):
+            if effective_workers == 1:
+                # Sequential mode: still bundled (one pytest item) but no thread
+                # pool. Useful for debugging.
+                for item in bundled_items:
+                    err = _execute_one(item, fixtures)
+                    results.append((item, err))
+            else:
+                pool_size = min(effective_workers, len(bundled_items))
+                with ThreadPoolExecutor(
+                    max_workers=pool_size, thread_name_prefix=_THREAD_PREFIX
+                ) as executor:
+                    future_to_item = {
+                        executor.submit(_execute_one, item, fixtures): item
+                        for item in bundled_items
+                    }
+                    # Maintain original collection order in reporting.
+                    future_lookup = {future_to_item[f]: f for f in future_to_item}
+                    try:
+                        for item in bundled_items:
+                            future = future_lookup[item]
+                            err = future.result()
+                            results.append((item, err))
+                    except KeyboardInterrupt:
+                        executor.shutdown(cancel_futures=True)
+                        raise
 
         for item, err in results:
             with subtests.test(msg=item.name):

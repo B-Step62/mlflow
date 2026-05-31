@@ -107,7 +107,18 @@ def run_assertions(
     raise based on the collected results.
     """
     if trace_id is None:
-        trace_id = mlflow.get_last_active_trace_id()
+        # thread_local=True returns the trace produced in *this* thread - the
+        # agent call the test just made (and completed) before calling verify().
+        # This keeps trace-introspecting scorers correctly associated with their
+        # own test when the assertion bundle runs tests in parallel threads.
+        # (Note: agents that run under their own asyncio loop may not propagate
+        # the thread-local trace; such tests should assert on outputs directly.)
+        trace_id = mlflow.get_last_active_trace_id(thread_local=True)
+
+    # Materialize the trace so scorers that declare a ``trace`` parameter (e.g.
+    # span-introspecting @scorer functions) receive it. flush=True forces any
+    # pending async trace export to complete first.
+    trace = mlflow.get_trace(trace_id, silent=True, flush=True) if trace_id else None
 
     # Tag the trace before attaching feedback so the per-test identifiers are
     # visible on the trace even if a scorer raises mid-run.
@@ -130,6 +141,7 @@ def run_assertions(
                 inputs=inputs,
                 outputs=outputs,
                 expectations=expectations,
+                trace=trace,
             ): scorer
             for scorer in scorers
         }
@@ -169,11 +181,11 @@ def run_assertions(
     return results
 
 
-def _invoke_scorer(scorer, *, inputs, outputs, expectations):
+def _invoke_scorer(scorer, *, inputs, outputs, expectations, trace=None):
     # Scorer.run() inspects the scorer's signature and forwards only the
     # kwargs it accepts. A scorer declared as `def f(outputs)` won't be
-    # passed `inputs=...`.
-    return scorer.run(inputs=inputs, outputs=outputs, expectations=expectations)
+    # passed `inputs=...`; one declared as `def f(trace)` receives the trace.
+    return scorer.run(inputs=inputs, outputs=outputs, expectations=expectations, trace=trace)
 
 
 def _scorer_name(scorer) -> str:

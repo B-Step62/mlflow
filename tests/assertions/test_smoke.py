@@ -144,6 +144,28 @@ def test_verify_attaches_feedback_when_trace_exists(verify):
     # plumbing does not raise. Verifying the actual tag write is S2 territory.
 
 
+@scorer
+def saw_agent_span(trace) -> bool:
+    # A trace-introspecting scorer. The plugin must auto-create a per-test trace
+    # (root span) and pass it here, with the agent's nested span available -
+    # without the test enabling autolog or wiring the trace itself.
+    return len(trace.search_spans(name="fake_agent")) > 0
+
+
+@mlflow.assertions(saw_agent_span)
+def test_trace_scorer_receives_this_tests_trace(verify):
+    # Regression: @scorer(trace=...) used to receive None because the runner
+    # never passed a trace. The plugin now wraps each test in its own root span
+    # and pins that trace id, so span-introspecting scorers work and stay
+    # correctly associated with this test even when the bundle runs in parallel.
+    @mlflow.trace
+    def fake_agent(query: str) -> str:
+        return f"response to {query}"
+
+    fake_agent("hello")
+    verify(outputs="ignored")
+
+
 def test_missing_decorator_fails_clearly():
     with pytest.raises(ValueError, match="at least one scorer"):
 
