@@ -250,6 +250,15 @@ def _make_bundle_callable(bundled_items: list[pytest.Function]):
     for item in bundled_items:
         union.update(item.fixturenames)
     union.discard("verify")
+    # Values supplied by ``@pytest.mark.parametrize`` arrive through each item's
+    # ``callspec``, not through fixtures. They still show up in ``fixturenames``,
+    # so leaving them in the bundle signature makes pytest try (and fail) to
+    # resolve them as fixtures ("fixture '<param>' not found"). Drop them here
+    # and re-inject each item's own values from its callspec in ``_execute_one``.
+    for item in bundled_items:
+        callspec = getattr(item, "callspec", None)
+        if callspec is not None:
+            union -= set(callspec.params)
 
     workers = _resolve_workers()
 
@@ -324,10 +333,16 @@ def _execute_one(
         signature = None
     accepted = set(signature.parameters) if signature else set(item.fixturenames)
 
+    # Parametrize values come from this item's callspec, not the bundle fixtures.
+    callspec = getattr(item, "callspec", None)
+    param_values = dict(callspec.params) if callspec is not None else {}
+
     item_args: dict = {}
     for name in accepted:
         if name == "verify":
             item_args["verify"] = per_test_verify
+        elif name in param_values:
+            item_args[name] = param_values[name]
         elif name in fixtures:
             item_args[name] = fixtures[name]
 

@@ -121,6 +121,17 @@ def test_verify_with_inputs_and_expectations(verify):
     verify("response text", inputs="some input", expectations={"key": "value"})
 
 
+@pytest.mark.parametrize("phrase", ["alpha", "beta"])
+@mlflow.assertions(returns_true)
+def test_parametrize_threads_param_value(verify, phrase):
+    # Regression: @mlflow.assertions must compose with @pytest.mark.parametrize.
+    # The bundle previously listed parametrize args as required fixtures and
+    # raised "fixture 'phrase' not found"; now each item's callspec value is
+    # injected into the body instead.
+    assert phrase in ("alpha", "beta")
+    verify(phrase)
+
+
 @mlflow.assertions(returns_true)
 def test_verify_attaches_feedback_when_trace_exists(verify):
     @mlflow.trace
