@@ -76,7 +76,7 @@ const RegressionTestRunPage = () => {
         </Tabs.List>
 
         <Tabs.Content value="test-cases" css={{ paddingTop: theme.spacing.md }}>
-          <TestCasesTab />
+          <TestCasesTab experimentId={experimentId} runUuid={runUuid} />
         </Tabs.Content>
 
         <Tabs.Content value="history" css={{ paddingTop: theme.spacing.md }}>
