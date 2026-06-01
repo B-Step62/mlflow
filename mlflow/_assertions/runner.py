@@ -79,7 +79,9 @@ def run_assertions(
                 try:
                     mlflow.set_trace_tag(trace_id, key, str(value))
                 except Exception as e:
-                    _logger.warning("Failed to set trace tag %s=%r on %s: %s", key, value, trace_id, e)
+                    _logger.warning(
+                        "Failed to set trace tag %s=%r on %s: %s", key, value, trace_id, e
+                    )
 
     results: list[AssertionResult] = []
     workers = min(max_workers, len(scorers)) or 1

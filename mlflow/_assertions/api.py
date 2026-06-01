@@ -69,13 +69,6 @@ def _resolve_trace(trace: Trace | Literal["auto"]) -> tuple[Trace | None, str | 
     if trace == "auto":
         trace_id = mlflow.get_last_active_trace_id(thread_local=True)
         trace_obj = mlflow.get_trace(trace_id, silent=True, flush=True) if trace_id else None
-        import threading as _t
-
-        print(
-            f"[DEBUG _resolve_trace] thread={_t.current_thread().name} "
-            f"trace_id={trace_id} got_trace={trace_obj is not None}",
-            flush=True,
-        )
         return trace_obj, trace_id
     raise TypeError(
         'assert_behavior(trace=...) must be a Trace or the literal "auto". '
