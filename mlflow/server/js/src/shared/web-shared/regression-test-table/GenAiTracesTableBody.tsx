@@ -43,6 +43,8 @@ import { getExperimentIdFromTraceLocation, getRowIdFromEvaluation } from './util
 const GenAITraceComparisonModal = React.lazy(() =>
   import('./components/GenAITraceComparisonModal').then((m) => ({ default: m.GenAITraceComparisonModal })),
 );
+import { TestCaseDetail } from './TestCaseDetail';
+
 const GenAiEvaluationTracesReviewModal = React.lazy(() =>
   import('./components/GenAiEvaluationTracesReviewModal').then((m) => ({
     default: m.GenAiEvaluationTracesReviewModal,
@@ -684,21 +686,23 @@ export const GenAiTracesTableBody = React.memo(
             />
           ) : (
             selectedEvaluationId &&
-            selectedEvaluationExperimentId && (
-              <GenAiEvaluationTracesReviewModal
-                experimentId={selectedEvaluationExperimentId}
-                runUuid={runUuid}
-                runDisplayName={runDisplayName}
-                otherRunDisplayName={compareToRunDisplayName}
-                evaluations={rows.map((row) => row.original)}
-                selectedEvaluationId={selectedEvaluationId}
-                onChangeEvaluationId={onChangeEvaluationId}
-                exportToEvalsInstanceEnabled={exportToEvalsInstanceEnabled}
-                assessmentInfos={assessmentInfos}
-                getTrace={getTrace}
-                saveAssessmentsQuery={saveAssessmentsQuery}
-              />
-            )
+            selectedEvaluation &&
+            (() => {
+              const curId = selectedEvaluation.currentRunValue?.evaluationId;
+              const idx = rows.findIndex((row) => row.original?.currentRunValue?.evaluationId === curId);
+              const evalIdAt = (j: number) => rows[j]?.original?.currentRunValue?.evaluationId;
+              return (
+                <TestCaseDetail
+                  evaluation={selectedEvaluation}
+                  experimentId={selectedEvaluationExperimentId ?? experimentId}
+                  onClose={() => onChangeEvaluationId(undefined)}
+                  onPrev={idx > 0 ? () => onChangeEvaluationId(evalIdAt(idx - 1)) : undefined}
+                  onNext={
+                    idx >= 0 && idx < rows.length - 1 ? () => onChangeEvaluationId(evalIdAt(idx + 1)) : undefined
+                  }
+                />
+              );
+            })()
           )}
         </React.Suspense>
       </>

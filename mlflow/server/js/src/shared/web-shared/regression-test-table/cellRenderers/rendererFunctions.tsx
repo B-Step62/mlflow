@@ -805,7 +805,7 @@ export const traceInfoCellRenderer = (
               css={{ width: 'fit-content', maxWidth: '100%' }}
               componentId="mlflow.genai-traces-table.trace-id"
               color="purple"
-              onClick={() => onChangeEvaluationId(navId, currentTraceInfo)}
+              onClick={() => navId && onChangeEvaluationId(navId, currentTraceInfo)}
             >
               <span
                 css={{
@@ -830,7 +830,7 @@ export const traceInfoCellRenderer = (
               componentId="mlflow.genai-traces-table.trace-id"
               color="purple"
               title={otherValue}
-              onClick={() => onChangeEvaluationId(otherNavId, otherTraceInfo)}
+              onClick={() => otherNavId && onChangeEvaluationId(otherNavId, otherTraceInfo)}
             >
               <span
                 css={{
