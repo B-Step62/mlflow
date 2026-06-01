@@ -1,7 +1,7 @@
-"""Cross-test parallelism for the @mlflow.assertions bundle runner.
+"""Cross-test parallelism for the @mlflow.test bundle runner.
 
-The plugin collapses multiple @mlflow.assertions tests in a module into a
-single pytest item that dispatches the originals through a thread pool.
+The plugin collapses multiple @mlflow.test tests in a module into a single
+pytest item that dispatches the originals through a thread pool.
 These tests verify:
 
 - Three sibling tests overlap in wall time (parallel, not sequential).
@@ -53,23 +53,29 @@ def _record_start() -> None:
         _start_times.append(time.perf_counter())
 
 
-@mlflow.assertions(sleep_then_pass)
-def test_parallel_one(verify, shared_expensive_response):
+@mlflow.test
+def test_parallel_one(shared_expensive_response):
     _record_start()
     assert shared_expensive_response == "shared response value"
-    verify(shared_expensive_response)
+    mlflow.genai.assert_behavior(
+        "auto", outputs=shared_expensive_response, assertions=[sleep_then_pass]
+    )
 
 
-@mlflow.assertions(sleep_then_pass)
-def test_parallel_two(verify, shared_expensive_response):
+@mlflow.test
+def test_parallel_two(shared_expensive_response):
     _record_start()
-    verify(shared_expensive_response)
+    mlflow.genai.assert_behavior(
+        "auto", outputs=shared_expensive_response, assertions=[sleep_then_pass]
+    )
 
 
-@mlflow.assertions(sleep_then_pass)
-def test_parallel_three(verify, shared_expensive_response):
+@mlflow.test
+def test_parallel_three(shared_expensive_response):
     _record_start()
-    verify(shared_expensive_response)
+    mlflow.genai.assert_behavior(
+        "auto", outputs=shared_expensive_response, assertions=[sleep_then_pass]
+    )
 
 
 def test_zzz_overlap_and_fixture_shared():

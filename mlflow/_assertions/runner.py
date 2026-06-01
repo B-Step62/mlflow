@@ -1,9 +1,8 @@
-"""Scorer execution and feedback attachment for ``@mlflow.assertions``.
+"""Scorer execution and feedback attachment for ``mlflow.genai.assert_behavior``.
 
-Scorers declared on a test run concurrently inside ``verify()``. Their results
-attach as ``Feedback`` to the last active trace. The runner is intentionally
-small: no caching, no retries, no concurrency knob beyond a sensible default
-for v0.
+Scorers run concurrently inside ``assert_behavior()``. Their results attach as
+``Feedback`` to the assertion's trace. The runner is intentionally small: no
+caching, no retries, no concurrency knob beyond a sensible default for v0.
 """
 
 from __future__ import annotations
@@ -41,84 +40,36 @@ class AssertionResult:
         return f"{self.scorer_name}: value={self.value!r}"
 
 
-def make_verify(
-    scorers: list[Any],
-    *,
-    trace_tags: dict[str, str] | None = None,
-    on_results: Any = None,
-):
-    """Build a ``verify(outputs, ...)`` callable bound to a specific scorer list.
-
-    Used by both the pytest fixture and the bundle dispatcher so failure
-    formatting stays consistent.
-
-    Args:
-        scorers: Scorers to run on each ``verify(...)`` call.
-        trace_tags: When set, applied to the trace before scorer feedbacks
-            attach. Typical keys: ``mlflow.test.name``, ``mlflow.test.session_id``,
-            ``mlflow.test.case_id``.
-        on_results: Optional callable invoked with the ``list[AssertionResult]``
-            after each ``verify`` call. The pytest plugin uses this to feed
-            its end-of-session per-scorer summary.
-    """
-
-    def _verify(outputs, *, inputs=None, expectations=None):
-        results = run_assertions(
-            scorers,
-            inputs=inputs,
-            outputs=outputs,
-            expectations=expectations,
-            trace_tags=trace_tags,
-        )
-        if on_results is not None:
-            on_results(results)
-
-        failures = [r for r in results if not r.passed]
-        if not failures:
-            return
-
-        # Pack the actionable signal onto the first line so pytest's short
-        # summary tells the user *why* the assertion failed, not just that
-        # ``verify()`` errored.
-        if len(failures) == 1:
-            raise AssertionError(failures[0].summary())
-
-        names = ", ".join(r.scorer_name for r in failures)
-        header = f"{len(failures)} assertions failed: {names}"
-        detail = "\n".join(f"  - {r.summary()}" for r in failures)
-        raise AssertionError(f"{header}\n{detail}")
-
-    return _verify
-
-
 def run_assertions(
     scorers: list[Any],
     *,
     outputs: Any,
     inputs: Any = None,
-    expectations: dict[str, Any] | None = None,
+    trace: Any = None,
     trace_id: str | None = None,
     trace_tags: dict[str, str] | None = None,
     max_workers: int = _DEFAULT_JUDGE_CONCURRENCY,
 ) -> list[AssertionResult]:
     """Run all scorers concurrently. Attach feedback to the trace. Return results.
 
+    ``assert_behavior`` resolves ``trace``/``trace_id`` and passes them in. When
+    neither is given, fall back to the last active trace produced in *this*
+    thread -- which keeps trace-introspecting scorers correctly associated with
+    their own test when the bundle runs tests in parallel threads. (Agents that
+    run under their own asyncio loop may not propagate the thread-local trace;
+    such tests should pass an explicit ``outputs=`` instead.)
+
     Failures do not interrupt other scorers. The caller decides whether to
     raise based on the collected results.
     """
-    if trace_id is None:
-        # thread_local=True returns the trace produced in *this* thread - the
-        # agent call the test just made (and completed) before calling verify().
-        # This keeps trace-introspecting scorers correctly associated with their
-        # own test when the assertion bundle runs tests in parallel threads.
-        # (Note: agents that run under their own asyncio loop may not propagate
-        # the thread-local trace; such tests should assert on outputs directly.)
+    if trace is None and trace_id is None:
         trace_id = mlflow.get_last_active_trace_id(thread_local=True)
-
-    # Materialize the trace so scorers that declare a ``trace`` parameter (e.g.
-    # span-introspecting @scorer functions) receive it. flush=True forces any
-    # pending async trace export to complete first.
-    trace = mlflow.get_trace(trace_id, silent=True, flush=True) if trace_id else None
+        # Materialize the trace so scorers that declare a ``trace`` parameter
+        # (e.g. span-introspecting @scorer functions) receive it. flush=True
+        # forces any pending async trace export to complete first.
+        trace = mlflow.get_trace(trace_id, silent=True, flush=True) if trace_id else None
+    elif trace is not None and trace_id is None:
+        trace_id = trace.info.trace_id
 
     # Tag the trace before attaching feedback so the per-test identifiers are
     # visible on the trace even if a scorer raises mid-run.
@@ -140,7 +91,6 @@ def run_assertions(
                 scorer,
                 inputs=inputs,
                 outputs=outputs,
-                expectations=expectations,
                 trace=trace,
             ): scorer
             for scorer in scorers
@@ -181,11 +131,12 @@ def run_assertions(
     return results
 
 
-def _invoke_scorer(scorer, *, inputs, outputs, expectations, trace=None):
+def _invoke_scorer(scorer, *, inputs, outputs, trace=None):
     # Scorer.run() inspects the scorer's signature and forwards only the
     # kwargs it accepts. A scorer declared as `def f(outputs)` won't be
     # passed `inputs=...`; one declared as `def f(trace)` receives the trace.
-    return scorer.run(inputs=inputs, outputs=outputs, expectations=expectations, trace=trace)
+    # Scorers that need expectations read them from the trace.
+    return scorer.run(inputs=inputs, outputs=outputs, trace=trace)
 
 
 def _scorer_name(scorer) -> str:

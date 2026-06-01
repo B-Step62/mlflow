@@ -1,4 +1,4 @@
-"""Smoke tests for @mlflow.assertions and the verify pytest fixture.
+"""Smoke tests for @mlflow.test and mlflow.genai.assert_behavior.
 
 These exercise the plumbing end-to-end without needing a live LLM judge.
 Custom @scorer-decorated functions stand in for real scorers.
@@ -11,6 +11,8 @@ import time
 import pytest
 
 import mlflow
+from mlflow._assertions.decorator import _to_scorer
+from mlflow.entities import Trace
 from mlflow.entities.assessment import Feedback
 from mlflow.genai.scorers import scorer
 
@@ -63,149 +65,141 @@ def numeric_low(outputs) -> float:
     return 0.1
 
 
-@mlflow.assertions(returns_true)
-def test_passing_bool_scorer(verify):
-    verify("anything")
+@scorer
+def saw_agent_span(trace) -> bool:
+    # A trace-introspecting scorer. assert_behavior must resolve the trace the
+    # agent produced (or the one passed explicitly) and hand it here, with the
+    # agent's span available - without the test wiring the trace itself.
+    return len(trace.search_spans(name="fake_agent")) > 0
 
 
-@mlflow.assertions(returns_false)
-def test_failing_bool_scorer_raises_assertion_error(verify):
+@mlflow.trace
+def fake_agent(query: str) -> str:
+    return f"response to {query}"
+
+
+@mlflow.test
+def test_passing_bool_scorer():
+    mlflow.genai.assert_behavior("auto", outputs="anything", assertions=[returns_true])
+
+
+@mlflow.test
+def test_failing_bool_scorer_raises_assertion_error():
     with pytest.raises(AssertionError, match="returns_false"):
-        verify("anything")
+        mlflow.genai.assert_behavior("auto", outputs="anything", assertions=[returns_false])
 
 
-@mlflow.assertions(yes_feedback)
-def test_yes_feedback_passes(verify):
-    verify("anything")
+@mlflow.test
+def test_yes_feedback_passes():
+    mlflow.genai.assert_behavior("auto", outputs="anything", assertions=[yes_feedback])
 
 
-@mlflow.assertions(no_feedback)
-def test_no_feedback_fails(verify):
+@mlflow.test
+def test_no_feedback_fails():
     with pytest.raises(AssertionError, match="no_feedback"):
-        verify("anything")
+        mlflow.genai.assert_behavior("auto", outputs="anything", assertions=[no_feedback])
 
 
-@mlflow.assertions(numeric_high)
-def test_high_numeric_passes(verify):
-    verify("anything")
+@mlflow.test
+def test_high_numeric_passes():
+    mlflow.genai.assert_behavior("auto", outputs="anything", assertions=[numeric_high])
 
 
-@mlflow.assertions(numeric_low)
-def test_low_numeric_fails(verify):
+@mlflow.test
+def test_low_numeric_fails():
     with pytest.raises(AssertionError, match="numeric_low"):
-        verify("anything")
+        mlflow.genai.assert_behavior("auto", outputs="anything", assertions=[numeric_low])
 
 
-@mlflow.assertions(returns_true, yes_feedback, numeric_high)
-def test_multiple_passing_scorers(verify):
-    verify("anything")
+@mlflow.test
+def test_multiple_passing_scorers():
+    mlflow.genai.assert_behavior(
+        "auto", outputs="anything", assertions=[returns_true, yes_feedback, numeric_high]
+    )
 
 
-@mlflow.assertions(returns_true, no_feedback, numeric_high)
-def test_one_failing_among_many_fails(verify):
+@mlflow.test
+def test_one_failing_among_many_fails():
     with pytest.raises(AssertionError, match="no_feedback"):
-        verify("anything")
+        mlflow.genai.assert_behavior(
+            "auto", outputs="anything", assertions=[returns_true, no_feedback, numeric_high]
+        )
 
 
-@mlflow.assertions(slow_a, slow_b, slow_c)
-def test_scorers_run_concurrently(verify):
+@mlflow.test
+def test_scorers_run_concurrently():
     start = time.perf_counter()
-    verify("anything")
+    mlflow.genai.assert_behavior(
+        "auto", outputs="anything", assertions=[slow_a, slow_b, slow_c]
+    )
     elapsed = time.perf_counter() - start
     # 3 scorers x 0.4s sequential = 1.2s. Concurrent should be ~0.4s + overhead.
     assert elapsed < 0.9
 
 
-@mlflow.assertions(returns_true)
-def test_verify_with_inputs_and_expectations(verify):
-    verify("response text", inputs="some input", expectations={"key": "value"})
-
-
 @pytest.mark.parametrize("phrase", ["alpha", "beta"])
-@mlflow.assertions(returns_true)
-def test_parametrize_threads_param_value(verify, phrase):
-    # Regression: @mlflow.assertions must compose with @pytest.mark.parametrize.
-    # The bundle previously listed parametrize args as required fixtures and
-    # raised "fixture 'phrase' not found"; now each item's callspec value is
-    # injected into the body instead.
+@mlflow.test
+def test_parametrize_threads_param_value(phrase):
+    # Regression: @mlflow.test must compose with @pytest.mark.parametrize. The
+    # bundle previously listed parametrize args as required fixtures and raised
+    # "fixture 'phrase' not found"; now each item's callspec value is injected.
     assert phrase in ("alpha", "beta")
-    verify(phrase)
+    mlflow.genai.assert_behavior("auto", outputs=phrase, assertions=[returns_true])
 
 
-@mlflow.assertions(returns_true)
-def test_verify_attaches_feedback_when_trace_exists(verify):
-    @mlflow.trace
-    def fake_agent(query: str) -> str:
-        return f"response to {query}"
-
-    response = fake_agent("hello")
-    verify(response)
-    # S1: feedback should attach to the trace produced above. We confirm the
-    # plumbing does not raise. Verifying the actual tag write is S2 territory.
-
-
-@scorer
-def saw_agent_span(trace) -> bool:
-    # A trace-introspecting scorer. The plugin must auto-create a per-test trace
-    # (root span) and pass it here, with the agent's nested span available -
-    # without the test enabling autolog or wiring the trace itself.
-    return len(trace.search_spans(name="fake_agent")) > 0
-
-
-@mlflow.assertions(saw_agent_span)
-def test_trace_scorer_receives_this_tests_trace(verify):
-    # Regression: @scorer(trace=...) used to receive None because the runner
-    # never passed a trace. The plugin now wraps each test in its own root span
-    # and pins that trace id, so span-introspecting scorers work and stay
-    # correctly associated with this test even when the bundle runs in parallel.
-    @mlflow.trace
-    def fake_agent(query: str) -> str:
-        return f"response to {query}"
-
+@mlflow.test
+def test_auto_resolves_the_agents_trace():
+    # "auto" resolves the trace fake_agent just produced, so a span-introspecting
+    # scorer sees the agent span - end to end, no trace wiring in the test.
     fake_agent("hello")
-    verify(outputs="ignored")
+    mlflow.genai.assert_behavior("auto", assertions=[saw_agent_span])
 
 
-def test_missing_decorator_fails_clearly():
-    with pytest.raises(ValueError, match="at least one scorer"):
+@mlflow.test
+def test_explicit_trace_argument():
+    fake_agent("hello")
+    trace = mlflow.get_trace(mlflow.get_last_active_trace_id(thread_local=True))
+    assert isinstance(trace, Trace)
+    mlflow.genai.assert_behavior(trace, assertions=[saw_agent_span])
 
-        @mlflow.assertions()
-        def _bad():
-            pass
+
+@mlflow.test
+def test_outputs_override_without_a_trace():
+    # Non-traced path: "auto" resolves no trace, so the explicit outputs is what
+    # gets scored. The assertion still runs and passes.
+    mlflow.genai.assert_behavior("auto", outputs="some response", assertions=[returns_true])
 
 
-def test_unsupported_arg_type_fails_clearly():
+def test_missing_assertions_fails_clearly():
+    with pytest.raises(ValueError, match="at least one assertion"):
+        mlflow.genai.assert_behavior("auto", outputs="x", assertions=[])
+
+
+def test_unsupported_assertion_type_fails_clearly():
     with pytest.raises(TypeError, match="rubric string or a Scorer"):
+        mlflow.genai.assert_behavior("auto", outputs="x", assertions=[42])
 
-        @mlflow.assertions(42)  # not a string or scorer
-        def _bad():
-            pass
+
+def test_invalid_trace_arg_type_fails_clearly():
+    with pytest.raises(TypeError, match='Trace or the literal "auto"'):
+        mlflow.genai.assert_behavior(42, outputs="x", assertions=[returns_true])
 
 
 def test_string_rubric_is_wrapped_as_guidelines():
     from mlflow.genai.scorers import Guidelines
 
-    @mlflow.assertions("The response should be in English")
-    def _dummy():
-        pass
-
-    attached = getattr(_dummy, "_mlflow_assertions")
-    assert len(attached) == 1
-    assert isinstance(attached[0], Guidelines)
+    s = _to_scorer("The response should be in English", index=0)
+    assert isinstance(s, Guidelines)
     # Name was slugified from the rubric text.
-    assert attached[0].name == "the_response_should_be_in_english"
+    assert s.name == "the_response_should_be_in_english"
 
 
 def test_string_and_scorer_mixed():
     from mlflow.genai.scorers import Guidelines
 
-    @mlflow.assertions("Refuses politely", returns_true)
-    def _dummy():
-        pass
-
-    attached = getattr(_dummy, "_mlflow_assertions")
-    assert len(attached) == 2
-    assert isinstance(attached[0], Guidelines)
-    assert attached[0].name == "refuses_politely"
+    rubric = _to_scorer("Refuses politely", index=0)
+    passthrough = _to_scorer(returns_true, index=1)
+    assert isinstance(rubric, Guidelines)
+    assert rubric.name == "refuses_politely"
     # Scorer instance preserved as-is.
-    assert attached[1] is returns_true
+    assert passthrough is returns_true
