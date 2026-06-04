@@ -131,7 +131,9 @@ def assert_behavior(
     # Open the regression-test run (once) before scoring so this and subsequent
     # traces link to it. Idempotent; non-fatal if tracking is unavailable.
     session.ensure_run()
-    trace_tags = session.build_trace_tags(test_name, case_id)
+    # repeat_index is set by the plugin only while running a repeated case, so
+    # each of the N traces is tagged with its run index and grouped under the case.
+    trace_tags = session.build_trace_tags(test_name, case_id, session.repeat_index())
 
     results = run_assertions(
         resolved,

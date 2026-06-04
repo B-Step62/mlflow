@@ -34,7 +34,11 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from mlflow._assertions import session as _session
-from mlflow._assertions.decorator import MLFLOW_TEST_ATTR
+from mlflow._assertions.decorator import (
+    MLFLOW_TEST_ATTR,
+    MLFLOW_TEST_PASS_THRESHOLD_ATTR,
+    MLFLOW_TEST_REPEAT_ATTR,
+)
 from mlflow.environment_variables import MLFLOW_GENAI_EVAL_MAX_WORKERS
 
 _logger = logging.getLogger(__name__)
@@ -98,24 +102,35 @@ def pytest_report_teststatus(report, config: pytest.Config):
     return None
 
 
-def pytest_terminal_summary(
-    terminalreporter, exitstatus: int, config: pytest.Config
-) -> None:
-    """Print per-scorer pass/fail rollup across the whole _session."""
+def pytest_terminal_summary(terminalreporter, exitstatus: int, config: pytest.Config) -> None:
+    """Print per-scorer + per-repeated-case pass/fail rollups across the session."""
     snapshot = _session.snapshot()
-    if not snapshot:
+    repeats = _session.repeat_cases()
+    if not snapshot and not repeats:
         return
 
-    by_scorer = _session.aggregate_by_scorer(snapshot)
-    terminalreporter.write_sep("=", "mlflow.genai.assert_behavior summary")
-    for scorer_name in sorted(by_scorer):
-        s = by_scorer[scorer_name]
-        total = s["pass"] + s["fail"]
-        status = "PASS" if s["fail"] == 0 else "FAIL"
-        terminalreporter.write_line(f"  {status}  {scorer_name}  {s['pass']}/{total}")
-        if s["fails"]:
-            unique = sorted(set(s["fails"]))
-            terminalreporter.write_line(f"        failed: {', '.join(unique)}")
+    if snapshot:
+        by_scorer = _session.aggregate_by_scorer(snapshot)
+        terminalreporter.write_sep("=", "mlflow.genai.assert_behavior summary")
+        for scorer_name in sorted(by_scorer):
+            s = by_scorer[scorer_name]
+            total = s["pass"] + s["fail"]
+            status = "PASS" if s["fail"] == 0 else "FAIL"
+            terminalreporter.write_line(f"  {status}  {scorer_name}  {s['pass']}/{total}")
+            if s["fails"]:
+                unique = sorted(set(s["fails"]))
+                terminalreporter.write_line(f"        failed: {', '.join(unique)}")
+
+    if repeats:
+        terminalreporter.write_sep("=", "repeated cases (majority-of-N)")
+        for case in sorted(repeats, key=lambda c: (c.test_name, c.case_id or "")):
+            status = "PASS" if case.passed else "FAIL"
+            label = case.test_name + (f"[{case.case_id}]" if case.case_id else "")
+            terminalreporter.write_line(
+                f"  {status}  {label}  {case.passes}/{case.runs} runs passed "
+                f"(threshold {case.threshold} of {case.repeat})"
+            )
+
     terminalreporter.write_line(f"  session_id: {_session.session_id()}")
     if _session.run_id() is not None:
         terminalreporter.write_line(f"  run_id:     {_session.run_id()}")
@@ -191,26 +206,15 @@ def _make_bundle_callable(bundled_items: list[pytest.Function]):
                     raise err
 
     sig_params = [
-        inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-        for name in sorted(union)
+        inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD) for name in sorted(union)
     ]
     bundle_body.__signature__ = inspect.Signature(parameters=sig_params)
     bundle_body.__name__ = _BUNDLE_ITEM_NAME
     return bundle_body
 
 
-def _execute_one(item: pytest.Function, fixtures: dict) -> BaseException | None:
-    """Run one bundled test's body with the appropriate fixture subset.
-
-    Returns the raised exception (or None). The caller re-raises inside the
-    per-test subtests context for proper per-test reporting. Sets the thread-local
-    current-test so ``assert_behavior()`` tags traces with the *real* test name (not the
-    bundle item).
-    """
-    test_name = item.function.__name__
-    case_id = _case_id_from_item_name(item.name)
-    _session.set_current_test(test_name, case_id)
-
+def _build_item_args(item: pytest.Function, fixtures: dict) -> dict:
+    """Pick the fixture/param subset this item's body actually accepts."""
     # Use the function's signature, not item.fixturenames - the latter can include
     # plugin-injected extras (e.g. pytest-asyncio's event_loop_policy).
     try:
@@ -228,26 +232,98 @@ def _execute_one(item: pytest.Function, fixtures: dict) -> BaseException | None:
             item_args[name] = param_values[name]
         elif name in fixtures:
             item_args[name] = fixtures[name]
+    return item_args
 
+
+def _execute_one(item: pytest.Function, fixtures: dict) -> BaseException | None:
+    """Run one bundled test's body with the appropriate fixture subset.
+
+    Returns the raised exception (or None). The caller re-raises inside the
+    per-test subtests context for proper per-test reporting. Sets the thread-local
+    current-test so ``assert_behavior()`` tags traces with the *real* test name (not the
+    bundle item).
+
+    When ``@mlflow.test(repeat=N)`` is set, the body is re-run up to N times and
+    the case passes on a majority (``pass_threshold``); see ``_run_repeated``.
+    """
+    test_name = item.function.__name__
+    case_id = _case_id_from_item_name(item.name)
+    item_args = _build_item_args(item, fixtures)
+
+    repeat = getattr(item.function, MLFLOW_TEST_REPEAT_ATTR, 1)
+    if repeat > 1:
+        threshold = getattr(item.function, MLFLOW_TEST_PASS_THRESHOLD_ATTR, repeat // 2 + 1)
+        return _run_repeated(item, item_args, test_name, case_id, repeat, threshold)
+
+    # Single-shot: identical to pre-repeat behavior - propagate the original error.
+    _session.set_current_test(test_name, case_id)
     try:
         item.obj(**item_args)
-    except BaseException as e:  # noqa: BLE001 - propagate to caller
+    except BaseException as e:
         return e
     finally:
         _session.set_current_test(None, None)
     return None
 
 
+def _run_repeated(
+    item: pytest.Function,
+    item_args: dict,
+    test_name: str,
+    case_id: str | None,
+    repeat: int,
+    threshold: int,
+) -> BaseException | None:
+    """Run the case body up to ``repeat`` times, passing on ``threshold`` passes.
+
+    Runs are sequential and early-exit as soon as the verdict is decided: once
+    ``threshold`` runs pass, or once more than ``repeat - threshold`` fail (the
+    threshold can no longer be reached). A run "passes" when the body returns
+    without raising. Records the per-case outcome for the summary and returns
+    ``None`` (pass) or a synthesized ``AssertionError`` (fail), chaining the last
+    underlying failure for context.
+    """
+    passes = fails = runs = 0
+    last_error: BaseException | None = None
+    for index in range(repeat):
+        runs += 1
+        _session.set_current_test(test_name, case_id, index)
+        try:
+            item.obj(**item_args)
+        except (KeyboardInterrupt, SystemExit):
+            _session.set_current_test(None, None)
+            raise
+        except BaseException as e:
+            fails += 1
+            last_error = e
+        else:
+            passes += 1
+        finally:
+            _session.set_current_test(None, None)
+        if passes >= threshold or fails > repeat - threshold:
+            break
+
+    _session.record_repeat_case(test_name, case_id, passes, runs, repeat, threshold)
+
+    if passes >= threshold:
+        return None
+    err = AssertionError(
+        f"{test_name}: only {passes}/{runs} runs passed (need {threshold} of {repeat})"
+    )
+    err.__cause__ = last_error
+    return err
+
+
 @pytest.hookimpl(trylast=True)
-def pytest_collection_modifyitems(
-    session: pytest.Session, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(session: pytest.Session, items: list[pytest.Item]) -> None:
     """Collapse ``@mlflow.test`` tests in the same module into one bundle.
 
     Runs LAST so pytest's ``-k`` / ``-m`` / nodeid filters have already pruned
     ``items`` to what the user selected -- we only bundle what's left. Tests from
     different modules each get their own bundle; a module with a single marked
-    test isn't bundled (no benefit). Non-marked tests are left alone.
+    test isn't bundled (no benefit) unless it needs repeat, which the repeat loop
+    in ``_execute_one`` only sees when the test runs through the bundle runner.
+    Non-marked tests are left alone.
     """
     by_module: dict = {}
     for item in items:
@@ -255,7 +331,8 @@ def pytest_collection_modifyitems(
             by_module.setdefault(item.module, []).append(item)
 
     for module, group in by_module.items():
-        if len(group) < 2:
+        needs_repeat = any(getattr(i.function, MLFLOW_TEST_REPEAT_ATTR, 1) > 1 for i in group)
+        if len(group) < 2 and not needs_repeat:
             continue
 
         bundle_body = _make_bundle_callable(group)
