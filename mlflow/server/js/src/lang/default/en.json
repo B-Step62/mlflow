@@ -1043,6 +1043,10 @@
     "defaultMessage": "Run Analysis",
     "description": "Submit button to trigger issue detection job"
   },
+  "3rbpXp": {
+    "defaultMessage": "Created at",
+    "description": "Regression test run info tooltip: created-at label"
+  },
   "3sDV5K": {
     "defaultMessage": "Description",
     "description": "experiment page > edit experiment modal > description label"
@@ -1778,10 +1782,6 @@
   "7tlSUw": {
     "defaultMessage": "Delete runs",
     "description": "Delete evaluation runs action"
-  },
-  "7vws6u": {
-    "defaultMessage": "Trace",
-    "description": "Button to open the raw trace from the detail"
   },
   "7x6xu8": {
     "defaultMessage": "Create prompt",
@@ -2979,6 +2979,10 @@
     "defaultMessage": "Edit budget policy",
     "description": "Gateway > Budgets list > Edit budget policy button aria label"
   },
+  "EGzFIX": {
+    "defaultMessage": "Created by",
+    "description": "Regression test run info tooltip: created-by label"
+  },
   "EI7moF": {
     "defaultMessage": "Last year",
     "description": "Option for the start select dropdown to filter runs since the last 1 year"
@@ -3687,10 +3691,6 @@
     "defaultMessage": "To manually instrument your own traces, the most convenient method is to use the {code} function decorator. This will cause the inputs and outputs of the function to be captured in the trace. For more information, please visit the <a>official documentation</a> for manual tracing.",
     "description": "Description of how to log custom code traces using MLflow. This message is followed by a code example. The link leads to the MLflow documentation for the user to learn more."
   },
-  "Ir0vyP": {
-    "defaultMessage": "Regression test run",
-    "description": "Heading for the regression-test run detail page"
-  },
   "IsIgE2": {
     "defaultMessage": "Automatically log traces for Gemini conversations by calling the {code} function. For example:",
     "description": "Description of how to log traces for API calls to Google's Gemini API using MLflow autologging. This message is followed by a code example."
@@ -3874,6 +3874,10 @@
   "JwhonN": {
     "defaultMessage": "Authentication method",
     "description": "Label for auth mode selector"
+  },
+  "JwyL2T": {
+    "defaultMessage": "Experiment ID",
+    "description": "Regression test run info tooltip: experiment-id label"
   },
   "JxakWy": {
     "defaultMessage": "Judge \"{label}\" failed: {error}",
@@ -5715,6 +5719,10 @@
     "defaultMessage": "Guidelines should not be empty",
     "description": "Tooltip message when guidelines are empty"
   },
+  "ULii8Q": {
+    "defaultMessage": "Run ID",
+    "description": "Regression test run info tooltip: run-id label"
+  },
   "ULljUX": {
     "defaultMessage": "Filter: {filterString}",
     "description": "Filter display for scorer"
@@ -5982,6 +5990,10 @@
   "ViqP7B": {
     "defaultMessage": "Traces",
     "description": "Label for the traces tab in the MLflow experiment navbar"
+  },
+  "VjYv1h": {
+    "defaultMessage": "Test",
+    "description": "Type badge for a regression-test run on the run detail page"
   },
   "Vjha2S": {
     "defaultMessage": "Guardrails",
@@ -6326,10 +6338,6 @@
   "XX8+x1": {
     "defaultMessage": "View prompt template",
     "description": "Experiment page > artifact compare view > run column header prompt metadata > \"view prompt template\" button label"
-  },
-  "XXWBVn": {
-    "defaultMessage": "← Back to Evaluation runs",
-    "description": "Back link from the regression test run page to the evaluation runs list"
   },
   "XZlIAj": {
     "defaultMessage": "Remove fallback model",
@@ -8599,6 +8607,10 @@
     "defaultMessage": "Enter issue description",
     "description": "Placeholder text for issue description field"
   },
+  "j8M7/w": {
+    "defaultMessage": "&larr; Back to Evaluation runs",
+    "description": "Back link from the regression test run page to the evaluation runs list"
+  },
   "jClVwe": {
     "defaultMessage": "Point the OTLP exporter at this MLflow server by setting these environment variables. See the <a>OpenTelemetry export docs</a> for the full reference.",
     "description": "Step 1 description for OpenTelemetry traces onboarding"
@@ -8746,6 +8758,10 @@
   "k/fDlw": {
     "defaultMessage": "Optimize",
     "description": "A label for a button to display the modal with instructions to optimize the prompt"
+  },
+  "k01hL3": {
+    "defaultMessage": "View inputs / outputs",
+    "description": "Toggle back to the deduped chat view in the test-case drawer"
   },
   "k0CEIu": {
     "defaultMessage": "OpenAI Chat Completions",
@@ -9955,6 +9971,10 @@
     "defaultMessage": "Track and compare versions of your GenAI app",
     "description": "Empty state title displayed when no models are logged in the genai logged models list page"
   },
+  "qQJ7Vx": {
+    "defaultMessage": "Duration",
+    "description": "Regression test run info tooltip: duration label"
+  },
   "qQazgD": {
     "defaultMessage": "Type",
     "description": "Column header for run type (Eval vs Test) in the evaluation runs table"
@@ -10158,6 +10178,10 @@
   "rJzt9L": {
     "defaultMessage": "Updated {time}",
     "description": "Tooltip for the V2 dataset refresh button showing how long ago the data was last fetched"
+  },
+  "rKCxiE": {
+    "defaultMessage": "View trace",
+    "description": "Toggle to the full trace view in the test-case drawer"
   },
   "rMIdMr": {
     "defaultMessage": "New LLM judge",
@@ -10703,6 +10727,10 @@
     "defaultMessage": "Breadcrumb",
     "description": "Aria label for the V2 evaluation datasets breadcrumb navigation landmark"
   },
+  "uVwbIH": {
+    "defaultMessage": "Status",
+    "description": "Regression test run info tooltip: status label"
+  },
   "uW5+ph": {
     "defaultMessage": "Pass the function directly to {evaluate}, just like other predefined or LLM-based judges.",
     "description": "Step 2 description for running the judge"
@@ -11186,6 +11214,10 @@
   "xEr8Gl": {
     "defaultMessage": "Set spending limits and control costs across your endpoints.",
     "description": "Empty state message for budgets list"
+  },
+  "xGIjw8": {
+    "defaultMessage": "About this run",
+    "description": "Regression test run info tooltip heading"
   },
   "xIP8WW": {
     "defaultMessage": "Are you sure you want to delete these runs?",

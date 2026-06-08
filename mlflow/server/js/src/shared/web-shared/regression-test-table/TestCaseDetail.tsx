@@ -30,6 +30,7 @@ import { getEvaluationResultAssessmentValue } from './components/GenAiEvaluation
 import type { AssessmentInfo, EvalTraceComparisonEntry, RunEvaluationResultAssessment } from './types';
 import { useQuery } from '../query-client/queryClient';
 import type { ModelTrace } from '../model-trace-explorer/ModelTrace.types';
+import { ModelTraceExplorer } from '../model-trace-explorer/ModelTraceExplorer';
 import { SingleChatTurnMessages } from '../model-trace-explorer/session-view/SingleChatTurnMessages';
 
 const isPass = (v: unknown): boolean =>
@@ -159,6 +160,7 @@ export const TestCaseDetail = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
+  const [showTrace, setShowTrace] = useState(false);
   const run = evaluation.currentRunValue;
   const info: any = run?.traceInfo;
   const traceId: string | undefined = info?.trace_id;
@@ -230,15 +232,23 @@ export const TestCaseDetail = ({
         }
       >
         <div css={{ display: 'flex', gap: theme.spacing.sm, marginBottom: theme.spacing.lg }}>
-          {traceId && experimentId && (
+          {fullTrace && (
             <Button
-              componentId="mlflow.regression-test-detail.open-trace"
+              componentId="mlflow.regression-test-detail.toggle-trace"
               icon={<ListIcon />}
-              onClick={() => {
-                window.location.hash = `#/experiments/${experimentId}/traces?selectedTraceId=${traceId}`;
-              }}
+              onClick={() => setShowTrace((v) => !v)}
             >
-              <FormattedMessage defaultMessage="Trace" description="Button to open the raw trace from the detail" />
+              {showTrace ? (
+                <FormattedMessage
+                  defaultMessage="View inputs / outputs"
+                  description="Toggle back to the deduped chat view in the test-case drawer"
+                />
+              ) : (
+                <FormattedMessage
+                  defaultMessage="View trace"
+                  description="Toggle to the full trace view in the test-case drawer"
+                />
+              )}
             </Button>
           )}
           <Button componentId="mlflow.regression-test-detail.prev" onClick={onPrev} disabled={!onPrev}>
@@ -249,22 +259,31 @@ export const TestCaseDetail = ({
           </Button>
         </div>
 
-        {fullTrace && (
-          <div
-            css={{
-              marginBottom: theme.spacing.lg,
-              // Add visible borders to the chat message bubbles rendered by
-              // SingleChatTurnMessages (the component sets borderWidth but
-              // not borderStyle/borderColor on the message elements).
-              '& > div > div': {
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: theme.borders.borderRadiusMd,
-              },
-            }}
-          >
-            <SingleChatTurnMessages trace={fullTrace} />
-          </div>
-        )}
+        {fullTrace &&
+          (showTrace ? (
+            <div
+              css={{
+                marginBottom: theme.spacing.lg,
+                marginLeft: -theme.spacing.lg,
+                marginRight: -theme.spacing.lg,
+                height: 500,
+              }}
+            >
+              <ModelTraceExplorer modelTrace={fullTrace} />
+            </div>
+          ) : (
+            <div
+              css={{
+                marginBottom: theme.spacing.lg,
+                '& > div > div': {
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.borders.borderRadiusMd,
+                },
+              }}
+            >
+              <SingleChatTurnMessages trace={fullTrace} />
+            </div>
+          ))}
 
         <div
           css={{
