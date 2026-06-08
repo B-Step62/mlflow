@@ -510,6 +510,7 @@ export const inputColumnCellRenderer = (
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
         }}
+        title={inputColumnTitle ? String(inputColumnTitle) : undefined}
         componentId="mlflow.evaluations_review.table_ui.evaluation_id_link"
         onClick={() => onChangeEvaluationId(evalId, value.currentRunValue?.traceInfo)}
       >
@@ -844,6 +845,7 @@ export const traceInfoCellRenderer = (
               css={{ width: 'fit-content', maxWidth: '100%' }}
               componentId="mlflow.genai-traces-table.trace-id"
               color="purple"
+              title={value}
               onClick={() => navId && onChangeEvaluationId(navId, currentTraceInfo)}
             >
               <span
