@@ -133,16 +133,22 @@ export const assessmentCellRenderer = (
           : typeof v === 'string'
             ? ['yes', 'pass', 'true'].includes(v.trim().toLowerCase())
             : false;
-    // One {label, passed} per assertion (matching the N counted below): the
-    // first assessment recorded under each scorer name.
     const breakdown = (runValue: typeof comparisonEntry.currentRunValue) => {
       const byName = runValue?.responseAssessmentsByName ?? {};
       const rows: { label: string; passed: boolean }[] = [];
       for (const name of Object.keys(byName)) {
         if (name === 'Result') continue;
-        const r = byName[name]?.[0];
-        if (!r) continue;
-        rows.push({ label: name, passed: isPass(getEvaluationResultAssessmentValue(r)) });
+        for (const r of byName[name] ?? []) {
+          const label =
+            name !== 'guidelines'
+              ? name
+              : ((r as any)?.metadata?.['guideline'] ?? (r as any)?.metadata?.['guidelines'] ?? r?.rationale ?? name);
+          const displayLabel = typeof label === 'string' ? label : JSON.stringify(label);
+          rows.push({
+            label: displayLabel.length > 80 ? `${displayLabel.slice(0, 77)}...` : displayLabel,
+            passed: isPass(getEvaluationResultAssessmentValue(r)),
+          });
+        }
       }
       return rows;
     };

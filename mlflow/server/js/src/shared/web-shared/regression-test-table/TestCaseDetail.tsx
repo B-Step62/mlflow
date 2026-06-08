@@ -221,7 +221,8 @@ export const TestCaseDetail = ({
     >
       <Drawer.Content
         componentId="mlflow.regression-test-detail.drawer"
-        width={640}
+        width={showTrace ? '85vw' : 640}
+        expandContentToFullHeight={showTrace}
         title={
           <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <Typography.Title level={4} withoutMargins css={{ fontFamily: 'monospace' }}>
@@ -263,11 +264,13 @@ export const TestCaseDetail = ({
           (showTrace ? (
             <div
               css={{
-                marginBottom: theme.spacing.lg,
+                flex: 1,
+                minHeight: 0,
                 marginLeft: -theme.spacing.lg,
                 marginRight: -theme.spacing.lg,
-                height: 500,
+                marginBottom: -theme.spacing.lg,
               }}
+              onWheel={(e) => e.stopPropagation()}
             >
               <ModelTraceExplorer modelTrace={fullTrace} />
             </div>
@@ -285,54 +288,56 @@ export const TestCaseDetail = ({
             </div>
           ))}
 
-        <div
-          css={{
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: theme.legacyBorders.borderRadiusMd,
-            overflow: 'hidden',
-          }}
-        >
-          <Table>
-            <TableRow isHeader>
-              <TableHeader componentId="mlflow.regression-test-detail.col-assertion" css={{ flexGrow: 1 }}>
-                <FormattedMessage defaultMessage="Assertions" description="Assertions column header" />
-              </TableHeader>
-              <TableHeader componentId="mlflow.regression-test-detail.col-result" css={{ flexGrow: 1 }}>
-                <FormattedMessage defaultMessage="Result" description="Result column header" />
-              </TableHeader>
-            </TableRow>
-            {assertions.length === 0 ? (
-              <TableRow>
-                <TableCell css={{ flexGrow: 1 }}>
-                  <Typography.Text color="secondary">
-                    {intl.formatMessage({
-                      defaultMessage: 'No assertions recorded for this test.',
-                      description: 'Empty assertions state in the regression-test detail',
-                    })}
-                  </Typography.Text>
-                </TableCell>
+        {!showTrace && (
+          <div
+            css={{
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.legacyBorders.borderRadiusMd,
+              overflow: 'hidden',
+            }}
+          >
+            <Table>
+              <TableRow isHeader>
+                <TableHeader componentId="mlflow.regression-test-detail.col-assertion" css={{ flexGrow: 1 }}>
+                  <FormattedMessage defaultMessage="Assertions" description="Assertions column header" />
+                </TableHeader>
+                <TableHeader componentId="mlflow.regression-test-detail.col-result" css={{ flexGrow: 1 }}>
+                  <FormattedMessage defaultMessage="Result" description="Result column header" />
+                </TableHeader>
               </TableRow>
-            ) : (
-              assertions.map((a, i) => (
-                <TableRow key={`${a.label}-${i}`}>
-                  <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
-                    <ExpandableAssertionText text={a.label} />
-                  </TableCell>
-                  <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
-                    <EvaluationsReviewAssessmentTag
-                      type="value"
-                      assessment={a.assessment}
-                      assessmentInfo={a.assessmentInfo}
-                      showRationaleInTooltip
-                      hideAssessmentName
-                      disableJudgeTypeIcon
-                    />
+              {assertions.length === 0 ? (
+                <TableRow>
+                  <TableCell css={{ flexGrow: 1 }}>
+                    <Typography.Text color="secondary">
+                      {intl.formatMessage({
+                        defaultMessage: 'No assertions recorded for this test.',
+                        description: 'Empty assertions state in the regression-test detail',
+                      })}
+                    </Typography.Text>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </Table>
-        </div>
+              ) : (
+                assertions.map((a, i) => (
+                  <TableRow key={`${a.label}-${i}`}>
+                    <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
+                      <ExpandableAssertionText text={a.label} />
+                    </TableCell>
+                    <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
+                      <EvaluationsReviewAssessmentTag
+                        type="value"
+                        assessment={a.assessment}
+                        assessmentInfo={a.assessmentInfo}
+                        showRationaleInTooltip
+                        hideAssessmentName
+                        disableJudgeTypeIcon
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </Table>
+          </div>
+        )}
       </Drawer.Content>
     </Drawer.Root>
   );
