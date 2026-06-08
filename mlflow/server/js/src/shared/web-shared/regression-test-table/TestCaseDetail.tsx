@@ -30,7 +30,6 @@ import { getEvaluationResultAssessmentValue } from './components/GenAiEvaluation
 import type { AssessmentInfo, EvalTraceComparisonEntry, RunEvaluationResultAssessment } from './types';
 import { useQuery } from '../query-client/queryClient';
 import type { ModelTrace } from '../model-trace-explorer/ModelTrace.types';
-import { ModelTraceExplorer } from '../model-trace-explorer/ModelTraceExplorer';
 import { SingleChatTurnMessages } from '../model-trace-explorer/session-view/SingleChatTurnMessages';
 
 const isPass = (v: unknown): boolean =>
@@ -160,7 +159,6 @@ export const TestCaseDetail = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
-  const [showTrace, setShowTrace] = useState(false);
   const run = evaluation.currentRunValue;
   const info: any = run?.traceInfo;
   const traceId: string | undefined = info?.trace_id;
@@ -222,7 +220,6 @@ export const TestCaseDetail = ({
       <Drawer.Content
         componentId="mlflow.regression-test-detail.drawer"
         width={640}
-        expandContentToFullHeight
         title={
           <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <Typography.Title level={4} withoutMargins css={{ fontFamily: 'monospace' }}>
@@ -233,23 +230,15 @@ export const TestCaseDetail = ({
         }
       >
         <div css={{ display: 'flex', gap: theme.spacing.sm, marginBottom: theme.spacing.lg }}>
-          {fullTrace && (
+          {traceId && experimentId && (
             <Button
-              componentId="mlflow.regression-test-detail.toggle-trace"
+              componentId="mlflow.regression-test-detail.open-trace"
               icon={<ListIcon />}
-              onClick={() => setShowTrace((v) => !v)}
+              onClick={() => {
+                window.location.hash = `#/experiments/${experimentId}/traces?selectedTraceId=${traceId}`;
+              }}
             >
-              {showTrace ? (
-                <FormattedMessage
-                  defaultMessage="View inputs / outputs"
-                  description="Toggle back to the deduped chat view in the test-case drawer"
-                />
-              ) : (
-                <FormattedMessage
-                  defaultMessage="View trace"
-                  description="Toggle to the full trace view in the test-case drawer"
-                />
-              )}
+              <FormattedMessage defaultMessage="Trace" description="Button to open the raw trace from the detail" />
             </Button>
           )}
           <Button componentId="mlflow.regression-test-detail.prev" onClick={onPrev} disabled={!onPrev}>
@@ -260,84 +249,71 @@ export const TestCaseDetail = ({
           </Button>
         </div>
 
-        {fullTrace &&
-          (showTrace ? (
-            <div
-              css={{
-                flex: 1,
-                minHeight: 0,
-                marginLeft: -theme.spacing.lg,
-                marginRight: -theme.spacing.lg,
-                marginBottom: -theme.spacing.lg,
-              }}
-              onWheel={(e) => e.stopPropagation()}
-            >
-              <ModelTraceExplorer modelTrace={fullTrace} />
-            </div>
-          ) : (
-            <div
-              css={{
-                marginBottom: theme.spacing.lg,
-                '& > div > div': {
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borders.borderRadiusMd,
-                },
-              }}
-            >
-              <SingleChatTurnMessages trace={fullTrace} />
-            </div>
-          ))}
-
-        {!showTrace && (
+        {fullTrace && (
           <div
             css={{
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.legacyBorders.borderRadiusMd,
-              overflow: 'hidden',
+              marginBottom: theme.spacing.lg,
+              // Add visible borders to the chat message bubbles rendered by
+              // SingleChatTurnMessages (the component sets borderWidth but
+              // not borderStyle/borderColor on the message elements).
+              '& > div > div': {
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusMd,
+              },
             }}
           >
-            <Table>
-              <TableRow isHeader>
-                <TableHeader componentId="mlflow.regression-test-detail.col-assertion" css={{ flexGrow: 1 }}>
-                  <FormattedMessage defaultMessage="Assertions" description="Assertions column header" />
-                </TableHeader>
-                <TableHeader componentId="mlflow.regression-test-detail.col-result" css={{ flexGrow: 1 }}>
-                  <FormattedMessage defaultMessage="Result" description="Result column header" />
-                </TableHeader>
-              </TableRow>
-              {assertions.length === 0 ? (
-                <TableRow>
-                  <TableCell css={{ flexGrow: 1 }}>
-                    <Typography.Text color="secondary">
-                      {intl.formatMessage({
-                        defaultMessage: 'No assertions recorded for this test.',
-                        description: 'Empty assertions state in the regression-test detail',
-                      })}
-                    </Typography.Text>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                assertions.map((a, i) => (
-                  <TableRow key={`${a.label}-${i}`}>
-                    <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
-                      <ExpandableAssertionText text={a.label} />
-                    </TableCell>
-                    <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
-                      <EvaluationsReviewAssessmentTag
-                        type="value"
-                        assessment={a.assessment}
-                        assessmentInfo={a.assessmentInfo}
-                        showRationaleInTooltip
-                        hideAssessmentName
-                        disableJudgeTypeIcon
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </Table>
+            <SingleChatTurnMessages trace={fullTrace} />
           </div>
         )}
+
+        <div
+          css={{
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.legacyBorders.borderRadiusMd,
+            overflow: 'hidden',
+          }}
+        >
+          <Table>
+            <TableRow isHeader>
+              <TableHeader componentId="mlflow.regression-test-detail.col-assertion" css={{ flexGrow: 1 }}>
+                <FormattedMessage defaultMessage="Assertions" description="Assertions column header" />
+              </TableHeader>
+              <TableHeader componentId="mlflow.regression-test-detail.col-result" css={{ flexGrow: 1 }}>
+                <FormattedMessage defaultMessage="Result" description="Result column header" />
+              </TableHeader>
+            </TableRow>
+            {assertions.length === 0 ? (
+              <TableRow>
+                <TableCell css={{ flexGrow: 1 }}>
+                  <Typography.Text color="secondary">
+                    {intl.formatMessage({
+                      defaultMessage: 'No assertions recorded for this test.',
+                      description: 'Empty assertions state in the regression-test detail',
+                    })}
+                  </Typography.Text>
+                </TableCell>
+              </TableRow>
+            ) : (
+              assertions.map((a, i) => (
+                <TableRow key={`${a.label}-${i}`}>
+                  <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
+                    <ExpandableAssertionText text={a.label} />
+                  </TableCell>
+                  <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
+                    <EvaluationsReviewAssessmentTag
+                      type="value"
+                      assessment={a.assessment}
+                      assessmentInfo={a.assessmentInfo}
+                      showRationaleInTooltip
+                      hideAssessmentName
+                      disableJudgeTypeIcon
+                    />
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </Table>
+        </div>
       </Drawer.Content>
     </Drawer.Root>
   );

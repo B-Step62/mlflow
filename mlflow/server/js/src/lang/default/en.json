@@ -1787,6 +1787,10 @@
     "defaultMessage": "Delete runs",
     "description": "Delete evaluation runs action"
   },
+  "7vws6u": {
+    "defaultMessage": "Trace",
+    "description": "Button to open the raw trace from the detail"
+  },
   "7x6xu8": {
     "defaultMessage": "Create prompt",
     "description": "Label for the create prompt button on the registered prompts page"
@@ -8759,10 +8763,6 @@
     "defaultMessage": "Optimize",
     "description": "A label for a button to display the modal with instructions to optimize the prompt"
   },
-  "k01hL3": {
-    "defaultMessage": "View inputs / outputs",
-    "description": "Toggle back to the deduped chat view in the test-case drawer"
-  },
   "k0CEIu": {
     "defaultMessage": "OpenAI Chat Completions",
     "description": "Unified API variant: OpenAI Chat Completions"
@@ -10174,10 +10174,6 @@
   "rJzt9L": {
     "defaultMessage": "Updated {time}",
     "description": "Tooltip for the V2 dataset refresh button showing how long ago the data was last fetched"
-  },
-  "rKCxiE": {
-    "defaultMessage": "View trace",
-    "description": "Toggle to the full trace view in the test-case drawer"
   },
   "rMIdMr": {
     "defaultMessage": "New LLM judge",
