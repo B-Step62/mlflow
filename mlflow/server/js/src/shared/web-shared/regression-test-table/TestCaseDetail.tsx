@@ -179,12 +179,9 @@ export const TestCaseDetail = ({
     .flatMap(([name, arr]) =>
       (arr ?? []).map((a: RunEvaluationResultAssessment, i: number) => {
         const value = getEvaluationResultAssessmentValue(a);
-        // Prefer a meaningful assertion name. For generically-named ("guidelines")
-        // assertions the rubric text isn't on the trace, so fall back to a
-        // guideline in metadata, then to the rationale (the real text we have).
-        const named = name && name !== 'guidelines' ? (arr.length > 1 ? `${name} ${i + 1}` : name) : '';
+        const named = arr.length > 1 ? `${name} ${i + 1}` : name;
         const metaGuideline = stringify(a?.metadata?.['guideline'] ?? a?.metadata?.['guidelines']);
-        const label = named || metaGuideline || a?.rationale || 'Assertion';
+        const label = metaGuideline || named || 'Assertion';
         const assessmentInfo = infoByName.get(name) ?? fallbackAssessmentInfo(name, a);
         return { label, assessment: a, assessmentInfo, passed: isPass(value) };
       }),
