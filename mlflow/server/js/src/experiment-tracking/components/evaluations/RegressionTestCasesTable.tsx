@@ -7,11 +7,6 @@ import { useCompareToRunUuid } from './hooks/useCompareToRunUuid';
 import Utils from '@mlflow/mlflow/src/common/utils/Utils';
 import { FormattedMessage } from 'react-intl';
 import { RunColorPill } from '../experiment-page/components/RunColorPill';
-import { EvaluationRunCompareSelector } from './EvaluationRunCompareSelector';
-import {
-  getEvalTabTotalTracesLimit,
-  shouldEnableImprovedEvalRunsComparison,
-} from '@mlflow/mlflow/src/common/utils/FeatureUtils';
 import { getTrace as getTraceV3 } from '@mlflow/mlflow/src/experiment-tracking/utils/TraceUtils';
 import type { TracesTableColumn, TraceActions, GetTraceFunction } from '@databricks/web-shared/regression-test-table';
 import {
@@ -115,6 +110,7 @@ const RegressionTestCasesTableInner = ({
   const traceLocations = useMemo(() => [createTraceLocationForExperiment(experimentId)], [experimentId]);
   const getTrace = getTraceV3;
   const isQueryDisabled = false;
+
 
   // Get table metadata
   const {
@@ -315,22 +311,6 @@ const RegressionTestCasesTableInner = ({
         overflowY: 'hidden',
       }}
     >
-      {!shouldEnableImprovedEvalRunsComparison() && !showCompareSelector && !hideCompareSelector && (
-        <div
-          css={{
-            width: '100%',
-            padding: `${theme.spacing.xs}px 0`,
-          }}
-        >
-          <EvaluationRunCompareSelector
-            experimentId={experimentId}
-            currentRunUuid={runUuid}
-            compareToRunUuid={compareToRunUuid}
-            setCompareToRunUuid={setCompareToRunUuid}
-            setCurrentRunUuid={setCurrentRunUuid}
-          />
-        </div>
-      )}
       {showCompareSelector && compareToRunUuid && (
         <div
           css={{
@@ -434,6 +414,7 @@ const RegressionTestCasesTableInner = ({
                     isFetchingNextPage={isFetchingNextPage}
                     assessmentCountMetrics={assessmentCountMetrics}
                     compareAssessmentCountMetrics={compareAssessmentCountMetrics}
+                    fitToContainer
                   />
                 </ContextProviders>
               )

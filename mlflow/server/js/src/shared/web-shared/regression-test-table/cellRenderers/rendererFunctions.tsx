@@ -7,6 +7,7 @@ import type { ThemeType } from '@databricks/design-system';
 import {
   ArrowRightIcon,
   CheckCircleIcon,
+  HoverCard,
   Overflow,
   Spinner,
   Tag,
@@ -132,28 +133,39 @@ export const assessmentCellRenderer = (
           : typeof v === 'string'
             ? ['yes', 'pass', 'true'].includes(v.trim().toLowerCase())
             : false;
-    const tally = (runValue: typeof comparisonEntry.currentRunValue) => {
+    // One {label, passed} per assertion (matching the N counted below): the
+    // first assessment recorded under each scorer name.
+    const breakdown = (runValue: typeof comparisonEntry.currentRunValue) => {
       const byName = runValue?.responseAssessmentsByName ?? {};
-      let passed = 0;
-      let total = 0;
+      const rows: { label: string; passed: boolean }[] = [];
       for (const name of Object.keys(byName)) {
         if (name === 'Result') continue;
         const r = byName[name]?.[0];
         if (!r) continue;
-        total += 1;
-        if (isPass(getEvaluationResultAssessmentValue(r))) passed += 1;
+        rows.push({ label: name, passed: isPass(getEvaluationResultAssessmentValue(r)) });
       }
-      return { passed, total };
+      return rows;
+    };
+    const tally = (runValue: typeof comparisonEntry.currentRunValue) => {
+      const rows = breakdown(runValue);
+      return { passed: rows.filter((r) => r.passed).length, total: rows.length };
     };
     const badge = (runValue: typeof comparisonEntry.currentRunValue) => {
       const { passed, total } = tally(runValue);
       if (total === 0) return null;
       const allPassed = passed === total;
-      return (
+      const tag = (
         <Tag
           componentId="mlflow.regression-test-table.result"
           color={allPassed ? 'turquoise' : 'coral'}
-          css={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content' }}
+          css={{
+            margin: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            width: 'fit-content',
+            cursor: 'default',
+          }}
         >
           {allPassed ? (
             <CheckCircleIcon css={{ color: theme.colors.textValidationSuccess }} />
@@ -162,6 +174,27 @@ export const assessmentCellRenderer = (
           )}
           {passed}/{total}
         </Tag>
+      );
+      // Hover shows the per-assertion breakdown (name + pass/fail, no rationale).
+      return (
+        <HoverCard
+          side="bottom"
+          content={
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, maxWidth: '22rem' }}>
+              {breakdown(runValue).map((row, i) => (
+                <div key={i} css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  {row.passed ? (
+                    <CheckCircleIcon css={{ color: theme.colors.textValidationSuccess }} />
+                  ) : (
+                    <XCircleIcon css={{ color: theme.colors.textValidationDanger }} />
+                  )}
+                  <Typography.Text css={{ wordBreak: 'break-word' }}>{row.label}</Typography.Text>
+                </div>
+              ))}
+            </div>
+          }
+          trigger={tag}
+        />
       );
     };
     return (

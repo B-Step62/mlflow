@@ -87,6 +87,7 @@ export const GenAiTracesTableBody = React.memo(
     isFetchingNextPage,
     assessmentCountMetrics,
     compareAssessmentCountMetrics,
+    fitToContainer = false,
   }: {
     experimentId?: string;
     selectedColumns: TracesTableColumn[];
@@ -131,6 +132,7 @@ export const GenAiTracesTableBody = React.memo(
     // Server-side assessment count data (active when shouldUseInfinitePaginatedTraces is true)
     assessmentCountMetrics?: AssessmentCountMetrics;
     compareAssessmentCountMetrics?: AssessmentCountMetrics;
+    fitToContainer?: boolean;
   }) => {
     const intl = useIntl();
     const { theme } = useDesignSystemTheme();
@@ -612,7 +614,7 @@ export const GenAiTracesTableBody = React.memo(
         >
           <Table
             css={{
-              width: tableWidth,
+              width: fitToContainer ? '100%' : tableWidth,
               minWidth: '100%',
               ...columnSizeVars, // Define column sizes on the <table> element
             }}
@@ -695,11 +697,10 @@ export const GenAiTracesTableBody = React.memo(
                 <TestCaseDetail
                   evaluation={selectedEvaluation}
                   experimentId={selectedEvaluationExperimentId ?? experimentId}
+                  assessmentInfos={assessmentInfos}
                   onClose={() => onChangeEvaluationId(undefined)}
                   onPrev={idx > 0 ? () => onChangeEvaluationId(evalIdAt(idx - 1)) : undefined}
-                  onNext={
-                    idx >= 0 && idx < rows.length - 1 ? () => onChangeEvaluationId(evalIdAt(idx + 1)) : undefined
-                  }
+                  onNext={idx >= 0 && idx < rows.length - 1 ? () => onChangeEvaluationId(evalIdAt(idx + 1)) : undefined}
                 />
               );
             })()

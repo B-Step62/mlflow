@@ -36,14 +36,6 @@ const RegressionTestRunPage = () => {
           description="Heading for the regression-test run detail page"
         />
       </Typography.Title>
-      <Typography.Text color="secondary">
-        <FormattedMessage
-          defaultMessage="Run {runUuid}"
-          description="Subheading showing which run this regression-test page is for"
-          values={{ runUuid: <code>{runUuid}</code> }}
-        />
-      </Typography.Text>
-
       <div css={{ marginTop: theme.spacing.md }}>
         <TestCasesTab experimentId={experimentId} runUuid={runUuid} />
       </div>

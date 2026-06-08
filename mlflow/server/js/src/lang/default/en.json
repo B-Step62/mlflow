@@ -427,6 +427,10 @@
     "defaultMessage": "Y-axis:",
     "description": "Label text for y-axis in contour plot comparison in MLflow"
   },
+  "0H/Y71": {
+    "defaultMessage": "Test",
+    "description": "Type filter option in the evaluation runs table: show only regression-test runs"
+  },
   "0HIfuE": {
     "defaultMessage": "Outputs of the trace, derived from the root span's outputs",
     "description": "Tooltip description for the Response column in the traces table"
@@ -1103,6 +1107,10 @@
     "defaultMessage": "{fieldName} are empty",
     "description": "Default text in data table where items are empty in the model\n                  comparison page"
   },
+  "4AQBnK": {
+    "defaultMessage": "Collapse assertion text",
+    "description": "Aria label for the chevron that collapses a long assertion text"
+  },
   "4AkzyD": {
     "defaultMessage": "Confirm",
     "description": "Button label to confirm the inferred experiment kind"
@@ -1771,6 +1779,10 @@
     "defaultMessage": "Delete runs",
     "description": "Delete evaluation runs action"
   },
+  "7vws6u": {
+    "defaultMessage": "Trace",
+    "description": "Button to open the raw trace from the detail"
+  },
   "7x6xu8": {
     "defaultMessage": "Create prompt",
     "description": "Label for the create prompt button on the registered prompts page"
@@ -2103,6 +2115,10 @@
     "defaultMessage": "Show change from baseline",
     "description": "Runs charts > components > config > RunsChartsConfigureDifferenceChart > Show change from baseline toggle"
   },
+  "9i4YFp": {
+    "defaultMessage": "No assertions recorded for this test.",
+    "description": "Empty assertions state in the regression-test detail"
+  },
   "9icYIV": {
     "defaultMessage": "Select Categories",
     "description": "Header for the category selection step in issue detection modal"
@@ -2202,6 +2218,10 @@
   "A7jptW": {
     "defaultMessage": "Edit tags",
     "description": "Edit tags action"
+  },
+  "A7npjN": {
+    "defaultMessage": "Failed",
+    "description": "Fail status pill in the regression-test detail"
   },
   "AAdQxU": {
     "defaultMessage": "Messages",
@@ -2583,6 +2603,10 @@
     "defaultMessage": "Evaluation",
     "description": "Label for the evaluation section in the MLflow experiment navbar"
   },
+  "C1y/A6": {
+    "defaultMessage": "Assertions",
+    "description": "Assertions column header"
+  },
   "C4y1fv": {
     "defaultMessage": "-∞",
     "description": "Label displaying negative infinity symbol displayed on a plot UI element"
@@ -2838,6 +2862,10 @@
   "DUnrWL": {
     "defaultMessage": "Run Name:",
     "description": "Row title for the run name on the experiment compare runs page"
+  },
+  "DVBFdl": {
+    "defaultMessage": "Expand assertion text",
+    "description": "Aria label for the chevron that expands a long assertion text"
   },
   "DXxTNn": {
     "defaultMessage": "Used for HMAC signature verification of incoming webhook requests.",
@@ -3658,6 +3686,10 @@
   "ImBtKi": {
     "defaultMessage": "To manually instrument your own traces, the most convenient method is to use the {code} function decorator. This will cause the inputs and outputs of the function to be captured in the trace. For more information, please visit the <a>official documentation</a> for manual tracing.",
     "description": "Description of how to log custom code traces using MLflow. This message is followed by a code example. The link leads to the MLflow documentation for the user to learn more."
+  },
+  "Ir0vyP": {
+    "defaultMessage": "Regression test run",
+    "description": "Heading for the regression-test run detail page"
   },
   "IsIgE2": {
     "defaultMessage": "Automatically log traces for Gemini conversations by calling the {code} function. For example:",
@@ -4747,6 +4779,10 @@
     "defaultMessage": "Classification",
     "description": "Label for experiments focused on classification modeling"
   },
+  "P037Va": {
+    "defaultMessage": "Passed",
+    "description": "Pass status pill in the regression-test detail"
+  },
   "P0Y/ks": {
     "defaultMessage": "Workspace Manager",
     "description": "Admin page title shown when the URL is scoped to a single workspace via ?workspace=…"
@@ -5363,6 +5399,10 @@
     "defaultMessage": "Create LLM judge",
     "description": "Title for new LLM judge modal"
   },
+  "SZQjTs": {
+    "defaultMessage": "Result",
+    "description": "Result column header"
+  },
   "Sb+wLa": {
     "defaultMessage": "Model configuration stores the LLM settings associated with this prompt.",
     "description": "Help text explaining model configuration purpose"
@@ -5550,6 +5590,10 @@
   "TcNbWT": {
     "defaultMessage": "View dataset metadata",
     "description": "Overflow-menu item that opens the V2 evaluation dataset metadata modal"
+  },
+  "TcXjUy": {
+    "defaultMessage": "Eval",
+    "description": "Type pill text for a regular evaluation run in the evaluation runs table"
   },
   "TeN9hs": {
     "defaultMessage": "Traces",
@@ -5987,6 +6031,10 @@
     "defaultMessage": "forecasting",
     "description": "A short label for experiments focused on time series forecasting"
   },
+  "VziuiA": {
+    "defaultMessage": "Previous",
+    "description": "Previous test case"
+  },
   "W+aLXo": {
     "defaultMessage": "Manage webhooks to receive HTTP notifications when events occur in MLflow.",
     "description": "Webhooks settings section description"
@@ -6278,6 +6326,10 @@
   "XX8+x1": {
     "defaultMessage": "View prompt template",
     "description": "Experiment page > artifact compare view > run column header prompt metadata > \"view prompt template\" button label"
+  },
+  "XXWBVn": {
+    "defaultMessage": "← Back to Evaluation runs",
+    "description": "Back link from the regression test run page to the evaluation runs list"
   },
   "XZlIAj": {
     "defaultMessage": "Remove fallback model",
@@ -6910,6 +6962,10 @@
   "arFT1W": {
     "defaultMessage": "Tags",
     "description": "Title for the tags section on the run details page"
+  },
+  "atJtoG": {
+    "defaultMessage": "Eval",
+    "description": "Type filter option in the evaluation runs table: show only evaluation runs"
   },
   "atcZM5": {
     "defaultMessage": "Status",
@@ -8287,6 +8343,10 @@
     "defaultMessage": "No metrics match the search filter",
     "description": "Message displayed when no metrics match the search filter in the logged model details metrics table"
   },
+  "i+1bTL": {
+    "defaultMessage": "Test",
+    "description": "Type pill text for a regression-test run in the evaluation runs table"
+  },
   "i+RyPC": {
     "defaultMessage": "Your request could not be fulfilled. Please try again.",
     "description": "A message shown on the experiment page if the runs request fails"
@@ -8458,6 +8518,10 @@
   "ioD6Ho": {
     "defaultMessage": "Dark",
     "description": "Dark theme label"
+  },
+  "iolCqR": {
+    "defaultMessage": "Latency",
+    "description": "Column label for agent latency in the regression-test table"
   },
   "iq1aqV": {
     "defaultMessage": "Create dataset",
@@ -9138,6 +9202,10 @@
   "mWl3Qv": {
     "defaultMessage": "{toolName} was called in {toolCallId}",
     "description": "A message that shows the tool call ID of a tool call chat message."
+  },
+  "mY3Q0W": {
+    "defaultMessage": "All",
+    "description": "Type filter option in the evaluation runs table: show every run"
   },
   "mY6f0y": {
     "defaultMessage": "Params",
@@ -9887,6 +9955,10 @@
     "defaultMessage": "Track and compare versions of your GenAI app",
     "description": "Empty state title displayed when no models are logged in the genai logged models list page"
   },
+  "qQazgD": {
+    "defaultMessage": "Type",
+    "description": "Column header for run type (Eval vs Test) in the evaluation runs table"
+  },
   "qR3llD": {
     "defaultMessage": "Max tokens",
     "description": "Experiment page > prompt lab > max tokens parameter label"
@@ -9902,6 +9974,10 @@
   "qVQYZH": {
     "defaultMessage": "Show less",
     "description": "Button to close alert description"
+  },
+  "qWUsTp": {
+    "defaultMessage": "No run selected",
+    "description": "Empty state when the regression-test run page has no run id"
   },
   "qZKsz+": {
     "defaultMessage": "Cancel",
@@ -10891,6 +10967,10 @@
     "defaultMessage": "Show first 10",
     "description": "Menu option for showing only 10 first runs in the experiment view runs compare mode"
   },
+  "w3S4C7": {
+    "defaultMessage": "Latency (ms)",
+    "description": "Column label for agent latency with the unit suffix"
+  },
   "w48V74": {
     "defaultMessage": "Trace breakdown",
     "description": "Header for the span tree within the MLflow trace UI"
@@ -11299,6 +11379,10 @@
     "defaultMessage": "Original logged model: {originalName}",
     "description": "Tooltip text showing the original logged model name"
   },
+  "yJV4aA": {
+    "defaultMessage": "Next",
+    "description": "Next test case"
+  },
   "yJpGwW": {
     "defaultMessage": "Deleted",
     "description": "Linked model dropdown option to show deleted experiment runs"
@@ -11374,6 +11458,10 @@
   "ysF5gb": {
     "defaultMessage": "Default",
     "description": "Label for the default render mode in the model trace explorer inputs/outputs tab"
+  },
+  "yuHd1B": {
+    "defaultMessage": "Test",
+    "description": "Column label for the test name in the regression-test table"
   },
   "yv5FMp": {
     "defaultMessage": "Add custom feedback to this session.",

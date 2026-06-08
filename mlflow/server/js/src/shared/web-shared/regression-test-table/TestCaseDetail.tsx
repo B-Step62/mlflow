@@ -2,12 +2,16 @@
  * Test-case detail drawer for a regression-test run.
  *
  * Opens when a row in the Test cases table is clicked (replacing the generic
- * trace review). Shows the test name + overall Result, the agent Input/Output,
- * and a two-column Assertions/Result table (one row per assertion, with its
- * pass/fail pill + rationale). A "Trace" button still jumps to the raw trace.
+ * trace review). Shows the test name + overall Result, the agent Input/Output
+ * (rendered with the same conversation renderer as the trace viewer), and a
+ * two-column Assertions/Result table: each assertion's text is expandable, and
+ * its pass/fail tag carries the same LLM-judge hover card as the traces table.
+ * A "Trace" button still jumps to the raw trace.
  */
 import {
   Button,
+  ChevronDownIcon,
+  ChevronUpIcon,
   Drawer,
   ListIcon,
   Table,
@@ -18,12 +22,15 @@ import {
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
+import { useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 
-import { EvaluationsReviewTextBox } from './components/EvaluationsReviewTextBox';
+import { EvaluationsReviewAssessmentTag } from './components/EvaluationsReviewAssessmentTag';
 import { getEvaluationResultAssessmentValue } from './components/GenAiEvaluationTracesReview.utils';
-import type { EvalTraceComparisonEntry } from './types';
-import { useMarkdownConverter } from './utils/MarkdownUtils';
+import type { AssessmentInfo, EvalTraceComparisonEntry, RunEvaluationResultAssessment } from './types';
+import { useQuery } from '../query-client/queryClient';
+import type { ModelTrace } from '../model-trace-explorer/ModelTrace.types';
+import { SingleChatTurnMessages } from '../model-trace-explorer/session-view/SingleChatTurnMessages';
 
 const isPass = (v: unknown): boolean =>
   typeof v === 'boolean'
@@ -52,26 +59,30 @@ const stringify = (v: any): string => {
   }
 };
 
-// Trace inputs/outputs frequently arrive double-JSON-encoded (a JSON string
-// whose decoded value is itself a JSON string). One JSON.parse yields another
-// string, not an object — so keep parsing while the result still looks like
-// JSON (bounded to avoid runaway).
-const deepParse = (v: any): any => {
-  let o = v;
-  for (let i = 0; i < 4 && typeof o === 'string'; i++) {
-    const s = o.trim();
-    if (!(s.startsWith('{') || s.startsWith('['))) break;
-    try {
-      o = JSON.parse(s);
-    } catch {
-      break;
-    }
-  }
-  return o;
-};
+// When the table doesn't carry an AssessmentInfo for a scorer (rare), build a
+// minimal one so the value tag + hover still render with the right value type.
+const fallbackAssessmentInfo = (name: string, a: RunEvaluationResultAssessment): AssessmentInfo => ({
+  name,
+  displayName: name,
+  isKnown: false,
+  isOverall: false,
+  metricName: name,
+  isCustomMetric: false,
+  isEditable: false,
+  isRetrievalAssessment: false,
+  dtype: typeof a.booleanValue === 'boolean' ? 'boolean' : a.numericValue != null ? 'numeric' : 'pass-fail',
+  uniqueValues: new Set(),
+  docsLink: '',
+  missingTooltip: '',
+  description: '',
+});
 
 const ResultPill = ({ passed }: { passed: boolean }) => (
-  <Tag componentId="mlflow.regression-test-detail.result-pill" color={passed ? 'turquoise' : 'coral'} css={{ margin: 0 }}>
+  <Tag
+    componentId="mlflow.regression-test-detail.result-pill"
+    color={passed ? 'turquoise' : 'coral'}
+    css={{ margin: 0 }}
+  >
     {passed ? (
       <FormattedMessage defaultMessage="Passed" description="Pass status pill in the regression-test detail" />
     ) : (
@@ -80,15 +91,68 @@ const ResultPill = ({ passed }: { passed: boolean }) => (
   </Tag>
 );
 
+// Assertion text that clamps to two lines, with a chevron toggle to expand the
+// full text so long guideline rubrics don't blow out the row height.
+const ExpandableAssertionText = ({ text }: { text: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const intl = useIntl();
+  const [expanded, setExpanded] = useState(false);
+  // Roughly two lines at the column width; longer text gets a chevron toggle.
+  const isLong = text.length > 60;
+  return (
+    <div css={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.xs, minWidth: 0 }}>
+      <Typography.Text
+        css={
+          expanded
+            ? { whiteSpace: 'normal', wordBreak: 'break-word' }
+            : {
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }
+        }
+      >
+        {text}
+      </Typography.Text>
+      {isLong && (
+        <Button
+          componentId="mlflow.regression-test-detail.assertion-expand"
+          type="tertiary"
+          size="small"
+          icon={expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          aria-label={
+            expanded
+              ? intl.formatMessage({
+                  defaultMessage: 'Collapse assertion text',
+                  description: 'Aria label for the chevron that collapses a long assertion text',
+                })
+              : intl.formatMessage({
+                  defaultMessage: 'Expand assertion text',
+                  description: 'Aria label for the chevron that expands a long assertion text',
+                })
+          }
+          css={{ flexShrink: 0 }}
+          onClick={() => setExpanded((e) => !e)}
+        />
+      )}
+    </div>
+  );
+};
+
 export const TestCaseDetail = ({
   evaluation,
   experimentId,
+  assessmentInfos,
   onClose,
   onPrev,
   onNext,
 }: {
   evaluation: EvalTraceComparisonEntry;
   experimentId?: string;
+  assessmentInfos?: AssessmentInfo[];
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
@@ -103,71 +167,48 @@ export const TestCaseDetail = ({
   const caseId = readTag(info, 'mlflow.test.case_id');
   const testName = caseId ? `${baseName}[${caseId}]` : baseName;
 
-  // Flatten every assertion (one row each) — multiple guideline assertions can
+  const infoByName = useMemo(() => new Map((assessmentInfos ?? []).map((i) => [i.name, i])), [assessmentInfos]);
+
+  // Flatten every assertion (one row each) -- multiple guideline assertions can
   // share the default "guidelines" name, so we don't collapse to the first.
+  // Each row keeps the raw assessment + its AssessmentInfo so the Result cell
+  // can render the same value tag + LLM-judge hover the traces table uses.
   const byName = run?.responseAssessmentsByName ?? {};
   const assertions = Object.entries(byName)
     .filter(([name]) => name !== 'Result')
     .flatMap(([name, arr]) =>
-      (arr ?? []).map((a: any, i: number) => {
+      (arr ?? []).map((a: RunEvaluationResultAssessment, i: number) => {
         const value = getEvaluationResultAssessmentValue(a);
-        const rationale = a?.rationale ?? '';
         // Prefer a meaningful assertion name. For generically-named ("guidelines")
         // assertions the rubric text isn't on the trace, so fall back to a
         // guideline in metadata, then to the rationale (the real text we have).
         const named = name && name !== 'guidelines' ? (arr.length > 1 ? `${name} ${i + 1}` : name) : '';
         const metaGuideline = stringify(a?.metadata?.['guideline'] ?? a?.metadata?.['guidelines']);
-        const label = named || metaGuideline || rationale || 'Assertion';
-        // Avoid repeating the rationale in the Result column when it's the label.
-        const resultRationale = label === rationale ? '' : rationale;
-        return { label, passed: isPass(value), rationale: resultRationale };
+        const label = named || metaGuideline || a?.rationale || 'Assertion';
+        const assessmentInfo = infoByName.get(name) ?? fallbackAssessmentInfo(name, a);
+        return { label, assessment: a, assessmentInfo, passed: isPass(value) };
       }),
     );
   const allPassed = assertions.length > 0 && assertions.every((a) => a.passed);
 
-  // Chat-style: when input/output is a messages array, show the last message's
-  // text content (the assistant's reply / the user's question) rather than the
-  // whole JSON blob. Falls through to the raw value for non-chat shapes.
-  const lastMessageContent = (v: any): any => {
-    if (v == null) return v;
-    const obj = deepParse(v);
-    const msgs = Array.isArray(obj) ? obj : Array.isArray(obj?.messages) ? obj.messages : null;
-    const last = msgs && msgs.length ? msgs[msgs.length - 1] : undefined;
-    if (last && typeof last.content === 'string') return last.content;
-    return typeof obj === 'string' ? obj : typeof v === 'string' ? v : obj;
-  };
-  const input = run?.inputsTitle || lastMessageContent(run?.inputs);
-  const output = lastMessageContent(run?.outputs?.['response'] ?? run?.outputs);
-
-  // Rich chat view: if input/output is a messages array, render the turns as
-  // chat bubbles. Falls back to the Input/Output text boxes otherwise.
-  const { makeHTML } = useMarkdownConverter();
-  const parseMessages = (v: any): any[] | null => {
-    const o = deepParse(v);
-    const m = Array.isArray(o) ? o : Array.isArray(o?.messages) ? o.messages : null;
-    if (m && m.length) return m;
-    // Trace preview fields are truncated (~1000 chars), so the JSON frequently
-    // won't parse. Salvage any complete {content, type/role} message objects we
-    // can still read out of the partial string.
-    if (typeof v === 'string') {
-      const contents = Array.from(v.matchAll(/"content"\s*:\s*"((?:\\.|[^"\\])*)"/g)).map((x) => x[1]);
-      const roles = Array.from(v.matchAll(/"(?:type|role)"\s*:\s*"([^"]+)"/g)).map((x) => x[1]);
-      if (contents.length) {
-        const decode = (s: string) => {
-          try {
-            return JSON.parse(`"${s}"`);
-          } catch {
-            return s;
-          }
-        };
-        // The role field can sit past the truncation point; fall back to
-        // position (first turn = user, the rest = assistant).
-        return contents.map((c, i) => ({ content: decode(c), type: roles[i] ?? (i === 0 ? 'user' : 'assistant') }));
-      }
-    }
-    return null;
-  };
-  const messages = parseMessages(run?.outputs?.['response'] ?? run?.outputs) ?? parseMessages(run?.inputs);
+  // Fetch the full trace (info + spans) so SingleChatTurnMessages can render
+  // the deduped user/assistant conversation exactly like the session view does.
+  // useQuery survives the IIFE-based remount pattern in GenAiTracesTableBody.
+  const { data: fullTrace } = useQuery<ModelTrace | null>({
+    queryKey: ['testCaseDetailTrace', traceId],
+    queryFn: async (): Promise<ModelTrace | null> => {
+      const [infoResp, dataResp] = await Promise.all([
+        fetch(`/ajax-api/3.0/mlflow/traces/${encodeURIComponent(traceId!)}`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`/ajax-api/3.0/mlflow/get-trace-artifact?request_id=${encodeURIComponent(traceId!)}`).then((r) =>
+          r.ok ? r.json() : null,
+        ),
+      ]);
+      if (!dataResp) return null;
+      return { info: infoResp?.trace?.trace_info ?? {}, data: dataResp } as ModelTrace;
+    },
+    enabled: !!traceId,
+    staleTime: Infinity,
+  });
 
   return (
     <Drawer.Root
@@ -208,66 +249,17 @@ export const TestCaseDetail = ({
           </Button>
         </div>
 
-        {messages ? (
-          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, marginBottom: theme.spacing.lg }}>
-            {messages.map((m: any, i: number) => {
-              const role = String(m?.type ?? m?.role ?? '').toLowerCase();
-              const isUser = role === 'human' || role === 'user';
-              const roleLabel = isUser
-                ? 'User'
-                : role === 'ai' || role === 'assistant'
-                  ? 'Assistant'
-                  : role || 'Message';
-              const content = typeof m?.content === 'string' ? m.content : stringify(m?.content);
-              if (!content) return null;
-              return (
-                <div
-                  key={i}
-                  css={{ alignSelf: isUser ? 'flex-end' : 'flex-start', maxWidth: '85%', minWidth: 0 }}
-                >
-                  <Typography.Text
-                    color="secondary"
-                    css={{ display: 'block', fontSize: 12, marginBottom: 2, textAlign: isUser ? 'right' : 'left' }}
-                  >
-                    {roleLabel}
-                  </Typography.Text>
-                  <div
-                    css={{
-                      padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-                      borderRadius: theme.legacyBorders.borderRadiusMd,
-                      backgroundColor: isUser
-                        ? theme.colors.actionPrimaryBackgroundDefault
-                        : theme.colors.backgroundSecondary,
-                      color: isUser ? theme.colors.actionPrimaryTextDefault : theme.colors.textPrimary,
-                      overflowWrap: 'break-word',
-                    }}
-                  >
-                    {/* eslint-disable-next-line react/no-danger */}
-                    <span css={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: makeHTML(content || '') || '' }} />
-                  </div>
-                </div>
-              );
-            })}
+        {fullTrace && (
+          <div
+            css={{
+              marginBottom: theme.spacing.lg,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.legacyBorders.borderRadiusMd,
+              padding: theme.spacing.md,
+            }}
+          >
+            <SingleChatTurnMessages trace={fullTrace} />
           </div>
-        ) : (
-          <>
-            <div css={{ marginBottom: theme.spacing.lg }}>
-              <EvaluationsReviewTextBox
-                fieldName="regression-test-input"
-                title={<FormattedMessage defaultMessage="Input" description="Agent input section in the detail" />}
-                value={input}
-                showCopyIcon
-              />
-            </div>
-            <div css={{ marginBottom: theme.spacing.lg }}>
-              <EvaluationsReviewTextBox
-                fieldName="regression-test-output"
-                title={<FormattedMessage defaultMessage="Output" description="Agent output section in the detail" />}
-                value={output}
-                showCopyIcon
-              />
-            </div>
-          </>
         )}
 
         <div
@@ -301,13 +293,17 @@ export const TestCaseDetail = ({
               assertions.map((a, i) => (
                 <TableRow key={`${a.label}-${i}`}>
                   <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
-                    <Typography.Text>{a.label}</Typography.Text>
+                    <ExpandableAssertionText text={a.label} />
                   </TableCell>
-                  <TableCell
-                    css={{ flexGrow: 1, flexDirection: 'column', alignItems: 'flex-start', gap: theme.spacing.xs }}
-                  >
-                    <ResultPill passed={a.passed} />
-                    {a.rationale && <Typography.Text color="secondary">{a.rationale}</Typography.Text>}
+                  <TableCell css={{ flexGrow: 1, alignItems: 'flex-start' }}>
+                    <EvaluationsReviewAssessmentTag
+                      type="value"
+                      assessment={a.assessment}
+                      assessmentInfo={a.assessmentInfo}
+                      showRationaleInTooltip
+                      hideAssessmentName
+                      disableJudgeTypeIcon
+                    />
                   </TableCell>
                 </TableRow>
               ))
