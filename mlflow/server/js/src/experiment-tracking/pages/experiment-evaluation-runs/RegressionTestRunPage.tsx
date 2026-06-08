@@ -3,13 +3,11 @@
  * ``mlflow.runType=regression_test``, produced by an ``@mlflow.assertions``
  * pytest invocation).
  *
- * Stage 2 UI shell: three top-level tabs (Test cases / History /
- * Configuration). Tab content is intentionally a stub - the table /
- * sparklines / config view are filled in by C3 / C4 / C5.
+ * Renders the test cases table for the run, with a compare-to-run selector so
+ * two regression-test runs can be diffed side by side.
  */
-import { Tabs, Typography, useDesignSystemTheme } from '@databricks/design-system';
-import { useState } from 'react';
-import { FormattedMessage, useIntl } from 'react-intl';
+import { Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { FormattedMessage } from 'react-intl';
 import { Link, useParams } from '../../../common/utils/RoutingUtils';
 import Routes from '../../routes';
 import { ExperimentPageTabName } from '../../constants';
@@ -17,9 +15,7 @@ import TestCasesTab from './regression-test-run/TestCasesTab';
 
 const RegressionTestRunPage = () => {
   const { theme } = useDesignSystemTheme();
-  const intl = useIntl();
   const { experimentId, runUuid } = useParams<{ experimentId: string; runUuid: string }>();
-  const [activeTab, setActiveTab] = useState<string>('test-cases');
 
   return (
     <div css={{ display: 'flex', flexDirection: 'column', padding: theme.spacing.lg, gap: theme.spacing.md }}>
@@ -48,56 +44,9 @@ const RegressionTestRunPage = () => {
         />
       </Typography.Text>
 
-      <Tabs.Root
-        componentId="mlflow.eval-runs.regression-test-run.tabs"
-        value={activeTab}
-        onValueChange={setActiveTab}
-        css={{ marginTop: theme.spacing.md }}
-      >
-        <Tabs.List>
-          <Tabs.Trigger value="test-cases">
-            <FormattedMessage
-              defaultMessage="Test cases"
-              description="Tab label for the test cases view on the regression-test run page"
-            />
-          </Tabs.Trigger>
-          <Tabs.Trigger value="history">
-            <FormattedMessage
-              defaultMessage="History"
-              description="Tab label for the history view on the regression-test run page"
-            />
-          </Tabs.Trigger>
-          <Tabs.Trigger value="configuration">
-            <FormattedMessage
-              defaultMessage="Configuration"
-              description="Tab label for the configuration view on the regression-test run page"
-            />
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        <Tabs.Content value="test-cases" css={{ paddingTop: theme.spacing.md }}>
-          <TestCasesTab experimentId={experimentId} runUuid={runUuid} />
-        </Tabs.Content>
-
-        <Tabs.Content value="history" css={{ paddingTop: theme.spacing.md }}>
-          <Typography.Text color="secondary">
-            {intl.formatMessage({
-              defaultMessage: 'Per-test history sparklines and trend charts will go here (C5).',
-              description: 'Placeholder text for the empty History tab on the regression-test run page',
-            })}
-          </Typography.Text>
-        </Tabs.Content>
-
-        <Tabs.Content value="configuration" css={{ paddingTop: theme.spacing.md }}>
-          <Typography.Text color="secondary">
-            {intl.formatMessage({
-              defaultMessage:
-                'Plugin version, test files collected, scorers in use, run environment will go here.',
-              description: 'Placeholder text for the empty Configuration tab on the regression-test run page',
-            })}
-          </Typography.Text>
-        </Tabs.Content>
-      </Tabs.Root>
+      <div css={{ marginTop: theme.spacing.md }}>
+        <TestCasesTab experimentId={experimentId} runUuid={runUuid} />
+      </div>
     </div>
   );
 };

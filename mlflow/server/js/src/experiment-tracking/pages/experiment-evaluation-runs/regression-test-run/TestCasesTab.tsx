@@ -28,14 +28,7 @@ const TestCasesTab = ({ experimentId, runUuid }: { experimentId?: string; runUui
     );
   }
 
-  return (
-    <RegressionTestCasesTable
-      experimentId={experimentId}
-      runUuid={runUuid}
-      runDisplayName={runUuid}
-      hideCompareSelector
-    />
-  );
+  return <RegressionTestCasesTable experimentId={experimentId} runUuid={runUuid} runDisplayName={runUuid} />;
 };
 
 export default TestCasesTab;
