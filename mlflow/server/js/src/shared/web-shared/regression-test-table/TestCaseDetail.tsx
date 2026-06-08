@@ -221,8 +221,8 @@ export const TestCaseDetail = ({
     >
       <Drawer.Content
         componentId="mlflow.regression-test-detail.drawer"
-        width={showTrace ? '85vw' : 640}
-        expandContentToFullHeight={showTrace}
+        width={640}
+        expandContentToFullHeight
         title={
           <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <Typography.Title level={4} withoutMargins css={{ fontFamily: 'monospace' }}>
