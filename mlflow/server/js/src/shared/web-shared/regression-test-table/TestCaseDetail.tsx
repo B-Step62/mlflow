@@ -253,9 +253,13 @@ export const TestCaseDetail = ({
           <div
             css={{
               marginBottom: theme.spacing.lg,
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.legacyBorders.borderRadiusMd,
-              padding: theme.spacing.md,
+              // Add visible borders to the chat message bubbles rendered by
+              // SingleChatTurnMessages (the component sets borderWidth but
+              // not borderStyle/borderColor on the message elements).
+              '& > div > div': {
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusMd,
+              },
             }}
           >
             <SingleChatTurnMessages trace={fullTrace} />

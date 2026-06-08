@@ -111,7 +111,6 @@ const RegressionTestCasesTableInner = ({
   const getTrace = getTraceV3;
   const isQueryDisabled = false;
 
-
   // Get table metadata
   const {
     assessmentInfos,
