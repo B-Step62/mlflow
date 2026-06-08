@@ -118,6 +118,7 @@ def run_assertions(
 
             value = _extract_value(raw)
             rationale = _extract_rationale(raw)
+            metadata = _extract_metadata(raw)
             passed = _is_passing(value)
 
             results.append(
@@ -128,7 +129,7 @@ def run_assertions(
                     passed=passed,
                 )
             )
-            _try_log_feedback(trace_id, scorer_name, value, rationale)
+            _try_log_feedback(trace_id, scorer_name, value, rationale, metadata)
 
     return results
 
@@ -159,6 +160,12 @@ def _extract_rationale(raw) -> str | None:
     return None
 
 
+def _extract_metadata(raw) -> dict[str, str] | None:
+    if isinstance(raw, Feedback):
+        return raw.metadata
+    return None
+
+
 def _is_passing(value: Any) -> bool:
     """Default pass/fail rule for v0.
 
@@ -180,11 +187,19 @@ def _is_passing(value: Any) -> bool:
             return False
 
 
-def _try_log_feedback(trace_id: str | None, name: str, value: Any, rationale: str | None) -> None:
+def _try_log_feedback(
+    trace_id: str | None,
+    name: str,
+    value: Any,
+    rationale: str | None,
+    metadata: dict[str, str] | None = None,
+) -> None:
     if not trace_id:
         return
     try:
-        mlflow.log_feedback(trace_id=trace_id, name=name, value=value, rationale=rationale)
+        mlflow.log_feedback(
+            trace_id=trace_id, name=name, value=value, rationale=rationale, metadata=metadata
+        )
     except Exception as e:
         _logger.warning("Failed to log feedback %s on %s: %s", name, trace_id, e)
 
