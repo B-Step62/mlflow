@@ -322,9 +322,7 @@ export const getRouteDefs = () => [
     // /experiments/:experimentId/runs/:runUuid/regression-tests wins over
     // the runPageWithTab wildcard /experiments/:experimentId/runs/:runUuid/*.
     path: RoutePaths.regressionTestRunDetails,
-    element: createLazyRouteElement(
-      () => import('./pages/experiment-evaluation-runs/RegressionTestRunPage'),
-    ),
+    element: createLazyRouteElement(() => import('./pages/experiment-evaluation-runs/RegressionTestRunPage')),
     pageId: 'mlflow.regression-test-run-details',
     handle: {
       getPageTitle: (params) => `Regression Test Run ${params['runUuid']}`,

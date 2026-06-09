@@ -19,11 +19,7 @@ import { RunGroupingMode } from '../../components/experiment-page/utils/experime
 import { FormattedMessage } from 'react-intl';
 import { useNavigate } from '../../../common/utils/RoutingUtils';
 import Routes from '../../routes';
-import {
-  MLFLOW_RUN_TYPE_TAG,
-  MLFLOW_RUN_TYPE_VALUE_REGRESSION_TEST,
-  RunPageTabName,
-} from '../../constants';
+import { MLFLOW_RUN_TYPE_TAG, MLFLOW_RUN_TYPE_VALUE_REGRESSION_TEST, RunPageTabName } from '../../constants';
 
 type TracesViewTableRowProps = {
   row: Row<RunEntityOrGroupData>;

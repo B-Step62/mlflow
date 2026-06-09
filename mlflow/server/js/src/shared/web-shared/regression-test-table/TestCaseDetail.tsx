@@ -11,8 +11,9 @@
 import {
   Button,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ChevronUpIcon,
-  Drawer,
   ListIcon,
   Table,
   TableCell,
@@ -22,8 +23,10 @@ import {
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
+
+import { GenAITracesTableContext } from './GenAITracesTableContext';
 
 import { EvaluationsReviewAssessmentTag } from './components/EvaluationsReviewAssessmentTag';
 import { getEvaluationResultAssessmentValue } from './components/GenAiEvaluationTracesReview.utils';
@@ -159,6 +162,7 @@ export const TestCaseDetail = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
+  const { DrawerComponent } = useContext(GenAITracesTableContext);
   const run = evaluation.currentRunValue;
   const info: any = run?.traceInfo;
   const traceId: string | undefined = info?.trace_id;
@@ -208,21 +212,37 @@ export const TestCaseDetail = ({
   });
 
   return (
-    <Drawer.Root
+    <DrawerComponent.Root
       open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <Drawer.Content
+      <DrawerComponent.Content
         componentId="mlflow.regression-test-detail.drawer"
-        width={640}
+        width="60vw"
         title={
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-            <Typography.Title level={4} withoutMargins css={{ fontFamily: 'monospace' }}>
-              {testName}
-            </Typography.Title>
-            <ResultPill passed={allPassed} />
+          <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
+            <Button
+              componentId="mlflow.regression-test-detail.prev"
+              disabled={!onPrev}
+              onClick={() => onPrev?.()}
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <Button
+              componentId="mlflow.regression-test-detail.next"
+              disabled={!onNext}
+              onClick={() => onNext?.()}
+            >
+              <ChevronRightIcon />
+            </Button>
+            <div css={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <Typography.Title level={4} withoutMargins css={{ fontFamily: 'monospace' }}>
+                {testName}
+              </Typography.Title>
+              <ResultPill passed={allPassed} />
+            </div>
           </div>
         }
       >
@@ -238,12 +258,6 @@ export const TestCaseDetail = ({
               <FormattedMessage defaultMessage="Trace" description="Button to open the raw trace from the detail" />
             </Button>
           )}
-          <Button componentId="mlflow.regression-test-detail.prev" onClick={onPrev} disabled={!onPrev}>
-            <FormattedMessage defaultMessage="Previous" description="Previous test case" />
-          </Button>
-          <Button componentId="mlflow.regression-test-detail.next" onClick={onNext} disabled={!onNext}>
-            <FormattedMessage defaultMessage="Next" description="Next test case" />
-          </Button>
         </div>
 
         {fullTrace && (
@@ -311,7 +325,7 @@ export const TestCaseDetail = ({
             )}
           </Table>
         </div>
-      </Drawer.Content>
-    </Drawer.Root>
+      </DrawerComponent.Content>
+    </DrawerComponent.Root>
   );
 };
