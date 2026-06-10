@@ -54,16 +54,18 @@ def _resolve_identity(name: str | None) -> tuple[str | None, str | None]:
     return item_name, case_id
 
 
-def _resolve_trace(trace: Trace | Literal["auto"]) -> tuple[Trace | None, str | None]:
+def _resolve_trace(
+    trace: Trace | Literal["auto"] | None,
+) -> tuple[Trace | None, str | None]:
     """Resolve the ``trace`` argument to a ``(trace, trace_id)`` pair.
 
-    ``"auto"`` looks up the last active trace produced in *this thread* -- so the
-    bundle runner's parallel tests each resolve their own trace -- and
-    materializes it, flushing any pending async export first. The materialized
-    trace may be ``None`` when nothing was traced; that's the non-traced path,
-    where the caller scores an explicit ``outputs=`` instead. A ``Trace`` is used
-    as-is.
+    ``None`` skips trace lookup entirely. ``"auto"`` looks up the last active
+    trace produced in *this thread* -- so the bundle runner's parallel tests each
+    resolve their own trace -- and materializes it, flushing any pending async
+    export first. A ``Trace`` is used as-is.
     """
+    if trace is None:
+        return None, None
     if isinstance(trace, Trace):
         return trace, trace.info.trace_id
     if trace == "auto":
@@ -71,13 +73,13 @@ def _resolve_trace(trace: Trace | Literal["auto"]) -> tuple[Trace | None, str | 
         trace_obj = mlflow.get_trace(trace_id, silent=True, flush=True) if trace_id else None
         return trace_obj, trace_id
     raise TypeError(
-        'assert_behavior(trace=...) must be a Trace or the literal "auto". '
+        'assert_behavior(trace=...) must be a Trace, the literal "auto", or None. '
         f"Got {type(trace).__name__}: {trace!r}"
     )
 
 
 def assert_behavior(
-    trace: Trace | Literal["auto"],
+    trace: Trace | Literal["auto"] | None = None,
     *,
     assertions: list[Any],
     inputs: Any = None,
@@ -87,10 +89,11 @@ def assert_behavior(
     """Assert that an agent's behavior on ``trace`` satisfies every assertion.
 
     Args:
-        trace: The trace to score. Pass ``"auto"`` to use the last trace produced
-            in the current thread (e.g. the agent call the test just made), or an
-            explicit :class:`~mlflow.entities.Trace`. Inputs and outputs are
-            extracted from the trace unless overridden by ``inputs``/``outputs``.
+        trace: The trace to score. Defaults to ``None`` (no trace lookup).
+            Pass ``"auto"`` to use the last trace produced in the current thread,
+            or an explicit :class:`~mlflow.entities.Trace`. Inputs and outputs
+            are extracted from the trace unless overridden by
+            ``inputs``/``outputs``.
         assertions: One or more assertions. Each is either a plain-string rubric
             (auto-wrapped in a ``Guidelines`` LLM judge) or a ``Scorer``
             instance (``Safety()``, ``Guidelines(...)``, a ``@scorer`` function).

@@ -84,7 +84,7 @@ const RegressionTestRunPage = () => {
           defaultMessage: 'Duration',
           description: 'Regression test run info popover: duration label',
         }),
-        value: Utils.getDuration(runInfo.startTime, runInfo.endTime),
+        value: Utils.getDuration(runInfo.startTime, runInfo.endTime) ?? '',
       });
     }
     return rows;

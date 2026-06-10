@@ -177,8 +177,9 @@ def _make_bundle_callable(bundled_items: list[pytest.Function]):
         from mlflow.models.evaluation.utils.trace import (
             configure_autologging_for_evaluation,
         )
+        from mlflow.tracing.export.mlflow_v3 import disable_async_trace_export
 
-        with configure_autologging_for_evaluation(enable_tracing=True):
+        with configure_autologging_for_evaluation(enable_tracing=True), disable_async_trace_export():
             _session.ensure_run()
             if workers == 1:
                 for item in bundled_items:
