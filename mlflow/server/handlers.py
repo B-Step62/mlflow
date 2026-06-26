@@ -19,14 +19,12 @@ from zlib import adler32
 
 import requests
 from cachetools import TTLCache
-from flask import Response, current_app, g, jsonify, send_file
+from flask import g
 from google.protobuf import descriptor
 from google.protobuf.json_format import ParseError
 from werkzeug.exceptions import RequestedRangeNotSatisfiable
 from werkzeug.http import quote_header_value
 from werkzeug.wsgi import wrap_file
-
-from mlflow.server.request_context import get_request
 
 import mlflow
 from mlflow.client import MlflowClient
@@ -322,6 +320,15 @@ from mlflow.protos.webhooks_pb2 import (
     TestWebhook,
     UpdateWebhook,
     WebhookService,
+)
+from mlflow.server.request_context import get_request
+from mlflow.server.responses import (
+    empty_response,
+    file_response,
+    json_response,
+    jsonify_response,
+    streaming_response,
+    text_response,
 )
 from mlflow.server.validation import _validate_content_type
 from mlflow.server.workspace_helpers import (
@@ -1187,13 +1194,13 @@ def _response_with_file_attachment_headers(file_path, response):
     return response
 
 
-def _create_artifact_file_response(file_path: str, artifact_name: str) -> Response:
+def _create_artifact_file_response(file_path: str, artifact_name: str):
     """Serve a local file while preserving the logical artifact name for downloads."""
     if os.path.isdir(file_path):
         raise MlflowException.invalid_parameter_value(
             f"Artifact path refers to a directory, not a file: '{artifact_name}'"
         )
-    file_sender_response = send_file(file_path, mimetype=_guess_mime_type(file_path))
+    file_sender_response = file_response(file_path, mimetype=_guess_mime_type(file_path))
     file_sender_response.headers["Content-Disposition"] = _content_disposition_attachment(
         pathlib.Path(artifact_name).name
     )
@@ -1289,16 +1296,14 @@ def catch_mlflow_exception(func):
         try:
             return func(*args, **kwargs)
         except MlflowException as e:
-            response = Response(mimetype="application/json")
-            response.set_data(e.serialize_as_json())
-            response.status_code = e.get_http_status_code()
-            if response.status_code >= 500:
+            status_code = e.get_http_status_code()
+            if status_code >= 500:
                 is_debug = _logger.isEnabledFor(logging.DEBUG)
                 msg = f"Error in {func.__name__}: {e}"
                 if not is_debug:
                     msg += ". Set MLFLOW_LOGGING_LEVEL=DEBUG for traceback."
                 _logger.error(msg, exc_info=is_debug)
-            return response
+            return json_response(e.serialize_as_json(), status=status_code)
 
     return wrapper
 
@@ -1307,13 +1312,11 @@ def _disable_unless_serve_artifacts(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if not _is_serving_proxied_artifacts():
-            return Response(
-                (
-                    f"Endpoint: {get_request().url_rule} disabled due to the mlflow server running "
-                    "with `--no-serve-artifacts`. To enable artifacts server functionality, "
-                    "run `mlflow server` with `--serve-artifacts`"
-                ),
-                503,
+            return text_response(
+                f"Endpoint: {get_request().url_rule} disabled due to the mlflow server running "
+                "with `--no-serve-artifacts`. To enable artifacts server functionality, "
+                "run `mlflow server` with `--serve-artifacts`",
+                status=503,
             )
         return func(*args, **kwargs)
 
@@ -1326,13 +1329,11 @@ def _disable_if_artifacts_only(func):
         from mlflow.server import ARTIFACTS_ONLY_ENV_VAR
 
         if os.environ.get(ARTIFACTS_ONLY_ENV_VAR):
-            return Response(
-                (
-                    f"Endpoint: {get_request().url_rule} disabled due to the mlflow server running "
-                    "in `--artifacts-only` mode. To enable tracking server functionality, run "
-                    "`mlflow server` without `--artifacts-only`"
-                ),
-                503,
+            return text_response(
+                f"Endpoint: {get_request().url_rule} disabled due to the mlflow server running "
+                "in `--artifacts-only` mode. To enable tracking server functionality, run "
+                "`mlflow server` without `--artifacts-only`",
+                status=503,
             )
         return func(*args, **kwargs)
 
@@ -1353,13 +1354,11 @@ def _disable_if_workspaces_disabled(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if not MLFLOW_ENABLE_WORKSPACES.get():
-            return Response(
-                (
-                    f"Endpoint: {get_request().url_rule} disabled because the server is running "
-                    "without workspaces support. To enable workspace, run "
-                    "`mlflow server` with `--enable-workspaces`"
-                ),
-                503,
+            return text_response(
+                f"Endpoint: {get_request().url_rule} disabled because the server is running "
+                "without workspaces support. To enable workspace, run "
+                "`mlflow server` with `--enable-workspaces`",
+                status=503,
             )
         return func(*args, **kwargs)
 
@@ -1542,9 +1541,7 @@ def _create_workspace_handler():
 
     response_message = CreateWorkspace.Response()
     response_message.workspace.MergeFrom(workspace.to_proto())
-    response = _wrap_response(response_message)
-    response.status_code = 201
-    return response
+    return json_response(message_to_json(response_message), status=201)
 
 
 @catch_mlflow_exception
@@ -1647,7 +1644,7 @@ def _delete_workspace_handler(workspace_name: str):
         store.delete_workspace(workspace_name, mode=mode)
     except NotImplementedError:
         raise _workspace_not_supported("Workspace deletion is not supported by this provider")
-    return Response(status=204)
+    return empty_response()
 
 
 @catch_mlflow_exception
@@ -1673,9 +1670,7 @@ def get_artifact_handler():
 
 
 def _not_implemented():
-    response = Response()
-    response.status_code = 404
-    return response
+    return empty_response(status=404)
 
 
 # Tracking Server APIs
@@ -1703,9 +1698,7 @@ def _create_experiment():
     )
     response_message = CreateExperiment.Response()
     response_message.experiment_id = experiment_id
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1715,9 +1708,7 @@ def _get_experiment():
         GetExperiment(), schema={"experiment_id": [_assert_required, _assert_string]}
     )
     response_message = get_experiment_impl(request_message)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def get_experiment_impl(request_message):
@@ -1743,9 +1734,7 @@ def _get_experiment_by_name():
         )
     experiment = store_exp.to_proto()
     response_message.experiment.MergeFrom(experiment)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1756,9 +1745,7 @@ def _delete_experiment():
     )
     _get_tracking_store().delete_experiment(request_message.experiment_id)
     response_message = DeleteExperiment.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1770,9 +1757,7 @@ def _restore_experiment():
     )
     _get_tracking_store().restore_experiment(request_message.experiment_id)
     response_message = RestoreExperiment.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1790,9 +1775,7 @@ def _update_experiment():
             request_message.experiment_id, request_message.new_name
         )
     response_message = UpdateExperiment.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1818,9 +1801,7 @@ def _create_run():
 
     response_message = CreateRun.Response()
     response_message.run.MergeFrom(run.to_proto())
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1841,9 +1822,7 @@ def _update_run():
     status = request_message.status if request_message.HasField("status") else None
     updated_info = _get_tracking_store().update_run_info(run_id, status, end_time, run_name)
     response_message = UpdateRun.Response(run_info=updated_info.to_proto())
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1854,9 +1833,7 @@ def _delete_run():
     )
     _get_tracking_store().delete_run(request_message.run_id)
     response_message = DeleteRun.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1867,9 +1844,7 @@ def _restore_run():
     )
     _get_tracking_store().restore_run(request_message.run_id)
     response_message = RestoreRun.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1901,9 +1876,7 @@ def _log_metric():
     run_id = request_message.run_id or request_message.run_uuid
     _get_tracking_store().log_metric(run_id, metric)
     response_message = LogMetric.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1921,9 +1894,7 @@ def _log_param():
     run_id = request_message.run_id or request_message.run_uuid
     _get_tracking_store().log_param(run_id, param)
     response_message = LogParam.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1953,9 +1924,7 @@ def _log_inputs():
 
     _get_tracking_store().log_inputs(run_id, datasets=datasets, models=models)
     response_message = LogInputs.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -1992,9 +1961,7 @@ def _set_experiment_tag():
         _validate_custom_view_tag_write(experiment, tag)
     store.set_experiment_tag(request_message.experiment_id, tag)
     response_message = SetExperimentTag.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2009,9 +1976,7 @@ def _delete_experiment_tag():
     )
     _get_tracking_store().delete_experiment_tag(request_message.experiment_id, request_message.key)
     response_message = DeleteExperimentTag.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2029,9 +1994,7 @@ def _set_tag():
     run_id = request_message.run_id or request_message.run_uuid
     _get_tracking_store().set_tag(run_id, tag)
     response_message = SetTag.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2046,9 +2009,7 @@ def _delete_tag():
     )
     _get_tracking_store().delete_tag(request_message.run_id, request_message.key)
     response_message = DeleteTag.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2058,9 +2019,7 @@ def _get_run():
         GetRun(), schema={"run_id": [_assert_required, _assert_string]}
     )
     response_message = get_run_impl(request_message)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def get_run_impl(request_message):
@@ -2086,9 +2045,7 @@ def _search_runs():
         },
     )
     response_message = search_runs_impl(request_message)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def search_runs_impl(request_message):
@@ -2137,9 +2094,7 @@ def _list_artifacts():
         },
     )
     response_message = list_artifacts_impl(request_message)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def list_artifacts_impl(request_message):
@@ -2243,9 +2198,7 @@ def _get_metric_history():
     if next_page_token := metric_entities.token:
         response_message.next_page_token = next_page_token
 
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2352,9 +2305,7 @@ def get_metric_history_bulk_interval_handler():
         },
     )
     response_message = get_metric_history_bulk_interval_impl(request_message)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def get_metric_history_bulk_interval_impl(request_message):
@@ -2398,9 +2349,7 @@ def _search_datasets_handler():
         SearchDatasets(),
     )
     response_message = search_datasets_impl(request_message)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def search_datasets_impl(request_message):
@@ -2465,7 +2414,9 @@ def gateway_proxy_handler():
     gateway_path = args.get("gateway_path")
     _validate_gateway_path(get_request().method, gateway_path)
     json_data = args.get("json_data", None)
-    response = requests.request(get_request().method, f"{target_uri}/{gateway_path}", json=json_data)
+    response = requests.request(
+        get_request().method, f"{target_uri}/{gateway_path}", json=json_data
+    )
     if response.status_code == 200:
         return response.json()
     else:
@@ -2540,9 +2491,7 @@ def create_promptlab_run_handler():
     )
     response_message = CreateRun.Response()
     response_message.run.MergeFrom(run.to_proto())
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2616,7 +2565,7 @@ def upload_artifact_handler():
 
         _log_artifact_to_repo(file_path, run, dirname, artifact_dir)
 
-    return Response(mimetype="application/json")
+    return json_response("{}")
 
 
 @catch_mlflow_exception
@@ -2644,9 +2593,7 @@ def _search_experiments():
     response_message.experiments.extend([e.to_proto() for e in experiment_entities])
     if experiment_entities.token:
         response_message.next_page_token = experiment_entities.token
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2707,9 +2654,7 @@ def _log_batch():
         run_id=request_message.run_id, metrics=metrics, params=params, tags=tags
     )
     response_message = LogBatch.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -2741,9 +2686,7 @@ def _log_model():
         run_id=request_message.run_id, mlflow_model=Model.from_dict(model)
     )
     response_message = LogModel.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def _wrap_response(
@@ -2752,15 +2695,13 @@ def _wrap_response(
     pretty: bool = True,
     convert_int64_to_number: bool = True,
 ):
-    response = Response(mimetype="application/json")
-    response.set_data(
+    return json_response(
         message_to_json(
             response_message,
             pretty=pretty,
             convert_int64_to_number=convert_int64_to_number,
         )
     )
-    return response
 
 
 # Model Registry APIs
@@ -3714,7 +3655,6 @@ def _download_artifact(artifact_path):
         tmp_dir.cleanup()
         raise
 
-
 @catch_mlflow_exception
 @_disable_unless_serve_artifacts
 def _upload_artifact(artifact_path):
@@ -3760,9 +3700,7 @@ def _list_artifacts_mlflow_artifacts():
         files.append(new_file_info.to_proto())
     response_message = ListArtifacts.Response()
     response_message.files.extend(files)
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -3778,9 +3716,7 @@ def _delete_artifact_mlflow_artifacts(artifact_path):
     artifact_repo = _get_artifact_repo_mlflow_artifacts()
     artifact_repo.delete_artifacts(artifact_path)
     response_message = DeleteArtifact.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 def _get_graphql_auth_middleware():
@@ -3834,7 +3770,7 @@ def _graphql():
     }
 
     # Return the response
-    return jsonify(result_data)
+    return jsonify_response(result_data)
 
 
 def _validate_support_multipart_upload(artifact_repo):
@@ -3892,10 +3828,7 @@ def _create_presigned_upload_url():
     _validate_support_presigned_upload(artifact_repo)
 
     response = artifact_repo.create_presigned_upload_url(path, expiration=expiration)
-    response_message = response.to_proto()
-    resp = Response(mimetype="application/json")
-    resp.set_data(message_to_json(response_message))
-    return resp
+    return json_response(message_to_json(response.to_proto()))
 
 
 @catch_mlflow_exception
@@ -3983,9 +3916,7 @@ def _create_multipart_upload_artifact(artifact_path):
         artifact_path,
     )
     response_message = create_response.to_proto()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -4070,9 +4001,7 @@ def _get_presigned_download_url(artifact_path):
     presigned_response = artifact_repo.get_download_presigned_url(
         artifact_path, expiration=expiration
     )
-    response = Response(mimetype="application/json")
-    response.set_data(json.dumps(presigned_response.to_dict()))
-    return response
+    return json_response(json.dumps(presigned_response.to_dict()))
 
 
 # MLflow Tracing APIs
@@ -4121,7 +4050,7 @@ def _get_trace_info_v3(trace_id):
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _batch_get_traces() -> Response:
+def _batch_get_traces():
     """
     A request handler for `GET /mlflow/traces/batchGet` to retrieve
     a batch of complete traces with spans for given trace ids.
@@ -4138,7 +4067,7 @@ def _batch_get_traces() -> Response:
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _batch_get_trace_infos() -> Response:
+def _batch_get_trace_infos():
     request_message = _get_request_message(
         BatchGetTraceInfos(),
         schema={"trace_ids": [_assert_array, _assert_required, _assert_item_type_string]},
@@ -4151,7 +4080,7 @@ def _batch_get_trace_infos() -> Response:
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _get_trace() -> Response:
+def _get_trace():
     """
     A request handler for `GET /mlflow/traces/get` to get a trace with spans for given trace id.
     """
@@ -4433,7 +4362,7 @@ def _fetch_trace_data_from_store(
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def get_trace_artifact_handler() -> Response:
+def get_trace_artifact_handler():
     request_id = get_request().args.get("request_id")
     path = get_request().args.get("path")
 
@@ -4485,7 +4414,6 @@ def get_trace_artifact_handler() -> Response:
                 f"Failed to download attachment '{path}' for trace '{request_id}'.",
                 error_code=INTERNAL_ERROR,
             )
-
     trace_data = _fetch_trace_data_from_store(store, request_id)
     if trace_data is None:
         trace_info = store.get_trace_info(request_id)
@@ -4521,7 +4449,7 @@ def get_trace_artifact_handler() -> Response:
     buf.write(json.dumps(trace_data).encode())
     buf.seek(0)
 
-    file_sender_response = send_file(
+    file_sender_response = file_response(
         buf,
         mimetype="application/octet-stream",
         as_attachment=True,
@@ -4532,7 +4460,7 @@ def get_trace_artifact_handler() -> Response:
 
 @catch_mlflow_exception
 @_disable_if_artifacts_only
-def _query_trace_metrics() -> Response:
+def _query_trace_metrics():
     request_message = _get_request_message(
         QueryTraceMetrics(),
         schema={
@@ -5272,7 +5200,7 @@ def _invoke_issue_detection_handler():
     mlflow.set_tag(MLFLOW_ISSUE_DETECTION_JOB_ID, job.job_id)
     mlflow.end_run(RunStatus.to_string(RunStatus.RUNNING))
 
-    return jsonify({"job_id": job.job_id, "run_id": run_id})
+    return jsonify_response({"job_id": job.job_id, "run_id": run_id})
 
 
 @catch_mlflow_exception
@@ -5337,7 +5265,7 @@ def _invoke_genai_evaluate_handler():
         client.set_terminated(run_id, RunStatus.to_string(RunStatus.FAILED))
         raise
 
-    return jsonify({"job_id": job.job_id, "run_id": run_id})
+    return jsonify_response({"job_id": job.job_id, "run_id": run_id})
 
 
 @catch_mlflow_exception
@@ -5346,7 +5274,7 @@ def _get_job(job_id):
     from mlflow.server.jobs import get_job
 
     job = get_job(job_id)
-    return jsonify({
+    return jsonify_response({
         "status": str(job.status),
         "result": job.parsed_result,
         "status_details": job.status_details,
@@ -5359,7 +5287,7 @@ def _cancel_job(job_id):
     from mlflow.server.jobs import cancel_job
 
     job = cancel_job(job_id)
-    return jsonify({
+    return jsonify_response({
         "status": str(job.status),
         "result": job.parsed_result,
     })
@@ -5689,9 +5617,7 @@ def _list_logged_model_artifacts(model_id: str):
     return _list_logged_model_artifacts_impl(model_id, artifact_path)
 
 
-def _list_logged_model_artifacts_impl(
-    model_id: str, artifact_directory_path: str | None
-) -> Response:
+def _list_logged_model_artifacts_impl(model_id: str, artifact_directory_path: str | None):
     response = ListLoggedModelArtifacts.Response()
     logged_model: LoggedModel = _get_tracking_store().get_logged_model(model_id)
     if _is_servable_proxied_run_artifact_root(logged_model.artifact_location):
@@ -5750,9 +5676,7 @@ def _register_scorer():
     response_message.name = scorer_version.scorer_name
     response_message.serialized_scorer = scorer_version._serialized_scorer
     response_message.creation_time = scorer_version.creation_time
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -5785,9 +5709,7 @@ def _list_scorers():
                 break
         scorers = store.list_scorers_across_experiments(experiment_ids)
     response_message.scorers.extend([scorer.to_proto() for scorer in scorers])
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -5805,9 +5727,7 @@ def _list_scorer_versions():
         request_message.experiment_id, request_message.name
     )
     response_message.scorers.extend([scorer.to_proto() for scorer in scorers])
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -5828,9 +5748,7 @@ def _get_scorer():
         request_message.version if request_message.HasField("version") else None,
     )
     response_message.scorer.CopyFrom(scorer_version.to_proto())
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -5850,9 +5768,7 @@ def _delete_scorer():
         request_message.version if request_message.HasField("version") else None,
     )
     response_message = DeleteScorer.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -5877,9 +5793,7 @@ def _get_online_scoring_configs():
     scorer_ids = request_json["scorer_ids"]
     configs = _get_tracking_store().get_online_scoring_configs(scorer_ids)
 
-    response = Response(mimetype="application/json")
-    response.set_data(json.dumps({"configs": [c.to_dict() for c in configs]}))
-    return response
+    return json_response(json.dumps({"configs": [c.to_dict() for c in configs]}))
 
 
 @catch_mlflow_exception
@@ -5923,9 +5837,7 @@ def _upsert_online_scoring_config():
         filter_string=filter_string,
     )
 
-    response = Response(mimetype="application/json")
-    response.set_data(json.dumps({"config": config.to_dict()}))
-    return response
+    return json_response(json.dumps({"config": config.to_dict()}))
 
 
 # =============================================================================
@@ -6493,9 +6405,7 @@ def _set_gateway_endpoint_tag():
     tag = GatewayEndpointTag(request_message.key, request_message.value)
     _get_tracking_store().set_gateway_endpoint_tag(request_message.endpoint_id, tag)
     response_message = SetGatewayEndpointTag.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -6513,9 +6423,7 @@ def _delete_gateway_endpoint_tag():
         request_message.endpoint_id, request_message.key
     )
     response_message = DeleteGatewayEndpointTag.Response()
-    response = Response(mimetype="application/json")
-    response.set_data(message_to_json(response_message))
-    return response
+    return json_response(message_to_json(response_message))
 
 
 # =============================================================================
@@ -7034,7 +6942,6 @@ def _get_server_info():
         store_type = "SqlStore"
     else:
         store_type = None
-
     multipart_uploads_enabled = False
     multipart_downloads_enabled = False
     if _is_serving_proxied_artifacts():
@@ -7049,7 +6956,7 @@ def _get_server_info():
                 exc_info=True,
             )
 
-    return jsonify({
+    return jsonify_response({
         SERVER_INFO_STORE_TYPE: store_type,
         SERVER_INFO_WORKSPACES_ENABLED: MLFLOW_ENABLE_WORKSPACES.get(),
         SERVER_INFO_TRACE_ARCHIVAL_ENABLED: trace_archival_enabled,
@@ -7067,7 +6974,7 @@ def _get_server_info():
 def _list_supported_providers():
     try:
         providers = get_all_providers()
-        return jsonify({"providers": sorted(providers)})
+        return jsonify_response({"providers": sorted(providers)})
     except ImportError as e:
         raise MlflowException(str(e), error_code=INVALID_PARAMETER_VALUE)
 
@@ -7079,7 +6986,7 @@ def _list_supported_models():
     try:
         provider_filter = get_request().args.get("provider")
         models = get_models(provider=provider_filter)
-        return jsonify({"models": models})
+        return jsonify_response({"models": models})
     except ImportError as e:
         raise MlflowException(str(e), error_code=INVALID_PARAMETER_VALUE)
 
@@ -7091,7 +6998,7 @@ def _get_provider_config():
     try:
         provider = get_request().args.get("provider")
         config = get_provider_config_response(provider)
-        return jsonify(config)
+        return jsonify_response(config)
     except (ImportError, ValueError) as e:
         raise MlflowException(str(e), error_code=INVALID_PARAMETER_VALUE)
 
@@ -7101,7 +7008,7 @@ def _get_provider_config():
 @_disable_if_gateway_disabled
 def _get_secrets_config():
     using_default_passphrase = not os.environ.get(CRYPTO_KEK_PASSPHRASE_ENV_VAR)
-    return jsonify({
+    return jsonify_response({
         "secrets_available": True,
         "using_default_passphrase": using_default_passphrase,
     })
@@ -7179,7 +7086,7 @@ def _invoke_scorer_handler():
         )
         jobs.append({"job_id": job.job_id, "trace_ids": batch_trace_ids})
 
-    return jsonify({"jobs": jobs})
+    return jsonify_response({"jobs": jobs})
 
 
 def _get_rest_path(base_path, version=2):
@@ -7388,7 +7295,7 @@ def _generate_demo():
         all_exist = all(demo_registry.get(name)().is_generated() for name in generator_names)
 
     if experiment and all_exist:
-        return jsonify({
+        return jsonify_response({
             "status": "exists",
             "experiment_id": experiment.experiment_id,
             "features_generated": [],
@@ -7402,7 +7309,7 @@ def _generate_demo():
     experiment_id = experiment.experiment_id if experiment else None
     navigation_url = f"/experiments/{experiment_id}" if experiment_id else "/experiments"
 
-    return jsonify({
+    return jsonify_response({
         "status": "created",
         "experiment_id": experiment_id,
         "features_generated": [r.feature for r in results],
@@ -7434,7 +7341,7 @@ def _delete_demo():
     if experiment and experiment.lifecycle_stage == "active":
         store.delete_experiment(experiment.experiment_id)
 
-    return jsonify({
+    return jsonify_response({
         "status": "deleted",
         "features_deleted": deleted_features,
     })
@@ -7724,7 +7631,7 @@ def get_ui_telemetry_handler():
     Returns the telemetry client configuration by fetching it directly.
     """
     if is_telemetry_disabled():
-        return jsonify(FALLBACK_UI_CONFIG)
+        return jsonify_response(FALLBACK_UI_CONFIG)
 
     config = _get_or_fetch_ui_telemetry_config()
 
@@ -7737,7 +7644,7 @@ def get_ui_telemetry_handler():
         "disable_ui_events": config.get("disable_ui_events", []),
         "ui_rollout_percentage": config.get("ui_rollout_percentage", 0),
     }
-    return jsonify(response)
+    return jsonify_response(response)
 
 
 @catch_mlflow_exception
@@ -7748,15 +7655,15 @@ def post_ui_telemetry_handler():
     """
     try:
         if is_telemetry_disabled():
-            return jsonify({"status": "disabled"})
+            return jsonify_response({"status": "disabled"})
 
         data = get_request().json.get("records", [])
 
         if not data:
-            return jsonify({"status": "success"})
+            return jsonify_response({"status": "success"})
 
         if (client := get_telemetry_client()) is None:
-            return jsonify({"status": "disabled"})
+            return jsonify_response({"status": "disabled"})
 
         # check cached config to see if telemetry is disabled
         # if so, don't process the records. we don't rely on the
@@ -7766,7 +7673,7 @@ def post_ui_telemetry_handler():
 
         # if updated telemetry config is disabled / missing, tell the UI to stop sending records
         if config.get("disable_ui_telemetry", True) or config.get("disable_telemetry", True):
-            return jsonify({"status": "disabled"})
+            return jsonify_response({"status": "disabled"})
 
         server_installation_id = get_or_create_installation_id()
         records = [
@@ -7785,14 +7692,14 @@ def post_ui_telemetry_handler():
 
         client.add_records(records)
 
-        return jsonify({"status": "success"})
+        return jsonify_response({"status": "success"})
     except Exception as e:
         _logger.debug(f"Failed to process UI telemetry records: {e}")
         # if we run into unexpected errors, likely something is wrong
         # with the data format. if we return success, the UI will continue
         # to send records. if we return an error, the UI will retry sending
         # records. the safest thing to do is to tell the UI to stop sending
-        return jsonify({"status": "disabled"})
+        return jsonify_response({"status": "disabled"})
 
 
 def _parse_prompt_uri(prompt_uri: str) -> tuple[str, str]:
