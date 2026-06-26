@@ -15,16 +15,12 @@ import urllib
 from collections.abc import Iterable
 from functools import partial, wraps
 from typing import Any, Callable
-from zlib import adler32
 
 import requests
 from cachetools import TTLCache
-from flask import g
 from google.protobuf import descriptor
 from google.protobuf.json_format import ParseError
-from werkzeug.exceptions import RequestedRangeNotSatisfiable
-from werkzeug.http import quote_header_value
-from werkzeug.wsgi import wrap_file
+from starlette.background import BackgroundTask
 
 import mlflow
 from mlflow.client import MlflowClient
@@ -321,7 +317,7 @@ from mlflow.protos.webhooks_pb2 import (
     UpdateWebhook,
     WebhookService,
 )
-from mlflow.server.request_context import get_request
+from mlflow.server.request_context import g, get_request
 from mlflow.server.responses import (
     empty_response,
     file_response,
@@ -1153,6 +1149,18 @@ def _get_validated_flask_request_json(
     return request_json
 
 
+_HTTP_TOKEN_CHARS = frozenset(
+    "!#$%&'*+-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ^_`abcdefghijklmnopqrstuvwxyz|~"
+)
+
+
+def _quote_header_value(value: str) -> str:
+    """Quote a value for use in an HTTP header (RFC 7230 token / quoted-string)."""
+    if value and all(c in _HTTP_TOKEN_CHARS for c in value):
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def _content_disposition_attachment(filename: str) -> str:
     """
     Build an RFC 6266 / RFC 5987 ``Content-Disposition`` value for an attachment.
@@ -1165,30 +1173,23 @@ def _content_disposition_attachment(filename: str) -> str:
     try:
         filename.encode("ascii")
     except UnicodeEncodeError:
-        # ``or "download"`` ensures a well-formed ``filename=<value>`` parameter
-        # even when normalization strips every character (e.g. ``日本語`` with no
-        # extension). Clients that ignore ``filename*`` still get a usable name.
         ascii_fallback = (
             unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")
             or "download"
         )
         # safe = RFC 5987 attr-char
         quoted = urllib.parse.quote(filename, safe="!#$&+-.^_`|~")
-        quoted_ascii_fallback = quote_header_value(ascii_fallback, allow_token=True)
+        quoted_ascii_fallback = _quote_header_value(ascii_fallback)
         return f"attachment; filename={quoted_ascii_fallback}; filename*=UTF-8''{quoted}"
-    quoted_filename = quote_header_value(filename, allow_token=True)
+    quoted_filename = _quote_header_value(filename)
     return f"attachment; filename={quoted_filename}"
 
 
 def _response_with_file_attachment_headers(file_path, response):
     mime_type = _guess_mime_type(file_path)
     filename = pathlib.Path(file_path).name
-    response.mimetype = mime_type
-    content_disposition_header_name = "Content-Disposition"
-    if content_disposition_header_name not in response.headers:
-        response.headers[content_disposition_header_name] = _content_disposition_attachment(
-            filename
-        )
+    if "Content-Disposition" not in response.headers:
+        response.headers["Content-Disposition"] = _content_disposition_attachment(filename)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Type"] = mime_type
     return response
@@ -1209,68 +1210,15 @@ def _create_artifact_file_response(file_path: str, artifact_name: str):
 
 def _create_temp_artifact_file_response(
     file_path: str, artifact_name: str, cleanup: Callable[[], None]
-) -> Response:
-    """Serve a temporary file and clean it up when the WSGI iterator closes."""
-    if os.path.isdir(file_path):
-        raise MlflowException.invalid_parameter_value(
-            f"Artifact path refers to a directory, not a file: '{artifact_name}'"
-        )
-
+) -> Any:
+    """Serve a temporary file and clean it up after the response completes."""
     try:
-        file_handle = open(file_path, "rb")  # noqa: SIM115
-        file_stat = os.fstat(file_handle.fileno())
-        file_size = file_stat.st_size
+        response = _create_artifact_file_response(file_path, artifact_name)
     except Exception:
         cleanup()
         raise
-
-    class _CleanupFileWrapper:
-        def __init__(self, handle, cleanup_callback: Callable[[], None]) -> None:
-            self._handle = handle
-            self._cleanup_callback = cleanup_callback
-            self._closed = False
-
-        def close(self) -> None:
-            if self._closed:
-                return
-            self._closed = True
-            self._handle.close()
-            self._cleanup_callback()
-
-        def __getattr__(self, name: str):
-            return getattr(self._handle, name)
-
-    wrapped_file = _CleanupFileWrapper(file_handle, cleanup)
-
-    try:
-        response = current_app.response_class(
-            wrap_file(
-                request.environ,
-                wrapped_file,
-                buffer_size=ARTIFACT_STREAM_CHUNK_SIZE,
-            ),
-            mimetype=_guess_mime_type(file_path),
-            direct_passthrough=True,
-        )
-        response.content_length = file_size
-        response.last_modified = file_stat.st_mtime
-        check = adler32(file_path.encode()) & 0xFFFFFFFF
-        response.set_etag(f"{file_stat.st_mtime}-{file_size}-{check}")
-        response.cache_control.no_cache = True
-        response = response.make_conditional(
-            request.environ, accept_ranges=True, complete_length=file_size
-        )
-    except RequestedRangeNotSatisfiable:
-        wrapped_file.close()
-        raise
-    except Exception:
-        wrapped_file.close()
-        raise
-
-    response.headers["Content-Disposition"] = _content_disposition_attachment(
-        pathlib.Path(artifact_name).name
-    )
-    return _response_with_file_attachment_headers(file_path, response)
+    response.background = BackgroundTask(cleanup)
+    return response
 
 
 def _send_artifact(artifact_repository, path):
@@ -7280,7 +7228,7 @@ def _generate_demo():
     from mlflow.demo.base import DEMO_EXPERIMENT_NAME
     from mlflow.demo.registry import demo_registry
 
-    request_json = request.get_json(silent=True) or {}
+    request_json = get_request().get_json(silent=True) or {}
     features = request_json.get("features")
 
     store = _get_tracking_store()
