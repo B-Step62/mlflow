@@ -1217,6 +1217,7 @@ def _create_temp_artifact_file_response(
     except Exception:
         cleanup()
         raise
+    response.headers["Cache-Control"] = "no-cache"
     response.background = BackgroundTask(cleanup)
     return response
 

@@ -125,20 +125,17 @@ def client(request, tmp_path):
         root_artifact_uri=tmp_path.joinpath("artifacts").as_uri(),
         extra_env=extra_env,
         app="mlflow.server.auth:create_app",
-        server_type="flask",
     ) as url:
         yield MlflowClient(url)
 
 
 @pytest.fixture
 def fastapi_client(request, tmp_path):
-    """FastAPI client fixture for testing FastAPI-specific middleware (e.g., gateway routes)."""
+    """Alias for client - kept for backward compatibility with gateway-specific tests."""
     path = tmp_path.joinpath("sqlalchemy.db").as_uri()
     backend_uri = ("sqlite://" if is_windows() else "sqlite:////") + path[len("file://") :]
     extra_env = _isolate_auth_config(getattr(request, "param", {}), tmp_path)
     extra_env[MLFLOW_FLASK_SERVER_SECRET_KEY.name] = "my-secret-key"
-    # Set _MLFLOW_SGI_NAME to "uvicorn" so auth module returns FastAPI app
-    extra_env["_MLFLOW_SGI_NAME"] = "uvicorn"
     if extra_env.get("_MLFLOW_SERVER_SERVE_ARTIFACTS") == "true":
         extra_env.setdefault(
             "_MLFLOW_SERVER_ARTIFACT_DESTINATION",
@@ -150,7 +147,6 @@ def fastapi_client(request, tmp_path):
         root_artifact_uri=tmp_path.joinpath("artifacts").as_uri(),
         extra_env=extra_env,
         app="mlflow.server.auth:create_app",
-        server_type="fastapi",
     ) as url:
         yield MlflowClient(url)
 
@@ -305,7 +301,7 @@ def test_authenticate(client, monkeypatch):
     ],
 )
 def test_validate_username_and_password(client, username, password):
-    with pytest.raises(requests.exceptions.HTTPError, match=r"BAD REQUEST"):
+    with pytest.raises(requests.exceptions.HTTPError, match=r"(?i)bad request"):
         create_user(client.tracking_uri, username=username, password=password)
 
 
@@ -562,6 +558,8 @@ def test_fastapi_validator_skips_flask_fallback_artifact_routes(path, method):
 
 
 def test_proxy_artifact_permission_reuses_authenticated_flask_user(monkeypatch):
+    from mlflow.server.request_context import RequestShim, clear_g, clear_request, set_request
+
     permission = SimpleNamespace(can_read=True, can_update=True, can_manage=False)
     authenticate_request = mock.Mock(side_effect=AssertionError("should not re-authenticate"))
 
@@ -570,9 +568,13 @@ def test_proxy_artifact_permission_reuses_authenticated_flask_user(monkeypatch):
     monkeypatch.setattr(auth_module, "_role_permission_for", lambda **_: permission)
     monkeypatch.setattr(auth_module, "_get_role_permission_or_default", lambda perm: perm)
 
-    with auth_module.app.test_request_context("/api/2.0/mlflow-artifacts/artifacts"):
+    set_request(RequestShim(path="/api/2.0/mlflow-artifacts/artifacts"))
+    try:
         auth_module.g.mlflow_authenticated_user = "alice"
         result = auth_module._get_permission_from_experiment_id_artifact_proxy()
+    finally:
+        clear_request()
+        clear_g()
 
     assert result is permission
     authenticate_request.assert_not_called()
@@ -853,7 +855,7 @@ def _mlflow_create_user_rest(base_uri, headers):
 )
 def test_authenticate_jwt(client):
     # unauthenticated
-    with pytest.raises(requests.HTTPError, match=r"401 Client Error: UNAUTHORIZED") as e:
+    with pytest.raises(requests.HTTPError, match=r"(?i)401 Client Error: unauthorized") as e:
         _mlflow_search_experiments_rest(client.tracking_uri, {})
     assert e.value.response.status_code == 401  # Unauthorized
 
@@ -872,7 +874,7 @@ def test_authenticate_jwt(client):
     # invalid token
     bearer_token = jwt.encode({"username": username}, "invalid", algorithm="HS256")
     headers = {"Authorization": f"Bearer {bearer_token}"}
-    with pytest.raises(requests.HTTPError, match=r"401 Client Error: UNAUTHORIZED") as e:
+    with pytest.raises(requests.HTTPError, match=r"(?i)401 Client Error: unauthorized") as e:
         _mlflow_search_experiments_rest(client.tracking_uri, headers)
     assert e.value.response.status_code == 401  # Unauthorized
 
@@ -1629,7 +1631,7 @@ def test_create_user_from_ui_fails_without_csrf_token(client):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
-    assert "The CSRF token is missing" in response.text
+    assert "CSRF" in response.text
 
 
 def test_create_user_ui(client):

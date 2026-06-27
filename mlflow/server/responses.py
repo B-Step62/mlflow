@@ -11,7 +11,9 @@ import json
 import os
 from typing import Any
 
+import anyio
 from starlette.background import BackgroundTask
+from starlette.datastructures import Headers
 from starlette.responses import FileResponse, Response, StreamingResponse
 
 
@@ -48,6 +50,29 @@ class _CompatResponse(Response):
 
 class _CompatFileResponse(FileResponse):
     """FileResponse with Flask-compatible read methods for tests."""
+
+    async def __call__(self, scope, receive, send) -> None:
+        background = self.background
+        self.background = None
+        try:
+            if self.stat_result is None:
+                self.stat_result = await anyio.to_thread.run_sync(os.stat, self.path)
+                self.set_stat_headers(self.stat_result)
+
+            request_headers = Headers(scope=scope)
+            if request_headers.get("if-none-match") == self.headers.get("etag"):
+                headers = {
+                    key: value
+                    for key, value in self.headers.items()
+                    if key.lower() in {"cache-control", "etag", "last-modified"}
+                }
+                await Response(status_code=304, headers=headers)(scope, receive, send)
+                return
+
+            await super().__call__(scope, receive, send)
+        finally:
+            if background is not None:
+                await background()
 
     def get_data(self, as_text: bool = False) -> bytes | str:
         with open(self.path, "rb") as f:
