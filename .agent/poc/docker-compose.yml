@@ -1,0 +1,10 @@
+services:
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./tempo.yml:/etc/tempo.yml
+    ports:
+      - "3200:3200"   # Tempo HTTP API (query)
+      - "4317:4317"   # OTLP gRPC (ingest)
+      - "4318:4318"   # OTLP HTTP (ingest)

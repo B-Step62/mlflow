@@ -1,0 +1,14 @@
+[project]
+name = "mlflow-tempo-store"
+version = "0.0.1"
+requires-python = ">=3.10"
+
+[project.entry-points."mlflow.tracking_store"]
+sqlite = "tempo_store_plugin:create_store"
+
+[tool.setuptools]
+py-modules = ["tempo_store", "tempo_store_plugin"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
