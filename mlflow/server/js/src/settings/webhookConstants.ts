@@ -25,6 +25,11 @@ export const eventLabels = defineMessages({
   'PROMPT_ALIAS.CREATED': { defaultMessage: 'Prompt alias created', description: 'Webhook event label' },
   'PROMPT_ALIAS.DELETED': { defaultMessage: 'Prompt alias deleted', description: 'Webhook event label' },
   'BUDGET_POLICY.EXCEEDED': { defaultMessage: 'Budget policy exceeded', description: 'Webhook event label' },
+  'TRACE_ASSESSMENT.CREATED': { defaultMessage: 'Trace assessment created', description: 'Webhook event label' },
+  'REVIEW_QUEUE_ITEM.CREATED': { defaultMessage: 'Review queue item added', description: 'Webhook event label' },
+  'REVIEW_QUEUE_ITEM.UPDATED': { defaultMessage: 'Review queue item updated', description: 'Webhook event label' },
+  'DATASET_RECORD.CREATED': { defaultMessage: 'Dataset record created', description: 'Webhook event label' },
+  'DATASET_RECORD.UPDATED': { defaultMessage: 'Dataset record updated', description: 'Webhook event label' },
 });
 
 export const VALID_EVENTS: { entity: string; action: string }[] = [
@@ -43,6 +48,11 @@ export const VALID_EVENTS: { entity: string; action: string }[] = [
   { entity: 'PROMPT_ALIAS', action: 'CREATED' },
   { entity: 'PROMPT_ALIAS', action: 'DELETED' },
   { entity: 'BUDGET_POLICY', action: 'EXCEEDED' },
+  { entity: 'TRACE_ASSESSMENT', action: 'CREATED' },
+  { entity: 'REVIEW_QUEUE_ITEM', action: 'CREATED' },
+  { entity: 'REVIEW_QUEUE_ITEM', action: 'UPDATED' },
+  { entity: 'DATASET_RECORD', action: 'CREATED' },
+  { entity: 'DATASET_RECORD', action: 'UPDATED' },
 ];
 
 export const WEBHOOK_NAME_REGEX = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/i;
