@@ -24,9 +24,22 @@ import {
 import { useGetTracesById } from '@databricks/web-shared/model-trace-explorer';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 
+import { useListDatasetRecordsQuery } from '../experiment-evaluation-datasets-v2/hooks/useDatasetsQueries';
 import { displayUser } from './hooks/useReviewer';
 import { ReviewQueueEmptyState } from './ReviewQueueEmptyState';
 import type { ReviewQueueItem, ReviewStatus } from './types';
+
+/** Compact one-line JSON preview of a record's inputs/expectations; undefined when empty. */
+const summarizeJson = (obj?: Record<string, unknown>): string | undefined => {
+  if (!obj || Object.keys(obj).length === 0) {
+    return undefined;
+  }
+  try {
+    return JSON.stringify(obj);
+  } catch {
+    return undefined;
+  }
+};
 
 const CID = 'mlflow.experiment-review-queue.list';
 
@@ -150,6 +163,7 @@ export const ReviewQueueList = ({
   onManageQueue,
   onDeleteQueue,
   onGoToTraces,
+  datasetId,
 }: {
   items: ReviewQueueItem[];
   /** Queue name shown in the header, next to the question count + gear menu. */
@@ -177,6 +191,9 @@ export const ReviewQueueList = ({
   onManageQueue?: () => void;
   onDeleteQueue?: () => void;
   onGoToTraces?: () => void;
+  /** When set, this is a dataset-review queue: rows are dataset records (inputs /
+   *  expectations) rather than traces, fetched from the bound dataset. */
+  datasetId?: string;
 }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -202,20 +219,60 @@ export const ReviewQueueList = ({
     [sortKey, sortDir],
   );
 
-  const { data: traces } = useGetTracesById(items.map((i) => i.item_id));
+  const isDataset = Boolean(datasetId);
+  // A dataset queue's items are record ids, not trace ids, so skip the trace fetch
+  // (it would 404) and pull previews from the bound dataset's records instead.
+  const { data: traces } = useGetTracesById(isDataset ? [] : items.map((i) => i.item_id));
+  const { data: datasetRecords } = useListDatasetRecordsQuery(datasetId ?? '');
   const previewsById = useMemo(() => {
     const map = new Map<string, { input?: string; response?: string }>();
-    (traces ?? []).forEach((t) => {
-      const id = t?.info?.trace_id;
-      if (id) {
-        map.set(id, {
-          input: t?.info?.request_preview,
-          response: t?.info?.response_preview,
+    if (isDataset) {
+      (datasetRecords ?? []).forEach((r) => {
+        map.set(r.dataset_record_id, {
+          input: summarizeJson(r.inputs),
+          response: summarizeJson(r.expectations),
         });
-      }
-    });
+      });
+    } else {
+      (traces ?? []).forEach((t) => {
+        const id = t?.info?.trace_id;
+        if (id) {
+          map.set(id, {
+            input: t?.info?.request_preview,
+            response: t?.info?.response_preview,
+          });
+        }
+      });
+    }
     return map;
-  }, [traces]);
+  }, [isDataset, traces, datasetRecords]);
+
+  // In dataset mode the two content columns show the record's inputs / expectations
+  // rather than a trace's request / response.
+  const columns = useMemo(
+    () =>
+      COLUMNS.map((c) => {
+        if (isDataset && c.key === 'request') {
+          return {
+            ...c,
+            label: <FormattedMessage defaultMessage="Inputs" description="Review queue table: inputs column" />,
+          };
+        }
+        if (isDataset && c.key === 'response') {
+          return {
+            ...c,
+            label: (
+              <FormattedMessage
+                defaultMessage="Expectations"
+                description="Review queue table: expectations column"
+              />
+            ),
+          };
+        }
+        return c;
+      }),
+    [isDataset],
+  );
 
   const filteredItems = useMemo(() => {
     let result = items;
@@ -459,18 +516,33 @@ export const ReviewQueueList = ({
       {items.length === 0 ? (
         <ReviewQueueEmptyState
           title={
-            <FormattedMessage
-              defaultMessage="No traces in this queue yet"
-              description="Review queue: empty queue title"
-            />
+            isDataset ? (
+              <FormattedMessage
+                defaultMessage="No records in this queue yet"
+                description="Review queue: empty dataset queue title"
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="No traces in this queue yet"
+                description="Review queue: empty queue title"
+              />
+            )
           }
           description={
-            <FormattedMessage
-              defaultMessage="Add traces from the Traces tab to start reviewing them with your team."
-              description="Review queue: empty queue description"
-            />
+            isDataset ? (
+              <FormattedMessage
+                defaultMessage="Add records from an evaluation dataset to curate their expectations with your team."
+                description="Review queue: empty dataset queue description"
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="Add traces from the Traces tab to start reviewing them with your team."
+                description="Review queue: empty queue description"
+              />
+            )
           }
           button={
+            !isDataset &&
             onGoToTraces && (
               <Button
                 componentId={`${CID}.go-to-traces`}
@@ -529,7 +601,7 @@ export const ReviewQueueList = ({
                     />
                   </TableHeader>
                 )}
-                {COLUMNS.map((col) => (
+                {columns.map((col) => (
                   <TableHeader
                     key={col.key}
                     componentId={`${CID}.header`}

@@ -1116,6 +1116,7 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
         created_by=None,
         users=None,
         schema_ids=None,
+        dataset_id=None,
     ):
         from mlflow.genai.review_queues import ReviewQueue
         from mlflow.genai.review_queues.validation import coerce_queue_type
@@ -1129,6 +1130,8 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
         )
         if created_by is not None:
             req.created_by = created_by
+        if dataset_id is not None:
+            req.dataset_id = dataset_id
         response_proto = self._call_endpoint(
             CreateReviewQueue,
             message_to_json(req),

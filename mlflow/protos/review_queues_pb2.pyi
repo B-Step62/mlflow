@@ -12,6 +12,7 @@ class ReviewItemType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     REVIEW_ITEM_TYPE_UNSPECIFIED: _ClassVar[ReviewItemType]
     TRACE: _ClassVar[ReviewItemType]
+    DATASET_RECORD: _ClassVar[ReviewItemType]
 
 class ReviewQueueType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -27,6 +28,7 @@ class ReviewStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     DECLINED: _ClassVar[ReviewStatus]
 REVIEW_ITEM_TYPE_UNSPECIFIED: ReviewItemType
 TRACE: ReviewItemType
+DATASET_RECORD: ReviewItemType
 REVIEW_QUEUE_TYPE_UNSPECIFIED: ReviewQueueType
 USER: ReviewQueueType
 CUSTOM: ReviewQueueType
@@ -36,7 +38,7 @@ COMPLETE: ReviewStatus
 DECLINED: ReviewStatus
 
 class ReviewQueue(_message.Message):
-    __slots__ = ("queue_id", "experiment_id", "name", "queue_type", "created_by", "creation_time_ms", "last_update_time_ms", "users", "schema_ids")
+    __slots__ = ("queue_id", "experiment_id", "name", "queue_type", "created_by", "creation_time_ms", "last_update_time_ms", "users", "schema_ids", "dataset_id")
     QUEUE_ID_FIELD_NUMBER: _ClassVar[int]
     EXPERIMENT_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
@@ -46,6 +48,7 @@ class ReviewQueue(_message.Message):
     LAST_UPDATE_TIME_MS_FIELD_NUMBER: _ClassVar[int]
     USERS_FIELD_NUMBER: _ClassVar[int]
     SCHEMA_IDS_FIELD_NUMBER: _ClassVar[int]
+    DATASET_ID_FIELD_NUMBER: _ClassVar[int]
     queue_id: str
     experiment_id: str
     name: str
@@ -55,7 +58,8 @@ class ReviewQueue(_message.Message):
     last_update_time_ms: int
     users: _containers.RepeatedScalarFieldContainer[str]
     schema_ids: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, queue_id: _Optional[str] = ..., experiment_id: _Optional[str] = ..., name: _Optional[str] = ..., queue_type: _Optional[_Union[ReviewQueueType, str]] = ..., created_by: _Optional[str] = ..., creation_time_ms: _Optional[int] = ..., last_update_time_ms: _Optional[int] = ..., users: _Optional[_Iterable[str]] = ..., schema_ids: _Optional[_Iterable[str]] = ...) -> None: ...
+    dataset_id: str
+    def __init__(self, queue_id: _Optional[str] = ..., experiment_id: _Optional[str] = ..., name: _Optional[str] = ..., queue_type: _Optional[_Union[ReviewQueueType, str]] = ..., created_by: _Optional[str] = ..., creation_time_ms: _Optional[int] = ..., last_update_time_ms: _Optional[int] = ..., users: _Optional[_Iterable[str]] = ..., schema_ids: _Optional[_Iterable[str]] = ..., dataset_id: _Optional[str] = ...) -> None: ...
 
 class ReviewQueueItem(_message.Message):
     __slots__ = ("queue_id", "item_type", "item_id", "status", "completed_by", "completed_time_ms", "creation_time_ms", "last_update_time_ms")
@@ -78,7 +82,7 @@ class ReviewQueueItem(_message.Message):
     def __init__(self, queue_id: _Optional[str] = ..., item_type: _Optional[_Union[ReviewItemType, str]] = ..., item_id: _Optional[str] = ..., status: _Optional[_Union[ReviewStatus, str]] = ..., completed_by: _Optional[str] = ..., completed_time_ms: _Optional[int] = ..., creation_time_ms: _Optional[int] = ..., last_update_time_ms: _Optional[int] = ...) -> None: ...
 
 class CreateReviewQueue(_message.Message):
-    __slots__ = ("experiment_id", "name", "queue_type", "created_by", "users", "schema_ids")
+    __slots__ = ("experiment_id", "name", "queue_type", "created_by", "users", "schema_ids", "dataset_id")
     class Response(_message.Message):
         __slots__ = ("review_queue",)
         REVIEW_QUEUE_FIELD_NUMBER: _ClassVar[int]
@@ -90,13 +94,15 @@ class CreateReviewQueue(_message.Message):
     CREATED_BY_FIELD_NUMBER: _ClassVar[int]
     USERS_FIELD_NUMBER: _ClassVar[int]
     SCHEMA_IDS_FIELD_NUMBER: _ClassVar[int]
+    DATASET_ID_FIELD_NUMBER: _ClassVar[int]
     experiment_id: str
     name: str
     queue_type: ReviewQueueType
     created_by: str
     users: _containers.RepeatedScalarFieldContainer[str]
     schema_ids: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, experiment_id: _Optional[str] = ..., name: _Optional[str] = ..., queue_type: _Optional[_Union[ReviewQueueType, str]] = ..., created_by: _Optional[str] = ..., users: _Optional[_Iterable[str]] = ..., schema_ids: _Optional[_Iterable[str]] = ...) -> None: ...
+    dataset_id: str
+    def __init__(self, experiment_id: _Optional[str] = ..., name: _Optional[str] = ..., queue_type: _Optional[_Union[ReviewQueueType, str]] = ..., created_by: _Optional[str] = ..., users: _Optional[_Iterable[str]] = ..., schema_ids: _Optional[_Iterable[str]] = ..., dataset_id: _Optional[str] = ...) -> None: ...
 
 class GetOrCreateUserQueue(_message.Message):
     __slots__ = ("experiment_id", "user", "created_by")

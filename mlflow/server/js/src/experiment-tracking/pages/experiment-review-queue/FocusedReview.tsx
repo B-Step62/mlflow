@@ -27,6 +27,10 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import Utils from '../../../common/utils/Utils';
 import { LabelSchemaInputRenderer } from '../../components/label-schemas';
 import type { LabelSchema, LabelSchemaValue } from '../../components/label-schemas';
+import {
+  useListDatasetRecordsQuery,
+  useUpsertDatasetRecordsMutation,
+} from '../experiment-evaluation-datasets-v2/hooks/useDatasetsQueries';
 import { useCreateReviewAssessmentMutation } from './hooks/useCreateReviewAssessmentMutation';
 import { useTraceAssessmentsQuery } from './hooks/useTraceAssessmentsQuery';
 import { buildPrefilledAnswers, buildPrefilledRationales, buildPriorAssessmentIds, isAnswered } from './reviewAnswers';
@@ -147,12 +151,17 @@ export const FocusedReview = ({
   onBack,
   onSelect,
   onSetStatus,
+  datasetId,
 }: {
   item: ReviewQueueItem;
   items: ReviewQueueItem[];
   schemas: LabelSchema[];
   /** Reviewer identifier recorded on completion; `default` in no-auth OSS. */
   completedBy: string;
+  /** Set for a dataset-review queue: the item is a dataset record, reviewed in
+   *  this same pane. Its inputs replace the trace content, the EXPECTATION
+   *  questions collect its expectations, and answers persist to the record. */
+  datasetId?: string;
   /** True while a status write is in flight (disables the actions). */
   isSettingStatus: boolean;
   /** Whether the reviewer may submit reviews; when false the inputs/actions are view-only. */
@@ -177,28 +186,63 @@ export const FocusedReview = ({
     analyticsEvents: feedbackEvents,
   });
 
-  // The trace's input/output for the middle panel. The full trace (spans,
-  // timeline, etc.) is available on demand through the drawer.
-  const { data: traceData, isLoading: traceLoading } = useGetTracesById([item.item_id]);
-  const trace = traceData[0];
+  // A dataset-review item is a record curated in this same pane (no trace).
+  const isRecordMode = Boolean(datasetId);
   const [showFullTrace, setShowFullTrace] = useState(false);
-  const requestPreview = trace?.info?.request_preview;
-  const responsePreview = trace?.info?.response_preview;
-  const hasIO = Boolean(requestPreview || responsePreview);
 
-  // Prefill the widgets from the trace's existing assessments; edits overlay
-  // the prefill so the query result never clobbers what the reviewer typed.
-  // Scope prior answers to this reviewer's own source so the prefill and the
-  // supersede target are never another reviewer's answer.
+  // Trace-mode content: the trace's input/output for the middle panel. The full
+  // trace (spans, timeline, etc.) is available on demand through the drawer.
+  const { data: traceData, isLoading: traceLoading } = useGetTracesById(isRecordMode ? [] : [item.item_id]);
+  const trace = traceData[0];
+
+  // Record-mode content: the dataset record's inputs (shown where the trace
+  // content goes) + its existing expectations (used to prefill the questions).
+  const { data: datasetRecords, isLoading: recordsLoading } = useListDatasetRecordsQuery(datasetId ?? '');
+  const record = useMemo(
+    () => (isRecordMode ? (datasetRecords ?? []).find((r) => r.dataset_record_id === item.item_id) : undefined),
+    [isRecordMode, datasetRecords, item.item_id],
+  );
+  const { mutateAsync: upsertRecords, isLoading: isUpserting } = useUpsertDatasetRecordsMutation(datasetId ?? '');
+
+  const requestPreview = isRecordMode
+    ? record
+      ? JSON.stringify(record.inputs, null, 2)
+      : undefined
+    : trace?.info?.request_preview;
+  const responsePreview = isRecordMode ? undefined : trace?.info?.response_preview;
+  const contentLoading = isRecordMode ? recordsLoading : traceLoading;
+  const hasIO = isRecordMode ? Boolean(record) : Boolean(requestPreview || responsePreview);
+
+  // Prefill the widgets. Trace mode reads the trace's existing assessments
+  // (scoped to this reviewer's source); record mode reads the record's existing
+  // expectations, keyed by schema name. Edits overlay the prefill so a query
+  // result never clobbers what the reviewer typed. In record mode the trace
+  // query is disabled, so `priorAnswers` is empty and the rationale/supersede
+  // maps below naturally come out empty too.
   const { priorAnswers, isFetching: priorAnswersFetching } = useTraceAssessmentsQuery({
     traceId: item.item_id,
     sourceId: completedBy,
+    enabled: !isRecordMode,
   });
-  const prefilled = useMemo(() => buildPrefilledAnswers(priorAnswers, schemas), [priorAnswers, schemas]);
+  const tracePrefilled = useMemo(() => buildPrefilledAnswers(priorAnswers, schemas), [priorAnswers, schemas]);
+  const recordPrefilled = useMemo(() => {
+    const out: Record<string, LabelSchemaValue> = {};
+    if (isRecordMode && record) {
+      for (const s of schemas) {
+        const v = record.expectations?.[s.name];
+        if (v !== undefined) {
+          out[s.name] = v as LabelSchemaValue;
+        }
+      }
+    }
+    return out;
+  }, [isRecordMode, record, schemas]);
+  const prefilled = isRecordMode ? recordPrefilled : tracePrefilled;
   const prefilledRationales = useMemo(() => buildPrefilledRationales(priorAnswers, schemas), [priorAnswers, schemas]);
   // Each question's prior assessment id (this reviewer's), so a re-submit
   // supersedes it instead of writing a duplicate.
   const priorAssessmentIds = useMemo(() => buildPriorAssessmentIds(priorAnswers, schemas), [priorAnswers, schemas]);
+  const answersLoading = isRecordMode ? recordsLoading : priorAnswersFetching;
   const [edited, setEdited] = useState<Record<string, LabelSchemaValue>>({});
   const [editedRationales, setEditedRationales] = useState<Record<string, string>>({});
 
@@ -299,7 +343,7 @@ export const FocusedReview = ({
     // against a still-refetching snapshot (e.g. reopen-and-resubmit before the
     // post-write refetch lands) could miss the prior and leave two live
     // assessments for one question. Wait for the query to settle first.
-    if (priorAnswersFetching) {
+    if (answersLoading) {
       return;
     }
     // Auto-submit passes the just-picked value directly, since the answer state
@@ -328,20 +372,30 @@ export const FocusedReview = ({
     }
     try {
       // Write the answers, then mark complete. Status is advanced only if every
-      // write succeeds, so a partial failure leaves the trace pending for retry.
-      await Promise.all(
-        answered.map((s) =>
-          createReviewAssessmentAsync({
-            traceId: item.item_id,
-            name: s.name,
-            assessmentKind: s.type === 'EXPECTATION' ? 'expectation' : 'feedback',
-            value: effectiveValue(s.name) as Exclude<LabelSchemaValue, null | undefined>,
-            sourceId: completedBy,
-            rationale: s.enable_comment ? rationaleFor(s.name).trim() || undefined : undefined,
-            overrides: priorAssessmentIds[s.name],
-          }),
-        ),
-      );
+      // write succeeds, so a partial failure leaves the item pending for retry.
+      if (isRecordMode) {
+        // Record review: the answered EXPECTATION values are the record's
+        // expectations, keyed by schema name; persist them back to the dataset.
+        const expectations: Record<string, unknown> = { ...(record?.expectations ?? {}) };
+        for (const s of answered) {
+          expectations[s.name] = effectiveValue(s.name);
+        }
+        await upsertRecords([{ recordId: item.item_id, updates: { expectations } }]);
+      } else {
+        await Promise.all(
+          answered.map((s) =>
+            createReviewAssessmentAsync({
+              traceId: item.item_id,
+              name: s.name,
+              assessmentKind: s.type === 'EXPECTATION' ? 'expectation' : 'feedback',
+              value: effectiveValue(s.name) as Exclude<LabelSchemaValue, null | undefined>,
+              sourceId: completedBy,
+              rationale: s.enable_comment ? rationaleFor(s.name).trim() || undefined : undefined,
+              overrides: priorAssessmentIds[s.name],
+            }),
+          ),
+        );
+      }
       // Telemetry: a review (feedback) was submitted from the UI. Covers the
       // explicit Submit, the single Pass/Fail auto-submit, and the edit-in-place
       // re-save — all of which land here after the writes succeed.
@@ -450,18 +504,20 @@ export const FocusedReview = ({
             flexDirection: 'column',
           }}
         >
-          <div css={{ padding: `${theme.spacing.sm}px ${theme.spacing.md}px 0 0`, flexShrink: 0, textAlign: 'right' }}>
-            <Typography.Link
-              componentId={`${CID}.view-full-trace`}
-              disabled={!trace}
-              onClick={() => setShowFullTrace(true)}
-            >
-              <FormattedMessage
-                defaultMessage="View full trace"
-                description="Review focused view: open the full trace explorer"
-              />
-            </Typography.Link>
-          </div>
+          {!isRecordMode && (
+            <div css={{ padding: `${theme.spacing.sm}px ${theme.spacing.md}px 0 0`, flexShrink: 0, textAlign: 'right' }}>
+              <Typography.Link
+                componentId={`${CID}.view-full-trace`}
+                disabled={!trace}
+                onClick={() => setShowFullTrace(true)}
+              >
+                <FormattedMessage
+                  defaultMessage="View full trace"
+                  description="Review focused view: open the full trace explorer"
+                />
+              </Typography.Link>
+            </div>
+          )}
           <div
             css={{
               flex: 1,
@@ -472,15 +528,22 @@ export const FocusedReview = ({
               gap: theme.spacing.md,
             }}
           >
-            {traceLoading ? (
+            {contentLoading ? (
               <TableSkeleton lines={8} />
             ) : !hasIO ? (
               <Empty
                 description={
-                  <FormattedMessage
-                    defaultMessage="No input or output recorded for this trace."
-                    description="Review focused view: trace panel empty state when there's no input/output"
-                  />
+                  isRecordMode ? (
+                    <FormattedMessage
+                      defaultMessage="No inputs recorded for this record."
+                      description="Review focused view: record panel empty state when there's no input"
+                    />
+                  ) : (
+                    <FormattedMessage
+                      defaultMessage="No input or output recorded for this trace."
+                      description="Review focused view: trace panel empty state when there's no input/output"
+                    />
+                  )
                 }
               />
             ) : (
@@ -564,6 +627,7 @@ export const FocusedReview = ({
                             autoSubmitSchema?.schema_id === schema.schema_id &&
                             !isTerminal &&
                             !isCreatingAssessment &&
+                            !isUpserting &&
                             !isSettingStatus
                           ) {
                             submitAnswersAndComplete({ [schema.name]: value });
@@ -666,14 +730,15 @@ export const FocusedReview = ({
                   type="primary"
                   disabled={
                     isCreatingAssessment ||
+                    isUpserting ||
                     isSettingStatus ||
                     !canReview ||
                     answeredCount === 0 ||
-                    priorAnswersFetching ||
+                    answersLoading ||
                     hasClearedPriorAnswer ||
                     (isComplete && !hasEdits)
                   }
-                  loading={isCreatingAssessment || isSettingStatus}
+                  loading={isCreatingAssessment || isUpserting || isSettingStatus}
                   onClick={() => submitAnswersAndComplete()}
                 >
                   {isComplete ? (

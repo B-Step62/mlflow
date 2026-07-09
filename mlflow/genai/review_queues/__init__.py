@@ -71,6 +71,7 @@ def create_review_queue(
     users: list[str] | None = None,
     schema_ids: list[str] | None = None,
     experiment_id: str | None = None,
+    dataset_id: str | None = None,
 ) -> ReviewQueue:
     """
     Create a review queue scoped to an experiment.
@@ -89,6 +90,9 @@ def create_review_queue(
             queue (it resolves to all of the experiment's schemas); the chosen
             subset for a custom queue.
         experiment_id: Parent experiment; defaults to the current experiment.
+        dataset_id: If set, binds the queue to an evaluation dataset for
+            dataset-record review. Reviewers curate the records' expectations
+            instead of assessing traces.
 
     Returns:
         The created :py:class:`ReviewQueue`. Its owner (``created_by``) is set
@@ -100,6 +104,7 @@ def create_review_queue(
         queue_type=queue_type,
         users=users,
         schema_ids=schema_ids,
+        dataset_id=dataset_id,
     )
 
 
@@ -219,14 +224,27 @@ def delete_review_queue(queue_id: str) -> None:
 
 
 @experimental(version="3.14.0")
-def add_items_to_review_queue(queue_id: str, *, item_ids: list[str]) -> list[ReviewQueueItem]:
+def add_items_to_review_queue(
+    queue_id: str,
+    *,
+    item_ids: list[str],
+    item_type: Literal["trace", "dataset_record"] = "trace",
+) -> list[ReviewQueueItem]:
     """
     Attach items to a queue, returning the resulting queue items.
 
     Idempotent per item (re-attaching preserves the existing status). The
     returned list covers every requested ``item_id``, in request order.
+
+    Args:
+        queue_id: The queue to attach to.
+        item_ids: Trace ids (default) or dataset-record ids.
+        item_type: ``"trace"`` or ``"dataset_record"``. Dataset-record items
+            must be attached to a queue bound to the matching dataset.
     """
-    return TracingClient()._add_items_to_review_queue(queue_id, item_ids=item_ids)
+    return TracingClient()._add_items_to_review_queue(
+        queue_id, item_ids=item_ids, item_type=item_type
+    )
 
 
 @experimental(version="3.14.0")

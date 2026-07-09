@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApplyDesignSystemContextOverrides,
@@ -41,13 +41,24 @@ const CID = 'mlflow.experiment-review-queue.create-queue';
  * authenticated server, the reviewers to assign. (A no-auth server has a single
  * `default` user, so reviewer assignment is hidden.) Personal USER queues
  * aren't created here; they're resolved on demand via get-or-create.
+ *
+ * When a `datasetId` is passed, the queue is created bound to that dataset
+ * (`dataset_id` set) and its question picker is limited to — and defaults to —
+ * the experiment's EXPECTATION-type schemas, so reviewers curate expectations.
  */
 export const CreateReviewQueueModal = ({
   experimentId,
+  datasetId,
   onClose,
   onCreated,
 }: {
   experimentId: string;
+  /**
+   * When set, creates a dataset-bound queue: the created queue carries
+   * `dataset_id` and its questions default to the experiment's
+   * EXPECTATION-type label schemas.
+   */
+  datasetId?: string;
   onClose: () => void;
   onCreated?: (queue: ReviewQueue) => void;
 }) => {
@@ -57,7 +68,16 @@ export const CreateReviewQueueModal = ({
   // Don't let the create stamp `created_by` until the reviewer identity is settled.
   const reviewerResolved = useIsReviewerResolved();
   const authAvailable = useIsAuthAvailable();
+  // Dataset-bound queue creation: questions come from the experiment's
+  // EXPECTATION-type schemas.
+  const datasetMode = Boolean(datasetId);
   const { labelSchemas, isLoading } = useListLabelSchemasQuery({ experimentId });
+  // Dataset queues collect expectations, so the question picker is limited to
+  // EXPECTATION schemas; the trace flow offers every schema.
+  const availableSchemas = useMemo(
+    () => (datasetMode ? labelSchemas.filter((s) => s.type === 'EXPECTATION') : labelSchemas),
+    [datasetMode, labelSchemas],
+  );
   const { createReviewQueueAsync, isCreatingQueue } = useCreateReviewQueueMutation();
 
   // Telemetry: count queues actually created from the UI (fired on success, not
@@ -100,10 +120,21 @@ export const CreateReviewQueueModal = ({
       return next;
     });
 
+  // In dataset mode, default the question selection to every EXPECTATION schema
+  // once they load (seeded once; the creator can still refine the selection).
+  const seededDatasetSchemasRef = useRef(false);
+  useEffect(() => {
+    if (!datasetMode || seededDatasetSchemasRef.current || isLoading) {
+      return;
+    }
+    seededDatasetSchemasRef.current = true;
+    setSelectedIds(new Set(availableSchemas.map((s) => s.schema_id)));
+  }, [datasetMode, isLoading, availableSchemas]);
+
   const checkedIds = selectedIds;
   const selectedSchemas = useMemo(
-    () => labelSchemas.filter((s) => checkedIds.has(s.schema_id)),
-    [labelSchemas, checkedIds],
+    () => availableSchemas.filter((s) => checkedIds.has(s.schema_id)),
+    [availableSchemas, checkedIds],
   );
   // The dropdown trigger shows a count, not the list of names. DialogCombobox
   // joins `value` entries, so collapse to a single summary string; item checked
@@ -195,6 +226,7 @@ export const CreateReviewQueueModal = ({
         created_by: createdBy,
         users,
         schema_ids: [...checkedIds],
+        ...(datasetMode ? { dataset_id: datasetId } : {}),
       });
       queueCreatedEventContext.onClick(undefined);
       onCreated?.(review_queue);
@@ -292,7 +324,7 @@ export const CreateReviewQueueModal = ({
               </FormUI.Hint>
               {isLoading ? (
                 <TableSkeleton lines={3} />
-              ) : labelSchemas.length === 0 ? (
+              ) : availableSchemas.length === 0 ? (
                 <Empty
                   description={
                     <FormattedMessage
@@ -305,7 +337,7 @@ export const CreateReviewQueueModal = ({
                 <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
                   <QuestionChecklistCombobox
                     componentId={`${CID}.questions`}
-                    schemas={labelSchemas}
+                    schemas={availableSchemas}
                     checkedIds={checkedIds}
                     onToggle={(schemaId) => toggle(schemaId, !checkedIds.has(schemaId))}
                     onCreateQuestion={() => setCreateQuestionOpen(true)}

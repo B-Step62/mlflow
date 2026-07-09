@@ -1,6 +1,7 @@
 import { type RefObject } from 'react';
 import {
   Button,
+  FlagPointerIcon,
   Input,
   type InputRef,
   PlusIcon,
@@ -9,6 +10,8 @@ import {
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
+
+import { AddToReviewQueueDropdown } from '../../experiment-review-queue/AddToReviewQueueDropdown';
 
 export interface DatasetRecordsToolbarProps {
   /** Local search input value. Owned by the controller's `useDebouncedSearchInput`. */
@@ -30,6 +33,12 @@ export interface DatasetRecordsToolbarProps {
   onBulkDelete: () => void;
   /** Invoked from the inline "Clear selection" action when rows are selected. */
   onBulkClear: () => void;
+  /** Experiment that owns the dataset — routed to the "Flag for review" picker. */
+  experimentId: string;
+  /** Dataset whose records are being reviewed — binds any created review queue to it. */
+  datasetId: string;
+  /** Ids of the currently bulk-selected records, attached when a review queue is chosen. */
+  selectedRecordIds: string[];
 }
 
 export const DatasetRecordsToolbar = ({
@@ -45,6 +54,9 @@ export const DatasetRecordsToolbar = ({
   selectionCount,
   onBulkDelete,
   onBulkClear,
+  experimentId,
+  datasetId,
+  selectedRecordIds,
 }: DatasetRecordsToolbarProps) => {
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
@@ -105,6 +117,17 @@ export const DatasetRecordsToolbar = ({
               values={{ count: selectionCount }}
             />
           </Button>
+          <AddToReviewQueueDropdown experimentId={experimentId} datasetId={datasetId} recordIds={selectedRecordIds}>
+            <Button
+              componentId="mlflow.eval-datasets-v2.records.selection-toolbar.flag-for-review"
+              icon={<FlagPointerIcon />}
+            >
+              <FormattedMessage
+                defaultMessage="Flag for review"
+                description="Button that opens the review-queue picker for the selected dataset records"
+              />
+            </Button>
+          </AddToReviewQueueDropdown>
           <Button
             componentId="mlflow.eval-datasets-v2.records.selection-toolbar.clear"
             type="tertiary"

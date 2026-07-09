@@ -231,6 +231,9 @@ export function useListDatasetRecordsQuery(datasetId: string) {
     cacheTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: false,
+    // Guard so callers outside the datasets page (e.g. the review queue) can pass
+    // an empty id when the queue isn't dataset-backed without firing a bogus fetch.
+    enabled: Boolean(datasetId),
   });
 }
 

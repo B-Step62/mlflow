@@ -4693,6 +4693,8 @@ def _create_review_queue():
         "users": list(request_message.users),
         "schema_ids": list(request_message.schema_ids),
     }
+    if request_message.HasField("dataset_id"):
+        kwargs["dataset_id"] = request_message.dataset_id
     # `created_by` is the owner: stamp it from the authenticated user, never the
     # client. Stays unset on a no-auth server (owner is meaningless there).
     username = _get_request_username()
@@ -4821,25 +4823,44 @@ def _add_items_to_review_queue():
     # id as non-existent.
     item_ids = validate_item_ids_for_attach(list(request_message.item_ids))
     kwargs: dict[str, object] = {"item_ids": item_ids}
-    if (
-        request_message.HasField("item_type")
-        and request_message.item_type != REVIEW_ITEM_TYPE_UNSPECIFIED
-    ):
-        kwargs["item_type"] = ReviewItemType.from_proto(request_message.item_type)
-    # Items are trace references with no DB foreign key, so verify every trace
-    # exists in the queue's experiment before attaching. A missing or
-    # cross-experiment id would otherwise become a ghost PENDING item the UI
-    # can't render, and reviewing it would leak traces across experiments.
     queue = store.get_review_queue(request_message.queue_id)
-    experiment_by_trace = {
-        info.trace_id: str(info.experiment_id) for info in store.batch_get_trace_infos(item_ids)
-    }
-    if invalid := [i for i in item_ids if experiment_by_trace.get(i) != str(queue.experiment_id)]:
-        raise MlflowException(
-            f"Cannot attach trace(s) {invalid} to review queue '{request_message.queue_id}': "
-            f"they do not exist in experiment '{queue.experiment_id}'.",
-            error_code=RESOURCE_DOES_NOT_EXIST,
-        )
+    if queue.dataset_id:
+        # A dataset-review queue: items are records of the bound dataset, not
+        # traces. Force the item type and verify every record belongs to the
+        # dataset so an unknown id can't become a ghost item the UI can't render.
+        kwargs["item_type"] = ReviewItemType.DATASET_RECORD
+        records, _ = store._load_dataset_records(queue.dataset_id, max_results=None)
+        known = {r.dataset_record_id for r in records}
+        if invalid := [i for i in item_ids if i not in known]:
+            raise MlflowException(
+                f"Cannot attach record(s) {invalid} to review queue "
+                f"'{request_message.queue_id}': they are not in dataset "
+                f"'{queue.dataset_id}'.",
+                error_code=RESOURCE_DOES_NOT_EXIST,
+            )
+    else:
+        if (
+            request_message.HasField("item_type")
+            and request_message.item_type != REVIEW_ITEM_TYPE_UNSPECIFIED
+        ):
+            kwargs["item_type"] = ReviewItemType.from_proto(request_message.item_type)
+        # Items are trace references with no DB foreign key, so verify every trace
+        # exists in the queue's experiment before attaching. A missing or
+        # cross-experiment id would otherwise become a ghost PENDING item the UI
+        # can't render, and reviewing it would leak traces across experiments.
+        experiment_by_trace = {
+            info.trace_id: str(info.experiment_id)
+            for info in store.batch_get_trace_infos(item_ids)
+        }
+        if invalid := [
+            i for i in item_ids if experiment_by_trace.get(i) != str(queue.experiment_id)
+        ]:
+            raise MlflowException(
+                f"Cannot attach trace(s) {invalid} to review queue "
+                f"'{request_message.queue_id}': they do not exist in experiment "
+                f"'{queue.experiment_id}'.",
+                error_code=RESOURCE_DOES_NOT_EXIST,
+            )
     items = store.add_items_to_review_queue(request_message.queue_id, **kwargs)
     response = AddItemsToReviewQueue.Response(items=[i.to_proto() for i in items])
     return _wrap_response(response)

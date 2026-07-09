@@ -20,6 +20,9 @@ option py_generic_services = true;
 enum ReviewItemType {
   REVIEW_ITEM_TYPE_UNSPECIFIED = 0;
   TRACE = 1;
+  // A record (row) of an evaluation dataset. Reviewers curate the record's
+  // expectations (ground truth) rather than assessing a trace.
+  DATASET_RECORD = 2;
 }
 
 // The flavor of a review queue. USER queues are a single reviewer's
@@ -75,6 +78,11 @@ message ReviewQueue {
   // treating the no-auth catch-all as the reserved `default` USER queue.
   reserved 10;
   reserved "is_default";
+
+  // Evaluation dataset this queue reviews. When set, the queue's items are
+  // DATASET_RECORD rows of this dataset and reviewers curate expectations
+  // instead of assessing traces. Unset for a trace-review queue.
+  optional string dataset_id = 11;
 }
 
 // One item attached to a queue plus its shared-pool workflow status.
@@ -105,6 +113,8 @@ message CreateReviewQueue {
   optional string created_by = 4;
   repeated string users = 5;
   repeated string schema_ids = 6;
+  // Binds this queue to an evaluation dataset for dataset-record review.
+  optional string dataset_id = 7;
 
   message Response {
     optional ReviewQueue review_queue = 1;

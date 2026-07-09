@@ -11,23 +11,31 @@ from mlflow.utils.annotations import experimental
 class ReviewItemType(StrEnum):
     """What kind of object a queue item points at.
 
-    v1 ships ``trace`` only; the column is kept wide enough for
-    ``session`` / ``span`` to land later without a migration.
+    ``trace`` items are assessed via ``Feedback`` assessments; ``dataset_record``
+    items are rows of an evaluation dataset whose expectations reviewers curate.
     """
 
     TRACE = "trace"
+    DATASET_RECORD = "dataset_record"
 
     def to_proto(self) -> int:
-        return _rq_pb.TRACE
+        return {
+            ReviewItemType.TRACE: _rq_pb.TRACE,
+            ReviewItemType.DATASET_RECORD: _rq_pb.DATASET_RECORD,
+        }[self]
 
     @classmethod
     def from_proto(cls, proto: int) -> "ReviewItemType":
-        if proto == _rq_pb.TRACE:
-            return cls.TRACE
-        raise MlflowException(
-            f"`item_type` must be TRACE; got proto enum value {proto}.",
-            error_code=INVALID_PARAMETER_VALUE,
-        )
+        mapping = {
+            _rq_pb.TRACE: cls.TRACE,
+            _rq_pb.DATASET_RECORD: cls.DATASET_RECORD,
+        }
+        if proto not in mapping:
+            raise MlflowException(
+                f"`item_type` must be TRACE or DATASET_RECORD; got proto enum value {proto}.",
+                error_code=INVALID_PARAMETER_VALUE,
+            )
+        return mapping[proto]
 
 
 @experimental(version="3.14.0")
@@ -192,6 +200,7 @@ class ReviewQueue:
     last_update_time_ms: int
     users: list[str] = field(default_factory=list)
     schema_ids: list[str] = field(default_factory=list)
+    dataset_id: str | None = None
 
     def to_proto(self) -> "_rq_pb.ReviewQueue":
         proto = _rq_pb.ReviewQueue(
@@ -206,6 +215,8 @@ class ReviewQueue:
         )
         if self.created_by is not None:
             proto.created_by = self.created_by
+        if self.dataset_id is not None:
+            proto.dataset_id = self.dataset_id
         return proto
 
     @classmethod
@@ -220,4 +231,5 @@ class ReviewQueue:
             last_update_time_ms=proto.last_update_time_ms,
             users=list(proto.users),
             schema_ids=list(proto.schema_ids),
+            dataset_id=proto.dataset_id if proto.HasField("dataset_id") else None,
         )

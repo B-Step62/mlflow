@@ -62,17 +62,28 @@ const LIST_MAX_HEIGHT = 280;
  * top. Nothing is selected by default. Queues that wouldn't
  * present any questions are disabled (see `getQueueAssignability`), and a new
  * queue can be created inline.
+ *
+ * In "dataset mode" (a `datasetId` is passed), the picker routes dataset
+ * records instead of traces: `recordIds` are attached as `DATASET_RECORD`
+ * items, only CUSTOM queues bound to that dataset are listed, and the per-user
+ * / default (USER) queue sections are hidden (dataset review is CUSTOM-only).
  */
 export const AddToReviewQueueDropdown = ({
   experimentId,
-  selectedTraceInfos,
+  selectedTraceInfos = [],
+  datasetId,
+  recordIds,
   children,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   popoverAlign = 'end',
 }: {
   experimentId: string;
-  selectedTraceInfos: ModelTraceInfoV3[];
+  selectedTraceInfos?: ModelTraceInfoV3[];
+  /** When set, switches the picker into dataset-record review mode. */
+  datasetId?: string;
+  /** Dataset-record ids to attach; used only in dataset mode. */
+  recordIds?: string[];
   children: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -84,11 +95,16 @@ export const AddToReviewQueueDropdown = ({
   // Don't let a write stamp `created_by` until the reviewer identity is settled.
   const reviewerResolved = useIsReviewerResolved();
   const authAvailable = useIsAuthAvailable();
+  // Dataset-record review mode: attach records (not traces) to dataset-bound
+  // CUSTOM queues only.
+  const datasetMode = Boolean(datasetId);
   // Flagging traces into a queue is an EDIT capability; fetch the roster for the
   // per-user-queue picker only when an editor opens the dropdown.
   const canEdit = useCanEditReviews(experimentId);
   const canManage = useCanManageReviews(experimentId);
-  const canListUsers = authAvailable && canEdit;
+  // Dataset review is CUSTOM-only, so the per-user / default (USER) queue
+  // sections (and their roster fetch) are suppressed in dataset mode.
+  const canListUsers = authAvailable && canEdit && !datasetMode;
 
   // -- open state (controlled or uncontrolled) --
   const [internalOpen, setInternalOpen] = useState(false);
@@ -134,8 +150,11 @@ export const AddToReviewQueueDropdown = ({
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
   const itemIds = useMemo(
-    () => selectedTraceInfos.map((info) => info.trace_id).filter((id): id is string => Boolean(id)),
-    [selectedTraceInfos],
+    () =>
+      datasetMode
+        ? (recordIds ?? []).filter((id): id is string => Boolean(id))
+        : selectedTraceInfos.map((info) => info.trace_id).filter((id): id is string => Boolean(id)),
+    [datasetMode, recordIds, selectedTraceInfos],
   );
 
   // For a single trace, reflect the queues it is already a member of. The
@@ -185,7 +204,12 @@ export const AddToReviewQueueDropdown = ({
   // Shared queues anyone can route into. The no-auth catch-all (the reserved
   // `default` user queue) is surfaced through the pinned option instead of the
   // list; other users' personal queues are reached through the "Users" section.
-  const customQueues = useMemo(() => reviewQueues.filter((q) => q.queue_type === 'CUSTOM'), [reviewQueues]);
+  // In dataset mode, only CUSTOM queues bound to this dataset are valid
+  // destinations; the trace flow keeps listing every CUSTOM queue.
+  const customQueues = useMemo(
+    () => reviewQueues.filter((q) => q.queue_type === 'CUSTOM' && (datasetMode ? q.dataset_id === datasetId : true)),
+    [reviewQueues, datasetMode, datasetId],
+  );
 
   // USER queues (including the `default` catch-all) present every experiment
   // schema, so they are assignable as soon as the experiment has a question.
@@ -265,13 +289,21 @@ export const AddToReviewQueueDropdown = ({
       const reviewQueuePath = getReviewQueuePageRoute(experimentId, queueId);
       Utils.displayGlobalInfoNotification(
         <span css={{ whiteSpace: 'nowrap' }}>
-          {intl.formatMessage(
-            {
-              defaultMessage: 'Added {count, plural, one {# trace} other {# traces}} to review.',
-              description: 'Add to review queue: success toast after traces are added',
-            },
-            { count: itemIds.length },
-          )}{' '}
+          {datasetMode
+            ? intl.formatMessage(
+                {
+                  defaultMessage: 'Added {count, plural, one {# record} other {# records}} to review.',
+                  description: 'Add to review queue: success toast after dataset records are added',
+                },
+                { count: itemIds.length },
+              )
+            : intl.formatMessage(
+                {
+                  defaultMessage: 'Added {count, plural, one {# trace} other {# traces}} to review.',
+                  description: 'Add to review queue: success toast after traces are added',
+                },
+                { count: itemIds.length },
+              )}{' '}
           <Link componentId={`${CID}.toast-view-queue`} to={reviewQueuePath}>
             {intl.formatMessage({
               defaultMessage: 'View review queue',
@@ -282,7 +314,7 @@ export const AddToReviewQueueDropdown = ({
         3,
       );
     },
-    [experimentId, itemIds.length, intl],
+    [experimentId, itemIds.length, intl, datasetMode],
   );
 
   const showErrorToast = useCallback(
@@ -320,7 +352,11 @@ export const AddToReviewQueueDropdown = ({
           return next;
         });
       } else {
-        await addItemsToReviewQueueAsync({ queue_id: queueId, item_ids: itemIds });
+        await addItemsToReviewQueueAsync({
+          queue_id: queueId,
+          item_ids: itemIds,
+          ...(datasetMode ? { item_type: 'DATASET_RECORD' as const } : {}),
+        });
         setAddedQueueIds((prev) => new Set(prev).add(queueId));
         showSuccessToast(queueId);
       }
@@ -482,8 +518,9 @@ export const AddToReviewQueueDropdown = ({
                       </Typography.Link>
                     )}
 
-                    {/* Pinned default queue (no-auth only; the reserved `default` user queue). */}
-                    {!authAvailable && !query && (
+                    {/* Pinned default queue (no-auth only; the reserved `default` user queue).
+                        Hidden in dataset mode — dataset review is CUSTOM-only. */}
+                    {!authAvailable && !datasetMode && !query && (
                       <DialogComboboxOptionListCheckboxItem
                         value={defaultQueueLabel}
                         checked={addedUsers.has(DEFAULT_REVIEWER)}
@@ -646,6 +683,7 @@ export const AddToReviewQueueDropdown = ({
       {createOpen && (
         <CreateReviewQueueModal
           experimentId={experimentId}
+          datasetId={datasetId}
           onClose={() => setCreateOpen(false)}
           onCreated={handleCreated}
         />

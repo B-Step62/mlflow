@@ -3468,6 +3468,13 @@ class SqlReviewQueue(Base):
     activity" view must consult the child rows, not just this field.
     """
 
+    dataset_id = Column(String(36), nullable=True)
+    """
+    Evaluation dataset this queue reviews, when set. Its items are
+    ``dataset_record`` rows of this dataset and reviewers curate expectations
+    instead of assessing traces. ``NULL`` for a trace-review queue.
+    """
+
     __table_args__ = (
         PrimaryKeyConstraint("queue_id", name="review_queues_pk"),
         UniqueConstraint("experiment_id", "name_key", name="uq_review_queues_experiment_name_key"),
@@ -3517,6 +3524,7 @@ class SqlReviewQueue(Base):
             last_update_time_ms=self.last_update_time_ms,
             users=list(users) if users is not None else [],
             schema_ids=list(schema_ids) if schema_ids is not None else [],
+            dataset_id=self.dataset_id,
         )
 
 

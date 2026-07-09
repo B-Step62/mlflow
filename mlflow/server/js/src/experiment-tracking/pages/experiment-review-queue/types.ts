@@ -11,7 +11,7 @@ export type ReviewQueueType = 'USER' | 'CUSTOM';
 
 export type ReviewStatus = 'PENDING' | 'COMPLETE' | 'DECLINED';
 
-export type ReviewItemType = 'TRACE';
+export type ReviewItemType = 'TRACE' | 'DATASET_RECORD';
 
 export interface ReviewQueue {
   queue_id: string;
@@ -25,6 +25,12 @@ export interface ReviewQueue {
   users?: string[];
   /** Attached label-schema ids; empty for a USER queue (resolves to all). */
   schema_ids?: string[];
+  /**
+   * Evaluation dataset this queue reviews. When set, items are DATASET_RECORD
+   * rows of this dataset and reviewers curate expectations instead of assessing
+   * traces. Unset for a trace-review queue.
+   */
+  dataset_id?: string;
 }
 
 export interface ReviewQueueItem {

@@ -12,6 +12,8 @@ export interface CreateReviewQueueParams {
   created_by?: string;
   users?: string[];
   schema_ids?: string[];
+  /** Binds the queue to an evaluation dataset for dataset-record review. */
+  dataset_id?: string;
 }
 
 interface CreateReviewQueueResponse {

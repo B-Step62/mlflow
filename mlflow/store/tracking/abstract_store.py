@@ -1854,6 +1854,7 @@ class AbstractStore(GatewayStoreMixin):
         created_by: str | None = None,
         users: list[str] | None = None,
         schema_ids: list[str] | None = None,
+        dataset_id: str | None = None,
     ) -> "ReviewQueue":
         """Create a review queue scoped to an experiment.
 

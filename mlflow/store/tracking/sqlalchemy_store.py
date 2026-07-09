@@ -8474,6 +8474,7 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
         created_by=None,
         users=None,
         schema_ids=None,
+        dataset_id=None,
     ):
         from mlflow.genai.review_queues.validation import validate_queue_for_create
 
@@ -8499,6 +8500,7 @@ class SqlAlchemyStore(SqlAlchemyGatewayStoreMixin, AbstractStore):
                 created_by=created_by,
                 creation_time_ms=now_ms,
                 last_update_time_ms=now_ms,
+                dataset_id=dataset_id,
             )
             # Single source for the case-fold: the validator-derived key, reused by
             # the pre-check and the disambiguation re-query below (captured rather

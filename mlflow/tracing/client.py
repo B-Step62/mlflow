@@ -991,6 +991,7 @@ class TracingClient:
         queue_type: "ReviewQueueType | str",
         users: list[str] | None = None,
         schema_ids: list[str] | None = None,
+        dataset_id: str | None = None,
     ) -> "ReviewQueue":
         # `created_by` (the owner) is stamped server-side, never by the client.
         return self.store.create_review_queue(
@@ -999,6 +1000,7 @@ class TracingClient:
             queue_type=queue_type,
             users=users,
             schema_ids=schema_ids,
+            dataset_id=dataset_id,
         )
 
     def _get_or_create_user_queue(self, experiment_id: str, *, user: str) -> "ReviewQueue":

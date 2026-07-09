@@ -118,6 +118,9 @@ const ExperimentReviewQueuePage = () => {
     () => reviewQueues.find((q) => q.queue_id === selectedQueueId) ?? null,
     [reviewQueues, selectedQueueId],
   );
+  // A queue bound to a dataset reviews dataset records (curate expectations),
+  // not traces. This flips the item fetching, list columns, and focused view.
+  const isDatasetQueue = Boolean(selectedQueue?.dataset_id);
   const editingQueue = useMemo(
     () => (editingQueueId ? (reviewQueues.find((q) => q.queue_id === editingQueueId) ?? null) : null),
     [reviewQueues, editingQueueId],
@@ -176,8 +179,9 @@ const ExperimentReviewQueuePage = () => {
   });
   // Each trace's own creation time, to order the queue by when traces were
   // produced (not when they were added to the queue). Shares the cache with the
-  // trace-list preview fetch.
-  const { data: orderingTraceData } = useGetTracesById(traces.map((t) => t.item_id));
+  // trace-list preview fetch. Dataset queues have no traces, so skip the fetch
+  // (ordering falls back to attach order via the 0-default below).
+  const { data: orderingTraceData } = useGetTracesById(isDatasetQueue ? [] : traces.map((t) => t.item_id));
   const traceCreatedMsById = useMemo(() => {
     const map = new Map<string, number>();
     (orderingTraceData ?? []).forEach((t) => {
@@ -368,7 +372,7 @@ const ExperimentReviewQueuePage = () => {
   } else if (openItemId && openItem) {
     rightContent = (
       <FocusedReview
-        // Remount per trace so answer state never bleeds across traces.
+        // Remount per item so answer state never bleeds across items.
         key={openItem.item_id}
         item={openItem}
         items={orderedTraces}
@@ -383,6 +387,8 @@ const ExperimentReviewQueuePage = () => {
         onBack={() => setOpenItemId(null)}
         onSelect={(itemId) => setOpenItemId(itemId)}
         onSetStatus={setOpenStatus}
+        // Dataset-review queue: the item is a record, curated in this same pane.
+        datasetId={selectedQueue?.dataset_id}
       />
     );
   } else if (itemsLoading) {
@@ -394,7 +400,8 @@ const ExperimentReviewQueuePage = () => {
         // groups) reset instead of leaking stale target ids across queues.
         key={selectedQueue.queue_id}
         title={selectedQueue.queue_type === 'USER' ? displayUser(selectedQueue.name, intl) : selectedQueue.name}
-        questionCount={questionSchemas.length}
+        questionCount={isDatasetQueue ? undefined : questionSchemas.length}
+        datasetId={selectedQueue.dataset_id}
         items={orderedTraces}
         onOpen={(item) => setOpenItemId(item.item_id)}
         nowMs={nowMs}

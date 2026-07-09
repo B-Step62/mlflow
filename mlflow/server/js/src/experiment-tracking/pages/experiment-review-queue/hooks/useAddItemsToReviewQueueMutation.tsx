@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@databricks/web-shared/query-client';
 
 import { fetchAPI, getAjaxUrl } from '../../../../common/utils/FetchUtils';
-import type { ReviewQueueItem } from '../types';
+import type { ReviewItemType, ReviewQueueItem } from '../types';
 import { REVIEW_QUEUES_API_BASE } from './constants';
 import { LIST_REVIEW_QUEUE_ITEMS_QUERY_KEY } from './useListReviewQueueItemsQuery';
 import { LIST_REVIEW_QUEUES_QUERY_KEY } from './useListReviewQueuesQuery';
@@ -9,6 +9,8 @@ import { LIST_REVIEW_QUEUES_QUERY_KEY } from './useListReviewQueuesQuery';
 export interface AddItemsToReviewQueueParams {
   queue_id: string;
   item_ids: string[];
+  /** Defaults to TRACE server-side; pass DATASET_RECORD for dataset queues. */
+  item_type?: ReviewItemType;
 }
 
 interface AddItemsToReviewQueueResponse {

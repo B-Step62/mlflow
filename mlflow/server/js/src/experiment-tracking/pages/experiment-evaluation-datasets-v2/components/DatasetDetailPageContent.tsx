@@ -369,6 +369,9 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
                 selectionCount={bulk.selected.size}
                 onBulkDelete={handleOpenBulkDelete}
                 onBulkClear={bulk.clear}
+                experimentId={experimentId}
+                datasetId={datasetId}
+                selectedRecordIds={Array.from(bulk.selected)}
               />
               {flags.hasNoSearchResults ? (
                 <DatasetRecordsNoResultsEmptyState searchQuery={url.search} onClearSearch={() => url.setSearch('')} />
