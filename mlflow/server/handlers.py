@@ -392,6 +392,8 @@ from mlflow.utils.validation import (
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 from mlflow.webhooks.delivery import deliver_webhook, test_webhook
 from mlflow.webhooks.types import (
+    DatasetRecordCreatedPayload,
+    DatasetRecordUpdatedPayload,
     ModelVersionAliasCreatedPayload,
     ModelVersionAliasDeletedPayload,
     ModelVersionCreatedPayload,
@@ -406,6 +408,13 @@ from mlflow.webhooks.types import (
     PromptVersionTagDeletedPayload,
     PromptVersionTagSetPayload,
     RegisteredModelCreatedPayload,
+    ReviewQueueItemCreatedPayload,
+    ReviewQueueItemUpdatedPayload,
+    TraceAssessmentCreatedPayload,
+)
+from mlflow.server.review_queue_notifications import (
+    notify_items_attached,
+    notify_queue_assignment,
 )
 
 _logger = logging.getLogger(__name__)
@@ -4351,6 +4360,33 @@ def _create_assessment(trace_id):
     assessment.trace_id = trace_id
     created_assessment = _get_tracking_store().create_assessment(assessment)
 
+    try:
+        feedback_value = getattr(created_assessment, "feedback", None)
+        if feedback_value is not None:
+            assessment_value = getattr(feedback_value, "value", None)
+        else:
+            assessment_value = getattr(
+                getattr(created_assessment, "expectation", None), "value", None
+            )
+        source = getattr(created_assessment, "source", None)
+        source_type = getattr(source, "source_type", None)
+        payload = TraceAssessmentCreatedPayload(
+            trace_id=trace_id,
+            assessment_name=created_assessment.name,
+            value=assessment_value,
+            source_type=str(source_type) if source_type is not None else "",
+        )
+        rationale = getattr(created_assessment, "rationale", None)
+        if rationale is not None:
+            payload["rationale"] = rationale
+        deliver_webhook(
+            event=WebhookEvent(WebhookEntity.TRACE_ASSESSMENT, WebhookAction.CREATED),
+            payload=payload,
+            store=_get_model_registry_store(),
+        )
+    except Exception as e:
+        _logger.warning(f"Failed to deliver trace assessment webhook: {e}")
+
     response_message = CreateAssessment.Response(assessment=created_assessment.to_proto())
     return _wrap_response(response_message)
 
@@ -4701,6 +4737,7 @@ def _create_review_queue():
     if username is not None:
         kwargs["created_by"] = username
     created = _get_tracking_store().create_review_queue(**kwargs)
+    notify_queue_assignment(created)
     return _wrap_response(CreateReviewQueue.Response(review_queue=created.to_proto()))
 
 
@@ -4795,6 +4832,7 @@ def _update_review_queue():
         name=name,
         new_owner=new_owner,
     )
+    notify_queue_assignment(updated)
     return _wrap_response(UpdateReviewQueue.Response(review_queue=updated.to_proto()))
 
 
@@ -4862,6 +4900,28 @@ def _add_items_to_review_queue():
                 error_code=RESOURCE_DOES_NOT_EXIST,
             )
     items = store.add_items_to_review_queue(request_message.queue_id, **kwargs)
+
+    try:
+        registry_store = _get_model_registry_store()
+        for item in items:
+            payload = ReviewQueueItemCreatedPayload(
+                queue_id=request_message.queue_id,
+                experiment_id=str(queue.experiment_id),
+                item_type=str(item.item_type),
+                item_id=item.item_id,
+            )
+            if queue.dataset_id:
+                payload["dataset_id"] = queue.dataset_id
+            deliver_webhook(
+                event=WebhookEvent(WebhookEntity.REVIEW_QUEUE_ITEM, WebhookAction.CREATED),
+                payload=payload,
+                store=registry_store,
+            )
+    except Exception as e:
+        _logger.warning(f"Failed to deliver review queue item creation webhooks: {e}")
+
+    notify_items_attached(queue, len(items))
+
     response = AddItemsToReviewQueue.Response(items=[i.to_proto() for i in items])
     return _wrap_response(response)
 
@@ -4938,6 +4998,28 @@ def _set_review_queue_item_status():
         status=status,
         completed_by=completed_by,
     )
+
+    try:
+        queue = _get_tracking_store().get_review_queue(request_message.queue_id)
+        payload = ReviewQueueItemUpdatedPayload(
+            queue_id=request_message.queue_id,
+            experiment_id=str(queue.experiment_id),
+            item_type=str(item.item_type),
+            item_id=item.item_id,
+            status=str(status),
+        )
+        if item.completed_by:
+            payload["completed_by"] = item.completed_by
+        if queue.dataset_id:
+            payload["dataset_id"] = queue.dataset_id
+        deliver_webhook(
+            event=WebhookEvent(WebhookEntity.REVIEW_QUEUE_ITEM, WebhookAction.UPDATED),
+            payload=payload,
+            store=_get_model_registry_store(),
+        )
+    except Exception as e:
+        _logger.warning(f"Failed to deliver review queue item update webhook: {e}")
+
     return _wrap_response(SetReviewQueueItemStatus.Response(item=item.to_proto()))
 
 
@@ -7152,11 +7234,51 @@ def _upsert_dataset_records_handler(dataset_id):
     )
 
     records = json.loads(request_message.records)
+    store = _get_tracking_store()
 
-    result = _get_tracking_store().upsert_dataset_records(
+    try:
+        pre = {
+            r.dataset_record_id
+            for r in store._load_dataset_records(dataset_id, max_results=None)[0]
+        }
+    except Exception as e:
+        _logger.warning(f"Failed to load dataset records before upsert for webhook diffing: {e}")
+        pre = None
+
+    result = store.upsert_dataset_records(
         dataset_id=dataset_id,
         records=records,
     )
+
+    if pre is not None:
+        try:
+            post = {
+                r.dataset_record_id
+                for r in store._load_dataset_records(dataset_id, max_results=None)[0]
+            }
+            registry_store = _get_model_registry_store()
+            for new_id in post - pre:
+                deliver_webhook(
+                    event=WebhookEvent(WebhookEntity.DATASET_RECORD, WebhookAction.CREATED),
+                    payload=DatasetRecordCreatedPayload(
+                        dataset_id=dataset_id,
+                        dataset_record_id=new_id,
+                    ),
+                    store=registry_store,
+                )
+            for record in records:
+                record_id = record.get("dataset_record_id") if isinstance(record, dict) else None
+                if record_id in pre:
+                    deliver_webhook(
+                        event=WebhookEvent(WebhookEntity.DATASET_RECORD, WebhookAction.UPDATED),
+                        payload=DatasetRecordUpdatedPayload(
+                            dataset_id=dataset_id,
+                            dataset_record_id=record_id,
+                        ),
+                        store=registry_store,
+                    )
+        except Exception as e:
+            _logger.warning(f"Failed to deliver dataset record webhooks: {e}")
 
     response_message = UpsertDatasetRecords.Response()
     response_message.inserted_count = result["inserted"]

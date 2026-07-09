@@ -1,0 +1,3 @@
+# Runtime artifacts written by the receiver / seed at demo time.
+ci_dispatch.log
+demo_config.json

@@ -1,0 +1,4 @@
+# The receiver also needs `mlflow` (the client SDK you are integrating with).
+# Install it separately, e.g. `pip install mlflow`.
+fastapi
+uvicorn[standard]

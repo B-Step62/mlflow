@@ -43,8 +43,9 @@ const CID = 'mlflow.experiment-review-queue.create-queue';
  * aren't created here; they're resolved on demand via get-or-create.
  *
  * When a `datasetId` is passed, the queue is created bound to that dataset
- * (`dataset_id` set) and its question picker is limited to — and defaults to —
- * the experiment's EXPECTATION-type schemas, so reviewers curate expectations.
+ * (`dataset_id` set) and its question picker offers - and defaults to - the
+ * experiment's EXPECTATION and FEEDBACK schemas, so reviewers curate
+ * expectations and record feedback (e.g. an "Approve?" pass/fail).
  */
 export const CreateReviewQueueModal = ({
   experimentId,
@@ -55,8 +56,8 @@ export const CreateReviewQueueModal = ({
   experimentId: string;
   /**
    * When set, creates a dataset-bound queue: the created queue carries
-   * `dataset_id` and its questions default to the experiment's
-   * EXPECTATION-type label schemas.
+   * `dataset_id` and its questions default to the experiment's EXPECTATION
+   * and FEEDBACK label schemas.
    */
   datasetId?: string;
   onClose: () => void;
@@ -69,13 +70,15 @@ export const CreateReviewQueueModal = ({
   const reviewerResolved = useIsReviewerResolved();
   const authAvailable = useIsAuthAvailable();
   // Dataset-bound queue creation: questions come from the experiment's
-  // EXPECTATION-type schemas.
+  // EXPECTATION and FEEDBACK schemas.
   const datasetMode = Boolean(datasetId);
   const { labelSchemas, isLoading } = useListLabelSchemasQuery({ experimentId });
-  // Dataset queues collect expectations, so the question picker is limited to
-  // EXPECTATION schemas; the trace flow offers every schema.
+  // Dataset queues can curate expectations and collect feedback (e.g. an
+  // "Approve?" pass/fail), so the picker offers EXPECTATION and FEEDBACK
+  // schemas; the trace flow offers every schema.
   const availableSchemas = useMemo(
-    () => (datasetMode ? labelSchemas.filter((s) => s.type === 'EXPECTATION') : labelSchemas),
+    () =>
+      datasetMode ? labelSchemas.filter((s) => s.type === 'EXPECTATION' || s.type === 'FEEDBACK') : labelSchemas,
     [datasetMode, labelSchemas],
   );
   const { createReviewQueueAsync, isCreatingQueue } = useCreateReviewQueueMutation();
@@ -120,7 +123,7 @@ export const CreateReviewQueueModal = ({
       return next;
     });
 
-  // In dataset mode, default the question selection to every EXPECTATION schema
+  // In dataset mode, default the question selection to every available schema
   // once they load (seeded once; the creator can still refine the selection).
   const seededDatasetSchemasRef = useRef(false);
   useEffect(() => {

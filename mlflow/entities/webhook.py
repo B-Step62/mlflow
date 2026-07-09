@@ -46,6 +46,9 @@ class WebhookEntity(str, Enum):
     PROMPT_VERSION_TAG = "prompt_version_tag"
     PROMPT_ALIAS = "prompt_alias"
     BUDGET_POLICY = "budget_policy"
+    TRACE_ASSESSMENT = "trace_assessment"
+    REVIEW_QUEUE_ITEM = "review_queue_item"
+    DATASET_RECORD = "dataset_record"
 
     def __str__(self) -> str:
         return self.value
@@ -141,6 +144,17 @@ VALID_ENTITY_ACTIONS: dict[WebhookEntity, set[WebhookAction]] = {
     },
     WebhookEntity.BUDGET_POLICY: {
         WebhookAction.EXCEEDED,
+    },
+    WebhookEntity.TRACE_ASSESSMENT: {
+        WebhookAction.CREATED,
+    },
+    WebhookEntity.REVIEW_QUEUE_ITEM: {
+        WebhookAction.CREATED,
+        WebhookAction.UPDATED,
+    },
+    WebhookEntity.DATASET_RECORD: {
+        WebhookAction.CREATED,
+        WebhookAction.UPDATED,
     },
 }
 

@@ -27,6 +27,9 @@ class WebhookEntity(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     PROMPT_VERSION_TAG: _ClassVar[WebhookEntity]
     PROMPT_ALIAS: _ClassVar[WebhookEntity]
     BUDGET_POLICY: _ClassVar[WebhookEntity]
+    TRACE_ASSESSMENT: _ClassVar[WebhookEntity]
+    REVIEW_QUEUE_ITEM: _ClassVar[WebhookEntity]
+    DATASET_RECORD: _ClassVar[WebhookEntity]
 
 class WebhookAction(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -49,6 +52,9 @@ PROMPT_TAG: WebhookEntity
 PROMPT_VERSION_TAG: WebhookEntity
 PROMPT_ALIAS: WebhookEntity
 BUDGET_POLICY: WebhookEntity
+TRACE_ASSESSMENT: WebhookEntity
+REVIEW_QUEUE_ITEM: WebhookEntity
+DATASET_RECORD: WebhookEntity
 ACTION_UNSPECIFIED: WebhookAction
 CREATED: WebhookAction
 UPDATED: WebhookAction

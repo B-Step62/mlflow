@@ -4,7 +4,9 @@ This module contains class definitions for all webhook event payloads
 that are sent when various model registry events occur.
 """
 
-from typing import Literal, TypeAlias, TypedDict
+from typing import Any, Literal, TypeAlias, TypedDict
+
+from typing_extensions import NotRequired
 
 from mlflow.entities.webhook import WebhookAction, WebhookEntity, WebhookEvent
 
@@ -515,6 +517,185 @@ class BudgetPolicyExceededPayload(TypedDict):
         )
 
 
+class TraceAssessmentCreatedPayload(TypedDict):
+    """Payload sent when an assessment is created on a trace.
+
+    Example payload:
+
+    .. code-block:: python
+
+        {
+            "trace_id": "tr-abc123",
+            "assessment_name": "correctness",
+            "value": True,
+            "source_type": "HUMAN",
+            "rationale": "The response is correct.",
+        }
+
+    """
+
+    trace_id: str
+    """The ID of the trace the assessment is attached to."""
+    assessment_name: str
+    """The name of the assessment."""
+    value: Any
+    """The assessment value (feedback value or expectation value)."""
+    source_type: str
+    """The source type of the assessment (e.g. HUMAN, LLM_JUDGE, CODE)."""
+    rationale: NotRequired[str]
+    """The rationale / justification for the assessment, if provided."""
+
+    @classmethod
+    def example(cls) -> "TraceAssessmentCreatedPayload":
+        return cls(
+            trace_id="tr-abc123",
+            assessment_name="correctness",
+            value=True,
+            source_type="HUMAN",
+            rationale="The response is correct.",
+        )
+
+
+class ReviewQueueItemCreatedPayload(TypedDict):
+    """Payload sent when an item is added to a review queue.
+
+    Example payload:
+
+    .. code-block:: python
+
+        {
+            "queue_id": "rq-abc123",
+            "experiment_id": "0",
+            "item_type": "trace",
+            "item_id": "tr-abc123",
+            "dataset_id": "d-abc123",
+        }
+
+    """
+
+    queue_id: str
+    """The ID of the review queue the item was added to."""
+    experiment_id: str
+    """The ID of the experiment the review queue belongs to."""
+    item_type: str
+    """The type of the item (e.g. trace, dataset_record)."""
+    item_id: str
+    """The ID of the item."""
+    dataset_id: NotRequired[str]
+    """The ID of the bound dataset, for dataset-review queues."""
+
+    @classmethod
+    def example(cls) -> "ReviewQueueItemCreatedPayload":
+        return cls(
+            queue_id="rq-abc123",
+            experiment_id="0",
+            item_type="trace",
+            item_id="tr-abc123",
+            dataset_id="d-abc123",
+        )
+
+
+class ReviewQueueItemUpdatedPayload(TypedDict):
+    """Payload sent when a review queue item's status changes.
+
+    Example payload:
+
+    .. code-block:: python
+
+        {
+            "queue_id": "rq-abc123",
+            "experiment_id": "0",
+            "item_type": "trace",
+            "item_id": "tr-abc123",
+            "status": "complete",
+            "completed_by": "john@example.com",
+            "dataset_id": "d-abc123",
+        }
+
+    """
+
+    queue_id: str
+    """The ID of the review queue the item belongs to."""
+    experiment_id: str
+    """The ID of the experiment the review queue belongs to."""
+    item_type: str
+    """The type of the item (e.g. trace, dataset_record)."""
+    item_id: str
+    """The ID of the item."""
+    status: str
+    """The new status of the item (e.g. pending, complete, declined)."""
+    completed_by: NotRequired[str]
+    """The user who completed / declined the item, if in a terminal state."""
+    dataset_id: NotRequired[str]
+    """The ID of the bound dataset, for dataset-review queues."""
+
+    @classmethod
+    def example(cls) -> "ReviewQueueItemUpdatedPayload":
+        return cls(
+            queue_id="rq-abc123",
+            experiment_id="0",
+            item_type="trace",
+            item_id="tr-abc123",
+            status="complete",
+            completed_by="john@example.com",
+            dataset_id="d-abc123",
+        )
+
+
+class DatasetRecordCreatedPayload(TypedDict):
+    """Payload sent when a record is added to an evaluation dataset.
+
+    Example payload:
+
+    .. code-block:: python
+
+        {
+            "dataset_id": "d-abc123",
+            "dataset_record_id": "dr-abc123",
+        }
+
+    """
+
+    dataset_id: str
+    """The ID of the evaluation dataset."""
+    dataset_record_id: str
+    """The ID of the newly created dataset record."""
+
+    @classmethod
+    def example(cls) -> "DatasetRecordCreatedPayload":
+        return cls(
+            dataset_id="d-abc123",
+            dataset_record_id="dr-abc123",
+        )
+
+
+class DatasetRecordUpdatedPayload(TypedDict):
+    """Payload sent when an existing evaluation dataset record is updated.
+
+    Example payload:
+
+    .. code-block:: python
+
+        {
+            "dataset_id": "d-abc123",
+            "dataset_record_id": "dr-abc123",
+        }
+
+    """
+
+    dataset_id: str
+    """The ID of the evaluation dataset."""
+    dataset_record_id: str
+    """The ID of the updated dataset record."""
+
+    @classmethod
+    def example(cls) -> "DatasetRecordUpdatedPayload":
+        return cls(
+            dataset_id="d-abc123",
+            dataset_record_id="dr-abc123",
+        )
+
+
 WebhookPayload: TypeAlias = (
     RegisteredModelCreatedPayload
     | ModelVersionCreatedPayload
@@ -531,6 +712,11 @@ WebhookPayload: TypeAlias = (
     | PromptAliasCreatedPayload
     | PromptAliasDeletedPayload
     | BudgetPolicyExceededPayload
+    | TraceAssessmentCreatedPayload
+    | ReviewQueueItemCreatedPayload
+    | ReviewQueueItemUpdatedPayload
+    | DatasetRecordCreatedPayload
+    | DatasetRecordUpdatedPayload
 )
 
 # Mapping of (entity, action) tuples to their corresponding payload classes
@@ -550,6 +736,11 @@ EVENT_TO_PAYLOAD_CLASS: dict[tuple[WebhookEntity, WebhookAction], type[WebhookPa
     (WebhookEntity.PROMPT_ALIAS, WebhookAction.CREATED): PromptAliasCreatedPayload,
     (WebhookEntity.PROMPT_ALIAS, WebhookAction.DELETED): PromptAliasDeletedPayload,
     (WebhookEntity.BUDGET_POLICY, WebhookAction.EXCEEDED): BudgetPolicyExceededPayload,
+    (WebhookEntity.TRACE_ASSESSMENT, WebhookAction.CREATED): TraceAssessmentCreatedPayload,
+    (WebhookEntity.REVIEW_QUEUE_ITEM, WebhookAction.CREATED): ReviewQueueItemCreatedPayload,
+    (WebhookEntity.REVIEW_QUEUE_ITEM, WebhookAction.UPDATED): ReviewQueueItemUpdatedPayload,
+    (WebhookEntity.DATASET_RECORD, WebhookAction.CREATED): DatasetRecordCreatedPayload,
+    (WebhookEntity.DATASET_RECORD, WebhookAction.UPDATED): DatasetRecordUpdatedPayload,
 }
 
 

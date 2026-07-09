@@ -30,6 +30,7 @@ import type { LabelSchema, LabelSchemaValue } from '../../components/label-schem
 import {
   useListDatasetRecordsQuery,
   useUpsertDatasetRecordsMutation,
+  type DatasetRecord,
 } from '../experiment-evaluation-datasets-v2/hooks/useDatasetsQueries';
 import { useCreateReviewAssessmentMutation } from './hooks/useCreateReviewAssessmentMutation';
 import { useTraceAssessmentsQuery } from './hooks/useTraceAssessmentsQuery';
@@ -41,6 +42,26 @@ import type { ReviewQueueItem, ReviewStatus } from './types';
 import { MARKDOWN_RENDER_SIZE_LIMIT } from '../../../shared/web-shared/model-trace-explorer/constants';
 
 const CID = 'mlflow.experiment-review-queue.focused-review';
+
+/** Record-mode FEEDBACK answers persist in this single JSON tag on the dataset
+ *  record (EXPECTATION answers go to `record.expectations`). Shape:
+ *  `{ [schema.name]: { value, rationale? } }`. */
+const RECORD_FEEDBACK_TAG = 'mlflow.review.feedback';
+
+type RecordFeedbackEntry = { value?: LabelSchemaValue; rationale?: string };
+
+/** Parse the `mlflow.review.feedback` tag value; tolerant of a missing or malformed tag. */
+const parseRecordFeedbackTag = (raw: string | undefined): Record<string, RecordFeedbackEntry> => {
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, RecordFeedbackEntry>) : {};
+  } catch {
+    return {};
+  }
+};
 
 /** Try to parse `raw` as JSON; returns the pretty-printed string + a flag. */
 const tryParseJson = (raw: string): { text: string; isJson: boolean } => {
@@ -159,8 +180,9 @@ export const FocusedReview = ({
   /** Reviewer identifier recorded on completion; `default` in no-auth OSS. */
   completedBy: string;
   /** Set for a dataset-review queue: the item is a dataset record, reviewed in
-   *  this same pane. Its inputs replace the trace content, the EXPECTATION
-   *  questions collect its expectations, and answers persist to the record. */
+   *  this same pane. Its inputs replace the trace content; EXPECTATION questions
+   *  curate its expectations and FEEDBACK questions are stored on the record (in
+   *  the `mlflow.review.feedback` tag), all persisted back to the dataset. */
   datasetId?: string;
   /** True while a status write is in flight (disables the actions). */
   isSettingStatus: boolean;
@@ -214,31 +236,57 @@ export const FocusedReview = ({
   const hasIO = isRecordMode ? Boolean(record) : Boolean(requestPreview || responsePreview);
 
   // Prefill the widgets. Trace mode reads the trace's existing assessments
-  // (scoped to this reviewer's source); record mode reads the record's existing
-  // expectations, keyed by schema name. Edits overlay the prefill so a query
-  // result never clobbers what the reviewer typed. In record mode the trace
-  // query is disabled, so `priorAnswers` is empty and the rationale/supersede
-  // maps below naturally come out empty too.
+  // (scoped to this reviewer's source); record mode reads the record's stored
+  // answers — EXPECTATION schemas from `record.expectations`, FEEDBACK schemas
+  // from the `mlflow.review.feedback` JSON tag. Edits overlay the prefill so a
+  // query result never clobbers what the reviewer typed. In record mode the
+  // trace query is disabled, so `priorAnswers` (and the supersede map below)
+  // come out empty; the tag supplies the record-mode value/rationale prefill.
   const { priorAnswers, isFetching: priorAnswersFetching } = useTraceAssessmentsQuery({
     traceId: item.item_id,
     sourceId: completedBy,
     enabled: !isRecordMode,
   });
+  // The record's FEEDBACK answers live in one JSON tag; parse it once for the
+  // value + rationale prefill and the submit-time merge.
+  const recordFeedback = useMemo<Record<string, RecordFeedbackEntry>>(
+    () => (isRecordMode ? parseRecordFeedbackTag(record?.tags?.[RECORD_FEEDBACK_TAG]) : {}),
+    [isRecordMode, record],
+  );
   const tracePrefilled = useMemo(() => buildPrefilledAnswers(priorAnswers, schemas), [priorAnswers, schemas]);
   const recordPrefilled = useMemo(() => {
     const out: Record<string, LabelSchemaValue> = {};
     if (isRecordMode && record) {
       for (const s of schemas) {
-        const v = record.expectations?.[s.name];
+        // EXPECTATION answers are curated onto the record; FEEDBACK answers are
+        // read back from the `mlflow.review.feedback` tag.
+        const v = s.type === 'EXPECTATION' ? record.expectations?.[s.name] : recordFeedback[s.name]?.value;
         if (v !== undefined) {
           out[s.name] = v as LabelSchemaValue;
         }
       }
     }
     return out;
-  }, [isRecordMode, record, schemas]);
+  }, [isRecordMode, record, schemas, recordFeedback]);
   const prefilled = isRecordMode ? recordPrefilled : tracePrefilled;
-  const prefilledRationales = useMemo(() => buildPrefilledRationales(priorAnswers, schemas), [priorAnswers, schemas]);
+  const tracePrefilledRationales = useMemo(
+    () => buildPrefilledRationales(priorAnswers, schemas),
+    [priorAnswers, schemas],
+  );
+  // Record-mode rationales come from the feedback tag's per-schema `rationale`.
+  const recordPrefilledRationales = useMemo(() => {
+    const out: Record<string, string> = {};
+    if (isRecordMode) {
+      for (const s of schemas) {
+        const r = recordFeedback[s.name]?.rationale;
+        if (r) {
+          out[s.name] = r;
+        }
+      }
+    }
+    return out;
+  }, [isRecordMode, schemas, recordFeedback]);
+  const prefilledRationales = isRecordMode ? recordPrefilledRationales : tracePrefilledRationales;
   // Each question's prior assessment id (this reviewer's), so a re-submit
   // supersedes it instead of writing a duplicate.
   const priorAssessmentIds = useMemo(() => buildPriorAssessmentIds(priorAnswers, schemas), [priorAnswers, schemas]);
@@ -374,13 +422,30 @@ export const FocusedReview = ({
       // Write the answers, then mark complete. Status is advanced only if every
       // write succeeds, so a partial failure leaves the item pending for retry.
       if (isRecordMode) {
-        // Record review: the answered EXPECTATION values are the record's
-        // expectations, keyed by schema name; persist them back to the dataset.
-        const expectations: Record<string, unknown> = { ...(record?.expectations ?? {}) };
-        for (const s of answered) {
-          expectations[s.name] = effectiveValue(s.name);
+        // Record review: EXPECTATION answers are curated onto the record as its
+        // expectations (keyed by schema name); FEEDBACK answers go into a single
+        // JSON tag (`mlflow.review.feedback`), shape `{ [name]: { value, rationale? } }`,
+        // merged onto any existing tag. Both are written in one upsert; a schema
+        // type with no answers leaves its side untouched.
+        const updates: Partial<DatasetRecord> = {};
+        const expectationAnswers = answered.filter((s) => s.type === 'EXPECTATION');
+        const feedbackAnswers = answered.filter((s) => s.type !== 'EXPECTATION');
+        if (expectationAnswers.length > 0) {
+          const expectations: Record<string, unknown> = { ...(record?.expectations ?? {}) };
+          for (const s of expectationAnswers) {
+            expectations[s.name] = effectiveValue(s.name);
+          }
+          updates.expectations = expectations;
         }
-        await upsertRecords([{ recordId: item.item_id, updates: { expectations } }]);
+        if (feedbackAnswers.length > 0) {
+          const feedback: Record<string, RecordFeedbackEntry> = { ...recordFeedback };
+          for (const s of feedbackAnswers) {
+            const rationale = s.enable_comment ? rationaleFor(s.name).trim() : '';
+            feedback[s.name] = { value: effectiveValue(s.name), ...(rationale ? { rationale } : {}) };
+          }
+          updates.tags = { ...(record?.tags ?? {}), [RECORD_FEEDBACK_TAG]: JSON.stringify(feedback) };
+        }
+        await upsertRecords([{ recordId: item.item_id, updates }]);
       } else {
         await Promise.all(
           answered.map((s) =>
