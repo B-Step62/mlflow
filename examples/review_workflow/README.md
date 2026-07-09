@@ -14,6 +14,56 @@ live *here*, not in MLflow:
 
 Treat it as prototype-quality reference code to copy and adapt.
 
+## Quickstart
+
+Two things you can test: the in-app **review notification** (a count badge on the
+experiment's **Review** sidenav item), and the full automated workflow.
+
+### Prerequisites: server env vars
+
+Webhooks are locked down by default. For a **local** demo, export these before
+launching the MLflow server so it inherits them:
+
+```bash
+export MLFLOW_WEBHOOK_ALLOWED_SCHEMES=https,http   # allow an http receiver
+export MLFLOW_WEBHOOK_ALLOW_PRIVATE_IPS=true       # allow 127.0.0.1
+# Stable key so webhook secrets stay decryptable across restarts (else delivery fails):
+export MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+export MLFLOW_SERVER_BASE_URL=http://localhost:5000
+```
+
+For the full UI (to click the flow and see the badge), launch the dev server
+(backend + React) from the repo root with those vars exported:
+
+```bash
+uv run dev/run_dev_server.py
+```
+
+### A. See the in-app review notification (no receiver needed)
+
+1. Open an experiment, go to **Traces** or **Datasets**, select rows, and
+   **Flag for review** into a review queue.
+2. The **Review** item in the left sidenav now shows a red count of pending
+   items; it decrements as you complete reviews.
+
+### B. Run the full automated workflow
+
+From this directory, against the same tracking server:
+
+```bash
+pip install -r requirements.txt            # fastapi + uvicorn (mlflow already installed)
+export DEMO_CONFIG=$PWD/demo_config.json
+python seed.py setup                       # experiment, schemas, datasets, queues, traces
+python register_webhook.py                 # subscribe the receiver to the 5 events
+uvicorn receiver:app --port 8000 &         # start the receiver
+python seed.py score                       # label traces -> fires the first webhook
+```
+
+Then work the UI (curate a trace into the staging dataset, approve the staged
+record in the second queue); the receiver routes, QA-gates, promotes approved
+records into the golden dataset, and appends to `ci_dispatch.log`. Tail the
+receiver's stdout to watch each step.
+
 ## The 9-step flow
 
 Steps marked **[receiver]** are what this app does; the rest happen in MLflow or

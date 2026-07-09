@@ -21,6 +21,8 @@ import { isTracesRelatedTab, getTimeRangeQueryString } from './utils';
 import { useLogTelemetryEvent } from '@mlflow/mlflow/src/telemetry/hooks/useLogTelemetryEvent';
 import { useMemo } from 'react';
 
+import { useMyPendingReviewCount } from '../../experiment-review-queue/hooks/useMyPendingReviewCount';
+
 export const ExperimentPageSideNavSection = ({
   sectionKey,
   activeTab,
@@ -37,6 +39,12 @@ export const ExperimentPageSideNavSection = ({
   const viewId = useMemo(() => uuidv4(), []);
 
   invariant(experimentId, 'Experiment ID must be defined');
+
+  // Slack-style unread count on the "Review" item: total pending review items
+  // assigned across this experiment's queues. Only fetched in the section that
+  // actually contains the Review item.
+  const hasReviewItem = items.some((item) => item.tabName === ExperimentPageTabName.ReviewQueue);
+  const pendingReviewCount = useMyPendingReviewCount(experimentId, hasReviewItem);
 
   // NOTE: everything with `className={COLLAPSED_CLASS_NAME}` is hidden at
   // large screen sizes (browser's XL breakpoint). The`display` property is
@@ -122,6 +130,27 @@ export const ExperimentPageSideNavSection = ({
               <Typography.Text className={FULL_WIDTH_CLASS_NAME} bold={isActive} color="primary">
                 {item.label}
               </Typography.Text>
+              {item.tabName === ExperimentPageTabName.ReviewQueue && pendingReviewCount > 0 && (
+                <span
+                  className={FULL_WIDTH_CLASS_NAME}
+                  css={{
+                    marginLeft: 'auto',
+                    minWidth: 18,
+                    height: 18,
+                    padding: `0 ${theme.spacing.xs}px`,
+                    borderRadius: 9,
+                    backgroundColor: theme.colors.red600,
+                    color: 'white',
+                    fontSize: theme.typography.fontSizeSm,
+                    lineHeight: '18px',
+                    textAlign: 'center',
+                    fontWeight: 600,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {pendingReviewCount}
+                </span>
+              )}
             </div>
           </Link>
         );
