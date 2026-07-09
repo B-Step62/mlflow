@@ -226,6 +226,16 @@ def dispatch(entity: str, action: str, data: dict) -> str:
 async def webhook(request: Request) -> Response:
     raw_body = await request.body()
 
+    # Reload config on each request so re-seeding (which mints fresh queue /
+    # dataset ids against a new server DB) is picked up without restarting the
+    # receiver. Reading a small JSON per webhook is negligible.
+    global CONFIG
+    try:
+        CONFIG = load_config()
+        mlflow.set_tracking_uri(CONFIG["tracking_uri"])
+    except Exception:
+        _log.exception("[webhook] failed to reload config; using last-known values")
+
     # Verify the signature on the RAW body before parsing (only if a secret
     # is configured). A mismatch is the one case that returns non-2xx.
     secret = CONFIG.get("webhook_secret")
