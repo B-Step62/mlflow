@@ -11,7 +11,8 @@ import {
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 import { WebhooksApi } from './webhooksApi';
 import type { Webhook, WebhookEvent } from './webhooksApi';
-import { VALID_EVENTS, WEBHOOK_NAME_REGEX, eventKey, eventLabels } from './webhookConstants';
+import { VALID_EVENTS, WEBHOOK_NAME_REGEX, eventKey, ENTITY_LABELS, formatAction } from './webhookConstants';
+import { CollapsibleSection } from '../common/components/CollapsibleSection';
 
 interface WebhookFormData {
   name: string;
@@ -55,12 +56,6 @@ const WebhookFormModal = ({ visible, editingWebhook, onClose, onSaved, eventFilt
       events: defaultEvents,
     },
   });
-
-  const formatEventLabel = (entity: string, action: string) => {
-    const key = eventKey(entity, action);
-    const descriptor = eventLabels[key as keyof typeof eventLabels];
-    return descriptor ? intl.formatMessage(descriptor) : key;
-  };
 
   const handleSubmit = async (values: WebhookFormData) => {
     const events: WebhookEvent[] = values.events.map((key) => {
@@ -268,26 +263,55 @@ const WebhookFormModal = ({ visible, editingWebhook, onClose, onSaved, eventFilt
                       'Form validation error message informing the user that at least one event must be selected',
                   }),
               }}
-              render={({ field }) => (
-                <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-                  {displayedEvents.map((event) => {
-                    const key = eventKey(event.entity, event.action);
-                    return (
-                      <Checkbox
-                        key={key}
-                        componentId="mlflow.settings.webhooks.event-checkbox"
-                        isChecked={field.value.includes(key)}
-                        onChange={(checked) => {
-                          const next = checked ? [...field.value, key] : field.value.filter((k: string) => k !== key);
-                          field.onChange(next);
-                        }}
+              render={({ field }) => {
+                // Group the (otherwise long, flat) event list by entity into
+                // collapsible sections so the picker stays scannable. A group
+                // starts expanded only if it already has a selected event.
+                const groups: { entity: string; events: typeof displayedEvents }[] = [];
+                for (const ev of displayedEvents) {
+                  const existing = groups.find((g) => g.entity === ev.entity);
+                  if (existing) {
+                    existing.events.push(ev);
+                  } else {
+                    groups.push({ entity: ev.entity, events: [ev] });
+                  }
+                }
+                return (
+                  <div css={{ display: 'flex', flexDirection: 'column' }}>
+                    {groups.map((group) => (
+                      <CollapsibleSection
+                        key={group.entity}
+                        title={ENTITY_LABELS[group.entity] ?? group.entity}
+                        componentId={`mlflow.settings.webhooks.event-group.${group.entity}`}
+                        defaultCollapsed={
+                          !group.events.some((e) => field.value.includes(eventKey(e.entity, e.action)))
+                        }
                       >
-                        {formatEventLabel(event.entity, event.action)}
-                      </Checkbox>
-                    );
-                  })}
-                </div>
-              )}
+                        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                          {group.events.map((event) => {
+                            const key = eventKey(event.entity, event.action);
+                            return (
+                              <Checkbox
+                                key={key}
+                                componentId="mlflow.settings.webhooks.event-checkbox"
+                                isChecked={field.value.includes(key)}
+                                onChange={(checked) => {
+                                  const next = checked
+                                    ? [...field.value, key]
+                                    : field.value.filter((k: string) => k !== key);
+                                  field.onChange(next);
+                                }}
+                              >
+                                {formatAction(event.action)}
+                              </Checkbox>
+                            );
+                          })}
+                        </div>
+                      </CollapsibleSection>
+                    ))}
+                  </div>
+                );
+              }}
             />
             {form.formState.errors.events && (
               <FormUI.Message type="error" message={form.formState.errors.events.message} />
