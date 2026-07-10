@@ -55,27 +55,16 @@ export const VALID_EVENTS: { entity: string; action: string }[] = [
   { entity: 'DATASET_RECORD', action: 'UPDATED' },
 ];
 
-// Display names for each entity, used to group the (otherwise long, flat) event
-// list in the webhook form. Order here is the group order in the UI.
-export const ENTITY_LABELS: Record<string, string> = {
-  REGISTERED_MODEL: 'Registered model',
-  MODEL_VERSION: 'Model version',
-  MODEL_VERSION_TAG: 'Model version tag',
-  MODEL_VERSION_ALIAS: 'Model version alias',
-  PROMPT: 'Prompt',
-  PROMPT_VERSION: 'Prompt version',
-  PROMPT_TAG: 'Prompt tag',
-  PROMPT_VERSION_TAG: 'Prompt version tag',
-  PROMPT_ALIAS: 'Prompt alias',
-  BUDGET_POLICY: 'Budget policy',
-  TRACE_ASSESSMENT: 'Trace assessment',
-  REVIEW_QUEUE_ITEM: 'Review queue item',
-  DATASET_RECORD: 'Dataset record',
-};
+// Coarse buckets for grouping the (otherwise long, flat) event list in the
+// webhook form. Order here is the group order in the UI; every entity in
+// VALID_EVENTS maps to exactly one bucket.
+export const EVENT_GROUPS: { label: string; entities: string[] }[] = [
+  { label: 'Models', entities: ['REGISTERED_MODEL', 'MODEL_VERSION', 'MODEL_VERSION_TAG', 'MODEL_VERSION_ALIAS'] },
+  { label: 'Prompts', entities: ['PROMPT', 'PROMPT_VERSION', 'PROMPT_TAG', 'PROMPT_VERSION_TAG', 'PROMPT_ALIAS'] },
+  { label: 'Review workflow', entities: ['TRACE_ASSESSMENT', 'REVIEW_QUEUE_ITEM', 'DATASET_RECORD'] },
+  { label: 'Budgets', entities: ['BUDGET_POLICY'] },
+];
 
 export const WEBHOOK_NAME_REGEX = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/i;
 
 export const eventKey = (entity: string, action: string) => `${entity}.${action}`;
-
-/** Title-case a webhook action (e.g. "CREATED" -> "Created") for per-entity grouping. */
-export const formatAction = (action: string) => action.charAt(0) + action.slice(1).toLowerCase();

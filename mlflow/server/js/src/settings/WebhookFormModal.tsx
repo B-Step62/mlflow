@@ -3,16 +3,17 @@ import { useForm, Controller, FormProvider } from 'react-hook-form';
 import {
   Alert,
   Checkbox,
+  ChevronRightIcon,
   FormUI,
   Modal,
   RHFControlledComponents,
+  Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 import { WebhooksApi } from './webhooksApi';
 import type { Webhook, WebhookEvent } from './webhooksApi';
-import { VALID_EVENTS, WEBHOOK_NAME_REGEX, eventKey, ENTITY_LABELS, formatAction } from './webhookConstants';
-import { CollapsibleSection } from '../common/components/CollapsibleSection';
+import { VALID_EVENTS, WEBHOOK_NAME_REGEX, eventKey, eventLabels, EVENT_GROUPS } from './webhookConstants';
 
 interface WebhookFormData {
   name: string;
@@ -56,6 +57,37 @@ const WebhookFormModal = ({ visible, editingWebhook, onClose, onSaved, eventFilt
       events: defaultEvents,
     },
   });
+
+  // Which coarse event groups are expanded. Start open if the group already has
+  // a selected event (so editing a webhook shows its events).
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    const open = new Set<string>();
+    for (const group of EVENT_GROUPS) {
+      const hasSelected = displayedEvents.some(
+        (e) => group.entities.includes(e.entity) && defaultEvents.includes(eventKey(e.entity, e.action)),
+      );
+      if (hasSelected) {
+        open.add(group.label);
+      }
+    }
+    return open;
+  });
+  const toggleGroup = (label: string) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+
+  const formatEventLabel = (entity: string, action: string) => {
+    const key = eventKey(entity, action);
+    const descriptor = eventLabels[key as keyof typeof eventLabels];
+    return descriptor ? intl.formatMessage(descriptor) : key;
+  };
 
   const handleSubmit = async (values: WebhookFormData) => {
     const events: WebhookEvent[] = values.events.map((key) => {
@@ -263,55 +295,74 @@ const WebhookFormModal = ({ visible, editingWebhook, onClose, onSaved, eventFilt
                       'Form validation error message informing the user that at least one event must be selected',
                   }),
               }}
-              render={({ field }) => {
-                // Group the (otherwise long, flat) event list by entity into
-                // collapsible sections so the picker stays scannable. A group
-                // starts expanded only if it already has a selected event.
-                const groups: { entity: string; events: typeof displayedEvents }[] = [];
-                for (const ev of displayedEvents) {
-                  const existing = groups.find((g) => g.entity === ev.entity);
-                  if (existing) {
-                    existing.events.push(ev);
-                  } else {
-                    groups.push({ entity: ev.entity, events: [ev] });
-                  }
-                }
-                return (
-                  <div css={{ display: 'flex', flexDirection: 'column' }}>
-                    {groups.map((group) => (
-                      <CollapsibleSection
-                        key={group.entity}
-                        title={ENTITY_LABELS[group.entity] ?? group.entity}
-                        componentId={`mlflow.settings.webhooks.event-group.${group.entity}`}
-                        defaultCollapsed={
-                          !group.events.some((e) => field.value.includes(eventKey(e.entity, e.action)))
-                        }
-                      >
-                        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-                          {group.events.map((event) => {
-                            const key = eventKey(event.entity, event.action);
-                            return (
-                              <Checkbox
-                                key={key}
-                                componentId="mlflow.settings.webhooks.event-checkbox"
-                                isChecked={field.value.includes(key)}
-                                onChange={(checked) => {
-                                  const next = checked
-                                    ? [...field.value, key]
-                                    : field.value.filter((k: string) => k !== key);
-                                  field.onChange(next);
-                                }}
-                              >
-                                {formatAction(event.action)}
-                              </Checkbox>
-                            );
-                          })}
+              render={({ field }) => (
+                <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+                  {EVENT_GROUPS.map((group) => {
+                    const events = displayedEvents.filter((e) => group.entities.includes(e.entity));
+                    if (events.length === 0) {
+                      return null;
+                    }
+                    const isOpen = openGroups.has(group.label);
+                    return (
+                      <div key={group.label}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleGroup(group.label)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleGroup(group.label);
+                            }
+                          }}
+                          css={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: theme.spacing.xs,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                        >
+                          <ChevronRightIcon
+                            css={{ transform: isOpen ? 'rotate(90deg)' : undefined, transition: 'transform 0.1s' }}
+                          />
+                          <Typography.Text bold>{group.label}</Typography.Text>
                         </div>
-                      </CollapsibleSection>
-                    ))}
-                  </div>
-                );
-              }}
+                        {isOpen && (
+                          <div
+                            css={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: theme.spacing.xs,
+                              paddingLeft: theme.spacing.lg,
+                              paddingTop: theme.spacing.xs,
+                            }}
+                          >
+                            {events.map((event) => {
+                              const key = eventKey(event.entity, event.action);
+                              return (
+                                <Checkbox
+                                  key={key}
+                                  componentId="mlflow.settings.webhooks.event-checkbox"
+                                  isChecked={field.value.includes(key)}
+                                  onChange={(checked) => {
+                                    const next = checked
+                                      ? [...field.value, key]
+                                      : field.value.filter((k: string) => k !== key);
+                                    field.onChange(next);
+                                  }}
+                                >
+                                  {formatEventLabel(event.entity, event.action)}
+                                </Checkbox>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             />
             {form.formState.errors.events && (
               <FormUI.Message type="error" message={form.formState.errors.events.message} />
