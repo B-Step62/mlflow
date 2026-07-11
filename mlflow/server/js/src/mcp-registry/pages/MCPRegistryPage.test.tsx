@@ -40,13 +40,11 @@ describe('MCPRegistryPage', () => {
     });
   };
 
-  it('renders page title and tabs', async () => {
+  it('renders page title', async () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByText('MCP Registry')).toBeInTheDocument();
     });
-    expect(screen.getByText('Servers')).toBeInTheDocument();
-    expect(screen.getByText('Access Bindings')).toBeInTheDocument();
   });
 
   it('shows empty state on servers tab when no servers exist', async () => {
@@ -84,30 +82,10 @@ describe('MCPRegistryPage', () => {
     });
   });
 
-  it('defaults to servers tab with search input', async () => {
+  it('renders the server search input', async () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search MCP servers by name')).toBeInTheDocument();
-    });
-  });
-
-  it('shows empty state on access bindings tab when no servers exist', async () => {
-    renderPage(['/?tab=bindings']);
-    await waitFor(() => {
-      expect(screen.getByText('Create and manage access bindings for your MCP servers.')).toBeInTheDocument();
-    });
-  });
-
-  it('switches to access bindings tab', async () => {
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText('MCP Registry')).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByText('Access Bindings'));
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('Search access bindings')).toBeInTheDocument();
     });
   });
 

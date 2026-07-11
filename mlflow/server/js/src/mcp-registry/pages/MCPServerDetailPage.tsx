@@ -32,6 +32,9 @@ import { MCPServerVersionList } from '../components/MCPServerVersionList';
 import { MCPServerVersionDetail } from '../components/MCPServerVersionDetail';
 import { UpdateVersionDisplayNameModal } from '../components/UpdateVersionDisplayNameModal';
 import { MCPServerTagsBox } from '../components/MCPServerTagsBox';
+import { MCPServerIcon } from '../components/MCPServerIcon';
+import { ConnectModal } from '../components/connect/ConnectModal';
+import { useMockPersona } from '../hooks/useMockPersona';
 import { LATEST_ALIAS, resolveDisplayName } from '../utils';
 
 const getAliasesModalTitle = (version: string) => (
@@ -53,6 +56,9 @@ const MCPServerDetailPage = () => {
   const [selectedVersion, setSelectedVersion] = useState<string | undefined>(undefined);
   const [deleteServerModalVisible, setDeleteServerModalVisible] = useState(false);
   const [editServerDisplayNameVisible, setEditServerDisplayNameVisible] = useState(false);
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [persona] = useMockPersona();
+  const isAdmin = persona === 'admin';
   const deleteServerMutation = useDeleteMCPServer();
   const updateDisplayNameMutation = useUpdateMCPServerDisplayName(serverName);
   const {
@@ -201,47 +207,59 @@ const MCPServerDetailPage = () => {
       <Spacer shrinks={false} />
       <Header
         breadcrumbs={breadcrumbs}
-        title={displayName}
+        title={
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            <MCPServerIcon icons={server.icons} name={displayName} css={{ width: 20, height: 20 }} />
+            {displayName}
+          </span>
+        }
         buttons={
           <>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <Button
-                  componentId="mlflow.mcp_registry.detail.actions"
-                  icon={<OverflowIcon />}
-                  aria-label={intl.formatMessage({
-                    defaultMessage: 'More actions',
-                    description: 'Aria label for MCP server detail actions overflow menu',
-                  })}
-                />
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content>
-                <DropdownMenu.Item
-                  componentId="mlflow.mcp_registry.detail.actions.edit_display_name"
-                  onClick={() => setEditServerDisplayNameVisible(true)}
-                >
+            {isAdmin && (
+              <>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <Button
+                      componentId="mlflow.mcp_registry.detail.actions"
+                      icon={<OverflowIcon />}
+                      aria-label={intl.formatMessage({
+                        defaultMessage: 'More actions',
+                        description: 'Aria label for MCP server detail actions overflow menu',
+                      })}
+                    />
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content>
+                    <DropdownMenu.Item
+                      componentId="mlflow.mcp_registry.detail.actions.edit_display_name"
+                      onClick={() => setEditServerDisplayNameVisible(true)}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Edit display name"
+                        description="MCP server detail edit server display name action"
+                      />
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      componentId="mlflow.mcp_registry.detail.actions.delete"
+                      onClick={() => setDeleteServerModalVisible(true)}
+                    >
+                      <FormattedMessage defaultMessage="Delete" description="MCP server detail delete server action" />
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+                <Button componentId="mlflow.mcp_registry.detail.create_version" onClick={openCreateVersionModal}>
                   <FormattedMessage
-                    defaultMessage="Edit display name"
-                    description="MCP server detail edit server display name action"
+                    defaultMessage="Create MCP server version"
+                    description="MCP server detail create version button"
                   />
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  componentId="mlflow.mcp_registry.detail.actions.delete"
-                  onClick={() => setDeleteServerModalVisible(true)}
-                >
-                  <FormattedMessage defaultMessage="Delete" description="MCP server detail delete server action" />
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
+                </Button>
+              </>
+            )}
             <Button
-              componentId="mlflow.mcp_registry.detail.create_version"
+              componentId="mlflow.mcp_registry.detail.connect"
               type="primary"
-              onClick={openCreateVersionModal}
+              onClick={() => setConnectModalOpen(true)}
             >
-              <FormattedMessage
-                defaultMessage="Create MCP server version"
-                description="MCP server detail create version button"
-              />
+              <FormattedMessage defaultMessage="Connect" description="MCP server detail connect button" />
             </Button>
           </>
         }
@@ -284,14 +302,15 @@ const MCPServerDetailPage = () => {
             server={server}
             version={currentVersion}
             aliasesByVersion={aliasesByVersion}
-            showEditAliasesModal={showEditAliasesModal}
-            onEditMetadata={showEditMetadataModal}
+            showEditAliasesModal={isAdmin ? showEditAliasesModal : undefined}
+            onEditMetadata={isAdmin ? showEditMetadataModal : undefined}
           />
         </div>
       </div>
       {EditAliasesModal}
       {EditMCPServerVersionMetadataModal}
       {CreateMCPServerVersionModal}
+      <ConnectModal server={server} open={connectModalOpen} onClose={() => setConnectModalOpen(false)} />
       <UpdateVersionDisplayNameModal
         visible={editServerDisplayNameVisible}
         currentDisplayName={server.display_name || ''}

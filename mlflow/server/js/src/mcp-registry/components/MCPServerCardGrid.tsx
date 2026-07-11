@@ -9,6 +9,7 @@ import { cardGridStyles, flexColumnContainerStyles } from '../styles';
 
 export const MCPServerCardGrid = ({
   servers,
+  dimmedNames,
   isLoading,
   isFiltered,
   hasNextPage,
@@ -18,6 +19,7 @@ export const MCPServerCardGrid = ({
   pageSizeSelect,
 }: {
   servers?: MCPServer[];
+  dimmedNames?: Set<string>;
   isLoading?: boolean;
   isFiltered?: boolean;
   hasNextPage: boolean;
@@ -56,7 +58,7 @@ export const MCPServerCardGrid = ({
       <div role="list" aria-label="MCP servers" css={cardGridStyles(theme)}>
         {servers.map((server) => (
           <div role="listitem" key={server.name}>
-            <MCPServerCard server={server} />
+            <MCPServerCard server={server} dimmed={dimmedNames?.has(server.name)} />
           </div>
         ))}
       </div>

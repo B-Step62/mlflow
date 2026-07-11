@@ -124,52 +124,44 @@ describe('MCPServerDetailPage', () => {
     });
   });
 
-  it('shows packages in version detail', async () => {
+  it('shows local package connection options in the Connect tab', async () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByText('Viewing version 1')).toBeInTheDocument();
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Packages (2)')).toBeInTheDocument();
+      expect(screen.getByText('Run locally (2)')).toBeInTheDocument();
     });
-    expect(screen.getByText('npm')).toBeInTheDocument();
-    expect(screen.getByText('pypi')).toBeInTheDocument();
+    expect(screen.getByText('@mainline/mcp-server')).toBeInTheDocument();
+    expect(screen.getByText('mainline-mcp-server')).toBeInTheDocument();
   });
 
-  it('shows remotes in version detail', async () => {
+  it('shows hosted endpoint connection options in the Connect tab', async () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByText('Viewing version 1')).toBeInTheDocument();
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Remotes (1)')).toBeInTheDocument();
+      expect(screen.getByText('Hosted endpoints (1)')).toBeInTheDocument();
     });
-    expect(screen.getByText('streamable-http')).toBeInTheDocument();
     expect(screen.getByText('https://api.mainline.dev/mcp')).toBeInTheDocument();
   });
 
-  it('expands a package row to show environment variables', async () => {
+  it('expands a connection option to show setup instructions', async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText('Viewing version 1')).toBeInTheDocument();
+      expect(screen.getByText('@mainline/mcp-server')).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole('button', { name: /Expand connection option @mainline\/mcp-server/ }));
     await waitFor(() => {
-      expect(screen.getByText('npm')).toBeInTheDocument();
+      expect(screen.getAllByText('API_KEY').length).toBeGreaterThanOrEqual(1);
     });
-
-    await userEvent.click(screen.getByRole('button', { name: /Expand package @mainline\/mcp-server/ }));
-    await waitFor(() => {
-      expect(screen.getByText('Environment Variables (2)')).toBeInTheDocument();
-    });
-    expect(screen.getAllByText('@mainline/mcp-server').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('API_KEY')).toBeInTheDocument();
     expect(screen.getByText('required')).toBeInTheDocument();
     expect(screen.getByText('secret')).toBeInTheDocument();
-    expect(screen.getByText('API key for authentication')).toBeInTheDocument();
-    expect(screen.getByText('LOG_LEVEL')).toBeInTheDocument();
+    expect(screen.getAllByText('LOG_LEVEL').length).toBeGreaterThanOrEqual(1);
   });
 
   it('toggles raw server.json view', async () => {

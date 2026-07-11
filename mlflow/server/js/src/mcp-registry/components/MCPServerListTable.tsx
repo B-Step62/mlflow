@@ -28,6 +28,17 @@ import Utils from '../../common/utils/Utils';
 const coreRowModel = getCoreRowModel<MCPServer>();
 const getRowId = (row: MCPServer) => row.name;
 
+// Relative column widths, matching the flex-weighted layout of the AI Gateway
+// endpoints table.
+const COLUMN_FLEX: Record<string, number> = {
+  name: 2,
+  description: 3,
+  endpoints: 2,
+  latestVersion: 1,
+  lastModified: 1,
+  tags: 2,
+};
+
 const MCPServerNameCell = ({ getValue, row }: CellContext<MCPServer, unknown>) => {
   const { theme } = useDesignSystemTheme();
   const value = getValue() as string;
@@ -76,6 +87,40 @@ const MCPServerTagsCell = ({ row: { original } }: CellContext<MCPServer, unknown
   return <MCPServerTags tags={original.tags || {}} />;
 };
 
+const MAX_VISIBLE_ENDPOINTS = 2;
+
+const MCPServerEndpointsCell = ({ row: { original } }: CellContext<MCPServer, unknown>) => {
+  const { theme } = useDesignSystemTheme();
+  const endpoints = original.access_bindings ?? [];
+
+  if (endpoints.length === 0) {
+    return '—';
+  }
+
+  const visible = endpoints.slice(0, MAX_VISIBLE_ENDPOINTS);
+  const hiddenCount = endpoints.length - visible.length;
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs / 2, minWidth: 0 }}>
+      {visible.map((binding) => (
+        <Tooltip
+          key={binding.binding_id}
+          content={binding.endpoint_url}
+          componentId="mlflow.mcp_registry.table.endpoint_tooltip"
+        >
+          <Typography.Text
+            size="sm"
+            css={{ fontFamily: 'monospace', display: 'block', maxWidth: 260, ...textEllipsisStyles }}
+          >
+            {binding.endpoint_url}
+          </Typography.Text>
+        </Tooltip>
+      ))}
+      {hiddenCount > 0 && <Typography.Hint>+{hiddenCount} more</Typography.Hint>}
+    </div>
+  );
+};
+
 const useMCPServerTableColumns = () => {
   const intl = useIntl();
   return useMemo(() => {
@@ -97,6 +142,14 @@ const useMCPServerTableColumns = () => {
         accessorKey: 'description',
         id: 'description',
         cell: MCPServerDescriptionCell,
+      },
+      {
+        header: intl.formatMessage({
+          defaultMessage: 'Endpoints',
+          description: 'Header for the endpoints column in the MCP servers table',
+        }),
+        id: 'endpoints',
+        cell: MCPServerEndpointsCell,
       },
       {
         header: intl.formatMessage({
@@ -130,6 +183,7 @@ const useMCPServerTableColumns = () => {
 
 export const MCPServerListTable = ({
   servers,
+  dimmedNames,
   hasNextPage,
   hasPreviousPage,
   isLoading,
@@ -139,6 +193,7 @@ export const MCPServerListTable = ({
   pageSizeSelect,
 }: {
   servers?: MCPServer[];
+  dimmedNames?: Set<string>;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
   isLoading?: boolean;
@@ -165,6 +220,7 @@ export const MCPServerListTable = ({
   return (
     <Table
       scrollable
+      noMinHeight
       pagination={
         <CursorPagination
           hasNextPage={hasNextPage}
@@ -176,10 +232,22 @@ export const MCPServerListTable = ({
         />
       }
       empty={emptyState}
+      css={{
+        borderLeft: `1px solid ${theme.colors.border}`,
+        borderRight: `1px solid ${theme.colors.border}`,
+        borderTop: `1px solid ${theme.colors.border}`,
+        borderBottom: isEmptyList ? `1px solid ${theme.colors.border}` : 'none',
+        borderRadius: theme.general.borderRadiusBase,
+        overflow: 'hidden',
+      }}
     >
       <TableRow isHeader>
         {table.getLeafHeaders().map((header) => (
-          <TableHeader componentId="mlflow.mcp_registry.table.header" key={header.id}>
+          <TableHeader
+            componentId="mlflow.mcp_registry.table.header"
+            key={header.id}
+            css={{ flex: COLUMN_FLEX[header.column.id] ?? 1 }}
+          >
             {flexRender(header.column.columnDef.header, header.getContext())}
           </TableHeader>
         ))}
@@ -188,9 +256,12 @@ export const MCPServerListTable = ({
         <TableSkeletonRows table={table} />
       ) : (
         table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id} css={{ height: theme.general.buttonHeight }}>
+          <TableRow
+            key={row.id}
+            css={{ height: theme.general.buttonHeight, opacity: dimmedNames?.has(row.original.name) ? 0.5 : 1 }}
+          >
             {row.getAllCells().map((cell) => (
-              <TableCell key={cell.id} css={{ alignItems: 'center' }}>
+              <TableCell key={cell.id} css={{ alignItems: 'center', flex: COLUMN_FLEX[cell.column.id] ?? 1 }}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>
             ))}

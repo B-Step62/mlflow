@@ -50,6 +50,7 @@ import { MlflowSidebarExperimentItems } from './MlflowSidebarExperimentItems';
 import { MlflowSidebarGatewayItems } from './MlflowSidebarGatewayItems';
 import { MlflowSidebarSettingsItems } from './MlflowSidebarSettingsItems';
 import { MlflowSidebarWorkflowSwitch } from './MlflowSidebarWorkflowSwitch';
+import { MockPersonaSidebarControl } from '../../mcp-registry/components/MockPersonaSidebarControl';
 
 const isInsideExperiment = (location: Location) =>
   Boolean(matchPath('/experiments/:experimentId/*', location.pathname));
@@ -476,6 +477,7 @@ export function MlflowSidebar({
               <FormattedMessage defaultMessage="Settings" description="Sidebar link for settings page" />
             </MlflowSidebarLink>
           )}
+          {isMCPRegistryActive(location) && <MockPersonaSidebarControl collapsed={!showSidebar} />}
           {isAuthAvailable && username && (
             <div
               css={{

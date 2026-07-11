@@ -1,16 +1,19 @@
-import { Card, Typography, useDesignSystemTheme } from '@databricks/design-system';
-import { useIntl } from 'react-intl';
+import { useState } from 'react';
+import { Button, Card, ConnectIcon, Tooltip, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { FormattedMessage, useIntl } from 'react-intl';
 
 import type { MCPServer } from '../types';
 import MCPRegistryRoutes from '../routes';
 import { textClampStyles, textEllipsisStyles, cardBodyStyles, cardHeaderRowStyles } from '../styles';
 import { MCPServerIcon } from './MCPServerIcon';
 import { MCPServerTags } from './MCPServerTags';
+import { ConnectModal } from './connect/ConnectModal';
 import Utils from '../../common/utils/Utils';
 
-export const MCPServerCard = ({ server }: { server: MCPServer }) => {
+export const MCPServerCard = ({ server, dimmed }: { server: MCPServer; dimmed?: boolean }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
+  const [connectOpen, setConnectOpen] = useState(false);
 
   const timestamp = server.last_updated_timestamp
     ? Utils.formatTimestamp(server.last_updated_timestamp, intl)
@@ -21,7 +24,7 @@ export const MCPServerCard = ({ server }: { server: MCPServer }) => {
       componentId="mlflow.mcp_registry.card"
       width="100%"
       href={`#${MCPRegistryRoutes.getMCPServerDetailRoute(server.name)}`}
-      dangerouslyAppendEmotionCSS={{ height: '100%' }}
+      dangerouslyAppendEmotionCSS={{ height: '100%', opacity: dimmed ? 0.5 : 1 }}
     >
       <div css={cardBodyStyles(theme)}>
         <div css={cardHeaderRowStyles(theme)}>
@@ -41,12 +44,37 @@ export const MCPServerCard = ({ server }: { server: MCPServer }) => {
           </Typography.Text>
         )}
         {Object.keys(server.tags || {}).length > 0 && <MCPServerTags tags={server.tags || {}} />}
-        {timestamp && (
-          <Typography.Text color="secondary" size="sm">
-            {timestamp}
-          </Typography.Text>
-        )}
+        <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm }}>
+          {timestamp ? (
+            <Typography.Text color="secondary" size="sm">
+              {timestamp}
+            </Typography.Text>
+          ) : (
+            <span />
+          )}
+          <Tooltip
+            componentId="mlflow.mcp_registry.card.connect.tooltip"
+            content={<FormattedMessage defaultMessage="Connect" description="MCP server card connect button" />}
+          >
+            <Button
+              componentId="mlflow.mcp_registry.card.connect"
+              size="small"
+              type="tertiary"
+              icon={<ConnectIcon />}
+              aria-label={intl.formatMessage({
+                defaultMessage: 'Connect',
+                description: 'MCP server card connect button',
+              })}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setConnectOpen(true);
+              }}
+            />
+          </Tooltip>
+        </div>
       </div>
+      <ConnectModal server={server} open={connectOpen} onClose={() => setConnectOpen(false)} />
     </Card>
   );
 };

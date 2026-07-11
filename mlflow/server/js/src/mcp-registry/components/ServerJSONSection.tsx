@@ -833,7 +833,7 @@ const OutputSchemaToggle = ({ data }: { data: unknown }) => {
   );
 };
 
-const RawJSONToggle = ({ serverJson }: { serverJson: ServerJSONPayload }) => {
+export const RawJSONToggle = ({ serverJson }: { serverJson: ServerJSONPayload }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const { show: showRaw, setShow: setShowRaw, jsonString } = useJSONToggle(serverJson);
