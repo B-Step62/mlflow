@@ -57,9 +57,6 @@ export interface TileCardProps {
   className?: string;
 }
 
-/**
- * A reusable tile card component for displaying feature cards with icon, title, description and link
- */
 export default function TileCard({
   icon: Icon,
   image,
@@ -74,38 +71,37 @@ export default function TileCard({
   linkText = 'Learn more →',
   className,
 }: TileCardProps): JSX.Element {
-  // Ensure either icon or image is provided
-  if (!Icon && !image) {
-    throw new Error('TileCard requires either an icon or image prop');
-  }
-
   const containerStyle = containerHeight ? { height: `${containerHeight}px` } : {};
   const imageStyle: React.CSSProperties = {};
+  const imageUrl = useBaseUrl(image ?? '');
+  const imageDarkUrl = useBaseUrl(imageDark ?? image ?? '');
   if (imageWidth) imageStyle.width = `${imageWidth}px`;
   if (imageHeight) imageStyle.height = `${imageHeight}px`;
 
   return (
     <Link href={href} className={clsx(styles.tileCard, className)}>
-      <div className={styles.tileIcon} style={containerStyle}>
-        {Icon ? (
-          <Icon size={iconSize} />
-        ) : imageDark ? (
-          <ThemedImage
-            sources={{
-              light: useBaseUrl(image),
-              dark: useBaseUrl(imageDark),
-            }}
-            alt={title}
-            className={styles.tileImage}
-            style={imageStyle}
-          />
-        ) : (
-          <img src={useBaseUrl(image)} alt={title} className={styles.tileImage} style={imageStyle} />
-        )}
-      </div>
+      {(Icon || image) && (
+        <div className={styles.tileIcon} style={containerStyle}>
+          {Icon ? (
+            <Icon size={iconSize} />
+          ) : imageDark ? (
+            <ThemedImage
+              sources={{
+                light: imageUrl,
+                dark: imageDarkUrl,
+              }}
+              alt={title}
+              className={styles.tileImage}
+              style={imageStyle}
+            />
+          ) : (
+            <img src={imageUrl} alt={title} className={styles.tileImage} style={imageStyle} />
+          )}
+        </div>
+      )}
       <h3>{title}</h3>
       <p>{description}</p>
-      <div className={styles.tileLink}>{linkText}</div>
+      {linkText && <div className={styles.tileLink}>{linkText}</div>}
     </Link>
   );
 }

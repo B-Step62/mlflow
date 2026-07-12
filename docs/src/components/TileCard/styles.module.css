@@ -1,22 +1,27 @@
 .tileCard {
-  background: var(--ifm-background-color);
-  border: 1px solid var(--ifm-border-color);
+  display: block;
+  min-height: 142px;
+  background: #ffffff;
+  border: 1px solid rgb(222, 227, 229);
   border-radius: 12px;
-  padding: 2rem;
-  text-align: center;
-  transition: all 0.3s ease;
+  padding: 20px 24px;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
   position: relative;
   overflow: hidden;
 }
 
 .tileCard:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--ifm-shadow-tile-hover);
-  border-color: #0194e2;
+  transform: none;
+  box-shadow: none;
+  border-color: rgb(206, 210, 212);
+  background: rgb(250, 252, 253);
 }
 
 .tileCard:hover .tileIcon {
-  transform: scale(1.1);
+  transform: none;
 }
 
 .tileIcon {
@@ -29,16 +34,18 @@
 }
 
 .tileCard h3 {
-  font-size: 1.25rem;
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--ifm-color-emphasis-hover);
+  line-height: 24px;
+  margin: 0 0 4px;
+  color: rgb(17, 24, 39);
 }
 
 .tileCard p {
-  color: var(--ifm-border-color);
-  margin-bottom: 1.5rem;
-  font-size: 0.9rem;
+  color: rgb(80, 84, 86);
+  margin: 0;
+  font-size: 14px;
+  line-height: 24px;
 }
 
 .tileLink {

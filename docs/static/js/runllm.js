@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', function () {
+  if (window.location.pathname.replace(/\/$/, '') === '/genai/tracing') {
+    return;
+  }
+
   var script = document.createElement('script');
   script.type = 'module';
   script.id = 'runllm-widget-script';
