@@ -1872,44 +1872,6 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   border-radius: 0;
 }
 
-.mlflow-tracing-overview-page .mintlify-debug-image-wrap {
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  aspect-ratio: 801 / 535;
-  margin: 32px 0 0;
-}
-
-.mlflow-tracing-overview-page [role='tabpanel'] .mintlify-debug-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  border: 0;
-}
-
-.mlflow-tracing-overview-page .mintlify-expand-image-button {
-  position: absolute;
-  top: -19px;
-  right: 10px;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0;
-  color: rgb(112, 116, 118);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.mlflow-tracing-overview-page .mintlify-expand-image-button svg {
-  width: 14px;
-  height: 14px;
-}
-
 .mlflow-tracing-overview-page [class*='featureHighlights'] {
   gap: 0 16px;
 }

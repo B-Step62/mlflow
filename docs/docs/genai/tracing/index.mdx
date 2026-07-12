@@ -10,6 +10,7 @@ import TilesGrid from "@site/src/components/TilesGrid";
 import TileCard from "@site/src/components/TileCard";
 import FeatureHighlights from "@site/src/components/FeatureHighlights";
 import GenAIDemoCard from "@site/src/content/genai_demo_card.mdx";
+import ImageBox from "@site/src/components/ImageBox";
 import useBaseUrl from "@docusaurus/useBaseUrl";
 
 <div className="mintlify-doc-header">
@@ -49,18 +50,7 @@ MLflow Tracing gives you complete visibility into your agents and LLM applicatio
 
       [Learn more →](/genai/tracing/observe-with-traces/ui)
 
-      <div className="mintlify-debug-image-wrap">
-        <button className="mintlify-expand-image-button" type="button" aria-label="Expand image: Trace Debugging">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 18 18">
-            <path d="M6.75 2.25H3.25C2.69772 2.25 2.25 2.69772 2.25 3.25V6.75M11.25 2.25H14.75C15.3023 2.25 15.75 2.69772 15.75 3.25V6.75M6.75 15.75H3.25C2.69772 15.75 2.25 15.3023 2.25 14.75V11.25M11.25 15.75H14.75C15.3023 15.75 15.75 15.3023 15.75 14.75V11.25" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <img
-          src={useBaseUrl("/images/llms/tracing/genai-trace-debug-mintlify-crop.png")}
-          className="mintlify-debug-image"
-          alt="Trace Debugging"
-        />
-      </div>
+      <ImageBox src="/images/llms/tracing/genai-trace-debug-mintlify-crop.png" alt="Trace Debugging" />
 
   </TabItem>
   <TabItem value="feedback" label="Human Feedback">
