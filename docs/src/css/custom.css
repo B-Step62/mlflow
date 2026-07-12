@@ -65,8 +65,8 @@ article ul ul ul {
   font-display: swap;
   src: url('/fonts/mintlify-inter-latin.woff2') format('woff2');
   unicode-range:
-    U+00??, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
-    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    U+00??, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
@@ -1007,7 +1007,8 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   --ifm-background-color: #ffffff;
   --ifm-background-surface-color: #ffffff;
   --ifm-navbar-background-color: #ffffff;
-  --ifm-font-family-base: 'MintlifyInter', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --ifm-font-family-base:
+    'MintlifyInter', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --ifm-font-family-monospace:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --ifm-color-primary: #0194e2;
@@ -1024,36 +1025,19 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   min-height: 100vh;
   background: #ffffff;
   color: rgb(62, 67, 69);
-  font-family: 'MintlifyInter', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family:
+    'MintlifyInter',
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    system-ui,
+    sans-serif;
   font-size: 16px;
   line-height: 1.75;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-.mlflow-tracing-overview-page::before {
-  content: '';
-  position: fixed;
-  top: 725px;
-  left: 15px;
-  z-index: 40;
-  width: 120px;
-  height: 90px;
-  background: url('/images/llms/tracing/mintlify-chat-bubble-crop.png') no-repeat 0 0 / 120px 90px;
-  pointer-events: none;
-}
-
-.mlflow-tracing-overview-page::after {
-  content: '';
-  position: absolute;
-  top: 4260px;
-  left: 363px;
-  z-index: 60;
-  width: 801px;
-  height: 221px;
-  background: url('/images/llms/tracing/mintlify-pagination-crop.png') no-repeat 0 0 / 801px 221px;
-  pointer-events: none;
 }
 
 .mlflow-tracing-overview-page .navbar:not(.mintlify-navbar) {
@@ -1077,23 +1061,15 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   overflow: hidden;
 }
 
-.mintlify-navbar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-bottom: 1px solid rgba(222, 227, 229, 0.8);
-  pointer-events: none;
-}
-
 .mintlify-navbar-primary {
   display: flex;
   align-items: center;
   gap: 16px;
   height: 64px;
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 0 48px;
-  border-bottom: 1px solid rgba(222, 227, 229, 0.8);
+  padding: 0 20px 0 clamp(20px, 3.5vw, 48px);
+  border-bottom: 1px solid rgba(229, 232, 234, 0.55);
 }
 
 .mintlify-navbar-logo {
@@ -1112,33 +1088,65 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 .mintlify-navbar-search {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex: 1 1 0;
   max-width: 357.34px;
   height: 36px;
   min-width: 0;
-  border: 1px solid rgba(158, 163, 165, 0.3);
-  border-radius: 12px;
-  padding: 0 12px 0 14px;
   color: rgb(112, 116, 118);
-  background: #ffffff;
   font-size: 14px;
   line-height: 20px;
 }
 
-.mlflow-tracing-overview-page .mintlify-navbar button.mintlify-navbar-search {
+.mintlify-navbar-search .DocSearch-Button {
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  border: 1px solid rgba(158, 163, 165, 0.28);
+  border-radius: 12px;
+  padding: 0 12px 0 14px;
+  background: #ffffff;
+  box-shadow: none;
   color: rgb(112, 116, 118);
 }
 
-.mintlify-navbar-search-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.mintlify-navbar-search .DocSearch-Button:hover,
+.mintlify-navbar-search .DocSearch-Button:focus {
+  border-color: rgba(112, 116, 118, 0.4);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.mintlify-navbar-search .DocSearch-Button-Container {
   min-width: 0;
 }
 
-.mintlify-navbar-search-left svg {
+.mintlify-navbar-search .DocSearch-Button-Placeholder {
+  padding: 0 12px 0 8px;
   color: rgb(112, 116, 118);
+  font-size: 14px;
+}
+
+.mintlify-navbar-search .DocSearch-Search-Icon {
+  width: 16px;
+  height: 16px;
+  color: rgb(112, 116, 118);
+}
+
+.mintlify-navbar-search .DocSearch-Button-Keys {
+  min-width: 0;
+}
+
+.mintlify-navbar-search .DocSearch-Button-Key {
+  top: 0;
+  width: auto;
+  height: 20px;
+  margin: 0;
+  padding: 0 1px;
+  background: transparent;
+  box-shadow: none;
+  color: rgb(112, 116, 118);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .mintlify-mask-icon {
@@ -1147,13 +1155,6 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   width: 16px;
   height: 16px;
   background: currentColor;
-}
-
-.mintlify-navbar-shortcut {
-  flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgb(112, 116, 118);
 }
 
 .mintlify-navbar-links {
@@ -1165,6 +1166,10 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   min-width: 0;
   font-size: 14px;
   line-height: 20px;
+}
+
+.mintlify-navbar-links a:last-child {
+  margin-right: 20px;
 }
 
 .mintlify-navbar-links a,
@@ -1181,28 +1186,14 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   color: rgb(17, 24, 39);
 }
 
-.mintlify-navbar-theme {
-  width: 32px;
-  height: 32px;
-  justify-content: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 0;
-}
-
-.mintlify-navbar-theme svg {
-  color: rgb(112, 116, 118);
-}
-
 .mintlify-navbar-tabs {
   display: flex;
   align-items: center;
   gap: 24px;
-  max-width: 1200px;
+  max-width: 1440px;
   height: 48px;
   margin: 0 auto;
-  padding: 0 48px;
+  padding: 0 20px 0 clamp(20px, 3.5vw, 48px);
   font-size: 14px;
   line-height: 20px;
 }
@@ -1224,7 +1215,9 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 
 .mintlify-navbar-tab-active {
   color: rgb(17, 24, 39);
-  text-shadow: -0.2px 0 0 currentColor, 0.2px 0 0 currentColor;
+  text-shadow:
+    -0.2px 0 0 currentColor,
+    0.2px 0 0 currentColor;
 }
 
 .mintlify-navbar-tab-active::after {
@@ -1233,24 +1226,41 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   right: 0;
   bottom: 0;
   left: 0;
-  height: 1.5px;
-  background: #0194e2;
+  height: 1px;
+  background: rgba(1, 148, 226, 0.65);
 }
 
 .mlflow-tracing-overview-page .main-wrapper {
-  max-width: 1200px;
+  width: 100%;
+  max-width: 1440px;
   margin: 0 auto;
   background: #ffffff;
+}
+
+.mlflow-tracing-overview-page [class*='docsWrapper'],
+.mlflow-tracing-overview-page [class*='docRoot'] {
+  width: 100%;
+}
+
+.mlflow-tracing-overview-page [class*='docMainContainer'] {
+  flex: 1 1 auto;
+  max-width: none !important;
+  min-width: 0;
 }
 
 .mlflow-tracing-overview-page .container {
   width: 100%;
   max-width: none;
-  padding: 0 32px;
+  padding: 0 clamp(20px, 3.5vw, 48px);
+  padding-right: 20px;
 }
 
 .mlflow-tracing-overview-page .row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   margin: 0;
+  column-gap: clamp(24px, 3vw, 44px);
 }
 
 .mlflow-tracing-overview-page .theme-doc-sidebar-container {
@@ -1264,16 +1274,22 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   padding: 32px 0 0;
   border-right: 0 !important;
   background: transparent;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .mlflow-tracing-overview-page .mintlify-doc-sidebar {
   width: 288px;
-  height: calc(100vh - 112px);
+  height: calc(100vh - 144px);
+  max-height: calc(100vh - 144px);
   color: rgb(80, 84, 86);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
 }
 
 .mlflow-tracing-overview-page .mintlify-doc-sidebar-content {
-  width: 288px;
+  width: 100%;
   padding: 0 0 40px 32px;
   font-size: 14px;
   line-height: 20px;
@@ -1340,7 +1356,9 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 .mlflow-tracing-overview-page .mintlify-sidebar-link-active {
   background: rgba(1, 148, 226, 0.1);
   color: #0194e2;
-  text-shadow: -0.2px 0 0 currentColor, 0.2px 0 0 currentColor;
+  text-shadow:
+    -0.2px 0 0 currentColor,
+    0.2px 0 0 currentColor;
 }
 
 .mlflow-tracing-overview-page .mintlify-sidebar-icon {
@@ -1361,7 +1379,7 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 
 .mlflow-tracing-overview-page .mintlify-sidebar-button {
   appearance: none;
-  cursor: default;
+  cursor: pointer;
 }
 
 .mlflow-tracing-overview-page .mintlify-sidebar-button svg {
@@ -1369,6 +1387,30 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   height: 24px;
   margin-left: auto;
   color: rgb(158, 163, 165);
+  transition: transform 0.15s ease;
+}
+
+.mlflow-tracing-overview-page .mintlify-sidebar-button .mintlify-sidebar-chevron-expanded {
+  transform: rotate(90deg);
+}
+
+.mlflow-tracing-overview-page .mintlify-sidebar-nested-list {
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.mlflow-tracing-overview-page .mintlify-sidebar-nested-list .mintlify-sidebar-link {
+  min-height: 36px;
+  margin: 1px 0;
+  padding: 6px 12px 6px 28px;
+  color: rgb(62, 67, 69);
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.mlflow-tracing-overview-page .mintlify-sidebar-nested-list .mintlify-sidebar-link-active {
+  background: rgba(1, 148, 226, 0.1);
+  color: #0194e2;
 }
 
 .mlflow-tracing-overview-page .theme-doc-sidebar-menu {
@@ -1416,8 +1458,8 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 }
 
 .mlflow-tracing-overview-page .theme-doc-markdown {
-  width: 801px;
-  max-width: 801px;
+  width: 100%;
+  max-width: 820px;
   padding: 0;
   color: rgb(62, 67, 69);
   font-size: 16px;
@@ -1425,13 +1467,13 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 }
 
 .mlflow-tracing-overview-page [class*='docItemCol'] {
-  flex: 0 0 801px !important;
-  max-width: 801px !important;
-  margin-left: 43px;
+  flex: 1 1 min(820px, 100%) !important;
+  min-width: 0;
+  max-width: none !important;
+  margin-left: 0;
   padding: 0 !important;
 }
 
-.mlflow-tracing-overview-page .theme-doc-toc-desktop,
 .mlflow-tracing-overview-page .breadcrumbs,
 .mlflow-tracing-overview-page .theme-doc-breadcrumbs,
 .mlflow-tracing-overview-page .theme-doc-version-badge,
@@ -1440,7 +1482,164 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 }
 
 .mlflow-tracing-overview-page article {
-  max-width: 801px;
+  max-width: none;
+}
+
+.mlflow-tracing-overview-page .col--3 {
+  position: sticky;
+  top: 144px;
+  align-self: flex-start;
+  display: block !important;
+  flex: 0 0 264px;
+  width: 264px;
+  max-width: 264px;
+  height: calc(100vh - 144px);
+  padding-left: 0;
+}
+
+.mlflow-tracing-overview-page .theme-doc-toc-desktop {
+  position: static;
+  width: 264px;
+  margin-top: 26px;
+  border-left: 0;
+  padding: 0;
+  overflow: visible;
+  color: rgb(80, 84, 86);
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-title {
+  margin-bottom: 20px;
+  color: rgb(62, 67, 69);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-body {
+  position: relative;
+  padding-left: 20px;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-body::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(80, 84, 86, 0.16);
+}
+
+.mlflow-tracing-overview-page .table-of-contents {
+  margin: 0;
+  border-left: 0;
+  padding: 0 !important;
+  color: rgb(80, 84, 86);
+  font-size: 14px;
+  line-height: 24px;
+  list-style: none;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mlflow-tracing-overview-page .table-of-contents li {
+  display: block;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  color: rgb(80, 84, 86);
+  list-style: none;
+}
+
+.mlflow-tracing-overview-page .table-of-contents li + li {
+  margin-top: 0;
+}
+
+.mlflow-tracing-overview-page .table-of-contents li::before,
+.mlflow-tracing-overview-page .tabs__item::before {
+  content: none;
+}
+
+.mlflow-tracing-overview-page .table-of-contents__link {
+  position: relative;
+  display: block;
+  width: auto;
+  min-height: 30px;
+  padding: 3px 0;
+  color: rgb(80, 84, 86);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 24px;
+  overflow-wrap: break-word;
+  text-decoration: none;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-item-level-3 .table-of-contents__link {
+  padding-left: 28px;
+  color: rgb(112, 116, 118);
+  font-weight: 400;
+  white-space: normal;
+}
+
+.mlflow-tracing-overview-page .table-of-contents__link:hover,
+.mlflow-tracing-overview-page .table-of-contents__link--active {
+  color: #0194e2;
+  text-decoration: none;
+  text-shadow:
+    -0.15px 0 0 currentColor,
+    0.15px 0 0 currentColor;
+}
+
+.mlflow-tracing-overview-page .table-of-contents__link--active::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: -20px;
+  width: 2px;
+  border-radius: 999px;
+  background: #0194e2;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-scroll-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 28px;
+  border: 0;
+  border-top: 1px solid rgba(80, 84, 86, 0.16);
+  padding: 18px 0 0;
+  background: transparent;
+  color: rgb(80, 84, 86);
+  font: inherit;
+  font-weight: 500;
+  line-height: 24px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    color 0.18s ease;
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-scroll-top-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.mlflow-tracing-overview-page .mintlify-page-toc-scroll-top:hover {
+  color: #0194e2;
 }
 
 .mlflow-tracing-overview-page .theme-doc-markdown > h1:first-child {
@@ -1482,9 +1681,7 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 }
 
 .mlflow-tracing-overview-page .mintlify-doc-title {
-  display: inline-block;
-  transform: scaleX(0.95157);
-  transform-origin: left center;
+  display: block;
 }
 
 .mlflow-tracing-overview-page .mintlify-doc-header p {
@@ -1506,8 +1703,6 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   font-weight: 600;
   letter-spacing: 0;
   line-height: 32px;
-  transform: scaleX(0.956);
-  transform-origin: left center;
 }
 
 .mlflow-tracing-overview-page h3,
@@ -1521,8 +1716,7 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 }
 
 .mlflow-tracing-overview-page [role='tabpanel'] h4 {
-  transform: translateY(1px) scaleX(0.9);
-  transform-origin: left center;
+  transform: translateY(1px);
 }
 
 .mlflow-tracing-overview-page p {
@@ -1625,16 +1819,13 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 
 .mlflow-tracing-overview-page video {
   display: block;
-  width: 801px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
   margin: 32px 0 48px;
   border: 0;
   border-radius: 0;
   box-shadow: none;
-}
-
-.mlflow-tracing-overview-page video::-webkit-media-controls,
-.mlflow-tracing-overview-page video::-webkit-media-controls-enclosure {
-  display: none !important;
 }
 
 .mlflow-tracing-overview-page .tabs {
@@ -1642,7 +1833,8 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   gap: 24px;
   height: 48px;
   margin: 20px 0 24px;
-  border-bottom: 1px solid rgb(222, 227, 229);
+  border-bottom: 1px solid rgba(229, 232, 234, 0.7);
+  overflow-x: auto;
 }
 
 .mlflow-tracing-overview-page .tabs__item {
@@ -1664,7 +1856,7 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 
 .mlflow-tracing-overview-page .tabs__item--active {
   color: #0194e2;
-  border-bottom: 1.5px solid #0194e2;
+  border-bottom: 1px solid rgba(1, 148, 226, 0.65);
 }
 
 .mlflow-tracing-overview-page [role='tabpanel'] {
@@ -1673,23 +1865,25 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 }
 
 .mlflow-tracing-overview-page [role='tabpanel'] img {
-  width: 801px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
   margin: 32px 0 0;
   border-radius: 0;
 }
 
 .mlflow-tracing-overview-page .mintlify-debug-image-wrap {
   position: relative;
-  width: 801px;
-  height: 535px;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 801 / 535;
   margin: 32px 0 0;
 }
 
-.mlflow-tracing-overview-page [role='tabpanel'] .mintlify-debug-image-wrap img,
-.mlflow-tracing-overview-page [role='tabpanel'] .mintlify-debug-canvas {
+.mlflow-tracing-overview-page [role='tabpanel'] .mintlify-debug-image {
   display: block;
-  width: 801px;
-  height: 535px;
+  width: 100%;
+  height: 100%;
   margin: 0;
   border: 0;
 }
@@ -1718,7 +1912,6 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 
 .mlflow-tracing-overview-page [class*='featureHighlights'] {
   gap: 0 16px;
-  min-height: 618px;
 }
 
 .mlflow-tracing-overview-page [class*='highlightItem'] {
@@ -1746,7 +1939,6 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 
 .mlflow-tracing-overview-page [class*='tileCard'] {
   box-sizing: border-box;
-  height: 142px;
   min-height: 142px;
   border-color: rgb(230, 231, 231);
 }
@@ -1794,16 +1986,17 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   position: relative;
   margin: 20px 0 32px;
   --ifm-pre-padding: 0;
-  border: 1px solid rgb(222, 227, 229);
-  border-radius: 12px;
+  border: 1px solid rgb(238, 239, 240);
+  border-radius: 16px;
   background: #ffffff;
   box-shadow: none;
+  overflow: hidden;
 }
 
 .mlflow-tracing-overview-page .theme-code-block pre,
 .mlflow-tracing-overview-page .theme-code-block code {
   font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    paperMono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   font-size: 14px;
   line-height: 24px;
 }
@@ -1811,7 +2004,12 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
 .mlflow-tracing-overview-page .theme-code-block pre {
   margin: 0;
   padding: 14px 16px !important;
+  background: #ffffff !important;
+}
+
+.mlflow-tracing-overview-page .theme-code-block code {
   background: transparent;
+  color: #1f2328;
 }
 
 .mlflow-tracing-overview-page [class*='codeBlockLines'] {
@@ -1857,115 +2055,9 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   display: none;
 }
 
-.mlflow-tracing-overview-page .mintlify-code-block {
-  position: relative;
-  box-sizing: border-box;
-  width: 801px;
-  min-width: 0;
-  margin: 20px 0 32px;
-  border: 1px solid rgb(238, 239, 240);
-  border-radius: 16px;
-  background: transparent;
-  color: #1f2328;
-  font-size: 14px;
-  line-height: 24px;
-  overflow: hidden;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-block-canvas {
-  display: block;
-  width: 801px;
-  height: 102px;
-  margin: 20px 0 32px;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-floating {
-  position: absolute;
-  top: 12px;
-  right: 16px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-copy-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0;
-  color: rgb(158, 163, 165);
-  background: transparent;
-  backdrop-filter: blur(4px);
-}
-
-.mlflow-tracing-overview-page .mintlify-code-copy-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-root {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 100%;
-  max-width: 100%;
-  height: 100%;
-  border-radius: 16px;
-  padding: 14px 16px;
-  background: #ffffff;
-  overflow-x: auto;
-  font-variant-ligatures: none;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-font,
-.mlflow-tracing-overview-page .mintlify-code-block pre,
-.mlflow-tracing-overview-page .mintlify-code-block code {
-  font-family:
-    paperMono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  font-size: 14px;
-  line-height: 24px;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-block pre {
-  margin: 0;
-  padding: 0;
-  background: transparent !important;
-  color: #1f2328;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-block code {
-  display: block;
-  width: max-content;
-  min-width: 100%;
-  padding-right: 99px;
-  background: transparent;
-  transform: translateY(1px);
-}
-
-.mlflow-tracing-overview-page .mintlify-code-block .line {
-  display: block;
-  min-height: 24px;
-}
-
-.mlflow-tracing-overview-page .mintlify-code-fade {
-  pointer-events: none;
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 1;
-  width: 99px;
-  height: 44px;
-  border-top-right-radius: 16px;
-  background: linear-gradient(to right, transparent 0, rgba(255, 255, 255, 0.2) 10px, rgba(255, 255, 255, 0.5) 25px, rgba(255, 255, 255, 0.8) 35px, #ffffff 45px);
-}
-
 .mlflow-tracing-overview-page .pagination-nav {
   position: relative;
-  margin: 56px 0 231px;
+  margin: 56px 0 80px;
   justify-content: flex-end;
 }
 
@@ -2012,19 +2104,19 @@ html[data-mlflow-doc-route='genai-tracing-overview'] {
   font-size: 20px;
 }
 
-.mlflow-tracing-overview-page .pagination-nav::after {
-  content: 'Powered by mintlify';
-  position: absolute;
-  left: 0;
-  bottom: -124px;
-  color: rgb(206, 210, 212);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .mlflow-tracing-overview-page .footer,
 .mlflow-tracing-overview-page footer {
   display: none;
+}
+
+@media (max-width: 1279px) {
+  .mlflow-tracing-overview-page .col--3 {
+    display: none !important;
+  }
+
+  .mlflow-tracing-overview-page .row {
+    column-gap: clamp(24px, 3vw, 44px);
+  }
 }
 
 @media (max-width: 996px) {
