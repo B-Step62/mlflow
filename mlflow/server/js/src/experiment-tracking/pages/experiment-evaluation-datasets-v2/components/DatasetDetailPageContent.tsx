@@ -313,7 +313,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
             datasetName={dataset.name}
             rightActions={
               <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <QualityGuardrailButton experimentId={experimentId} datasetId={datasetId} dataset={dataset} />
+                <QualityGuardrailButton experimentId={experimentId} datasetId={datasetId} />
                 <DatasetDetailKebabMenu experimentId={experimentId} dataset={dataset} notify={notify} />
               </div>
             }

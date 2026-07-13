@@ -1,4 +1,13 @@
-import { Button, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  ArrowRightIcon,
+  Button,
+  DatabaseIcon,
+  LightningIcon,
+  LinkIcon,
+  ListIcon,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 import type { Webhook, WebhookEvent } from './webhooksApi';
 import { eventKey, eventLabels } from './webhookConstants';
@@ -12,6 +21,10 @@ interface WebhookListItemProps {
   onEdit: (webhook: Webhook) => void;
   onDelete: (webhook: Webhook) => void;
   mode?: 'webhook' | 'automation';
+  destinationNames?: {
+    datasets: Record<string, string>;
+    reviewQueues: Record<string, string>;
+  };
 }
 
 const formatEventLabel = (intl: ReturnType<typeof useIntl>, entity: string, action: string) => {
@@ -22,16 +35,6 @@ const formatEventLabel = (intl: ReturnType<typeof useIntl>, entity: string, acti
 
 const formatEvents = (intl: ReturnType<typeof useIntl>, events: WebhookEvent[]) =>
   events.map((e) => formatEventLabel(intl, e.entity, e.action)).join(', ');
-
-const actionLabels: Record<string, string> = {
-  add_to_review_queue: 'Add to review queue',
-  add_to_dataset: 'Add to dataset',
-  set_record_status: 'Set record status',
-  run_quality_guardrail: 'Run quality guardrail',
-  send_webhook: 'Send webhook',
-};
-
-const formatAction = (webhook: Webhook) => actionLabels[webhook.action_type || 'send_webhook'] ?? webhook.action_type;
 
 const parseActionConfig = (actionConfig?: string): Record<string, string> => {
   if (!actionConfig) {
@@ -45,25 +48,47 @@ const parseActionConfig = (actionConfig?: string): Record<string, string> => {
   }
 };
 
-const formatActionTarget = (webhook: Webhook) => {
+const getAutomationDestinationLabel = (actionType?: string) => {
+  if (actionType === 'add_to_review_queue') {
+    return 'Review queue';
+  }
+  if (actionType === 'add_to_dataset' || actionType === 'set_record_status') {
+    return 'Dataset';
+  }
+  if (actionType === 'send_webhook') {
+    return 'Webhook';
+  }
+  return 'Automation';
+};
+
+const AutomationDestinationIcon = ({ actionType }: { actionType?: string }) => {
+  if (actionType === 'add_to_review_queue') {
+    return <ListIcon />;
+  }
+  if (actionType === 'add_to_dataset' || actionType === 'set_record_status') {
+    return <DatabaseIcon />;
+  }
+  if (actionType === 'send_webhook') {
+    return <LinkIcon />;
+  }
+  return <LightningIcon />;
+};
+
+const getAutomationDestinationName = (
+  webhook: Webhook,
+  destinationNames: { datasets: Record<string, string>; reviewQueues: Record<string, string> },
+) => {
   const config = parseActionConfig(webhook.action_config);
   if (webhook.action_type === 'add_to_review_queue') {
-    return config['queue_id'] ? `: ${config['queue_id']}` : '';
+    return destinationNames.reviewQueues[config.queue_id] || 'Review queue';
   }
-  if (webhook.action_type === 'add_to_dataset') {
-    return config['dataset_id'] ? `: ${config['dataset_id']}` : '';
-  }
-  if (webhook.action_type === 'set_record_status') {
-    const dataset = config['dataset_id'] ? `: ${config['dataset_id']}` : '';
-    return config['status'] ? `${dataset} (${config['status']})` : dataset;
-  }
-  if (webhook.action_type === 'run_quality_guardrail') {
-    return config['name'] ? `: ${config['name']}` : '';
+  if (webhook.action_type === 'add_to_dataset' || webhook.action_type === 'set_record_status') {
+    return destinationNames.datasets[config.dataset_id] || 'Dataset';
   }
   if (webhook.action_type === 'send_webhook') {
-    return webhook.url ? `: ${webhook.url}` : '';
+    return webhook.url || 'webhook';
   }
-  return '';
+  return getAutomationDestinationLabel(webhook.action_type);
 };
 
 const WebhookListItem = ({
@@ -75,6 +100,7 @@ const WebhookListItem = ({
   onEdit,
   onDelete,
   mode = 'webhook',
+  destinationNames = { datasets: {}, reviewQueues: {} },
 }: WebhookListItemProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -113,24 +139,39 @@ const WebhookListItem = ({
               ? intl.formatMessage({ defaultMessage: 'Active', description: 'Webhook active status' })
               : intl.formatMessage({ defaultMessage: 'Disabled', description: 'Webhook disabled status' })}
           </span>
+          {mode === 'automation' && (
+            <span
+              css={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                color: theme.colors.textSecondary,
+                fontSize: theme.typography.fontSizeSm,
+                minWidth: 0,
+              }}
+            >
+              <ArrowRightIcon />
+              <AutomationDestinationIcon actionType={webhook.action_type} />
+              <span
+                css={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: 360,
+                }}
+              >
+                {getAutomationDestinationName(webhook, destinationNames)}
+              </span>
+            </span>
+          )}
         </div>
-        <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
-          {mode === 'automation'
-            ? `Source: ${webhook.source_type || 'any'}${webhook.source_id ? ` ${webhook.source_id}` : ''}`
-            : webhook.url}
-        </Typography.Text>
         {mode === 'webhook' && (
-          <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
-            {formatEvents(intl, webhook.events)}
-          </Typography.Text>
-        )}
-        {mode === 'automation' && (
           <>
             <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
-              {`IF ${webhook.condition || 'always'}`}
+              {webhook.url}
             </Typography.Text>
             <Typography.Text size="sm" color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
-              {`THEN ${formatAction(webhook)}${formatActionTarget(webhook)}`}
+              {formatEvents(intl, webhook.events)}
             </Typography.Text>
           </>
         )}

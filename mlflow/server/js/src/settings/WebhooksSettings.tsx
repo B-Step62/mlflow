@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Spinner, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 import { WebhooksApi } from './webhooksApi';
@@ -6,6 +6,8 @@ import type { Webhook } from './webhooksApi';
 import WebhookListItem from './WebhookListItem';
 import WebhookFormModal from './WebhookFormModal';
 import WebhookDeleteModal from './WebhookDeleteModal';
+import { useDatasetsPageQuery } from '../experiment-tracking/pages/experiment-evaluation-datasets-v2/hooks/useDatasetsPageQuery';
+import { useListReviewQueuesQuery } from '../experiment-tracking/pages/experiment-review-queue/hooks/useListReviewQueuesQuery';
 
 interface WebhooksSettingsProps {
   /** Filter displayed webhooks to only those containing at least one event whose entity matches this value exactly */
@@ -69,6 +71,28 @@ const WebhooksSettings = ({
     success: boolean;
     message: string;
   } | null>(null);
+  const shouldResolveAutomationDestinations = mode === 'automation' && Boolean(experimentId);
+  const datasetsQuery = useDatasetsPageQuery({
+    experimentId: experimentId ?? '',
+    nameFilter: '',
+    pageSize: 100,
+    pageToken: undefined,
+    enabled: shouldResolveAutomationDestinations,
+  });
+  const { reviewQueues } = useListReviewQueuesQuery({
+    experimentId: experimentId ?? '',
+    maxResults: 100,
+    enabled: shouldResolveAutomationDestinations,
+  });
+  const destinationNames = useMemo(
+    () => ({
+      datasets: Object.fromEntries(
+        (datasetsQuery.data?.datasets ?? []).map((dataset) => [dataset.dataset_id, dataset.name || dataset.dataset_id]),
+      ),
+      reviewQueues: Object.fromEntries(reviewQueues.map((queue) => [queue.queue_id, queue.name])),
+    }),
+    [datasetsQuery.data?.datasets, reviewQueues],
+  );
 
   const fetchWebhooks = useCallback(async () => {
     setLoading(true);
@@ -318,6 +342,7 @@ const WebhooksSettings = ({
               onEdit={openEditModal}
               onDelete={openDeleteModal}
               mode={mode}
+              destinationNames={destinationNames}
             />
           ))}
         </div>

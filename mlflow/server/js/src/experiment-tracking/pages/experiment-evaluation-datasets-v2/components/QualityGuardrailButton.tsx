@@ -4,7 +4,6 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   Button,
-  FormUI,
   Input,
   Modal,
   PlusIcon,
@@ -19,7 +18,6 @@ import { FormattedMessage, useIntl } from 'react-intl';
 
 import { WebhooksApi } from '../../../../settings/webhooksApi';
 import { useListReviewQueuesQuery } from '../../experiment-review-queue/hooks/useListReviewQueuesQuery';
-import type { Dataset } from '../hooks/useDatasetsQueries';
 
 const GUARDRAIL_PREFIX = 'quality-guardrail.';
 const PROMOTE_ACTIVE_NAME = `${GUARDRAIL_PREFIX}promote-active`;
@@ -29,7 +27,6 @@ type GuardrailType = 'llm_judge' | 'human_review' | 'webhook';
 
 interface GuardrailStep {
   id: string;
-  name: string;
   type: GuardrailType;
   instructions: string;
   queueId: string;
@@ -50,7 +47,6 @@ const GUARDRAIL_TYPE_OPTIONS: { value: GuardrailType; label: string }[] = [
 const DEFAULT_GUARDRAILS: GuardrailStep[] = [
   {
     id: 'anonymization',
-    name: 'Anonymization check',
     type: 'llm_judge',
     instructions: 'Record contains no raw customer identifiers or private contact information.',
     queueId: '',
@@ -58,7 +54,6 @@ const DEFAULT_GUARDRAILS: GuardrailStep[] = [
   },
   {
     id: 'guideline-adherence',
-    name: 'Guideline adherence',
     type: 'llm_judge',
     instructions: 'Record follows the rental QA guidelines and has useful expected output.',
     queueId: '',
@@ -68,21 +63,18 @@ const DEFAULT_GUARDRAILS: GuardrailStep[] = [
 
 const DEFAULTS_BY_TYPE: Record<GuardrailType, Omit<GuardrailStep, 'id'>> = {
   llm_judge: {
-    name: 'LLM judge',
     type: 'llm_judge',
     instructions: '',
     queueId: '',
     webhookUrl: '',
   },
   human_review: {
-    name: 'Human review',
     type: 'human_review',
     instructions: '',
     queueId: '',
     webhookUrl: '',
   },
   webhook: {
-    name: 'Webhook',
     type: 'webhook',
     instructions: '',
     queueId: '',
@@ -107,28 +99,25 @@ const appendGuardrailSuffix = (baseId: string, suffix: number) => {
 
 const buildRunnableGuardrails = (guardrails: GuardrailStep[]): RunnableGuardrailStep[] => {
   const usedIds = new Set<string>();
-  return guardrails
-    .filter((guardrail) => guardrail.name.trim())
-    .map((guardrail) => {
-      const baseId = normalizeGuardrailId(guardrail.id || guardrail.name);
-      let normalizedId = baseId;
-      let suffix = 2;
-      while (usedIds.has(normalizedId)) {
-        normalizedId = appendGuardrailSuffix(baseId, suffix);
-        suffix += 1;
-      }
-      usedIds.add(normalizedId);
-      return {
-        ...guardrail,
-        id: normalizedId,
-        name: guardrail.name.trim(),
-        instructions: guardrail.instructions.trim(),
-        queueId: guardrail.queueId.trim(),
-        webhookUrl: guardrail.webhookUrl.trim(),
-        normalizedId,
-        resultTag: `mlflow.quality_guardrail.${normalizedId}`,
-      };
-    });
+  return guardrails.map((guardrail) => {
+    const baseId = normalizeGuardrailId(guardrail.id);
+    let normalizedId = baseId;
+    let suffix = 2;
+    while (usedIds.has(normalizedId)) {
+      normalizedId = appendGuardrailSuffix(baseId, suffix);
+      suffix += 1;
+    }
+    usedIds.add(normalizedId);
+    return {
+      ...guardrail,
+      id: normalizedId,
+      instructions: guardrail.instructions.trim(),
+      queueId: guardrail.queueId.trim(),
+      webhookUrl: guardrail.webhookUrl.trim(),
+      normalizedId,
+      resultTag: `mlflow.quality_guardrail.${normalizedId}`,
+    };
+  });
 };
 
 const guardrailPassCondition = (guardrail: RunnableGuardrailStep) => `tag.${guardrail.resultTag} = 'pass'`;
@@ -174,11 +163,9 @@ const createStep = (type: GuardrailType, index: number): GuardrailStep => ({
 export const QualityGuardrailButton = ({
   experimentId,
   datasetId,
-  dataset,
 }: {
   experimentId: string;
   datasetId: string;
-  dataset: Dataset;
 }) => {
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
@@ -222,7 +209,6 @@ export const QualityGuardrailButton = ({
           const config = parseActionConfig(webhook.action_config);
           const current = grouped.get(parsed.order) ?? {};
           current.id = config.guardrail_id || parsed.id;
-          current.name = config.name || current.name || parsed.id;
           current.instructions = config.instructions || current.instructions || webhook.description || '';
           if (webhook.action_type === 'run_quality_guardrail' && !parsed.suffix) {
             current.type = 'llm_judge';
@@ -238,8 +224,7 @@ export const QualityGuardrailButton = ({
         const existingGuardrails = Array.from(grouped.entries())
           .sort(([a], [b]) => a - b)
           .map(([, guardrail]) => ({
-            id: guardrail.id || normalizeGuardrailId(guardrail.name || 'guardrail'),
-            name: guardrail.name || 'Guardrail',
+            id: guardrail.id || 'guardrail',
             type: guardrail.type || 'llm_judge',
             instructions: guardrail.instructions || '',
             queueId: guardrail.queueId || '',
@@ -331,7 +316,6 @@ export const QualityGuardrailButton = ({
     dataset_id: datasetId,
     guardrail_id: guardrail.normalizedId,
     guardrail_type: guardrail.type,
-    name: guardrail.name,
     instructions: guardrail.instructions,
     result_tag: guardrail.resultTag,
   });
@@ -492,10 +476,15 @@ export const QualityGuardrailButton = ({
       <Modal
         componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.modal"
         visible={isOpen}
-        title={intl.formatMessage({
-          defaultMessage: 'Quality guardrails',
-          description: 'Dataset quality guardrails modal title',
-        })}
+        title={
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            <ShieldIcon />
+            {intl.formatMessage({
+              defaultMessage: 'Quality guardrails',
+              description: 'Dataset quality guardrails modal title',
+            })}
+          </span>
+        }
         onCancel={() => setIsOpen(false)}
         onOk={handleSave}
         okText={intl.formatMessage({
@@ -510,6 +499,12 @@ export const QualityGuardrailButton = ({
         size="wide"
       >
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+          <Typography.Text color="secondary" css={{ display: 'block', marginTop: -theme.spacing.sm }}>
+            <FormattedMessage
+              defaultMessage="Quality guardrails keep new dataset records staged until every ordered check passes."
+              description="Dataset quality guardrail modal description"
+            />
+          </Typography.Text>
           {message && (
             <Alert
               componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.message"
@@ -517,131 +512,125 @@ export const QualityGuardrailButton = ({
               message={message.text}
             />
           )}
-          <div>
-            <Typography.Title level={5} withoutMargins>
-              {dataset.name ?? datasetId}
-            </Typography.Title>
-            <Typography.Text color="secondary">
-              <FormattedMessage
-                defaultMessage="staged candidate -> ordered guardrails -> active record"
-                description="Dataset quality guardrail pipeline summary"
-              />
+          <div
+            css={{
+              display: 'grid',
+              gridTemplateColumns: '32px minmax(180px, 220px) minmax(280px, 1fr) auto',
+              gap: theme.spacing.sm,
+              alignItems: 'center',
+              paddingBottom: theme.spacing.xs,
+              borderBottom: `1px solid ${theme.colors.border}`,
+            }}
+          >
+            <Typography.Text size="sm" color="secondary">
+              <FormattedMessage defaultMessage="#" description="Dataset guardrail order column header" />
+            </Typography.Text>
+            <Typography.Text size="sm" color="secondary">
+              <FormattedMessage defaultMessage="Type" description="Dataset guardrail type column header" />
+            </Typography.Text>
+            <Typography.Text size="sm" color="secondary">
+              <FormattedMessage defaultMessage="Configuration" description="Dataset guardrail config column header" />
+            </Typography.Text>
+            <Typography.Text size="sm" color="secondary" css={{ justifySelf: 'end' }}>
+              <FormattedMessage defaultMessage="Actions" description="Dataset guardrail actions column header" />
             </Typography.Text>
           </div>
-          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+          <div css={{ display: 'flex', flexDirection: 'column' }}>
             {guardrails.map((guardrail, index) => (
               <div
                 key={guardrail.id}
                 css={{
                   display: 'grid',
-                  gridTemplateColumns: '32px minmax(180px, 220px) minmax(180px, 220px) minmax(280px, 1fr) auto',
+                  gridTemplateColumns: '32px minmax(180px, 220px) minmax(280px, 1fr) auto',
                   gap: theme.spacing.sm,
-                  alignItems: 'start',
-                  padding: theme.spacing.sm,
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borders.borderRadiusSm,
+                  alignItems: 'center',
+                  padding: `${theme.spacing.sm}px 0`,
+                  borderBottom: `1px solid ${theme.colors.border}`,
                 }}
               >
-                <Typography.Text bold css={{ paddingTop: 6 }}>
+                <Typography.Text bold>
                   {index + 1}
                 </Typography.Text>
-                <div>
-                  <FormUI.Label htmlFor={`mlflow.eval-datasets-v2.detail.quality-guardrail.name-${index}`}>
-                    <FormattedMessage defaultMessage="Guardrail" description="Dataset guardrail step name label" />
-                  </FormUI.Label>
-                  <Input
-                    id={`mlflow.eval-datasets-v2.detail.quality-guardrail.name-${index}`}
-                    componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.name"
-                    value={guardrail.name}
-                    onChange={(e) =>
-                      updateGuardrail(index, {
-                        name: e.target.value,
-                        id: guardrail.id.startsWith('guardrail-') ? slugify(e.target.value) : guardrail.id,
-                      })
-                    }
-                  />
-                </div>
-                <div>
-                  <FormUI.Label htmlFor={`mlflow.eval-datasets-v2.detail.quality-guardrail.type-${index}`}>
-                    <FormattedMessage defaultMessage="Type" description="Dataset guardrail step type label" />
-                  </FormUI.Label>
-                  <SimpleSelect
-                    id={`mlflow.eval-datasets-v2.detail.quality-guardrail.type-${index}`}
-                    componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.type"
-                    value={guardrail.type}
-                    onChange={({ target }) =>
-                      updateGuardrail(index, {
-                        type: target.value as GuardrailType,
-                        instructions: '',
-                        queueId: '',
-                        webhookUrl: '',
-                      })
-                    }
-                    css={{ width: '100%' }}
-                  >
-                    {GUARDRAIL_TYPE_OPTIONS.map((type) => (
-                      <SimpleSelectOption key={type.value} value={type.value}>
-                        {type.label}
-                      </SimpleSelectOption>
-                    ))}
-                  </SimpleSelect>
-                </div>
+                <SimpleSelect
+                  id={`mlflow.eval-datasets-v2.detail.quality-guardrail.type-${index}`}
+                  aria-label={intl.formatMessage({
+                    defaultMessage: 'Guardrail type',
+                    description: 'Dataset guardrail step type aria label',
+                  })}
+                  componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.type"
+                  value={guardrail.type}
+                  onChange={({ target }) =>
+                    updateGuardrail(index, {
+                      type: target.value as GuardrailType,
+                      instructions: '',
+                      queueId: '',
+                      webhookUrl: '',
+                    })
+                  }
+                  css={{ width: '100%' }}
+                >
+                  {GUARDRAIL_TYPE_OPTIONS.map((type) => (
+                    <SimpleSelectOption key={type.value} value={type.value}>
+                      {type.label}
+                    </SimpleSelectOption>
+                  ))}
+                </SimpleSelect>
                 <div>
                   {guardrail.type === 'llm_judge' && (
-                    <>
-                      <FormUI.Label htmlFor={`mlflow.eval-datasets-v2.detail.quality-guardrail.instructions-${index}`}>
-                        <FormattedMessage defaultMessage="Judge criteria" description="Dataset guardrail judge label" />
-                      </FormUI.Label>
-                      <Input.TextArea
-                        id={`mlflow.eval-datasets-v2.detail.quality-guardrail.instructions-${index}`}
-                        componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.instructions"
-                        value={guardrail.instructions}
-                        onChange={(e) => updateGuardrail(index, { instructions: e.target.value })}
-                        rows={2}
-                      />
-                    </>
+                    <Input.TextArea
+                      id={`mlflow.eval-datasets-v2.detail.quality-guardrail.instructions-${index}`}
+                      aria-label={intl.formatMessage({
+                        defaultMessage: 'Judge criteria',
+                        description: 'Dataset guardrail judge criteria aria label',
+                      })}
+                      componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.instructions"
+                      value={guardrail.instructions}
+                      onChange={(e) => updateGuardrail(index, { instructions: e.target.value })}
+                      rows={2}
+                      css={{ width: '100%' }}
+                    />
                   )}
                   {guardrail.type === 'human_review' && (
-                    <>
-                      <FormUI.Label htmlFor={`mlflow.eval-datasets-v2.detail.quality-guardrail.queue-${index}`}>
-                        <FormattedMessage defaultMessage="Review queue" description="Dataset guardrail queue label" /> *
-                      </FormUI.Label>
-                      <SimpleSelect
-                        id={`mlflow.eval-datasets-v2.detail.quality-guardrail.queue-${index}`}
-                        componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.queue"
-                        value={guardrail.queueId}
-                        onChange={({ target }) => updateGuardrail(index, { queueId: target.value })}
-                        css={{ width: '100%' }}
-                      >
-                        <SimpleSelectOption value="">
-                          {reviewQueuesLoading ? 'Loading...' : 'Select review queue'}
+                    <SimpleSelect
+                      id={`mlflow.eval-datasets-v2.detail.quality-guardrail.queue-${index}`}
+                      aria-label={intl.formatMessage({
+                        defaultMessage: 'Review queue',
+                        description: 'Dataset guardrail review queue aria label',
+                      })}
+                      componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.queue"
+                      value={guardrail.queueId}
+                      onChange={({ target }) => updateGuardrail(index, { queueId: target.value })}
+                      css={{ width: '100%' }}
+                    >
+                      <SimpleSelectOption value="">
+                        {reviewQueuesLoading ? 'Loading...' : 'Select review queue'}
+                      </SimpleSelectOption>
+                      {reviewQueueOptions.map((queue) => (
+                        <SimpleSelectOption key={queue.value} value={queue.value}>
+                          {queue.label}
                         </SimpleSelectOption>
-                        {reviewQueueOptions.map((queue) => (
-                          <SimpleSelectOption key={queue.value} value={queue.value}>
-                            {queue.label}
-                          </SimpleSelectOption>
-                        ))}
-                      </SimpleSelect>
-                    </>
+                      ))}
+                    </SimpleSelect>
                   )}
                   {guardrail.type === 'webhook' && (
-                    <>
-                      <FormUI.Label htmlFor={`mlflow.eval-datasets-v2.detail.quality-guardrail.webhook-${index}`}>
-                        <FormattedMessage defaultMessage="Webhook URL" description="Dataset guardrail webhook URL label" /> *
-                      </FormUI.Label>
-                      <Input
-                        id={`mlflow.eval-datasets-v2.detail.quality-guardrail.webhook-${index}`}
-                        componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.webhook"
-                        value={guardrail.webhookUrl}
-                        onChange={(e) => updateGuardrail(index, { webhookUrl: e.target.value })}
-                        placeholder="http://127.0.0.1:8000/webhook"
-                      />
-                    </>
+                    <Input
+                      id={`mlflow.eval-datasets-v2.detail.quality-guardrail.webhook-${index}`}
+                      aria-label={intl.formatMessage({
+                        defaultMessage: 'Webhook URL',
+                        description: 'Dataset guardrail webhook URL aria label',
+                      })}
+                      componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.webhook"
+                      value={guardrail.webhookUrl}
+                      onChange={(e) => updateGuardrail(index, { webhookUrl: e.target.value })}
+                      placeholder="http://127.0.0.1:8000/webhook"
+                      css={{ width: '100%' }}
+                    />
                   )}
                 </div>
-                <div css={{ display: 'flex', gap: theme.spacing.xs, paddingTop: 22 }}>
+                <div css={{ display: 'flex', gap: theme.spacing.xs, justifySelf: 'end' }}>
                   <Button
                     componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.move-up"
+                    type="tertiary"
                     icon={<ArrowUpIcon />}
                     disabled={index === 0}
                     onClick={() => moveGuardrail(index, -1)}
@@ -652,6 +641,7 @@ export const QualityGuardrailButton = ({
                   />
                   <Button
                     componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.move-down"
+                    type="tertiary"
                     icon={<ArrowDownIcon />}
                     disabled={index === guardrails.length - 1}
                     onClick={() => moveGuardrail(index, 1)}
@@ -662,6 +652,7 @@ export const QualityGuardrailButton = ({
                   />
                   <Button
                     componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.remove"
+                    type="tertiary"
                     icon={<TrashIcon />}
                     disabled={guardrails.length === 1}
                     onClick={() => removeGuardrail(index)}
@@ -674,7 +665,7 @@ export const QualityGuardrailButton = ({
               </div>
             ))}
             {isAdding ? (
-              <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
+              <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', paddingTop: theme.spacing.md }}>
                 <SimpleSelect
                   componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.add-type"
                   value={pendingType}
@@ -706,9 +697,10 @@ export const QualityGuardrailButton = ({
                 </Button>
               </div>
             ) : (
-              <div>
+              <div css={{ paddingTop: theme.spacing.md }}>
                 <Button
                   componentId="mlflow.eval-datasets-v2.detail.quality-guardrail.add"
+                  type="tertiary"
                   icon={<PlusIcon />}
                   onClick={() => setIsAdding(true)}
                 >
