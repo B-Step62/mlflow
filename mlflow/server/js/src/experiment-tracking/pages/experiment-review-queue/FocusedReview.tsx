@@ -43,25 +43,12 @@ import { MARKDOWN_RENDER_SIZE_LIMIT } from '../../../shared/web-shared/model-tra
 
 const CID = 'mlflow.experiment-review-queue.focused-review';
 
-/** Record-mode FEEDBACK answers persist in this single JSON tag on the dataset
- *  record (EXPECTATION answers go to `record.expectations`). Shape:
- *  `{ [schema.name]: { value, rationale? } }`. */
-const RECORD_FEEDBACK_TAG = 'mlflow.review.feedback';
-
-type RecordFeedbackEntry = { value?: LabelSchemaValue; rationale?: string };
-
-/** Parse the `mlflow.review.feedback` tag value; tolerant of a missing or malformed tag. */
-const parseRecordFeedbackTag = (raw: string | undefined): Record<string, RecordFeedbackEntry> => {
-  if (!raw) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, RecordFeedbackEntry>) : {};
-  } catch {
-    return {};
-  }
-};
+/** A record's approval verdict persists as this dedicated boolean tag (values
+ *  `'true'` / `'false'`), independent of the label-schema feedback mechanism.
+ *  The reviewer's pass/fail answer (e.g. an "Approve?" question) drives it;
+ *  EXPECTATION answers still go to `record.expectations`. The promotion
+ *  Automation maps `approved` to the record status tag. */
+const APPROVED_TAG = 'approved';
 
 /** Try to parse `raw` as JSON; returns the pretty-printed string + a flag. */
 const tryParseJson = (raw: string): { text: string; isJson: boolean } => {
@@ -150,9 +137,9 @@ const TraceContentBubble = ({ content, variant }: { content: string; variant: 'i
 
 /**
  * Focused-review surface, three panels:
- *   left   — condensed queue rail (switch which trace is in focus)
- *   middle — trace summary
- *   right  — the queue's questions (label-schema widgets)
+ *   left   - condensed queue rail (switch which trace is in focus)
+ *   middle - trace summary
+ *   right  - the queue's questions (label-schema widgets)
  *
  * Answering a question writes a trace assessment: a `FEEDBACK` schema
  * produces a feedback assessment, an `EXPECTATION` schema an expectation
@@ -181,8 +168,8 @@ export const FocusedReview = ({
   completedBy: string;
   /** Set for a dataset-review queue: the item is a dataset record, reviewed in
    *  this same pane. Its inputs replace the trace content; EXPECTATION questions
-   *  curate its expectations and FEEDBACK questions are stored on the record (in
-   *  the `mlflow.review.feedback` tag), all persisted back to the dataset. */
+   *  curate its expectations and the pass/fail FEEDBACK verdict is stored on the
+   *  record as the `approved` tag for the promotion Automation. */
   datasetId?: string;
   /** True while a status write is in flight (disables the actions). */
   isSettingStatus: boolean;
@@ -237,55 +224,44 @@ export const FocusedReview = ({
 
   // Prefill the widgets. Trace mode reads the trace's existing assessments
   // (scoped to this reviewer's source); record mode reads the record's stored
-  // answers — EXPECTATION schemas from `record.expectations`, FEEDBACK schemas
-  // from the `mlflow.review.feedback` JSON tag. Edits overlay the prefill so a
+  // answers: EXPECTATION schemas from `record.expectations`, the pass/fail
+  // FEEDBACK verdict from the `approved` tag. Edits overlay the prefill so a
   // query result never clobbers what the reviewer typed. In record mode the
   // trace query is disabled, so `priorAnswers` (and the supersede map below)
-  // come out empty; the tag supplies the record-mode value/rationale prefill.
+  // come out empty; the tag supplies the record-mode value prefill.
   const { priorAnswers, isFetching: priorAnswersFetching } = useTraceAssessmentsQuery({
     traceId: item.item_id,
     sourceId: completedBy,
     enabled: !isRecordMode,
   });
-  // The record's FEEDBACK answers live in one JSON tag; parse it once for the
-  // value + rationale prefill and the submit-time merge.
-  const recordFeedback = useMemo<Record<string, RecordFeedbackEntry>>(
-    () => (isRecordMode ? parseRecordFeedbackTag(record?.tags?.[RECORD_FEEDBACK_TAG]) : {}),
-    [isRecordMode, record],
-  );
+  // The record's approval verdict is the dedicated `approved` tag ('true'/'false').
+  const recordApproved = useMemo<boolean | undefined>(() => {
+    const raw = isRecordMode ? record?.tags?.[APPROVED_TAG] : undefined;
+    return raw === undefined ? undefined : raw === 'true';
+  }, [isRecordMode, record]);
   const tracePrefilled = useMemo(() => buildPrefilledAnswers(priorAnswers, schemas), [priorAnswers, schemas]);
   const recordPrefilled = useMemo(() => {
     const out: Record<string, LabelSchemaValue> = {};
     if (isRecordMode && record) {
       for (const s of schemas) {
-        // EXPECTATION answers are curated onto the record; FEEDBACK answers are
-        // read back from the `mlflow.review.feedback` tag.
-        const v = s.type === 'EXPECTATION' ? record.expectations?.[s.name] : recordFeedback[s.name]?.value;
+        // EXPECTATION answers are curated onto the record; the pass/fail FEEDBACK
+        // verdict is read back from the `approved` tag.
+        const v =
+          s.type === 'EXPECTATION' ? record.expectations?.[s.name] : s.input.pass_fail ? recordApproved : undefined;
         if (v !== undefined) {
           out[s.name] = v as LabelSchemaValue;
         }
       }
     }
     return out;
-  }, [isRecordMode, record, schemas, recordFeedback]);
+  }, [isRecordMode, record, schemas, recordApproved]);
   const prefilled = isRecordMode ? recordPrefilled : tracePrefilled;
   const tracePrefilledRationales = useMemo(
     () => buildPrefilledRationales(priorAnswers, schemas),
     [priorAnswers, schemas],
   );
-  // Record-mode rationales come from the feedback tag's per-schema `rationale`.
-  const recordPrefilledRationales = useMemo(() => {
-    const out: Record<string, string> = {};
-    if (isRecordMode) {
-      for (const s of schemas) {
-        const r = recordFeedback[s.name]?.rationale;
-        if (r) {
-          out[s.name] = r;
-        }
-      }
-    }
-    return out;
-  }, [isRecordMode, schemas, recordFeedback]);
+  // Record-mode feedback is a plain boolean tag, so it carries no rationale.
+  const recordPrefilledRationales = useMemo<Record<string, string>>(() => ({}), []);
   const prefilledRationales = isRecordMode ? recordPrefilledRationales : tracePrefilledRationales;
   // Each question's prior assessment id (this reviewer's), so a re-submit
   // supersedes it instead of writing a duplicate.
@@ -302,7 +278,7 @@ export const FocusedReview = ({
 
   // A completed trace stays editable: the reviewer can revise their answers and
   // re-save without the trace leaving the "done" bucket (mirrors the review app,
-  // where there is no reopen — you just edit a completed item). A declined trace
+  // where there is no reopen - you just edit a completed item). A declined trace
   // has no answers to edit, so it stays locked; "Reopen" is the way back to it.
   const isComplete = item.status === 'COMPLETE';
   const isDeclined = item.status === 'DECLINED';
@@ -310,10 +286,10 @@ export const FocusedReview = ({
   // Whether the reviewer has touched any answer/rationale this session. The
   // "Save changes" path on a completed trace only writes when there's an edit,
   // so a no-op click doesn't re-supersede identical assessments. (A fresh submit
-  // doesn't need this — a reopened trace can be re-completed straight from prefill.)
+  // doesn't need this - a reopened trace can be re-completed straight from prefill.)
   const hasEdits = Object.keys(edited).length > 0 || Object.keys(editedRationales).length > 0;
   // A queue whose only question is a single Pass/Fail (no rationale) submits as
-  // soon as the reviewer picks an answer — no Submit click needed.
+  // soon as the reviewer picks an answer - no Submit click needed.
   const autoSubmitSchema =
     schemas.length === 1 && schemas[0].input.pass_fail && !schemas[0].enable_comment ? schemas[0] : null;
   // For the auto-submit case the Submit button is redundant while the answer is
@@ -358,7 +334,7 @@ export const FocusedReview = ({
   const totalCount = items.length;
   const percentage = totalCount > 0 ? Math.round((reviewedCount / totalCount) * 100) : 0;
   // One segment per trace (capped at 100, then proportional), filled blue up to
-  // the reviewed count — ported from the universe review app's progress bar.
+  // the reviewed count - ported from the universe review app's progress bar.
   const filledColor = theme.colors.blue600;
   const remainingColor = theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue200;
   const maxSegments = 100;
@@ -423,13 +399,13 @@ export const FocusedReview = ({
       // write succeeds, so a partial failure leaves the item pending for retry.
       if (isRecordMode) {
         // Record review: EXPECTATION answers are curated onto the record as its
-        // expectations (keyed by schema name); FEEDBACK answers go into a single
-        // JSON tag (`mlflow.review.feedback`), shape `{ [name]: { value, rationale? } }`,
-        // merged onto any existing tag. Both are written in one upsert; a schema
-        // type with no answers leaves its side untouched.
+        // expectations (keyed by schema name); the pass/fail FEEDBACK verdict is
+        // written as a dedicated `approved` boolean tag ('true'/'false') so a
+        // promotion Automation can react to it directly. Both are written in one upsert; a
+        // schema type with no answers leaves its side untouched.
         const updates: Partial<DatasetRecord> = {};
         const expectationAnswers = answered.filter((s) => s.type === 'EXPECTATION');
-        const feedbackAnswers = answered.filter((s) => s.type !== 'EXPECTATION');
+        const passFailFeedback = answered.find((s) => s.type !== 'EXPECTATION' && s.input.pass_fail);
         if (expectationAnswers.length > 0) {
           const expectations: Record<string, unknown> = { ...(record?.expectations ?? {}) };
           for (const s of expectationAnswers) {
@@ -437,13 +413,9 @@ export const FocusedReview = ({
           }
           updates.expectations = expectations;
         }
-        if (feedbackAnswers.length > 0) {
-          const feedback: Record<string, RecordFeedbackEntry> = { ...recordFeedback };
-          for (const s of feedbackAnswers) {
-            const rationale = s.enable_comment ? rationaleFor(s.name).trim() : '';
-            feedback[s.name] = { value: effectiveValue(s.name), ...(rationale ? { rationale } : {}) };
-          }
-          updates.tags = { ...(record?.tags ?? {}), [RECORD_FEEDBACK_TAG]: JSON.stringify(feedback) };
+        if (passFailFeedback) {
+          const approved = effectiveValue(passFailFeedback.name) === true;
+          updates.tags = { ...(record?.tags ?? {}), [APPROVED_TAG]: approved ? 'true' : 'false' };
         }
         await upsertRecords([{ recordId: item.item_id, updates }]);
       } else {
@@ -463,7 +435,7 @@ export const FocusedReview = ({
       }
       // Telemetry: a review (feedback) was submitted from the UI. Covers the
       // explicit Submit, the single Pass/Fail auto-submit, and the edit-in-place
-      // re-save — all of which land here after the writes succeed.
+      // re-save, all of which land here after the writes succeed.
       feedbackSubmittedEventContext.onClick(undefined);
       // Editing an already-complete trace: the answers above are re-written
       // (superseding the priors), but the trace stays COMPLETE and we keep the

@@ -1,7 +1,7 @@
 /** Search-input debounce. 250ms balances snappy feedback with cutting wasted backend calls. */
 export const SEARCH_DEBOUNCE_MS = 250;
 
-/** Datasets list page size. Cap is 50 — managed-evals ListDatasets caps page_size at 50. */
+/** Datasets list page size. Cap is 50 - managed-evals ListDatasets caps page_size at 50. */
 export const DEFAULT_DATASET_PAGE_SIZE = 20;
 
 /** Records page size. ListDatasetRecords supports up to 100. */
@@ -12,7 +12,7 @@ export const DEFAULT_DATASETS_ORDER_BY = 'created_time DESC';
 
 /**
  * Every column the records table can surface. Order doubles as the canonical render order
- * — `usePersistedTableColumns` preserves it when toggling.
+ * - `usePersistedTableColumns` preserves it when toggling.
  *
  * Adding a column id here is safe without bumping `COLUMN_STORAGE_VERSION`: the persistence
  * hook filters unknown ids at read time, so older stored visibility sets keep working and
@@ -20,6 +20,7 @@ export const DEFAULT_DATASETS_ORDER_BY = 'created_time DESC';
  */
 export const RECORD_COLUMN_IDS = [
   'dataset_record_id',
+  'status',
   'inputs',
   'expectations',
   'create_time',
@@ -35,10 +36,11 @@ export type RecordColumnId = (typeof RECORD_COLUMN_IDS)[number];
  * Columns visible by default. Users can toggle the rest in via the column selector.
  *
  * `source` is hidden in OSS because the `Dataset` proto has no `source` / `source_type`
- * fields yet — the column renders empty for every row. Re-enable in
+ * fields yet - the column renders empty for every row. Re-enable in
  * `DEFAULT_VISIBLE_RECORD_COLUMNS` once the OSS schema grows those fields.
  */
 export const DEFAULT_VISIBLE_RECORD_COLUMNS: readonly RecordColumnId[] = [
+  'status',
   'inputs',
   'expectations',
   'last_updated',
@@ -48,7 +50,7 @@ export const DEFAULT_VISIBLE_RECORD_COLUMNS: readonly RecordColumnId[] = [
 export type SortDirection = 'asc' | 'desc';
 
 /**
- * Columns the user can sort by. JSON, tag-map, and source-struct columns are excluded —
+ * Columns the user can sort by. JSON, tag-map, and source-struct columns are excluded -
  * there is no canonical primitive comparator for structured data. Keeping this in one
  * place so the URL state, query, and table render layers can't disagree about what's
  * sortable.

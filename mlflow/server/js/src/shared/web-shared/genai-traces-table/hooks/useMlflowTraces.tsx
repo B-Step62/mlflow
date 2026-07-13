@@ -32,6 +32,7 @@ import {
   INPUTS_COLUMN_ID,
   RESPONSE_COLUMN_ID,
   ISSUE_ID_COLUMN_ID,
+  ISSUES_COLUMN_ID,
   GIT_BRANCH_COLUMN_ID,
   GIT_COMMIT_COLUMN_ID,
 } from './useTableColumns';
@@ -1090,6 +1091,14 @@ export const createMlflowSearchFilter = (
           break;
         case ISSUE_ID_COLUMN_ID:
           filter.push(`${ISSUE_ID_COLUMN_ID} ${networkFilter.operator} '${networkFilter.value}'`);
+          break;
+        case ISSUES_COLUMN_ID:
+          if (
+            networkFilter.operator === FilterOperator.IS_NULL ||
+            networkFilter.operator === FilterOperator.IS_NOT_NULL
+          ) {
+            filter.push(`issue ${networkFilter.operator}`);
+          }
           break;
         default:
           if (networkFilter.column.startsWith(CUSTOM_METADATA_COLUMN_ID)) {

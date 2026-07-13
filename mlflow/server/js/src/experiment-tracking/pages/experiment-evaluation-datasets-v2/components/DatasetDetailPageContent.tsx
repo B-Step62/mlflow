@@ -4,7 +4,7 @@ import { Global } from '@emotion/react';
 import { ResizableBox } from 'react-resizable';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useLocalStorage } from '@databricks/web-shared/hooks';
-// useNavigationBlock stubbed for OSS — see useDatasetsPageQuery comment in PR2 plan
+// useNavigationBlock stubbed for OSS - see useDatasetsPageQuery comment in PR2 plan
 import type { Dataset, DatasetRecord } from '../hooks/useDatasetsQueries';
 import { useDeleteDatasetRecordsMutation } from '../hooks/useDatasetsQueries';
 import { useDatasetRecordsController } from '../hooks/useDatasetRecordsController';
@@ -24,17 +24,18 @@ import { BulkDeleteRecordsModal } from './BulkDeleteRecordsModal';
 import { DatasetDetailKebabMenu } from './DatasetDetailKebabMenu';
 import { SidePanelResizeHandle } from './SidePanelResizeHandle';
 import { TraceModal } from './TraceModal';
+import { QualityGuardrailButton } from './QualityGuardrailButton';
 import { DEFAULT_RECORD_PAGE_SIZE } from '../utils/constants';
 
 /**
- * OSS implementation of `useNavigationBlock` — what universe gets from
+ * OSS implementation of `useNavigationBlock` - what universe gets from
  * `@databricks/web-shared/routing`. Covers the tab-close / refresh case via `beforeunload`,
  * which is the most common "I lost my work" scenario.
  *
  * Limitation: in-app navigation (clicking another row, breadcrumb, side-nav) is NOT
  * intercepted. react-router v6.7+ added `useBlocker` for that; OSS is on 6.4.1 today, so
  * we'd need a router bump first. Universe's `block(handler)` callback receives a `retry`
- * fn for the modal flow — our stub returns a no-op handler since `beforeunload` resolves
+ * fn for the modal flow - our stub returns a no-op handler since `beforeunload` resolves
  * synchronously through the browser-native confirm dialog instead.
  */
 const useNavigationBlock = () => {
@@ -89,7 +90,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
   const deleteRecordsMutation = useDeleteDatasetRecordsMutation(datasetId);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   // Snapshot of ids captured when the confirm modal opens. The modal renders `count` and the
-  // confirm handler acts on this snapshot — never on the live `bulk.selected` — so a refetch,
+  // confirm handler acts on this snapshot - never on the live `bulk.selected` - so a refetch,
   // page clamp, or any future code path that triggers `bulk.clear()` mid-prompt cannot zero
   // out the count or turn the confirm click into a no-op.
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
@@ -99,14 +100,14 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
   // Raw text fields let the row mirror what the user is typing even before the JSON parses.
   const [pendingNewRecord, setPendingNewRecord] = useState<PendingNewRecord | null>(null);
 
-  // Trace explorer modal — opened from the side panel's Source row when a record is
+  // Trace explorer modal - opened from the side panel's Source row when a record is
   // trace-sourced. Hosting it here (instead of inside the side panel) lets the modal
   // overlay the entire page.
   const [isTraceModalOpen, setIsTraceModalOpen] = useState(false);
   const [selectedTraceId, setSelectedTraceId] = useState<string>('');
 
   // Side panel width persists globally (one preference across all datasets / experiments),
-  // since it expresses the user's preferred layout — not anything dataset-specific. React
+  // since it expresses the user's preferred layout - not anything dataset-specific. React
   // state is updated only on drag stop; during a drag we mutate the table wrapper's
   // `minWidth` directly via `tableWrapperRef` so the heavy children (JSON editors, table
   // rows) don't re-render on every pointer tick. `ResizableBox` already drives the box's
@@ -117,11 +118,11 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
     initialValue: SIDE_PANEL_DEFAULT_WIDTH,
   });
   // Clamp on read so a stale localStorage value outside the current constraints can't break
-  // the layout — the user just gets a width inside the allowed range until they resize again.
+  // the layout - the user just gets a width inside the allowed range until they resize again.
   const [panelWidth, setPanelWidth] = useState(() =>
     Math.min(SIDE_PANEL_MAX_WIDTH, Math.max(SIDE_PANEL_MIN_WIDTH, persistedPanelWidth)),
   );
-  // Suppress page-level text selection while dragging the divider — react-resizable captures
+  // Suppress page-level text selection while dragging the divider - react-resizable captures
   // pointer events on the handle itself, but a fast drag past the handle can still highlight
   // content underneath without this global override.
   const [isResizing, setIsResizing] = useState(false);
@@ -134,8 +135,8 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
   const panelOpen = panelMode !== null;
 
   // Dirty flag is owned by the side panel (drives its editor state) but consumed here so
-  // every transition that would discard those edits — close, record-switch, mode-switch,
-  // in-app navigation — funnels through one `useGuardedTransition` and one DangerModal.
+  // every transition that would discard those edits - close, record-switch, mode-switch,
+  // in-app navigation - funnels through one `useGuardedTransition` and one DangerModal.
   const [isPanelDirty, setIsPanelDirty] = useState(false);
   const {
     isPromptOpen,
@@ -145,7 +146,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
   } = useGuardedTransition({ isDirty: isPanelDirty });
 
   // Block in-app navigation (breadcrumb, back, future links) while dirty and route the
-  // confirm through the same modal. Must use the {retry} contract — the Databricks blocker
+  // confirm through the same modal. Must use the {retry} contract - the Databricks blocker
   // discards the return value, so returning `window.confirm()` (the previous Prompt impl)
   // silently dropped navigation on the floor after the user pressed OK.
   const block = useNavigationBlock();
@@ -161,7 +162,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
       // transition's URL change (handleClosePanel / handleRecordSelected / handleAddRecord)
       // is hitting this same blocker. Re-routing through requestTransition would overwrite
       // the in-flight transition; the subsequent setPendingTransition(null) inside confirm()
-      // would then drop the navigation entirely — modal closes, panel stays open. Pass the
+      // would then drop the navigation entirely - modal closes, panel stays open. Pass the
       // navigation straight through instead.
       if (isPromptOpenRef.current) {
         unblock();
@@ -202,7 +203,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
         setBulkDeleteOpen(false);
         setPendingDeleteIds([]);
         // The mutation's onSettled invalidates ['listDatasetRecords', datasetId]; no manual
-        // refetch — a second one races with the invalidation and can un-delete rows on slow
+        // refetch - a second one races with the invalidation and can un-delete rows on slow
         // networks if the explicit refetch lands first.
         notify.success(
           intl.formatMessage(
@@ -310,7 +311,12 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
           <DatasetsBreadcrumbs
             experimentId={experimentId}
             datasetName={dataset.name}
-            rightActions={<DatasetDetailKebabMenu experimentId={experimentId} dataset={dataset} notify={notify} />}
+            rightActions={
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <QualityGuardrailButton experimentId={experimentId} datasetId={datasetId} dataset={dataset} />
+                <DatasetDetailKebabMenu experimentId={experimentId} dataset={dataset} notify={notify} />
+              </div>
+            }
           />
 
           {records.error instanceof Error && (
@@ -326,12 +332,12 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
             // First load: show a full-area skeleton instead of toolbar + in-table skeleton, so
             // empty datasets resolve directly into the empty state without the toolbar briefly
             // flashing in. Subsequent refetches (search, refresh) skip this branch and keep the
-            // toolbar visible — the records table's own `isFetching` path handles those.
+            // toolbar visible - the records table's own `isFetching` path handles those.
             <DatasetRecordsLoadingSkeleton />
           ) : flags.hasNoRecordsAtAll && pendingNewRecord === null ? (
             // Hide the empty state once the user clicks "Add record" on an empty dataset so
             // the toolbar + table render and the phantom row preview appears alongside the
-            // open side panel — same continuous-create flow as the non-empty case.
+            // open side panel - same continuous-create flow as the non-empty case.
             <DatasetRecordsEmptyState onAddRecord={handleAddRecord} />
           ) : (
             <>
@@ -424,7 +430,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
           <ResizableBox
             // Outer wrapper holds the persistent layout + negative right-margin trick (so the
             // panel border reaches the viewport edge despite PageWrapper + ExperimentPageTabs
-            // padding). Putting these on the ResizableBox itself — not a child — is required
+            // padding). Putting these on the ResizableBox itself - not a child - is required
             // because ResizableBox owns the width/flex slot in the row.
             css={{
               flexShrink: 0,
@@ -444,7 +450,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
               // Bypass React entirely during drag. `ResizableBox` already updates the
               // panel's own visual width via its internal state, so the only sibling that
               // needs the live value is the table wrapper's `minWidth`. Mutating it
-              // directly keeps `DatasetDetailPageContent` (and its heavy children — JSON
+              // directly keeps `DatasetDetailPageContent` (and its heavy children - JSON
               // editors, per-row `JsonPreviewCell`s) from re-rendering on every tick.
               if (tableWrapperRef.current) {
                 tableWrapperRef.current.style.minWidth = `calc(100% + ${size.width}px)`;
@@ -463,7 +469,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
             handle={<SidePanelResizeHandle />}
           >
             <DatasetRecordSidePanel
-              // Remount the side panel — including the Monaco editors — on every
+              // Remount the side panel - including the Monaco editors - on every
               // create↔edit mode flip. Both `useRecordSaveState` and `useRecordCreateState`
               // run in the same instance to satisfy rules-of-hooks; without a key, the
               // edit-mode editor's text drifts to '' during a create-mode interlude (its

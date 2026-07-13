@@ -7,15 +7,26 @@ interface WebhookDeleteModalProps {
   webhook: Webhook | null;
   onCancel: () => void;
   onConfirm: () => void;
+  mode?: 'webhook' | 'automation';
 }
 
-const WebhookDeleteModal = ({ visible, webhook, onCancel, onConfirm }: WebhookDeleteModalProps) => {
+const WebhookDeleteModal = ({
+  visible,
+  webhook,
+  onCancel,
+  onConfirm,
+  mode = 'webhook',
+}: WebhookDeleteModalProps) => {
   const intl = useIntl();
 
   return (
     <Modal
       componentId="mlflow.settings.webhooks.delete-modal"
-      title={intl.formatMessage({ defaultMessage: 'Delete webhook', description: 'Delete webhook modal title' })}
+      title={
+        mode === 'automation'
+          ? intl.formatMessage({ defaultMessage: 'Delete automation', description: 'Delete automation modal title' })
+          : intl.formatMessage({ defaultMessage: 'Delete webhook', description: 'Delete webhook modal title' })
+      }
       visible={visible}
       onCancel={onCancel}
       onOk={onConfirm}
@@ -24,11 +35,19 @@ const WebhookDeleteModal = ({ visible, webhook, onCancel, onConfirm }: WebhookDe
       okButtonProps={{ danger: true }}
     >
       <Typography.Text>
-        <FormattedMessage
-          defaultMessage='Are you sure you want to delete the webhook "{name}"? This action cannot be undone.'
-          description="Delete webhook confirmation message"
-          values={{ name: webhook?.name ?? '' }}
-        />
+        {mode === 'automation' ? (
+          <FormattedMessage
+            defaultMessage='Are you sure you want to delete the automation "{name}"? This action cannot be undone.'
+            description="Delete automation confirmation message"
+            values={{ name: webhook?.name ?? '' }}
+          />
+        ) : (
+          <FormattedMessage
+            defaultMessage='Are you sure you want to delete the webhook "{name}"? This action cannot be undone.'
+            description="Delete webhook confirmation message"
+            values={{ name: webhook?.name ?? '' }}
+          />
+        )}
       </Typography.Text>
     </Modal>
   );

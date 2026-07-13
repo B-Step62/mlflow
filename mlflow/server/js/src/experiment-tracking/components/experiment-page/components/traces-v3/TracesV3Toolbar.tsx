@@ -2,13 +2,16 @@ import { SpeechBubbleIcon, Tag, Typography, useDesignSystemTheme } from '@databr
 import { CopyActionButton } from '@databricks/web-shared/copy';
 import { TracesV3DateSelector } from './TracesV3DateSelector';
 import { FormattedMessage } from '@databricks/i18n';
+import { AutomationConfigButton } from '../../../../../settings/AutomationConfigButton';
 
 export const TracesV3Toolbar = ({
   viewState,
+  experimentId,
   sessionId,
   className,
 }: {
   viewState: string;
+  experimentId?: string;
   sessionId?: string;
   className?: string;
 }) => {
@@ -52,6 +55,26 @@ export const TracesV3Toolbar = ({
           </Typography.Title>
           {sessionId && <CopyActionButton copyText={sessionId} componentId="mlflow.chat-sessions.copy-session-id" />}
         </div>
+      )}
+      <div css={{ flex: 1 }} />
+      {experimentId && (
+        <AutomationConfigButton
+          componentId="mlflow.traces-v3.automations"
+          sourceType="experiment"
+          sourceId={experimentId}
+          experimentId={experimentId}
+          eventFilter="TRACE_ASSESSMENT"
+          defaultEventAction="CREATED"
+          title={
+            <FormattedMessage defaultMessage="Trace automations" description="Trace automations modal title" />
+          }
+          description={
+            <FormattedMessage
+              defaultMessage="Automations connect MLflow events to follow-up actions, so routine steps happen without manual handoffs."
+              description="Trace automations modal description"
+            />
+          }
+        />
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { matchPath, useSearchParams } from '../utils/RoutingUtils';
 import type { Location } from '../utils/RoutingUtils';
 import { MlflowSidebarLink } from './MlflowSidebarLink';
 import {
+  SETTINGS_SECTION_AUTOMATIONS,
   SETTINGS_RETURN_TO_PARAM,
   SETTINGS_SECTION_GENERAL,
   SETTINGS_SECTION_LLM_CONNECTIONS,
@@ -85,6 +86,15 @@ export const MlflowSidebarSettingsItems = ({ collapsed }: { collapsed: boolean }
         collapsed={collapsed}
       >
         <FormattedMessage defaultMessage="Webhooks" description="Sidebar link: Settings > Webhooks" />
+      </MlflowSidebarLink>
+      <MlflowSidebarLink
+        css={{ paddingLeft: collapsed ? undefined : theme.spacing.lg }}
+        to={sectionTo(SETTINGS_SECTION_AUTOMATIONS)}
+        componentId="mlflow.sidebar.settings_automations_link"
+        isActive={matchSettingsSection(SETTINGS_SECTION_AUTOMATIONS)}
+        collapsed={collapsed}
+      >
+        <FormattedMessage defaultMessage="Automations" description="Sidebar link: Settings > Automations" />
       </MlflowSidebarLink>
     </>
   );

@@ -25,6 +25,7 @@ import { useGetTracesById } from '@databricks/web-shared/model-trace-explorer';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 
 import { useListDatasetRecordsQuery } from '../experiment-evaluation-datasets-v2/hooks/useDatasetsQueries';
+import { AutomationConfigButton } from '../../../settings/AutomationConfigButton';
 import { displayUser } from './hooks/useReviewer';
 import { ReviewQueueEmptyState } from './ReviewQueueEmptyState';
 import type { ReviewQueueItem, ReviewStatus } from './types';
@@ -163,9 +164,13 @@ export const ReviewQueueList = ({
   onManageQueue,
   onDeleteQueue,
   onGoToTraces,
+  experimentId,
   datasetId,
+  queueId,
 }: {
   items: ReviewQueueItem[];
+  experimentId?: string;
+  queueId?: string;
   /** Queue name shown in the header, next to the question count + gear menu. */
   title?: React.ReactNode;
   /** Number of questions the queue asks, shown under the name. */
@@ -262,10 +267,7 @@ export const ReviewQueueList = ({
           return {
             ...c,
             label: (
-              <FormattedMessage
-                defaultMessage="Expectations"
-                description="Review queue table: expectations column"
-              />
+              <FormattedMessage defaultMessage="Expectations" description="Review queue table: expectations column" />
             ),
           };
         }
@@ -369,12 +371,12 @@ export const ReviewQueueList = ({
         )}
         <TableCell css={{ flex: colFlex.get('request') }}>
           <Typography.Text ellipsis color="secondary">
-            {previews?.input || '—'}
+            {previews?.input || '-'}
           </Typography.Text>
         </TableCell>
         <TableCell css={{ flex: colFlex.get('response') }}>
           <Typography.Text ellipsis color="secondary">
-            {previews?.response || '—'}
+            {previews?.response || '-'}
           </Typography.Text>
         </TableCell>
         <TableCell css={{ flex: colFlex.get('status'), display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
@@ -397,7 +399,7 @@ export const ReviewQueueList = ({
 
   return (
     <div css={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, gap: theme.spacing.sm }}>
-      {(title || selectable || onCopyLink || onManageQueue || onDeleteQueue) && (
+      {(title || selectable || onCopyLink || onManageQueue || onDeleteQueue || queueId) && (
         <div css={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.sm }}>
           <div css={{ minWidth: 0 }}>
             <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs / 2, minWidth: 0 }}>
@@ -448,6 +450,27 @@ export const ReviewQueueList = ({
             )}
           </div>
           <div css={{ flex: 1 }} />
+          {queueId && (
+            <AutomationConfigButton
+              componentId={`${CID}.automations`}
+              sourceType="review_queue"
+              sourceId={queueId}
+              experimentId={experimentId}
+              eventFilter="REVIEW_QUEUE_ITEM"
+              defaultEventAction="UPDATED"
+              defaultCondition={
+                isDataset
+                  ? 'tag.approved IS NOT NULL'
+                  : 'feedback.`Topic correct?` = true AND feedback.`Anonymized?` = true'
+              }
+              title={
+                <FormattedMessage
+                  defaultMessage="Review queue automations"
+                  description="Review queue automations modal title"
+                />
+              }
+            />
+          )}
           {toDo.length > 0 && (
             <Button componentId={`${CID}.start-review`} type="primary" onClick={() => onOpen(toDo[0])}>
               <FormattedMessage defaultMessage="Start review" description="Review queue: start-review button" />

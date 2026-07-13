@@ -32,6 +32,7 @@ export const TableFilterItemValueInput = ({
   onChange,
   experimentId,
   tableFilterOptions,
+  forceFreeTextAssessmentValue = false,
 }: {
   index: number;
   tableFilter: TableFilter;
@@ -39,6 +40,7 @@ export const TableFilterItemValueInput = ({
   onChange: (tableFilter: TableFilter, index: number) => void;
   experimentId?: string;
   tableFilterOptions: TableFilterOptions;
+  forceFreeTextAssessmentValue?: boolean;
 }) => {
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
@@ -127,6 +129,23 @@ export const TableFilterItemValueInput = ({
 
   if (tableFilter.column === TracesTableColumnGroup.ASSESSMENT) {
     const assessmentInfo = assessmentInfos.find((assessment) => assessment.name === tableFilter.key);
+    if (forceFreeTextAssessmentValue) {
+      return (
+        <Input
+          aria-label="Value"
+          componentId="mlflow.evaluations_review.table_ui.filter_value_free_text"
+          id={id}
+          placeholder="Value"
+          type="text"
+          value={localValue as string}
+          onChange={(e) => {
+            setLocalValue(e.target.value);
+          }}
+          onBlur={onValueBlur}
+          css={{ width: 200 }}
+        />
+      );
+    }
     if (assessmentInfo && assessmentInfo.dtype === 'numeric') {
       // Numeric assessments get a number input field
       return (

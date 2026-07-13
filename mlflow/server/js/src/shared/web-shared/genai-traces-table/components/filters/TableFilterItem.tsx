@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
 import {
   Button,
@@ -32,6 +32,7 @@ import {
   SPAN_CONTENT_COLUMN_ID,
   GIT_BRANCH_COLUMN_ID,
   GIT_COMMIT_COLUMN_ID,
+  ISSUES_COLUMN_ID,
 } from '../../hooks/useTableColumns';
 import type {
   AssessmentInfo,
@@ -59,6 +60,7 @@ const getFilterableInfoColumns = (usesV4APIs?: boolean) => {
       INPUTS_COLUMN_ID,
       RESPONSE_COLUMN_ID,
       LINKED_PROMPTS_COLUMN_ID,
+      ISSUES_COLUMN_ID,
     ];
   }
   return [
@@ -132,6 +134,10 @@ export const getAvailableOperators = (
     ];
   }
 
+  if (column === ISSUES_COLUMN_ID) {
+    return [FilterOperator.IS_NOT_NULL, FilterOperator.IS_NULL];
+  }
+
   if (column === SESSION_COLUMN_ID) {
     return usesV4APIs ? [FilterOperator.EQUALS, FilterOperator.CONTAINS] : [FilterOperator.EQUALS];
   }
@@ -153,6 +159,9 @@ export const TableFilterItem = ({
   tableFilterOptions,
   allColumns,
   usesV4APIs,
+  showLabels = true,
+  forceFreeTextAssessmentValue = false,
+  formatOperatorLabel,
 }: {
   tableFilter: TableFilter;
   index: number;
@@ -163,6 +172,9 @@ export const TableFilterItem = ({
   tableFilterOptions: TableFilterOptions;
   allColumns: TracesTableColumn[];
   usesV4APIs?: boolean;
+  showLabels?: boolean;
+  forceFreeTextAssessmentValue?: boolean;
+  formatOperatorLabel?: (operator: FilterOperator) => ReactNode;
 }) => {
   const { column, operator, key } = tableFilter;
   const { theme } = useDesignSystemTheme();
@@ -220,6 +232,7 @@ export const TableFilterItem = ({
           display: 'flex',
           flexDirection: 'row',
           gap: theme.spacing.sm,
+          alignItems: showLabels ? 'flex-start' : 'center',
         }}
       >
         <div
@@ -228,12 +241,14 @@ export const TableFilterItem = ({
             flexDirection: 'column',
           }}
         >
-          <FormUI.Label htmlFor={`filter-column-${index}`}>
-            <FormattedMessage
-              defaultMessage="Field"
-              description="Label for the column field in the GenAI Traces Table Filter form"
-            />
-          </FormUI.Label>
+          {showLabels && (
+            <FormUI.Label htmlFor={`filter-column-${index}`}>
+              <FormattedMessage
+                defaultMessage="Field"
+                description="Label for the column field in the GenAI Traces Table Filter form"
+              />
+            </FormUI.Label>
+          )}
           <TableFilterItemTypeahead
             id={`filter-column-${index}`}
             item={columnOptions.find((item) => item.value === column)}
@@ -256,12 +271,14 @@ export const TableFilterItem = ({
               flexDirection: 'column',
             }}
           >
-            <FormUI.Label htmlFor={`filter-key-${index}`}>
-              <FormattedMessage
-                defaultMessage="Name"
-                description="Label for the name field for assessments in the GenAI Traces Table Filter form"
-              />
-            </FormUI.Label>
+            {showLabels && (
+              <FormUI.Label htmlFor={`filter-key-${index}`}>
+                <FormattedMessage
+                  defaultMessage="Name"
+                  description="Label for the name field for assessments in the GenAI Traces Table Filter form"
+                />
+              </FormUI.Label>
+            )}
             <TableFilterItemTypeahead
               id={`filter-key-${index}`}
               item={assessmentKeyOptions.find((item) => item.value === key)}
@@ -293,12 +310,14 @@ export const TableFilterItem = ({
               flexDirection: 'column',
             }}
           >
-            <FormUI.Label htmlFor={`filter-key-${index}`}>
-              <FormattedMessage
-                defaultMessage="Key"
-                description="Label for the key field for tags in the GenAI Traces Table Filter form"
-              />
-            </FormUI.Label>
+            {showLabels && (
+              <FormUI.Label htmlFor={`filter-key-${index}`}>
+                <FormattedMessage
+                  defaultMessage="Key"
+                  description="Label for the key field for tags in the GenAI Traces Table Filter form"
+                />
+              </FormUI.Label>
+            )}
             <Input
               aria-label="Key"
               componentId="mlflow.evaluations_review.table_ui.filter_key"
@@ -319,12 +338,14 @@ export const TableFilterItem = ({
             flexDirection: 'column',
           }}
         >
-          <FormUI.Label htmlFor={`filter-operator-${index}`}>
-            <FormattedMessage
-              defaultMessage="Operator"
-              description="Label for the operator field in the GenAI Traces Table Filter form"
-            />
-          </FormUI.Label>
+          {showLabels && (
+            <FormUI.Label htmlFor={`filter-operator-${index}`}>
+              <FormattedMessage
+                defaultMessage="Operator"
+                description="Label for the operator field in the GenAI Traces Table Filter form"
+              />
+            </FormUI.Label>
+          )}
           {(() => {
             const isOperatorSelectorDisabled =
               column !== '' && getAvailableOperators(column, key, usesV4APIs, assessmentInfos).length === 1;
@@ -351,7 +372,7 @@ export const TableFilterItem = ({
               >
                 {getAvailableOperators(column, key, usesV4APIs, assessmentInfos).map((op) => (
                   <SimpleSelectOption key={op} value={op}>
-                    {op}
+                    {formatOperatorLabel ? formatOperatorLabel(op) : op}
                   </SimpleSelectOption>
                 ))}
               </SimpleSelect>
@@ -365,12 +386,14 @@ export const TableFilterItem = ({
               flexDirection: 'column',
             }}
           >
-            <FormUI.Label htmlFor={`filter-value-${index}`}>
-              <FormattedMessage
-                defaultMessage="Value"
-                description="Label for the value field in the GenAI Traces Table Filter form"
-              />
-            </FormUI.Label>
+            {showLabels && (
+              <FormUI.Label htmlFor={`filter-value-${index}`}>
+                <FormattedMessage
+                  defaultMessage="Value"
+                  description="Label for the value field in the GenAI Traces Table Filter form"
+                />
+              </FormUI.Label>
+            )}
             <TableFilterItemValueInput
               index={index}
               tableFilter={tableFilter}
@@ -378,12 +401,13 @@ export const TableFilterItem = ({
               onChange={onChange}
               experimentId={experimentId}
               tableFilterOptions={tableFilterOptions}
+              forceFreeTextAssessmentValue={forceFreeTextAssessmentValue}
             />
           </div>
         )}
         <div
           css={{
-            alignSelf: 'flex-end',
+            alignSelf: showLabels ? 'flex-end' : 'center',
           }}
         >
           <Button

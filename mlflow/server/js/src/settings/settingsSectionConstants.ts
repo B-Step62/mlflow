@@ -7,11 +7,15 @@ export const SETTINGS_SECTION_LLM_CONNECTIONS = 'llm-connections';
 /** URL path segment for Settings > Webhooks (`/settings/webhooks`). */
 export const SETTINGS_SECTION_WEBHOOKS = 'webhooks';
 
+/** URL path segment for Settings > Automations (`/settings/automations`). */
+export const SETTINGS_SECTION_AUTOMATIONS = 'automations';
+
 /** Allowed path segments for `/settings/:section`. */
 export const SETTINGS_PATH_SEGMENTS = [
   SETTINGS_SECTION_GENERAL,
   SETTINGS_SECTION_LLM_CONNECTIONS,
   SETTINGS_SECTION_WEBHOOKS,
+  SETTINGS_SECTION_AUTOMATIONS,
 ] as const;
 
 export type SettingsPathSegment = (typeof SETTINGS_PATH_SEGMENTS)[number];

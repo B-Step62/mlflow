@@ -3,7 +3,7 @@
  *
  * The v2 datasets UI was originally written against a Databricks-internal `managed-evals` API
  * that returns ISO timestamps and parsed `inputs` / `expectations` dictionaries. OSS speaks
- * a different REST shape — ms-since-epoch numbers and JSON-string blobs — so this file owns
+ * a different REST shape - ms-since-epoch numbers and JSON-string blobs - so this file owns
  * the translation in one place. Every v2 component that needs dataset/record data imports
  * from here; nothing else in v2 talks to fetchAPI directly.
  */
@@ -16,6 +16,8 @@ const getDatasetQueryKey = (datasetId: string | undefined) => ['getDataset', dat
 const v2DatasetsPageQueryKey = (experimentId: string) => ['v2ListDatasetsPage', experimentId] as const;
 
 const RECORDS_PAGE_SIZE = 500;
+const DATASET_RECORD_STATUS_TAG = 'mlflow.dataset_record.status';
+const DEFAULT_DATASET_RECORD_STATUS = 'active';
 
 export interface Dataset {
   dataset_id: string;
@@ -45,10 +47,11 @@ export interface DatasetRecord {
   inputs: { [key: string]: any };
   expectations?: { [key: string]: any };
   tags?: { [key: string]: string };
+  status?: 'staged' | 'active' | 'rejected' | string;
 }
 
 /**
- * OSS REST shapes — these are what the `/ajax-api/3.0/mlflow/datasets/*` endpoints emit and
+ * OSS REST shapes - these are what the `/ajax-api/3.0/mlflow/datasets/*` endpoints emit and
  * accept. Kept private; callers in v2 never see them.
  */
 interface OssDataset {
@@ -73,13 +76,14 @@ interface OssDatasetRecordSource {
 interface OssDatasetRecord {
   dataset_record_id: string;
   dataset_id?: string;
-  // The OSS GET handler returns these as parsed dicts (see `DatasetRecord.to_dict()` —
+  // The OSS GET handler returns these as parsed dicts (see `DatasetRecord.to_dict()` -
   // it `json.loads`es each field before re-serializing the outer envelope). The upsert
   // endpoint accepts the same dict shape on the way back in, so the adapter passes them
   // through untouched in both directions.
   inputs?: { [key: string]: any };
   expectations?: { [key: string]: any };
   tags?: { [key: string]: string };
+  status?: string;
   source?: OssDatasetRecordSource;
   source_id?: string;
   source_type?: string;
@@ -115,7 +119,7 @@ const ossDatasetToUniverse = (raw: OssDataset): Dataset => ({
   last_updated_by: raw.last_updated_by,
   create_time: msToIso(raw.created_time),
   last_update_time: msToIso(raw.last_update_time),
-  // OSS datasets carry no dataset-level source — left undefined so consumers fall back to
+  // OSS datasets carry no dataset-level source - left undefined so consumers fall back to
   // their "no source" rendering (typically an em-dash or a `Source` placeholder).
   source: undefined,
   source_type: undefined,
@@ -143,17 +147,21 @@ const parseRecordSource = (raw: OssDatasetRecord): DatasetRecord['source'] => {
   }
 };
 
-const ossRecordToUniverse = (raw: OssDatasetRecord): DatasetRecord => ({
-  dataset_record_id: raw.dataset_record_id,
-  created_by: raw.created_by,
-  last_updated_by: raw.last_updated_by,
-  create_time: msToIso(raw.created_time),
-  last_update_time: msToIso(raw.last_update_time),
-  inputs: orEmpty(raw.inputs),
-  expectations: orEmpty(raw.expectations),
-  tags: orEmpty(raw.tags) as { [key: string]: string },
-  source: parseRecordSource(raw),
-});
+const ossRecordToUniverse = (raw: OssDatasetRecord): DatasetRecord => {
+  const tags = orEmpty(raw.tags) as { [key: string]: string };
+  return {
+    dataset_record_id: raw.dataset_record_id,
+    created_by: raw.created_by,
+    last_updated_by: raw.last_updated_by,
+    create_time: msToIso(raw.created_time),
+    last_update_time: msToIso(raw.last_update_time),
+    inputs: orEmpty(raw.inputs),
+    expectations: orEmpty(raw.expectations),
+    tags,
+    status: raw.status ?? tags[DATASET_RECORD_STATUS_TAG] ?? DEFAULT_DATASET_RECORD_STATUS,
+    source: parseRecordSource(raw),
+  };
+};
 
 /**
  * Inverse of `ossRecordToUniverse` for writes. The OSS upsert endpoint expects records with
@@ -168,6 +176,9 @@ const universeRecordToOss = (record: Partial<DatasetRecord>): Partial<OssDataset
   if (record.inputs !== undefined) out.inputs = record.inputs;
   if (record.expectations !== undefined) out.expectations = record.expectations;
   if (record.tags !== undefined) out.tags = record.tags;
+  if (record.status !== undefined) {
+    out.tags = { ...(out.tags ?? {}), [DATASET_RECORD_STATUS_TAG]: record.status };
+  }
   if (record.source !== undefined) {
     if (record.source.human) {
       out.source = { source_type: 'HUMAN', source_data: record.source.human };
@@ -342,7 +353,7 @@ export function useUpsertDatasetRecordsMutation(datasetId: string) {
 }
 
 /**
- * Single-record create. OSS has no dedicated create endpoint — `POST /records` upserts by
+ * Single-record create. OSS has no dedicated create endpoint - `POST /records` upserts by
  * id and emits inserted/updated counts. The adapter sends a one-element array and then
  * refetches the records list so the new server-assigned id is visible to the table.
  *
@@ -371,6 +382,7 @@ export function useCreateDatasetRecordMutation(datasetId: string) {
         inputs: record.inputs ?? {},
         expectations: record.expectations,
         tags: record.tags,
+        status: record.status ?? record.tags?.[DATASET_RECORD_STATUS_TAG] ?? DEFAULT_DATASET_RECORD_STATUS,
         source: record.source,
       };
     },

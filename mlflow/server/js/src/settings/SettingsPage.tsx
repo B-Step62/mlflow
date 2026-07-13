@@ -13,8 +13,10 @@ import WebhooksSettings from './WebhooksSettings';
 import {
   isSettingsPathSegment,
   SETTINGS_RETURN_TO_PARAM,
+  SETTINGS_SECTION_AUTOMATIONS,
   SETTINGS_SECTION_GENERAL,
   SETTINGS_SECTION_LLM_CONNECTIONS,
+  SETTINGS_SECTION_WEBHOOKS,
   type SettingsPathSegment,
 } from './settingsSectionConstants';
 
@@ -289,7 +291,7 @@ const SettingsPage = () => {
           </>
         )}
 
-        {activeSection === 'webhooks' && (
+        {activeSection === SETTINGS_SECTION_WEBHOOKS && (
           <>
             <SettingsSectionHeader
               title={
@@ -303,6 +305,26 @@ const SettingsPage = () => {
               }
             />
             <WebhooksSettings showTitle={false} showDescription={false} />
+          </>
+        )}
+
+        {activeSection === SETTINGS_SECTION_AUTOMATIONS && (
+          <>
+            <SettingsSectionHeader
+              title={
+                <FormattedMessage
+                  defaultMessage="Automations"
+                  description="Settings content section title: automations"
+                />
+              }
+              subtitle={
+                <FormattedMessage
+                  defaultMessage="Configure trigger, condition, and action rules for MLflow events."
+                  description="Settings content section subtitle for automations"
+                />
+              }
+            />
+            <WebhooksSettings mode="automation" showTitle={false} showDescription={false} />
           </>
         )}
       </div>

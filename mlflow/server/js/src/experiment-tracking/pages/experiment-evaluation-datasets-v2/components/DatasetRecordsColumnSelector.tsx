@@ -27,6 +27,11 @@ const COLUMN_OPTIONS: ReadonlyArray<ColumnOption> = [
     ),
   },
   {
+    id: 'status',
+    componentId: 'mlflow.eval-datasets-v2.records.column-selector.item.status',
+    label: <FormattedMessage defaultMessage="Status" description="Column selector label for the status column" />,
+  },
+  {
     id: 'inputs',
     componentId: 'mlflow.eval-datasets-v2.records.column-selector.item.inputs',
     label: <FormattedMessage defaultMessage="Inputs" description="Column selector label for the inputs column" />,

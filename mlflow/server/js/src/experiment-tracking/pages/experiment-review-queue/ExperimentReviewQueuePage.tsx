@@ -33,7 +33,7 @@ import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeade
 import type { ReviewQueueItem, ReviewStatus } from './types';
 
 /**
- * Review tab — a master/detail surface modeled on the labeling-session page:
+ * Review tab - a master/detail surface modeled on the labeling-session page:
  * the reviewer's queues on the left, the selected queue's traces on the right.
  * Clicking a trace opens the full-page focused question-answering view (the
  * queue list collapses), with a "Back" control to return to the list.
@@ -80,7 +80,7 @@ const ExperimentReviewQueuePage = () => {
 
   // No-auth catch-all: the reviewer's reserved `default` user queue. Ensure it
   // once on load (idempotent) so it appears in the sidebar before any item is
-  // flagged. Best-effort — the mutation invalidates the queue list on success,
+  // flagged. Best-effort - the mutation invalidates the queue list on success,
   // so the sidebar refreshes on its own; a failure just means the default queue
   // appears once the first item is flagged into it (the modal re-resolves it
   // and surfaces any error there). Authenticated MLflow has no default queue.
@@ -241,7 +241,7 @@ const ExperimentReviewQueuePage = () => {
   const inFocusMode = Boolean(openItemId && openItem);
   const sidebar = useMlflowSidebar();
   // Read the sidebar context through a ref so the effect can collapse/restore it
-  // without listing `sidebar` as a dependency — `setShowSidebar` changes the
+  // without listing `sidebar` as a dependency - `setShowSidebar` changes the
   // context value on every toggle, and depending on it would re-run the effect
   // mid-focus-mode and fight its own write. The effect keys only on `inFocusMode`;
   // the cleanup restores the saved state on exit and on unmount.
@@ -276,7 +276,7 @@ const ExperimentReviewQueuePage = () => {
     return () => setHeaderActionsHidden(false);
   }, [setHeaderActionsHidden]);
 
-  // Copy a shareable link to the selected queue — plain, or with the
+  // Copy a shareable link to the selected queue - plain, or with the
   // start-review intent so the recipient lands in the focused review of the
   // queue's first to-do trace.
   const copyQueueLink = async ({ startReview }: { startReview: boolean }) => {
@@ -285,7 +285,7 @@ const ExperimentReviewQueuePage = () => {
     }
     const path = getReviewQueuePageRoute(experimentId, selectedQueue.queue_id, { startReview });
     // `copyToClipboard` falls back to execCommand on insecure-HTTP contexts and
-    // reports whether the copy actually landed — only confirm success when it did.
+    // reports whether the copy actually landed - only confirm success when it did.
     const copied = await copyToClipboard(`${window.location.origin}${window.location.pathname}#${path}`);
     if (copied) {
       Utils.displayGlobalInfoNotification(
@@ -399,6 +399,8 @@ const ExperimentReviewQueuePage = () => {
         // Remount per queue so the trace selection (and expanded/collapsed
         // groups) reset instead of leaking stale target ids across queues.
         key={selectedQueue.queue_id}
+        queueId={selectedQueue.queue_id}
+        experimentId={experimentId}
         title={selectedQueue.queue_type === 'USER' ? displayUser(selectedQueue.name, intl) : selectedQueue.name}
         questionCount={isDatasetQueue ? undefined : questionSchemas.length}
         datasetId={selectedQueue.dataset_id}
@@ -429,7 +431,7 @@ const ExperimentReviewQueuePage = () => {
         }
         isRemovingItems={isRemovingItems}
         // Gear menu: "Manage queue" (settings) only for editable CUSTOM queues;
-        // "Delete queue" is separate — a manager can delete a USER queue too.
+        // "Delete queue" is separate - a manager can delete a USER queue too.
         // Copying a share link is permission-free.
         onCopyLink={copyQueueLink}
         onManageQueue={canManageSelectedQueue ? () => setEditingQueueId(selectedQueue.queue_id) : undefined}

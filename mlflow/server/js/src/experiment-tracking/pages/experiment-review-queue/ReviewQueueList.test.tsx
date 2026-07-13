@@ -5,6 +5,7 @@ import React from 'react';
 
 import { DesignSystemProvider } from '@databricks/design-system';
 import { IntlProvider } from '@databricks/i18n';
+import { QueryClient, QueryClientProvider } from '@databricks/web-shared/query-client';
 
 import { ReviewQueueList } from './ReviewQueueList';
 import type { ReviewQueueItem, ReviewStatus } from './types';
@@ -14,12 +15,16 @@ jest.mock('@databricks/web-shared/model-trace-explorer', () => ({
   useGetTracesById: (...args: unknown[]) => mockTraces(...args),
 }));
 
-const renderWithProviders = (ui: React.ReactElement) =>
-  render(
+const renderWithProviders = (ui: React.ReactElement) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
     <IntlProvider locale="en">
-      <DesignSystemProvider>{ui}</DesignSystemProvider>
+      <DesignSystemProvider>
+        <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+      </DesignSystemProvider>
     </IntlProvider>,
   );
+};
 
 const item = (
   itemId: string,

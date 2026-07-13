@@ -44,6 +44,21 @@ const BUDGET_WEBHOOK = {
   description: 'A budget webhook',
 };
 
+const TRACE_AUTOMATION = {
+  webhook_id: 'auto-1',
+  name: 'Trace Automation',
+  url: '',
+  events: [{ entity: 'TRACE_ASSESSMENT', action: 'CREATED' }],
+  status: 'ACTIVE',
+  creation_timestamp: '1700000000000',
+  last_updated_timestamp: '1700000000000',
+  source_type: 'experiment',
+  source_id: 'exp-1',
+  condition: 'issue IS NOT NULL',
+  action_type: 'add_to_review_queue',
+  action_config: '{"queue_id":"rq-1"}',
+};
+
 describe('WebhooksSettings', () => {
   const renderComponent = (props?: Partial<React.ComponentProps<typeof WebhooksSettings>>) =>
     renderWithIntl(
@@ -221,6 +236,48 @@ describe('WebhooksSettings', () => {
       expect(screen.getByText('Test Webhook')).toBeInTheDocument();
     });
     expect(screen.getByText('Budget Alert')).toBeInTheDocument();
+  });
+
+  it('hides automation records from webhook mode', async () => {
+    mockListWebhooks.mockResolvedValue({ webhooks: [SAMPLE_WEBHOOK, TRACE_AUTOMATION] });
+
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Webhook')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Trace Automation')).not.toBeInTheDocument();
+  });
+
+  it('renders scoped automation records in automation mode', async () => {
+    mockListWebhooks.mockResolvedValue({
+      webhooks: [
+        SAMPLE_WEBHOOK,
+        TRACE_AUTOMATION,
+        {
+          ...TRACE_AUTOMATION,
+          webhook_id: 'auto-2',
+          name: 'Other Trace Automation',
+          source_id: 'exp-2',
+        },
+      ],
+    });
+
+    renderComponent({
+      mode: 'automation',
+      sourceType: 'experiment',
+      sourceId: 'exp-1',
+      eventFilter: 'TRACE_ASSESSMENT',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Trace Automation')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Source: experiment exp-1')).toBeInTheDocument();
+    expect(screen.getByText('IF issue IS NOT NULL')).toBeInTheDocument();
+    expect(screen.getByText('THEN Add to review queue: rq-1')).toBeInTheDocument();
+    expect(screen.queryByText('Test Webhook')).not.toBeInTheDocument();
+    expect(screen.queryByText('Other Trace Automation')).not.toBeInTheDocument();
   });
 
   it('shows error when loading webhooks fails', async () => {

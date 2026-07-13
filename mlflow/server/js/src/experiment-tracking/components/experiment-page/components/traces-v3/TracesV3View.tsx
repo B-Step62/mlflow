@@ -80,6 +80,7 @@ const TracesV3ViewImpl = ({
       <TracesV3Toolbar
         // prettier-ignore
         viewState={viewState}
+        experimentId={experimentId}
       />
       <TracesV3Content
         // comment for copybara formatting

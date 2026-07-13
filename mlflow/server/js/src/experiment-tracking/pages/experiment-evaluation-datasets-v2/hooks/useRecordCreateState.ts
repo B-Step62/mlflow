@@ -18,6 +18,7 @@ export interface PendingNewRecord {
   inputs: Record<string, unknown> | undefined;
   expectations: Record<string, unknown> | undefined;
   tags: Record<string, string>;
+  status?: string;
 }
 
 interface UseRecordCreateStateParams {
@@ -66,19 +67,19 @@ export const useRecordCreateState = ({
   // Seed the editors with v1's default record shape (singleturn `messages` for empty/messages-
   // shaped datasets, multiturn `goal`/`persona` when existing rows already use a `goal` key) so
   // the user can tweak rather than type from scratch. Lazy `useState` locks the snapshot to
-  // mount time — a peer-tab refetch of `existingRecords` must not swap defaults under the user
+  // mount time - a peer-tab refetch of `existingRecords` must not swap defaults under the user
   // mid-edit. baseline == seeded, so `isDirty` is false on first paint; the save-FSM keys off
   // `hasContent` instead so the user can still submit the unedited seed.
   const [seededDefaults] = useState(() => getDefaultRecord(existingRecords));
   // recordId: undefined keeps editor state stuck to its initial value for the lifetime
-  // of the panel — opening the panel a second time after a successful save starts fresh
+  // of the panel - opening the panel a second time after a successful save starts fresh
   // because the panel unmounts/remounts (orchestrated by the page).
   const inputs = useDatasetRecordEditorState({ recordId: undefined, initialValue: seededDefaults.inputs });
   const expectations = useDatasetRecordEditorState({
     recordId: undefined,
     initialValue: seededDefaults.expectations,
   });
-  // Draft tags live entirely in local state — no upsert mutation here because there's no
+  // Draft tags live entirely in local state - no upsert mutation here because there's no
   // record ID until the create RPC resolves. Tags are submitted alongside inputs/expectations
   // in the same create call, then this state is reset on success.
   const [tags, setTags] = useState<Record<string, string>>({});
@@ -178,7 +179,7 @@ export const useRecordCreateState = ({
           {
             inputs: inputs.parsed,
             expectations: expectations.parsed,
-            // Skip the field when empty so the request body stays minimal — the backend
+            // Skip the field when empty so the request body stays minimal - the backend
             // tolerates `tags: {}` but the listing cache produces noisier diffs.
             ...(hasTags ? { tags } : {}),
           },
@@ -189,7 +190,7 @@ export const useRecordCreateState = ({
               // after, but resetting also keeps the status FSM honest if it stays open.
               inputs.reset(inputs.text);
               expectations.reset(expectations.text);
-              // Reset tags too — otherwise hasTags keeps isDirty true and the FSM lands
+              // Reset tags too - otherwise hasTags keeps isDirty true and the FSM lands
               // on 'dirty' instead of 'saved'.
               setTags({});
               setJustSaved(true);

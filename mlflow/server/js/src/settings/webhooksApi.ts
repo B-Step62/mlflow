@@ -14,6 +14,11 @@ export interface Webhook {
   creation_timestamp: string;
   last_updated_timestamp: string;
   description?: string;
+  source_type?: string;
+  source_id?: string;
+  condition?: string;
+  action_type?: string;
+  action_config?: string;
 }
 
 export interface ListWebhooksResponse {
@@ -22,20 +27,30 @@ export interface ListWebhooksResponse {
 
 export interface CreateWebhookRequest {
   name: string;
-  url: string;
+  url?: string;
   events: WebhookEvent[];
   description?: string;
   secret?: string;
   status: 'ACTIVE' | 'DISABLED';
+  source_type?: string;
+  source_id?: string;
+  condition?: string;
+  action_type?: string;
+  action_config?: string;
 }
 
 export interface UpdateWebhookRequest {
   name: string;
-  url: string;
+  url?: string;
   events: WebhookEvent[];
   description?: string;
   secret?: string;
   status: 'ACTIVE' | 'DISABLED';
+  source_type?: string;
+  source_id?: string;
+  condition?: string;
+  action_type?: string;
+  action_config?: string;
 }
 
 export interface TestWebhookResult {

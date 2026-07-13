@@ -10,6 +10,15 @@ import WebhookDeleteModal from './WebhookDeleteModal';
 interface WebhooksSettingsProps {
   /** Filter displayed webhooks to only those containing at least one event whose entity matches this value exactly */
   eventFilter?: string;
+  /** Filter and default automations to a specific source object. */
+  sourceType?: string;
+  sourceId?: string;
+  experimentId?: string;
+  defaultEvents?: string[];
+  defaultCondition?: string;
+  lockSource?: boolean;
+  /** Render webhook or automation copy and fields. */
+  mode?: 'webhook' | 'automation';
   /** Title override */
   title?: React.ReactNode;
   /** Description override */
@@ -22,8 +31,18 @@ interface WebhooksSettingsProps {
   emptyDescription?: React.ReactNode;
 }
 
+const isAutomationRecord = (webhook: Webhook) =>
+  Boolean(webhook.action_type || webhook.condition || webhook.source_type || webhook.source_id);
+
 const WebhooksSettings = ({
   eventFilter,
+  sourceType,
+  sourceId,
+  experimentId,
+  defaultEvents,
+  defaultCondition,
+  lockSource = false,
+  mode = 'webhook',
   title,
   description,
   showTitle = true,
@@ -56,7 +75,17 @@ const WebhooksSettings = ({
     setError(null);
     try {
       const response = await WebhooksApi.listWebhooks();
-      const all = response?.webhooks ?? [];
+      let all = response?.webhooks ?? [];
+      if (mode === 'automation') {
+        all = all.filter(isAutomationRecord);
+      } else {
+        all = all.filter((w) => !isAutomationRecord(w));
+      }
+      if (sourceType || sourceId) {
+        all = all.filter(
+          (w) => (!sourceType || w.source_type === sourceType) && (!sourceId || w.source_id === sourceId),
+        );
+      }
       if (eventFilter) {
         setWebhooks(all.filter((w) => w.events.some((e) => e.entity === eventFilter)));
       } else {
@@ -73,7 +102,7 @@ const WebhooksSettings = ({
     } finally {
       setLoading(false);
     }
-  }, [intl, eventFilter]);
+  }, [intl, eventFilter, mode, sourceId, sourceType]);
 
   useEffect(() => {
     fetchWebhooks();
@@ -173,16 +202,30 @@ const WebhooksSettings = ({
         <div>
           {showTitle && (
             <Typography.Title level={4} withoutMargins>
-              {title ?? <FormattedMessage defaultMessage="Webhooks" description="Webhooks settings section title" />}
+              {title ??
+                (mode === 'automation' ? (
+                  <FormattedMessage defaultMessage="Automations" description="Automations settings section title" />
+                ) : (
+                  <FormattedMessage defaultMessage="Webhooks" description="Webhooks settings section title" />
+                ))}
             </Typography.Title>
           )}
           {showDescription && (
             <Typography.Text color="secondary">
               {description ?? (
-                <FormattedMessage
-                  defaultMessage="Manage webhooks to receive HTTP notifications when events occur in MLflow."
-                  description="Webhooks settings section description"
-                />
+                <>
+                  {mode === 'automation' ? (
+                    <FormattedMessage
+                      defaultMessage="Manage trigger, condition, and action rules for MLflow events."
+                      description="Automations settings section description"
+                    />
+                  ) : (
+                    <FormattedMessage
+                      defaultMessage="Manage webhooks to receive HTTP notifications when events occur in MLflow."
+                      description="Webhooks settings section description"
+                    />
+                  )}
+                </>
               )}
             </Typography.Text>
           )}
@@ -190,7 +233,11 @@ const WebhooksSettings = ({
       )}
       <div css={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
         <Button componentId="mlflow.settings.webhooks.create-button" type="primary" onClick={openCreateModal}>
-          <FormattedMessage defaultMessage="Create webhook" description="Create webhook button" />
+          {mode === 'automation' ? (
+            <FormattedMessage defaultMessage="Create automation" description="Create automation button" />
+          ) : (
+            <FormattedMessage defaultMessage="Create webhook" description="Create webhook button" />
+          )}
         </Button>
       </div>
 
@@ -229,17 +276,26 @@ const WebhooksSettings = ({
         >
           <Typography.Text color="secondary">
             {emptyDescription ?? (
-              <FormattedMessage
-                defaultMessage="No webhooks configured. Create one to get started. <link>Learn more about webhooks.</link>"
-                description="Empty state for webhooks list"
-                values={{
-                  link: (chunks: any) => (
-                    <a href="https://mlflow.org/docs/latest/ml/webhooks/" target="_blank" rel="noopener noreferrer">
-                      {chunks}
-                    </a>
-                  ),
-                }}
-              />
+              <>
+                {mode === 'automation' ? (
+                  <FormattedMessage
+                    defaultMessage="No automations configured. Create one to get started."
+                    description="Empty state for automations list"
+                  />
+                ) : (
+                  <FormattedMessage
+                    defaultMessage="No webhooks configured. Create one to get started. <link>Learn more about webhooks.</link>"
+                    description="Empty state for webhooks list"
+                    values={{
+                      link: (chunks: any) => (
+                        <a href="https://mlflow.org/docs/latest/ml/webhooks/" target="_blank" rel="noopener noreferrer">
+                          {chunks}
+                        </a>
+                      ),
+                    }}
+                  />
+                )}
+              </>
             )}
           </Typography.Text>
         </div>
@@ -261,6 +317,7 @@ const WebhooksSettings = ({
               onTest={handleTest}
               onEdit={openEditModal}
               onDelete={openDeleteModal}
+              mode={mode}
             />
           ))}
         </div>
@@ -273,6 +330,13 @@ const WebhooksSettings = ({
           onClose={closeModal}
           onSaved={handleSaved}
           eventFilter={eventFilter}
+          defaultEvents={defaultEvents}
+          defaultCondition={defaultCondition}
+          defaultSourceType={sourceType}
+          defaultSourceId={sourceId}
+          experimentId={experimentId}
+          lockSource={lockSource}
+          mode={mode}
         />
       )}
 
@@ -284,6 +348,7 @@ const WebhooksSettings = ({
           setWebhookToDelete(null);
         }}
         onConfirm={handleDelete}
+        mode={mode}
       />
     </div>
   );

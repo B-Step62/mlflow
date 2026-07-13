@@ -34,7 +34,7 @@ interface DatasetRecordsTableProps {
   onPageChange: (pageIndex: number) => void;
   /**
    * True only during the initial load (no prior data in cache). Background refetches keep
-   * the previous rows visible — the underlying query has `keepPreviousData: true`. Skeleton
+   * the previous rows visible - the underlying query has `keepPreviousData: true`. Skeleton
    * is reserved for the genuine no-data state.
    */
   isLoading: boolean;
@@ -62,7 +62,7 @@ interface DatasetRecordsTableProps {
   /**
    * In-progress new record. When non-null, the table renders a synthetic row at the top
    * (key="__new__") that reflects the side panel's live edits. The row is excluded from
-   * `selectedForBulk`, pagination math, and sort — it's a UI-only preview. `inputsText` and
+   * `selectedForBulk`, pagination math, and sort - it's a UI-only preview. `inputsText` and
    * `expectationsText` carry the raw editor text so the row updates per keystroke even while
    * JSON is partial/invalid; the parsed objects (when valid) are preferred for display so
    * pretty-printed source collapses to compact JSON.
@@ -74,13 +74,13 @@ const SORTABLE_COLUMN_SET = new Set<RecordColumnId>(SORTABLE_RECORD_COLUMNS);
 
 const cellStylesForColumn = (id: RecordColumnId) => {
   if (id === 'inputs' || id === 'expectations') return wideCellStyles;
-  if (id === 'source') return narrowCellStyles;
+  if (id === 'source' || id === 'status') return narrowCellStyles;
   if (id === 'tags') return tagsCellStyles;
   return cellStyles;
 };
 
 const cellStyles = { verticalAlign: 'middle' as const };
-// Inputs/expectations carry the bulk of each record's payload — give their
+// Inputs/expectations carry the bulk of each record's payload - give their
 // cells (and headers) more horizontal room than the metadata columns. Source
 // shrinks because it renders a single short Tag. Tags sits slightly above
 // the default to fit the first-tag pill plus a "+N more" suffix without
@@ -154,7 +154,7 @@ export const DatasetRecordsTable = ({
       aria-busy={isFetching}
       aria-label={intl.formatMessage({
         defaultMessage: 'Dataset records',
-        description: 'Region label for the V2 dataset records table — wraps the table and pagination',
+        description: 'Region label for the V2 dataset records table - wraps the table and pagination',
       })}
     >
       {/* `someRowsSelected` controls the table's `--row-checkbox-opacity` token,
@@ -181,6 +181,11 @@ export const DatasetRecordsTable = ({
               {...headerSortProps('dataset_record_id')}
             >
               <FormattedMessage defaultMessage="Record ID" description="Header for the dataset record id column" />
+            </TableHeader>
+          )}
+          {isColumnVisible('status') && (
+            <TableHeader componentId="mlflow.eval-datasets-v2.records.header.status" style={NARROW_HEADER_STYLE}>
+              <FormattedMessage defaultMessage="Status" description="Header for the dataset record status column" />
             </TableHeader>
           )}
           {isColumnVisible('inputs') && (
@@ -267,7 +272,7 @@ export const DatasetRecordsTable = ({
           : null}
         {!isLoading && pendingNewRecord && (
           // Synthetic "new record" row. Lives outside `records` so it's invisible to
-          // pagination, sort, and bulk selection — pure UI preview wired to the side
+          // pagination, sort, and bulk selection - pure UI preview wired to the side
           // panel's editor state. Uses `<TableRowSelectCell noCheckbox>` for the leading
           // cell so its `flex: 0` and fixed checkbox-column width match the data rows;
           // an empty `<TableCell>` here would inherit `flex: 1` and shift every column
@@ -342,6 +347,13 @@ export const DatasetRecordsTable = ({
                   </TableCell>
                 );
               }
+              if (col === 'status') {
+                return (
+                  <TableCell key={col} css={colCellStyles} align="left" wrapContent={false}>
+                    <Typography.Text>{pendingNewRecord.status ?? 'active'}</Typography.Text>
+                  </TableCell>
+                );
+              }
               return (
                 <TableCell key={col} css={colCellStyles} align="left" wrapContent={false}>
                   <Typography.Text color="secondary">-</Typography.Text>
@@ -364,21 +376,21 @@ export const DatasetRecordsTable = ({
             );
             const inputsLabel = intl.formatMessage(
               {
-                defaultMessage: 'Open dataset record {recordId} — inputs',
+                defaultMessage: 'Open dataset record {recordId} - inputs',
                 description: 'Aria label for the inputs JSON-preview cell that opens the record drawer',
               },
               { recordId: record.dataset_record_id },
             );
             const expectationsLabel = intl.formatMessage(
               {
-                defaultMessage: 'Open dataset record {recordId} — expectations',
+                defaultMessage: 'Open dataset record {recordId} - expectations',
                 description: 'Aria label for the expectations JSON-preview cell that opens the record drawer',
               },
               { recordId: record.dataset_record_id },
             );
             const tagsLabel = intl.formatMessage(
               {
-                defaultMessage: 'Open dataset record {recordId} — tags',
+                defaultMessage: 'Open dataset record {recordId} - tags',
                 description: 'Aria label for the tags-preview cell that opens the record drawer',
               },
               { recordId: record.dataset_record_id },
@@ -409,6 +421,11 @@ export const DatasetRecordsTable = ({
                 {isColumnVisible('dataset_record_id') && (
                   <TableCell css={cellStylesForColumn('dataset_record_id')}>
                     <RecordIdCell record={record} onActivate={openDrawer} accessibleLabel={recordIdLabel} />
+                  </TableCell>
+                )}
+                {isColumnVisible('status') && (
+                  <TableCell css={cellStylesForColumn('status')}>
+                    <Typography.Text>{record.status ?? 'active'}</Typography.Text>
                   </TableCell>
                 )}
                 {isColumnVisible('inputs') && (
