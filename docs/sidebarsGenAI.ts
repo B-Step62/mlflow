@@ -218,6 +218,11 @@ const sidebarsGenAI: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'tracing/integrations/listing/arize',
+                  label: 'Arize / Phoenix',
+                },
+                {
+                  type: 'doc',
                   id: 'tracing/integrations/listing/claude_agent_sdk_python',
                   label: 'Claude Agent SDK (Python)',
                 },
@@ -265,6 +270,11 @@ const sidebarsGenAI: SidebarsConfig = {
                   type: 'doc',
                   id: 'tracing/integrations/listing/langflow',
                   label: 'Langflow',
+                },
+                {
+                  type: 'doc',
+                  id: 'tracing/integrations/listing/langfuse',
+                  label: 'Langfuse',
                 },
                 {
                   type: 'doc',
@@ -603,6 +613,11 @@ const sidebarsGenAI: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'tracing/opentelemetry/ingest-shared',
+              label: 'Ingest traces shared',
+            },
+            {
+              type: 'doc',
               id: 'tracing/opentelemetry/export',
             },
             {
@@ -637,6 +652,11 @@ const sidebarsGenAI: SidebarsConfig = {
           type: 'doc',
           id: 'eval-monitor/quickstart',
           label: 'Quickstart',
+        },
+        {
+          type: 'doc',
+          id: 'eval-monitor/notebooks/quickstart-eval-ipynb',
+          label: 'Quickstart Notebook',
         },
         {
           type: 'doc',
@@ -714,6 +734,16 @@ const sidebarsGenAI: SidebarsConfig = {
                   type: 'doc',
                   id: 'eval-monitor/scorers/llm-judge/guidelines',
                   label: 'Guidelines',
+                },
+                {
+                  type: 'doc',
+                  id: 'eval-monitor/scorers/llm-judge/prompt',
+                  label: 'Bring Your Own Prompts',
+                },
+                {
+                  type: 'doc',
+                  id: 'eval-monitor/scorers/llm-judge/workflow',
+                  label: 'End-to-End Workflow',
                 },
                 {
                   type: 'category',
@@ -877,6 +907,11 @@ const sidebarsGenAI: SidebarsConfig = {
                   type: 'doc',
                   id: 'eval-monitor/scorers/llm-judge/memalign',
                   label: 'MemAlign Optimizer',
+                },
+                {
+                  type: 'doc',
+                  id: 'eval-monitor/scorers/llm-judge/gepa',
+                  label: 'GEPA Optimizer',
                 },
                 {
                   type: 'doc',
@@ -1225,6 +1260,11 @@ const sidebarsGenAI: SidebarsConfig = {
               id: 'flavors/langchain/notebooks/langchain-retriever-ipynb',
               label: 'Retrievers with LangChain',
             },
+            {
+              type: 'doc',
+              id: 'flavors/langchain/autologging',
+              label: 'LangChain Autologging',
+            },
           ],
           link: {
             type: 'doc',
@@ -1315,6 +1355,11 @@ const sidebarsGenAI: SidebarsConfig = {
       items: [
         {
           type: 'doc',
+          id: 'serving/index',
+          label: 'Overview',
+        },
+        {
+          type: 'doc',
           id: 'serving/agent-server',
           label: 'Agent Server',
         },
@@ -1348,6 +1393,11 @@ const sidebarsGenAI: SidebarsConfig = {
           type: 'doc',
           id: 'concepts/trace',
           label: 'Trace',
+        },
+        {
+          type: 'doc',
+          id: 'concepts/trace/feedback',
+          label: 'Trace Feedback',
         },
         {
           type: 'doc',

@@ -7,8 +7,20 @@ import { ArrowUp } from 'lucide-react';
 import type { TOCItem } from '@docusaurus/mdx-loader';
 import type { Props } from '@theme/TOC';
 
+function normalizePathname(pathname: string) {
+  return pathname.replace(/\/$/, '');
+}
+
 function isTracingOverview(pathname: string) {
-  return pathname.replace(/\/$/, '').endsWith('/genai/tracing');
+  return normalizePathname(pathname).endsWith('/genai/tracing');
+}
+
+function isGenAIPath(pathname: string) {
+  const normalizedPathname = normalizePathname(pathname);
+
+  return (
+    normalizedPathname === '/genai' || normalizedPathname.endsWith('/genai') || normalizedPathname.includes('/genai/')
+  );
 }
 
 function isDesktopDocToc(className?: string) {
@@ -57,10 +69,23 @@ function getVisibleHeading(id: string) {
   return element;
 }
 
-function TracingOverviewTOC({ toc, className, minHeadingLevel = 2, maxHeadingLevel = 3 }: Props): React.ReactNode {
+function getMintlifyToc(toc: readonly TOCItem[], tracingOverview: boolean) {
+  return tracingOverview ? getTracingOverviewToc(toc) : toc;
+}
+
+function MintlifyTOC({
+  toc,
+  className,
+  minHeadingLevel = 2,
+  maxHeadingLevel = 3,
+  tracingOverview = false,
+}: Props & { tracingOverview?: boolean }): React.ReactNode {
   const tocItems = useMemo(
-    () => getTracingOverviewToc(toc).filter((item) => item.level >= minHeadingLevel && item.level <= maxHeadingLevel),
-    [maxHeadingLevel, minHeadingLevel, toc],
+    () =>
+      getMintlifyToc(toc, tracingOverview).filter(
+        (item) => item.level >= minHeadingLevel && item.level <= maxHeadingLevel,
+      ),
+    [maxHeadingLevel, minHeadingLevel, toc, tracingOverview],
   );
   const [activeId, setActiveId] = useState<string>();
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -154,8 +179,8 @@ function TracingOverviewTOC({ toc, className, minHeadingLevel = 2, maxHeadingLev
 export default function TOC({ toc, className, ...props }: Props): React.ReactNode {
   const { pathname } = useLocation();
 
-  if (isTracingOverview(pathname) && isDesktopDocToc(className)) {
-    return <TracingOverviewTOC {...props} toc={toc} className={className} />;
+  if (isGenAIPath(pathname) && isDesktopDocToc(className)) {
+    return <MintlifyTOC {...props} toc={toc} className={className} tracingOverview={isTracingOverview(pathname)} />;
   }
 
   return <OriginalTOC {...props} toc={toc} className={className} />;

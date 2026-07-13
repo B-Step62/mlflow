@@ -13,15 +13,11 @@ import { Zap, TestTube, Search } from "lucide-react";
 
 # Tracing Quickstart
 
-:::tip[MLflow Assistant]
+This quickstart guide will walk you through setting up a simple LLM application with MLflow Tracing. In less than 10 minutes, you'll enable tracing, run a basic application, and explore the generated traces in the MLflow UI.
 
-Need help setting up tracing? Try [MLflow Assistant](/genai/getting-started/try-assistant) - a powerful AI assistant that can add MLflow tracing to your project automatically.
+:::tip
 
-:::
-
-:::tip[Set up Tracing with the MLflow CLI]
-
-From inside your project's Git repository, run a single command to install the MLflow skills and instrument your app for tracing — no manual setup:
+From inside your project, run a single command to setup your app for tracing — no manual setup:
 
 ```bash
 uvx mlflow@latest agent setup
@@ -31,42 +27,21 @@ Prefer to set things up manually? Read on below.
 
 :::
 
-This quickstart guide will walk you through setting up a simple LLM application with MLflow Tracing. In less than 10 minutes, you'll enable tracing, run a basic application, and explore the generated traces in the MLflow UI.
-
 ## Prerequisites
 
-Make sure you have started the MLflow server.
-If you don't have the MLflow server running yet, just follow these simple steps to get it started.
-
-<ServerSetup />
-
-## Create a MLflow Experiment
-
-The traces your LLM application or AI agent will send to the MLflow server are grouped into MLflow experiments. We recommend creating one experiment for each LLM application or AI agent.
-
-Let's create a new MLflow experiment using the MLflow UI so that you can start sending your traces.
-
-<ImageBox src="/images/llms/tracing/quickstart/mlflow-ui-new-experiment.png" alt="New Experiment"/>
-
-1. Navigate to the MLflow UI in your browser at [http://localhost:5000](http://localhost:5000).
-2. Click on the <div className="inline-flex rounded-sm bg-sky-700 px-2 py-1.5 text-sm font-semibold text-white">Create</div> button on the top right.
-3. Enter a name for the experiment and click on "Create".
-
-_You can leave the `Artifact Location` field blank for now. It is an advanced configuration to override where MLflow stores experiment data._
-
-## Dependency
-
-To connect your LLM application or AI agent to the MLflow server, you will need to install the MLflow client SDK.
+- **Active MLflow Server**: Follow the [Server Setup](/genai/getting-started/connect-environment) guide or have access to a managed MLflow server.
+- **OpenAI API Key**: Generate one from the [OpenAI console](https://platform.openai.com/api-keys).
+- **Install Dependencies**: Install the MLflow and OpenAI SDK by running the following commands.
 
 <TabsWrapper>
 <Tabs groupId="programming-language">
-<TabItem value="python" label="Python(OpenAI)" default>
+<TabItem value="python" label="Python" default>
 ```bash
 pip install --upgrade mlflow openai>=1.0.0
 ```
 </TabItem>
 
-<TabItem value="typescript" label="TypeScript(OpenAI)" default>
+<TabItem value="typescript" label="TypeScript" default>
 ```bash
 npm install @mlflow/openai
 ```
@@ -74,15 +49,19 @@ npm install @mlflow/openai
 </Tabs>
 </TabsWrapper>
 
-:::info
+## 1. Create an MLflow Experiment
 
-While this guide features an example using the OpenAI SDK, the same steps apply to other LLM providers, including Anthropic, Google, Bedrock, and many others.
+The traces your LLM application or AI agent will send to the MLflow server are grouped into MLflow experiments. We recommend creating one experiment for each LLM application or AI agent.
 
-For a comprehensive list of LLM providers supported by MLflow, see the <ins>[LLM Integrations Overview](/genai/tracing/integrations)</ins>.
+Let's create a new MLflow experiment using the MLflow UI so that you can start sending your traces.
 
-:::
+1. Navigate to the MLflow UI in your browser at [http://localhost:5000](http://localhost:5000).
+2. Click on the <div className="inline-flex rounded-sm bg-sky-700 px-2 py-1.5 text-sm font-semibold text-white">Create</div> button on the top right.
+3. Enter a name for the experiment.
+4. Leave the `Artifact Location` field blank for now. It is an advanced configuration to override where MLflow stores experiment data.
+5. Click on "Create".
 
-## Start Tracing
+## 2. Start Tracing
 
 Once your experiment is created, you're ready to connect to the MLflow server and begin sending traces from your LLM application or AI agent.
 
@@ -182,43 +161,30 @@ For a deeper dive into using MLflow together with OpenTelemetry, see the [OpenTe
 </Tabs>
 </TabsWrapper>
 
-## View Your Traces on the MLflow UI
+## 3. View Your Traces on the MLflow UI
 
-After running the code above, go to the MLflow UI and select the "My Application" experiment, and then select the "Traces" tab. It should show the newly created trace.
-
-:::tip[Learn More About Tracing UI]
-
-The "Traces" page includes rich information about the trace and supports various actions such as searching, filtering, adding feedbacks, and more. See [View Traces](/genai/tracing/observe-with-traces/ui) for comprehensive guide about how to get the most out of the MLflow Tracing UI.
-
-:::
+After running the code above, go to the MLflow UI and select the "My Application" experiment, and then select the "Traces" tab. It should show the newly created trace. Learn more about the [Tracing UI](/genai/tracing/observe-with-traces/ui) for searching traces, analyzing, and adding feedback, and more.
 
 <ImageBox src="/images/llms/tracing/quickstart/single-openai-trace-list.png" alt="Single Trace" />
 
 <ImageBox src="/images/llms/tracing/quickstart/single-openai-trace-detail.png" alt="Single Trace" />
 
-## Track Multi-Turn Conversations with Sessions
+## 4. Track Multi-Turn Conversations
 
 Many LLM applications and AI agents maintain multi-turn conversations with users. MLflow provides built-in support for tracking user sessions by using standard metadata fields. This allows you to group related traces together and analyze conversation flows.
 
 <TabsWrapper>
 <Tabs>
   <TabItem value="python" label="Python" default>
-    Here's how to add user and session tracking to your application:
-
     ```python
     import mlflow
 
-
     @mlflow.trace
     def chat_completion(message: list[dict], user_id: str, session_id: str):
-        """Process a chat message with user and session tracking."""
-
         # Add user and session context to the current trace
         mlflow.update_current_trace(
-            metadata={
-                "mlflow.trace.user": user_id,  # Links trace to specific user
-                "mlflow.trace.session": session_id,  # Groups trace with conversation
-            }
+            user=user_id,
+            session_id=session_id,
         )
 
         # Your chat logic here
@@ -234,10 +200,8 @@ Many LLM applications and AI agents maintain multi-turn conversations with users
         (message: Array<Record<string, any>>, userId: string, sessionId: string) => {
             // Add user and session context to the current trace
             mlflow.updateCurrentTrace({
-                metadata: {
-                    "mlflow.trace.user": userId,
-                    "mlflow.trace.session": sessionId,
-                },
+                user: userId,
+                session_id: sessionId,
             });
 
             // Your chat logic here
@@ -256,6 +220,10 @@ For more details on tracking users and sessions, see the [Track Users & Sessions
 ## Next Steps
 
 Congrats on sending your first trace with MLflow! Now that you've got the basics working, here are the recommended next steps to deepen your understanding of tracing:
+
+* [Automatic Tracing](/genai/tracing/app-instrumentation/automatic)
+* [Evaluation Quickstart](/genai/eval-monitor/quickstart)
+* [Capture Feedback](/genai/tracing/collect-user-feedback/)
 
 <TilesGrid>
   <TileCard
