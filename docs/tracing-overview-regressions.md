@@ -1,6 +1,6 @@
 # Tracing overview follow-up issues
 
-Scope: `/genai/tracing` Mintlify-style Docusaurus page. Pixel-perfect matching is no longer the goal; prioritize fixing regressions without disrupting the current visual direction.
+Scope: `/genai/tracing` custom MLflow product docs page. Pixel-perfect matching is no longer the goal; prioritize fixing regressions without disrupting the current visual direction.
 
 | Issue                                                                 | Status        | Notes                                                                                               |
 | --------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------- |
@@ -12,5 +12,5 @@ Scope: `/genai/tracing` Mintlify-style Docusaurus page. Pixel-perfect matching i
 | Search bar is not functioning                                         | Fixed locally | Custom navbar now renders the existing Docusaurus/Algolia `SearchBar`.                              |
 | Right nav/table of contents is missing                                | Fixed locally | Docusaurus desktop TOC is restored and styled as a sticky right rail.                               |
 | Text does not wrap responsively to the viewport width                 | Fixed locally | Fixed 801px content/media widths and text scale transforms are replaced with fluid max-width rules. |
-| Right panel should match Mintlify TOC UI                              | Fixed locally | Right rail now uses Mintlify spacing, ordering, nested item, active color, and no left border.      |
-| Expanded left nav should match Mintlify guide disclosure style        | Fixed locally | Expanded guide rows now match Mintlify sizing, casing, active pill color, padding, and radius.      |
+| Right panel should match MLflow docs TOC UI                           | Fixed locally | Right rail now uses MLflow docs spacing, ordering, nested item, active color, and no left border.   |
+| Expanded left nav should match MLflow docs guide disclosure style     | Fixed locally | Expanded guide rows now match MLflow docs sizing, casing, active pill color, padding, and radius.   |

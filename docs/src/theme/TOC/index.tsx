@@ -15,11 +15,19 @@ function isTracingOverview(pathname: string) {
   return normalizePathname(pathname).endsWith('/genai/tracing');
 }
 
-function isGenAIPath(pathname: string) {
+function isMLflowDocsPath(pathname: string) {
   const normalizedPathname = normalizePathname(pathname);
 
   return (
-    normalizedPathname === '/genai' || normalizedPathname.endsWith('/genai') || normalizedPathname.includes('/genai/')
+    normalizedPathname === '/genai' ||
+    normalizedPathname.endsWith('/genai') ||
+    normalizedPathname.includes('/genai/') ||
+    normalizedPathname === '/self-hosting' ||
+    normalizedPathname.endsWith('/self-hosting') ||
+    normalizedPathname.includes('/self-hosting/') ||
+    normalizedPathname === '/ml' ||
+    normalizedPathname.endsWith('/ml') ||
+    normalizedPathname.includes('/ml/')
   );
 }
 
@@ -69,11 +77,11 @@ function getVisibleHeading(id: string) {
   return element;
 }
 
-function getMintlifyToc(toc: readonly TOCItem[], tracingOverview: boolean) {
+function getMLflowDocsToc(toc: readonly TOCItem[], tracingOverview: boolean) {
   return tracingOverview ? getTracingOverviewToc(toc) : toc;
 }
 
-function MintlifyTOC({
+function MLflowDocsTOC({
   toc,
   className,
   minHeadingLevel = 2,
@@ -82,7 +90,7 @@ function MintlifyTOC({
 }: Props & { tracingOverview?: boolean }): React.ReactNode {
   const tocItems = useMemo(
     () =>
-      getMintlifyToc(toc, tracingOverview).filter(
+      getMLflowDocsToc(toc, tracingOverview).filter(
         (item) => item.level >= minHeadingLevel && item.level <= maxHeadingLevel,
       ),
     [maxHeadingLevel, minHeadingLevel, toc, tracingOverview],
@@ -139,15 +147,15 @@ function MintlifyTOC({
   }, []);
 
   return (
-    <nav className={clsx('mintlify-page-toc', className)} aria-label="On this page">
-      <div className="mintlify-page-toc-title">On this page</div>
-      <div className="mintlify-page-toc-body">
-        <ul className="table-of-contents mintlify-page-toc-list">
+    <nav className={clsx('mlflow-docs-page-toc', className)} aria-label="On this page">
+      <div className="mlflow-docs-page-toc-title">On this page</div>
+      <div className="mlflow-docs-page-toc-body">
+        <ul className="table-of-contents mlflow-docs-page-toc-list">
           {tocItems.map((item) => {
             const isActive = item.id === activeId;
 
             return (
-              <li key={item.id} className={`mintlify-page-toc-item mintlify-page-toc-item-level-${item.level}`}>
+              <li key={item.id} className={`mlflow-docs-page-toc-item mlflow-docs-page-toc-item-level-${item.level}`}>
                 <Link
                   to={`#${item.id}`}
                   className={clsx(
@@ -163,7 +171,7 @@ function MintlifyTOC({
         </ul>
       </div>
       <button
-        className={clsx('mintlify-page-toc-scroll-top', showScrollTop && 'mintlify-page-toc-scroll-top-visible')}
+        className={clsx('mlflow-docs-page-toc-scroll-top', showScrollTop && 'mlflow-docs-page-toc-scroll-top-visible')}
         type="button"
         onClick={handleScrollToTop}
         aria-hidden={!showScrollTop}
@@ -179,8 +187,8 @@ function MintlifyTOC({
 export default function TOC({ toc, className, ...props }: Props): React.ReactNode {
   const { pathname } = useLocation();
 
-  if (isGenAIPath(pathname) && isDesktopDocToc(className)) {
-    return <MintlifyTOC {...props} toc={toc} className={className} tracingOverview={isTracingOverview(pathname)} />;
+  if (isMLflowDocsPath(pathname) && isDesktopDocToc(className)) {
+    return <MLflowDocsTOC {...props} toc={toc} className={className} tracingOverview={isTracingOverview(pathname)} />;
   }
 
   return <OriginalTOC {...props} toc={toc} className={className} />;

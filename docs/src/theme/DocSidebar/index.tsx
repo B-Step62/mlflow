@@ -5,7 +5,7 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 import OriginalDocSidebar from '@theme-original/DocSidebar';
 import type { Props } from '@theme/DocSidebar';
 
-type ProductSidebarKey = 'tracing' | 'evaluation' | 'prompt' | 'gateway' | 'more' | 'selfHosting';
+type ProductSidebarKey = 'tracing' | 'evaluation' | 'prompt' | 'gateway' | 'more' | 'selfHosting' | 'classic';
 
 const contextualSidebarKeys: ProductSidebarKey[] = ['tracing', 'evaluation', 'prompt', 'gateway'];
 const contextualSidebarPaths = new Set(['/genai/demo', '/genai/getting-started/try-assistant']);
@@ -37,17 +37,29 @@ function normalizePath(path: string) {
   return normalizedPath || '/';
 }
 
+function getSectionPath(pathname: string, section: string) {
+  const sectionPattern = new RegExp(`/${section}(?=/|$)`);
+  const match = pathname.match(sectionPattern);
+
+  return match?.index === undefined ? undefined : pathname.slice(match.index);
+}
+
 function getProductPath(pathname: string) {
   const normalizedPathname = normalizePath(pathname);
-  const genAIIndex = normalizedPathname.indexOf('/genai');
-  const selfHostingIndex = normalizedPathname.indexOf('/self-hosting');
+  const genAIPath = getSectionPath(normalizedPathname, 'genai');
+  const selfHostingPath = getSectionPath(normalizedPathname, 'self-hosting');
+  const mlPath = getSectionPath(normalizedPathname, 'ml');
 
-  if (genAIIndex >= 0) {
-    return normalizedPathname.slice(genAIIndex);
+  if (genAIPath) {
+    return genAIPath;
   }
 
-  if (selfHostingIndex >= 0) {
-    return normalizedPathname.slice(selfHostingIndex);
+  if (selfHostingPath) {
+    return selfHostingPath;
+  }
+
+  if (mlPath) {
+    return mlPath;
   }
 
   return normalizedPathname;
@@ -73,6 +85,10 @@ function getProductSidebarKey(pathname: string, search = ''): ProductSidebarKey 
 
   if (currentPath === '/self-hosting' || currentPath.startsWith('/self-hosting/')) {
     return 'selfHosting';
+  }
+
+  if (currentPath === '/ml' || currentPath.startsWith('/ml/')) {
+    return 'classic';
   }
 
   if (currentPath === '/genai/tracing' || currentPath.startsWith('/genai/tracing/')) {
@@ -144,7 +160,7 @@ function SidebarMaskIcon({ icon }: { icon: string }) {
   return (
     <span
       aria-hidden="true"
-      className="mintlify-sidebar-mask-icon"
+      className="mlflow-docs-sidebar-mask-icon"
       style={{
         WebkitMaskImage: `url(${iconUrl})`,
         WebkitMaskPosition: 'center',
@@ -160,7 +176,7 @@ function SidebarMaskIcon({ icon }: { icon: string }) {
 function SidebarChevron({ expanded = false }: { expanded?: boolean }) {
   return (
     <svg
-      className={expanded ? 'mintlify-sidebar-chevron-expanded' : undefined}
+      className={expanded ? 'mlflow-docs-sidebar-chevron-expanded' : undefined}
       width="8"
       height="24"
       viewBox="0 -9 3 24"
@@ -176,14 +192,14 @@ function SidebarLink({ item, active = false }: { item: SidebarLinkItem; active?:
   const href = useBaseUrl(item.href);
 
   return (
-    <li className="mintlify-sidebar-item">
+    <li className="mlflow-docs-sidebar-item">
       <Link
-        className={active ? 'mintlify-sidebar-link mintlify-sidebar-link-active' : 'mintlify-sidebar-link'}
+        className={active ? 'mlflow-docs-sidebar-link mlflow-docs-sidebar-link-active' : 'mlflow-docs-sidebar-link'}
         href={href}
         aria-current={active ? 'page' : undefined}
       >
         {item.icon && (
-          <span className="mintlify-sidebar-icon">
+          <span className="mlflow-docs-sidebar-icon">
             <SidebarMaskIcon icon={item.icon} />
           </span>
         )}
@@ -212,12 +228,12 @@ function SidebarDisclosure({
   }, [containsActiveLink]);
 
   return (
-    <li className="mintlify-sidebar-item">
+    <li className="mlflow-docs-sidebar-item">
       <button
         className={
           containsActiveLink
-            ? 'mintlify-sidebar-link mintlify-sidebar-button mintlify-sidebar-link-ancestor'
-            : 'mintlify-sidebar-link mintlify-sidebar-button'
+            ? 'mlflow-docs-sidebar-link mlflow-docs-sidebar-button mlflow-docs-sidebar-link-ancestor'
+            : 'mlflow-docs-sidebar-link mlflow-docs-sidebar-button'
         }
         type="button"
         aria-expanded={expanded}
@@ -227,7 +243,7 @@ function SidebarDisclosure({
         <SidebarChevron expanded={expanded} />
       </button>
       {expanded && (
-        <ul className="mintlify-sidebar-nested-list">
+        <ul className="mlflow-docs-sidebar-nested-list">
           {item.links.map((link) => (
             <SidebarLink
               key={`${item.label}-${link.href}`}
@@ -253,7 +269,7 @@ function SidebarGroup({
   currentHash: string;
 }) {
   return (
-    <div className="mintlify-sidebar-group">
+    <div className="mlflow-docs-sidebar-group">
       <h3>{title}</h3>
       <ul>
         {items.map((item) =>
@@ -665,9 +681,104 @@ const productSidebars: Record<ProductSidebarKey, SidebarGroupConfig[]> = {
       ],
     },
   ],
+  classic: [
+    {
+      title: 'Overview',
+      items: [link('MLflow Overview', '/ml'), link('MLflow 3.0 Migration', '/ml/mlflow-3')],
+    },
+    {
+      title: 'Get Started',
+      items: [
+        link('Set Up MLflow', '/ml/getting-started/running-notebooks'),
+        link('Quickstart', '/ml/getting-started/quickstart'),
+        link('Hyperparameter Tuning', '/ml/getting-started/hyperparameter-tuning'),
+        link('Deep Learning', '/ml/getting-started/deep-learning'),
+      ],
+    },
+    {
+      title: 'Train',
+      items: [
+        disclosure('Traditional ML', [
+          link('Overview', '/ml/traditional-ml'),
+          link('Scikit-learn', '/ml/traditional-ml/sklearn'),
+          link('XGBoost', '/ml/traditional-ml/xgboost'),
+          link('SparkML', '/ml/traditional-ml/sparkml'),
+          link('Prophet', '/ml/traditional-ml/prophet'),
+        ]),
+        disclosure('Deep Learning', [
+          link('Overview', '/ml/deep-learning'),
+          link('PyTorch', '/ml/deep-learning/pytorch'),
+          link('TensorFlow', '/ml/deep-learning/tensorflow'),
+          link('Keras', '/ml/deep-learning/keras'),
+          link('Transformers', '/ml/deep-learning/transformers'),
+          link('Sentence Transformers', '/ml/deep-learning/sentence-transformers'),
+          link('spaCy', '/ml/deep-learning/spacy'),
+        ]),
+      ],
+    },
+    {
+      title: 'Track',
+      items: [
+        link('Tracking Overview', '/ml/tracking'),
+        link('Quickstart', '/ml/tracking/quickstart'),
+        link('Auto Logging', '/ml/tracking/autolog'),
+        disclosure('Search', [
+          link('Search Runs', '/ml/search/search-runs'),
+          link('Search Experiments', '/ml/search/search-experiments'),
+          link('Search Models', '/ml/search/search-models'),
+        ]),
+        link('System Metrics', '/ml/tracking/system-metrics'),
+        link('Tracking APIs', '/ml/tracking/tracking-api'),
+        link('Tracking Server', '/self-hosting/architecture/tracking-server'),
+      ],
+    },
+    {
+      title: 'Models',
+      items: [
+        link('Models Overview', '/ml/model'),
+        link('Model Signatures', '/ml/model/signatures'),
+        link('Dependencies', '/ml/model/dependencies'),
+        link('Models From Code', '/ml/model/models-from-code'),
+        link('Python Model', '/ml/model/python_model'),
+        link('Community Model Integrations', '/ml/community-model-flavors'),
+        link('Pickle-Free Model Format', '/ml/tracking/pickle-free-models'),
+        link('Datasets', '/ml/dataset'),
+      ],
+    },
+    {
+      title: 'Evaluate',
+      items: [link('MLflow Evaluation', '/ml/evaluation')],
+    },
+    {
+      title: 'Deploy',
+      items: [
+        disclosure('Model Registry', [
+          link('Overview', '/ml/model-registry'),
+          link('Workflow', '/ml/model-registry/workflow'),
+          link('Tutorial', '/ml/model-registry/tutorial'),
+        ]),
+        disclosure('Model Serving', [
+          link('Overview', '/ml/deployment'),
+          link('Deploy Locally', '/ml/deployment/deploy-model-locally'),
+          link('Deploy to SageMaker', '/ml/deployment/deploy-model-to-sagemaker'),
+          link('Deploy to Modal', '/ml/deployment/deploy-model-to-modal'),
+        ]),
+        link('Docker', '/ml/docker'),
+      ],
+    },
+    {
+      title: 'More',
+      items: [
+        link('Projects', '/ml/projects'),
+        link('Plugins', '/ml/plugins'),
+        link('External Tutorials', '/ml/tutorials-and-examples'),
+        link('Self-Hosting', '/self-hosting'),
+      ],
+    },
+  ],
 };
 
-function MintlifyProductSidebar({
+function MLflowDocsProductSidebar({
   groups,
   currentPath,
   currentHash,
@@ -691,9 +802,9 @@ function MintlifyProductSidebar({
   };
 
   return (
-    <nav className="mintlify-doc-sidebar" aria-label="Pages" onWheel={handleWheel}>
-      <div className="mintlify-doc-sidebar-fade" />
-      <div className="mintlify-doc-sidebar-content">
+    <nav className="mlflow-docs-sidebar" aria-label="Pages" onWheel={handleWheel}>
+      <div className="mlflow-docs-sidebar-fade" />
+      <div className="mlflow-docs-sidebar-content">
         {groups.map((group) => (
           <SidebarGroup
             key={group.title}
@@ -717,7 +828,7 @@ export default function DocSidebar(props: Props): React.ReactNode {
   }
 
   return (
-    <MintlifyProductSidebar
+    <MLflowDocsProductSidebar
       groups={productSidebars[sidebarKey]}
       currentPath={getProductPath(location.pathname)}
       currentHash={location.hash}

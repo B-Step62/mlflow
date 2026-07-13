@@ -2,13 +2,44 @@
 title: Self Hosting Overview
 description: Deploy and manage your own MLflow instance. Open-source, vendor-neutral MLOps and LLMOps platform for experiment tracking, model registry, and LLM observability.
 sidebar_position: 1
+hide_title: true
 ---
 
-# Self-Hosting MLflow
+import TilesGrid from "@site/src/components/TilesGrid";
+import TileCard from "@site/src/components/TileCard";
+import FeatureHighlights from "@site/src/components/FeatureHighlights";
+import { Archive, Cloud, Database, Lock, Network, Rocket, Server, ShieldCheck } from "lucide-react";
 
-> #### **_The most vendor-neutral MLOps/LLMOps platform in the world._**
+<div className="mlflow-docs-header">
+  <div className="mlflow-docs-eyebrow">Self hosting</div>
+  <h1 className="mlflow-docs-title">Self-Hosting MLflow</h1>
+  <p>Deploy and operate your own MLflow instance with open-source, vendor-neutral infrastructure for experiment tracking, model registry, prompts, and traces.</p>
+</div>
 
 MLflow is fully open-source. Thousands of users and organizations run their own MLflow instances to meet their specific needs. Being open-source and trusted by the popular cloud providers, MLflow is the best choice for teams/organizations that worry about vendor lock-in.
+
+<FeatureHighlights features={[
+  {
+    icon: Server,
+    title: "Run anywhere",
+    description: "Start locally with the MLflow CLI, then scale to shared tracking servers, Kubernetes, or cloud infrastructure."
+  },
+  {
+    icon: ShieldCheck,
+    title: "Own your data",
+    description: "Keep experiment metadata, artifacts, prompts, traces, and models inside infrastructure you control."
+  },
+  {
+    icon: Database,
+    title: "Production-ready storage",
+    description: "Use a SQL backend store and object storage for reliable team workflows and larger deployments."
+  },
+  {
+    icon: Lock,
+    title: "Secure access",
+    description: "Configure authentication, network protection, workspaces, and role-based access control for shared servers."
+  }
+]} />
 
 :::warning[Default Storage Backend Change]
 
@@ -55,10 +86,32 @@ mlflow.set_tracking_uri("http://localhost:5000")
 
 Now, you are ready to start your experiment!
 
-- [Tracing QuickStart](/genai/tracing/quickstart/)
-- [LLM Evaluation Quickstart](/genai/eval-monitor/quickstart/)
-- [Prompt Management Quickstart](/genai/prompt-registry/#getting-started)
-- [Model Training Quickstart](/ml/tracking/quickstart/)
+<TilesGrid>
+  <TileCard
+    title="Tracing Quickstart"
+    description="Capture and inspect LLM and agent traces from your self-hosted MLflow instance."
+    href="/genai/tracing/quickstart/"
+    linkText=""
+  />
+  <TileCard
+    title="LLM Evaluation Quickstart"
+    description="Evaluate GenAI quality using MLflow scorers and datasets."
+    href="/genai/eval-monitor/quickstart/"
+    linkText=""
+  />
+  <TileCard
+    title="Prompt Management Quickstart"
+    description="Version, review, and reuse prompts with the MLflow Prompt Registry."
+    href="/genai/prompt-registry/#getting-started"
+    linkText=""
+  />
+  <TileCard
+    title="Model Training Quickstart"
+    description="Track classical ML experiments and model training runs."
+    href="/ml/tracking/quickstart/"
+    linkText=""
+  />
+</TilesGrid>
 
 :::tip
 
@@ -67,6 +120,30 @@ For production deployments or custom backend configurations, see <ins>[Backend S
 :::
 
 ## Other Deployment Options
+
+<TilesGrid>
+  <TileCard
+    icon={Archive}
+    title="Docker Compose"
+    description="Run MLflow with PostgreSQL and artifact storage from the repository's ready-to-use Compose project."
+    href="#docker-compose"
+    linkText=""
+  />
+  <TileCard
+    icon={Network}
+    title="Kubernetes"
+    description="Deploy MLflow on Kubernetes with Helm for production-oriented environments."
+    href="#kubernetes"
+    linkText=""
+  />
+  <TileCard
+    icon={Cloud}
+    title="Cloud Services"
+    description="Use a managed MLflow-compatible service when you want production scale without operating the server yourself."
+    href="#cloud-services"
+    linkText=""
+  />
+</TilesGrid>
 
 ### Docker Compose
 
@@ -102,9 +179,28 @@ If you are looking for production-scale deployments without maintenance costs, M
 
 MLflow, at a high level, consists of the following components:
 
-1. **Tracking Server**: The lightweight FastAPI server that serves the MLflow UI and API.
-2. **Backend Store**: The Backend Store is relational database (or file system) that stores the metadata of the experiments, runs, traces, etc.
-3. **Artifact Store**: The Artifact Store is responsible for storing the large artifacts such as model weights, images, etc.
+<FeatureHighlights features={[
+  {
+    icon: Server,
+    title: "Tracking Server",
+    description: "A lightweight FastAPI server that serves the MLflow UI and REST APIs."
+  },
+  {
+    icon: Database,
+    title: "Backend Store",
+    description: "A relational database or file system that stores metadata for experiments, runs, traces, and other MLflow resources."
+  },
+  {
+    icon: Archive,
+    title: "Artifact Store",
+    description: "Storage for larger artifacts such as model weights, images, datasets, and other files."
+  },
+  {
+    icon: Rocket,
+    title: "Client SDKs",
+    description: "Python and other clients connect to the tracking server to log, query, and manage MLflow resources."
+  }
+]} />
 
 Each component is designed to be pluggable, so you can customize it to meet your needs. For example, you can start with a single host mode with SQLite backend and local file system for storing artifacts. To scale up, you can switch backend store to PostgreSQL cluster and point artifact store to cloud storage such as S3, GCS, or Azure Blob Storage.
 

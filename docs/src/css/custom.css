@@ -981,7 +981,7 @@ th {
 }
 
 /* --------------------------------
- * 16. Mintlify-style GenAI docs
+ * 16. MLflow product docs theme
  * -------------------------------- */
 
 html[data-genai-theme='true'] {
@@ -1019,16 +1019,16 @@ html[data-genai-theme='true'] {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.mlflow-genai-section .navbar:not(.mintlify-navbar) {
+.mlflow-genai-section .navbar:not(.mlflow-docs-navbar) {
   display: none;
 }
 
-.mintlify-navbar.navbar {
+.mlflow-docs-navbar.navbar {
   display: block;
   padding: 0;
 }
 
-.mintlify-navbar {
+.mlflow-docs-navbar {
   position: sticky;
   top: 0;
   z-index: 30;
@@ -1040,7 +1040,7 @@ html[data-genai-theme='true'] {
   overflow: hidden;
 }
 
-.mintlify-navbar-primary {
+.mlflow-docs-navbar-primary {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1051,20 +1051,65 @@ html[data-genai-theme='true'] {
   border-bottom: 1px solid rgba(229, 232, 234, 0.55);
 }
 
-.mintlify-navbar-logo {
+.mlflow-docs-navbar-brand-group {
   display: flex;
   align-items: center;
+  gap: 18px;
   flex: 1 1 0;
   min-width: 0;
 }
 
-.mintlify-navbar-logo img {
+.mlflow-docs-navbar-logo {
+  display: flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+}
+
+.mlflow-docs-navbar-logo img {
   width: auto;
   height: 34px;
   background: transparent;
 }
 
-.mintlify-navbar-search {
+.mlflow-docs-family-switcher {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid rgba(158, 163, 165, 0.28);
+  border-radius: 10px;
+  background: rgb(247, 249, 250);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.mlflow-docs-family-option {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: rgb(80, 84, 86);
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.mlflow-docs-family-option:hover {
+  color: rgb(17, 24, 39);
+  text-decoration: none;
+}
+
+.mlflow-docs-family-option-active {
+  background: #ffffff;
+  color: rgb(17, 24, 39);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.mlflow-docs-navbar-search {
   display: flex;
   align-items: center;
   flex: 1 1 0;
@@ -1076,7 +1121,7 @@ html[data-genai-theme='true'] {
   line-height: 20px;
 }
 
-.mintlify-navbar-search .DocSearch-Button {
+.mlflow-docs-navbar-search .DocSearch-Button {
   width: 100%;
   height: 36px;
   margin: 0;
@@ -1088,34 +1133,34 @@ html[data-genai-theme='true'] {
   color: rgb(112, 116, 118);
 }
 
-.mintlify-navbar-search .DocSearch-Button:hover,
-.mintlify-navbar-search .DocSearch-Button:focus {
+.mlflow-docs-navbar-search .DocSearch-Button:hover,
+.mlflow-docs-navbar-search .DocSearch-Button:focus {
   border-color: rgba(112, 116, 118, 0.4);
   background: #ffffff;
   box-shadow: none;
 }
 
-.mintlify-navbar-search .DocSearch-Button-Container {
+.mlflow-docs-navbar-search .DocSearch-Button-Container {
   min-width: 0;
 }
 
-.mintlify-navbar-search .DocSearch-Button-Placeholder {
+.mlflow-docs-navbar-search .DocSearch-Button-Placeholder {
   padding: 0 12px 0 8px;
   color: rgb(112, 116, 118);
   font-size: 14px;
 }
 
-.mintlify-navbar-search .DocSearch-Search-Icon {
+.mlflow-docs-navbar-search .DocSearch-Search-Icon {
   width: 16px;
   height: 16px;
   color: rgb(112, 116, 118);
 }
 
-.mintlify-navbar-search .DocSearch-Button-Keys {
+.mlflow-docs-navbar-search .DocSearch-Button-Keys {
   min-width: 0;
 }
 
-.mintlify-navbar-search .DocSearch-Button-Key {
+.mlflow-docs-navbar-search .DocSearch-Button-Key {
   top: 0;
   width: auto;
   height: 20px;
@@ -1128,7 +1173,7 @@ html[data-genai-theme='true'] {
   font-weight: 600;
 }
 
-.mintlify-mask-icon {
+.mlflow-docs-mask-icon {
   display: inline-block;
   flex: none;
   width: 16px;
@@ -1136,7 +1181,7 @@ html[data-genai-theme='true'] {
   background: currentColor;
 }
 
-.mintlify-navbar-links {
+.mlflow-docs-navbar-links {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1147,12 +1192,12 @@ html[data-genai-theme='true'] {
   line-height: 20px;
 }
 
-.mintlify-navbar-links a:last-child {
+.mlflow-docs-navbar-links a:last-child {
   margin-right: 20px;
 }
 
-.mintlify-navbar-links a,
-.mintlify-navbar-links button {
+.mlflow-docs-navbar-links a,
+.mlflow-docs-navbar-links button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1160,12 +1205,12 @@ html[data-genai-theme='true'] {
   font-weight: 500;
 }
 
-.mintlify-navbar-links a:hover,
-.mintlify-navbar-links button:hover {
+.mlflow-docs-navbar-links a:hover,
+.mlflow-docs-navbar-links button:hover {
   color: rgb(17, 24, 39);
 }
 
-.mintlify-navbar-tabs {
+.mlflow-docs-navbar-tabs {
   display: flex;
   align-items: center;
   gap: 24px;
@@ -1177,7 +1222,7 @@ html[data-genai-theme='true'] {
   line-height: 20px;
 }
 
-.mintlify-navbar-tab {
+.mlflow-docs-navbar-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -1188,18 +1233,18 @@ html[data-genai-theme='true'] {
   white-space: nowrap;
 }
 
-.mintlify-navbar-tab:hover {
+.mlflow-docs-navbar-tab:hover {
   color: rgb(17, 24, 39);
 }
 
-.mintlify-navbar-tab-active {
+.mlflow-docs-navbar-tab-active {
   color: rgb(17, 24, 39);
   text-shadow:
     -0.2px 0 0 currentColor,
     0.2px 0 0 currentColor;
 }
 
-.mintlify-navbar-tab-active::after {
+.mlflow-docs-navbar-tab-active::after {
   content: '';
   position: absolute;
   right: 0;
@@ -1270,7 +1315,7 @@ html[data-genai-theme='true'] {
   padding-top: 0;
 }
 
-.mlflow-genai-section .mintlify-doc-sidebar {
+.mlflow-genai-section .mlflow-docs-sidebar {
   width: 288px;
   height: calc(100vh - 144px);
   max-height: calc(100vh - 144px);
@@ -1280,22 +1325,22 @@ html[data-genai-theme='true'] {
   scrollbar-gutter: stable;
 }
 
-.mlflow-genai-section .mintlify-doc-sidebar-content {
+.mlflow-genai-section .mlflow-docs-sidebar-content {
   width: 100%;
   padding: 0 0 40px 32px;
   font-size: 14px;
   line-height: 20px;
 }
 
-.mlflow-genai-section .mintlify-doc-sidebar-fade {
+.mlflow-genai-section .mlflow-docs-sidebar-fade {
   display: none;
 }
 
-.mlflow-genai-section .mintlify-sidebar-group {
+.mlflow-genai-section .mlflow-docs-sidebar-group {
   margin: 0 0 32px;
 }
 
-.mlflow-genai-section .mintlify-sidebar-group h3 {
+.mlflow-genai-section .mlflow-docs-sidebar-group h3 {
   margin: 0 0 14px;
   padding-left: 16px;
   color: rgb(17, 24, 39);
@@ -1304,22 +1349,22 @@ html[data-genai-theme='true'] {
   line-height: 20px;
 }
 
-.mlflow-genai-section .mintlify-sidebar-group ul {
+.mlflow-genai-section .mlflow-docs-sidebar-group ul {
   margin: 0;
   padding: 0;
 }
 
-.mlflow-genai-section .mintlify-sidebar-item {
+.mlflow-genai-section .mlflow-docs-sidebar-item {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.mlflow-genai-section .mintlify-sidebar-item::before {
+.mlflow-genai-section .mlflow-docs-sidebar-item::before {
   content: none;
 }
 
-.mlflow-genai-section .mintlify-sidebar-link {
+.mlflow-genai-section .mlflow-docs-sidebar-link {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -1339,18 +1384,18 @@ html[data-genai-theme='true'] {
   text-decoration: none;
 }
 
-.mlflow-genai-section .mintlify-sidebar-link > span:last-child {
+.mlflow-genai-section .mlflow-docs-sidebar-link > span:last-child {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.mlflow-genai-section .mintlify-sidebar-link:hover {
+.mlflow-genai-section .mlflow-docs-sidebar-link:hover {
   background: rgba(80, 84, 86, 0.05);
   color: rgb(17, 24, 39);
   text-decoration: none;
 }
 
-.mlflow-genai-section .mintlify-sidebar-link-active {
+.mlflow-genai-section .mlflow-docs-sidebar-link-active {
   background: rgba(1, 148, 226, 0.1);
   color: #0194e2;
   text-shadow:
@@ -1358,11 +1403,11 @@ html[data-genai-theme='true'] {
     0.2px 0 0 currentColor;
 }
 
-.mlflow-genai-section .mintlify-sidebar-link-ancestor {
+.mlflow-genai-section .mlflow-docs-sidebar-link-ancestor {
   color: #0194e2;
 }
 
-.mlflow-genai-section .mintlify-sidebar-icon {
+.mlflow-genai-section .mlflow-docs-sidebar-icon {
   display: flex;
   align-items: center;
   width: 16px;
@@ -1371,19 +1416,19 @@ html[data-genai-theme='true'] {
   flex: none;
 }
 
-.mlflow-genai-section .mintlify-sidebar-mask-icon {
+.mlflow-genai-section .mlflow-docs-sidebar-mask-icon {
   display: inline-block;
   width: 16px;
   height: 16px;
   background: currentColor;
 }
 
-.mlflow-genai-section .mintlify-sidebar-button {
+.mlflow-genai-section .mlflow-docs-sidebar-button {
   appearance: none;
   cursor: pointer;
 }
 
-.mlflow-genai-section .mintlify-sidebar-button svg {
+.mlflow-genai-section .mlflow-docs-sidebar-button svg {
   width: 8px;
   height: 24px;
   margin-left: auto;
@@ -1391,16 +1436,16 @@ html[data-genai-theme='true'] {
   transition: transform 0.15s ease;
 }
 
-.mlflow-genai-section .mintlify-sidebar-button .mintlify-sidebar-chevron-expanded {
+.mlflow-genai-section .mlflow-docs-sidebar-button .mlflow-docs-sidebar-chevron-expanded {
   transform: rotate(90deg);
 }
 
-.mlflow-genai-section .mintlify-sidebar-nested-list {
+.mlflow-genai-section .mlflow-docs-sidebar-nested-list {
   margin: 0 0 16px;
   padding: 0;
 }
 
-.mlflow-genai-section .mintlify-sidebar-nested-list .mintlify-sidebar-link {
+.mlflow-genai-section .mlflow-docs-sidebar-nested-list .mlflow-docs-sidebar-link {
   min-height: 36px;
   margin: 1px 0;
   padding: 6px 12px 6px 28px;
@@ -1409,7 +1454,7 @@ html[data-genai-theme='true'] {
   line-height: 24px;
 }
 
-.mlflow-genai-section .mintlify-sidebar-nested-list .mintlify-sidebar-link-active {
+.mlflow-genai-section .mlflow-docs-sidebar-nested-list .mlflow-docs-sidebar-link-active {
   background: rgba(1, 148, 226, 0.1);
   color: #0194e2;
 }
@@ -1429,7 +1474,7 @@ html[data-genai-theme='true'] {
   line-height: 20px;
 }
 
-.mlflow-genai-section .mintlify-doc-sidebar .menu {
+.mlflow-genai-section .mlflow-docs-sidebar .menu {
   height: auto;
   max-height: none;
   padding: 0;
@@ -1569,7 +1614,7 @@ html[data-genai-theme='true'] {
   line-height: 24px;
 }
 
-.mlflow-genai-section .mintlify-page-toc-title {
+.mlflow-genai-section .mlflow-docs-page-toc-title {
   margin-bottom: 20px;
   color: rgb(62, 67, 69);
   font-size: 14px;
@@ -1577,12 +1622,12 @@ html[data-genai-theme='true'] {
   line-height: 24px;
 }
 
-.mlflow-genai-section .mintlify-page-toc-body {
+.mlflow-genai-section .mlflow-docs-page-toc-body {
   position: relative;
   padding-left: 20px;
 }
 
-.mlflow-genai-section .mintlify-page-toc-body::before {
+.mlflow-genai-section .mlflow-docs-page-toc-body::before {
   content: '';
   position: absolute;
   top: 5px;
@@ -1603,7 +1648,7 @@ html[data-genai-theme='true'] {
   list-style: none;
 }
 
-.mlflow-genai-section .mintlify-page-toc-list {
+.mlflow-genai-section .mlflow-docs-page-toc-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1641,7 +1686,7 @@ html[data-genai-theme='true'] {
   text-decoration: none;
 }
 
-.mlflow-genai-section .mintlify-page-toc-item-level-3 .table-of-contents__link {
+.mlflow-genai-section .mlflow-docs-page-toc-item-level-3 .table-of-contents__link {
   padding-left: 28px;
   color: rgb(112, 116, 118);
   font-weight: 400;
@@ -1668,7 +1713,7 @@ html[data-genai-theme='true'] {
   background: #0194e2;
 }
 
-.mlflow-genai-section .mintlify-page-toc-scroll-top {
+.mlflow-genai-section .mlflow-docs-page-toc-scroll-top {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1692,13 +1737,13 @@ html[data-genai-theme='true'] {
     color 0.18s ease;
 }
 
-.mlflow-genai-section .mintlify-page-toc-scroll-top-visible {
+.mlflow-genai-section .mlflow-docs-page-toc-scroll-top-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
 }
 
-.mlflow-genai-section .mintlify-page-toc-scroll-top:hover {
+.mlflow-genai-section .mlflow-docs-page-toc-scroll-top:hover {
   color: #0194e2;
 }
 
@@ -1710,7 +1755,7 @@ html[data-genai-theme='true'] {
   display: none !important;
 }
 
-.mlflow-tracing-overview-page article h1:not(.mintlify-doc-title) {
+.mlflow-tracing-overview-page article h1:not(.mlflow-docs-title) {
   display: none !important;
 }
 
@@ -1718,11 +1763,11 @@ html[data-genai-theme='true'] {
   display: none !important;
 }
 
-.mlflow-genai-section .mintlify-doc-header {
+.mlflow-genai-section .mlflow-docs-header {
   margin: 10px 0 32px;
 }
 
-.mlflow-genai-section .mintlify-doc-eyebrow {
+.mlflow-genai-section .mlflow-docs-eyebrow {
   margin-bottom: 10px;
   color: #0194e2;
   font-size: 14px;
@@ -1731,7 +1776,7 @@ html[data-genai-theme='true'] {
 }
 
 .mlflow-genai-section h1,
-.mlflow-genai-section .mintlify-doc-header h1 {
+.mlflow-genai-section .mlflow-docs-header h1 {
   margin: 0 0 8px;
   color: rgb(22, 27, 29);
   font-size: 30px;
@@ -1740,11 +1785,11 @@ html[data-genai-theme='true'] {
   line-height: 36px;
 }
 
-.mlflow-genai-section .mintlify-doc-title {
+.mlflow-genai-section .mlflow-docs-title {
   display: block;
 }
 
-.mlflow-genai-section .mintlify-doc-header p {
+.mlflow-genai-section .mlflow-docs-header p {
   margin: 0;
   color: rgb(62, 67, 69);
   font-size: 18px;
@@ -1752,7 +1797,7 @@ html[data-genai-theme='true'] {
   transform: translateY(1px);
 }
 
-.mlflow-genai-section .mintlify-doc-header + p {
+.mlflow-genai-section .mlflow-docs-header + p {
   transform: translateY(1px);
 }
 
@@ -1819,7 +1864,7 @@ html[data-genai-theme='true'] {
   line-height: inherit;
 }
 
-.mlflow-genai-section .theme-doc-markdown .mintlify-doc-header + p a {
+.mlflow-genai-section .theme-doc-markdown .mlflow-docs-header + p a {
   top: 0 !important;
 }
 
@@ -1828,22 +1873,22 @@ html[data-genai-theme='true'] {
   color: oklch(0.21 0.034 264.665);
 }
 
-.mlflow-genai-section .mintlify-navbar a,
-.mlflow-genai-section .mintlify-navbar button {
+.mlflow-genai-section .mlflow-docs-navbar a,
+.mlflow-genai-section .mlflow-docs-navbar button {
   color: rgb(80, 84, 86);
 }
 
-.mlflow-genai-section .mintlify-navbar-search {
+.mlflow-genai-section .mlflow-docs-navbar-search {
   color: rgb(112, 116, 118);
 }
 
-.mlflow-genai-section .mintlify-navbar-links a {
+.mlflow-genai-section .mlflow-docs-navbar-links a {
   transform: translateX(8px);
 }
 
-.mlflow-genai-section .mintlify-navbar a:hover,
-.mlflow-genai-section .mintlify-navbar button:hover,
-.mlflow-genai-section .mintlify-navbar .mintlify-navbar-tab-active {
+.mlflow-genai-section .mlflow-docs-navbar a:hover,
+.mlflow-genai-section .mlflow-docs-navbar button:hover,
+.mlflow-genai-section .mlflow-docs-navbar .mlflow-docs-navbar-tab-active {
   color: rgb(17, 24, 39);
 }
 
@@ -1860,7 +1905,7 @@ html[data-genai-theme='true'] {
   content: '';
 }
 
-.mlflow-genai-section .mintlify-doc-header,
+.mlflow-genai-section .mlflow-docs-header,
 .mlflow-genai-section .theme-doc-markdown > p,
 .mlflow-genai-section .theme-doc-markdown > h2,
 .mlflow-genai-section [role='tabpanel'] h4,
@@ -1933,7 +1978,7 @@ html[data-genai-theme='true'] {
   letter-spacing: 0;
 }
 
-.mlflow-genai-section .theme-admonition .mintlify-admonition-default-title {
+.mlflow-genai-section .theme-admonition .mlflow-docs-admonition-default-title {
   display: none;
 }
 
@@ -1948,7 +1993,7 @@ html[data-genai-theme='true'] {
   content: ' ';
 }
 
-.mlflow-genai-section .theme-admonition .mintlify-admonition-default-title + [class*='admonitionContent']::before {
+.mlflow-genai-section .theme-admonition .mlflow-docs-admonition-default-title + [class*='admonitionContent']::before {
   content: '';
 }
 
@@ -2242,18 +2287,19 @@ html[data-genai-theme='true'] {
 }
 
 @media (max-width: 996px) {
-  .mintlify-navbar {
+  .mlflow-docs-navbar {
     height: 64px;
   }
 
-  .mintlify-navbar-primary {
+  .mlflow-docs-navbar-primary {
     height: 64px;
     padding: 0 20px;
   }
 
-  .mintlify-navbar-search,
-  .mintlify-navbar-links,
-  .mintlify-navbar-tabs,
+  .mlflow-docs-navbar-search,
+  .mlflow-docs-navbar-links,
+  .mlflow-docs-family-switcher,
+  .mlflow-docs-navbar-tabs,
   .mlflow-genai-section .theme-doc-sidebar-container {
     display: none;
   }

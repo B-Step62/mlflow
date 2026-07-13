@@ -1,18 +1,18 @@
 const defaultAdmonitionTitles = new Set(['caution', 'danger', 'important', 'info', 'note', 'tip', 'warning']);
 
-function updateMintlifyAdmonitions() {
+function updateMLflowDocsAdmonitions() {
   document
     .querySelectorAll('.mlflow-genai-section .theme-admonition [class*="admonitionHeading"]')
     .forEach((heading) => {
       const title = heading.textContent?.trim().toLowerCase();
-      heading.classList.toggle('mintlify-admonition-default-title', defaultAdmonitionTitles.has(title));
+      heading.classList.toggle('mlflow-docs-admonition-default-title', defaultAdmonitionTitles.has(title));
     });
 }
 
-function scheduleMintlifyAdmonitionUpdate() {
-  updateMintlifyAdmonitions();
-  requestAnimationFrame(updateMintlifyAdmonitions);
-  setTimeout(updateMintlifyAdmonitions, 100);
+function scheduleMLflowDocsAdmonitionUpdate() {
+  updateMLflowDocsAdmonitions();
+  requestAnimationFrame(updateMLflowDocsAdmonitions);
+  setTimeout(updateMLflowDocsAdmonitions, 100);
 }
 
 export function onRouteDidUpdate({ location }) {
@@ -30,12 +30,9 @@ export function onRouteDidUpdate({ location }) {
   document.body.classList.remove('mlflow-ml-section', 'mlflow-genai-section', 'mlflow-tracing-overview-page');
   document.documentElement.removeAttribute('data-mlflow-doc-route');
 
-  if (isGenAIPath || isSelfHostingPath) {
+  if (isGenAIPath || isSelfHostingPath || isMLPath) {
     document.documentElement.setAttribute('data-genai-theme', 'true');
     document.body.classList.add('mlflow-genai-section');
-  } else if (isMLPath) {
-    document.documentElement.removeAttribute('data-genai-theme');
-    document.body.classList.add('mlflow-ml-section');
   } else {
     document.documentElement.removeAttribute('data-genai-theme');
   }
@@ -45,5 +42,5 @@ export function onRouteDidUpdate({ location }) {
     document.documentElement.setAttribute('data-mlflow-doc-route', 'genai-tracing-overview');
   }
 
-  scheduleMintlifyAdmonitionUpdate();
+  scheduleMLflowDocsAdmonitionUpdate();
 }
