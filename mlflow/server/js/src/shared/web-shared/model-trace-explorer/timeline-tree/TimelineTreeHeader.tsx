@@ -36,8 +36,10 @@ export const TimelineTreeHeader = ({
       css={{
         padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
         paddingBottom: 3,
+        borderTop: `1px solid ${theme.colors.border}`,
         borderBottom: `1px solid ${theme.colors.border}`,
         boxSizing: 'border-box',
+        minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
         paddingLeft: theme.spacing.sm,
         alignItems: 'center',
         display: 'flex',
@@ -46,25 +48,35 @@ export const TimelineTreeHeader = ({
       }}
     >
       <Typography.Text bold css={{ whiteSpace: 'nowrap' }}>
-        <FormattedMessage
-          defaultMessage="Trace breakdown"
-          description="Header for the span tree within the MLflow trace UI"
-        />
+        <FormattedMessage defaultMessage="Trace" description="Header for the trace column within the MLflow trace UI" />
       </Typography.Text>
       <div css={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.sm, flexShrink: 0 }}>
         {onToggleGraph && (
-          <Button
-            componentId="shared.model-trace-explorer.toggle-graph-button"
-            icon={<ConnectIcon />}
-            size="small"
-            type={showGraph ? 'primary' : undefined}
-            onClick={onToggleGraph}
+          <Tooltip
+            componentId="shared.model-trace-explorer.toggle-graph-tooltip"
+            content={
+              showGraph ? (
+                <FormattedMessage
+                  defaultMessage="Hide graph"
+                  description="Tooltip for the button that hides the graph in the trace explorer."
+                />
+              ) : (
+                <FormattedMessage
+                  defaultMessage="Show graph"
+                  description="Tooltip for the button that shows the graph in the trace explorer."
+                />
+              )
+            }
           >
-            <FormattedMessage
-              defaultMessage="Graph"
-              description="Label for the graph toggle button in the trace explorer."
+            <Button
+              componentId="shared.model-trace-explorer.toggle-graph-button"
+              icon={<ConnectIcon />}
+              size="small"
+              type={showGraph ? 'primary' : undefined}
+              aria-label={showGraph ? 'Hide graph' : 'Show graph'}
+              onClick={onToggleGraph}
             />
-          </Button>
+          </Tooltip>
         )}
         <TimelineTreeFilterButton spanFilterState={spanFilterState} setSpanFilterState={setSpanFilterState} />
         <SegmentedControlGroup

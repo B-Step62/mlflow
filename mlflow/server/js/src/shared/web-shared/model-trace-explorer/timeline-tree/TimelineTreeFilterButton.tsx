@@ -5,6 +5,7 @@ import {
   InfoTooltip,
   Popover,
   Slider,
+  Tooltip,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -70,15 +71,19 @@ export const TimelineTreeFilterButton = ({
 
   return (
     <Popover.Root componentId="shared.model-trace-explorer.timeline-tree-filter-popover">
-      <Popover.Trigger asChild>
-        <Button
-          componentId="shared.model-trace-explorer.timeline-tree-filter-button"
-          icon={<FilterIcon />}
-          size="small"
-        >
-          <FormattedMessage defaultMessage="Filter" description="Label for the filter button in the trace explorer." />
-        </Button>
-      </Popover.Trigger>
+      <Tooltip
+        componentId="shared.model-trace-explorer.timeline-tree-filter-tooltip"
+        content={<FormattedMessage defaultMessage="Filter" description="Tooltip for the trace filter button." />}
+      >
+        <Popover.Trigger asChild>
+          <Button
+            componentId="shared.model-trace-explorer.timeline-tree-filter-button"
+            icon={<FilterIcon />}
+            size="small"
+            aria-label="Filter"
+          />
+        </Popover.Trigger>
+      </Tooltip>
       <Popover.Content align="start">
         <div
           css={{

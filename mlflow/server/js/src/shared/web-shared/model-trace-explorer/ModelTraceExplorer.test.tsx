@@ -110,14 +110,18 @@ const TestComponent = ({ modelTrace }: { modelTrace: ModelTrace }) => {
   );
 };
 
+const expectSpanTreeNode = (spanId: string, spanName = spanId) => {
+  expect(within(screen.getByTestId(`timeline-tree-node-${spanId}`)).getByText(spanName)).toBeInTheDocument();
+};
+
 describe('ModelTraceExplorer', () => {
   it.each([MOCK_TRACE, MOCK_V3_TRACE])(
     'renders the component and allows to inspect selected spans',
     async (trace: ModelTrace) => {
       render(<TestComponent modelTrace={trace} />);
 
-      // Assert existence of task column header
-      expect(screen.getByText('Trace breakdown')).toBeInTheDocument();
+      // Assert existence of trace column header
+      expect(screen.getByText('Trace')).toBeInTheDocument();
 
       // Expect timeline view to be closed at first (due to JSDOM's 1024 default screen width)
       expect(screen.queryByTestId('time-marker-area')).not.toBeInTheDocument();
@@ -143,12 +147,12 @@ describe('ModelTraceExplorer', () => {
     const { rerender } = render(<TestComponent modelTrace={MOCK_TRACE} />);
 
     // Assert that all spans are expanded
-    expect(screen.getByText('document-qa-chain')).toBeInTheDocument();
-    expect(screen.getByText('_generate_response')).toBeInTheDocument();
-    expect(screen.getByText('rephrase_chat_to_queue')).toBeInTheDocument();
+    expectSpanTreeNode('document-qa-chain');
+    expectSpanTreeNode('_generate_response');
+    expectSpanTreeNode('rephrase_chat_to_queue');
 
     // Select the third span
-    await userEvent.click(screen.getByText('rephrase_chat_to_queue'));
+    await userEvent.click(screen.getByTestId('timeline-tree-node-rephrase_chat_to_queue'));
     expect(await screen.findByText('rephrase_chat_to_queue-input')).toBeInTheDocument();
 
     // assert that the tree is not rerendered when the same root node is passed
@@ -198,9 +202,9 @@ describe('ModelTraceExplorer', () => {
   it('should correctly filter the tree', async () => {
     render(<TestComponent modelTrace={MOCK_TRACE} />);
 
-    expect(screen.getByText('document-qa-chain')).toBeInTheDocument();
-    expect(screen.getByText('_generate_response')).toBeInTheDocument();
-    expect(screen.getByText('rephrase_chat_to_queue')).toBeInTheDocument();
+    expectSpanTreeNode('document-qa-chain');
+    expectSpanTreeNode('_generate_response');
+    expectSpanTreeNode('rephrase_chat_to_queue');
 
     const filterButton = screen.getByRole('button', { name: /Filter/i });
     await userEvent.click(filterButton);
@@ -212,9 +216,9 @@ describe('ModelTraceExplorer', () => {
     await userEvent.click(chatModelSelector);
 
     // since the "show parents" checkbox is checked by default, all spans should still be visible
-    expect(screen.getByText('document-qa-chain')).toBeInTheDocument();
-    expect(screen.getByText('_generate_response')).toBeInTheDocument();
-    expect(screen.getByText('rephrase_chat_to_queue')).toBeInTheDocument();
+    expectSpanTreeNode('document-qa-chain');
+    expectSpanTreeNode('_generate_response');
+    expectSpanTreeNode('rephrase_chat_to_queue');
 
     // uncheck the "show parents" checkbox
     const showParentsCheckbox = screen.getByRole('checkbox', { name: /Show all parent spans/i });
@@ -222,9 +226,9 @@ describe('ModelTraceExplorer', () => {
 
     // now that the parents checkbox is unchecked,
     // only the "rephrase" span should be visible
-    expect(screen.queryByText('document-qa-chain')).not.toBeInTheDocument();
-    expect(screen.queryByText('_generate_response')).not.toBeInTheDocument();
-    expect(screen.getByText('rephrase_chat_to_queue')).toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-tree-node-document-qa-chain')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-tree-node-_generate_response')).not.toBeInTheDocument();
+    expectSpanTreeNode('rephrase_chat_to_queue');
   });
 
   it('should open the assessments pane when the assessment tag is clicked', async () => {

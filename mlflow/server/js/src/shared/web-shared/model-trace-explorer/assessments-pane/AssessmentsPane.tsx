@@ -99,24 +99,35 @@ export const AssessmentsPane = ({
       css={{
         display: 'flex',
         flexDirection: 'column',
-        padding: theme.spacing.md,
-        paddingTop: theme.spacing.sm,
         height: '100%',
         borderLeft: `1px solid ${theme.colors.border}`,
-        overflowY: 'auto',
+        overflow: 'hidden',
         minWidth: ASSESSMENT_PANE_MIN_WIDTH,
         width: '100%',
         boxSizing: 'border-box',
       }}
       className={className}
     >
-      <div css={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+          minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
+          padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+          borderTop: `1px solid ${theme.colors.border}`,
+          borderBottom: `1px solid ${theme.colors.border}`,
+          boxSizing: 'border-box',
+        }}
+      >
         {assessmentsTitleOverride ? (
           assessmentsTitleOverride()
         ) : (
-          <Typography.Title level={4}>
+          <Typography.Text bold>
             <FormattedMessage defaultMessage="Assessments" description="Title for the assessments pane" />
-          </Typography.Title>
+          </Typography.Text>
         )}
         {!disableCloseButton && (
           <Tooltip
@@ -138,33 +149,43 @@ export const AssessmentsPane = ({
           </Tooltip>
         )}
       </div>
-      <hr css={{ border: 'none', borderTop: `1px solid ${theme.colors.border}`, margin: `${theme.spacing.xs}px 0` }} />
-      <AssessmentsPaneFeedbackSection
-        enableRunScorer={
-          enableRunScorer &&
-          isEvaluatingTracesInDetailsViewEnabled() &&
-          Boolean(runJudgeConfiguration.renderRunJudgeModal)
-        }
-        feedbacks={feedbacks}
-        activeSpanId={activeSpanId}
-        traceId={traceId}
-        sessionId={sessionId}
-      />
-      <Spacer size="sm" shrinks={false} />
-      <AssessmentsPaneExpectationsSection
-        expectations={expectations}
-        activeSpanId={activeSpanId}
-        traceId={traceId}
-        sessionId={sessionId}
-      />
-      {issues.length > 0 && (
-        <>
-          <Spacer size="sm" shrinks={false} />
-          <AssessmentsPaneIssuesSection issues={issues} selectedIssueId={selectedIssueId} />
-        </>
-      )}
-      <Spacer size="sm" shrinks={false} />
-      <AssessmentsPaneNotesSection key={traceId} traceId={traceId} feedbacks={feedbacks} />
+      <div
+        css={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          padding: theme.spacing.md,
+          paddingTop: theme.spacing.sm,
+          boxSizing: 'border-box',
+        }}
+      >
+        <AssessmentsPaneFeedbackSection
+          enableRunScorer={
+            enableRunScorer &&
+            isEvaluatingTracesInDetailsViewEnabled() &&
+            Boolean(runJudgeConfiguration.renderRunJudgeModal)
+          }
+          feedbacks={feedbacks}
+          activeSpanId={activeSpanId}
+          traceId={traceId}
+          sessionId={sessionId}
+        />
+        <Spacer size="sm" shrinks={false} />
+        <AssessmentsPaneExpectationsSection
+          expectations={expectations}
+          activeSpanId={activeSpanId}
+          traceId={traceId}
+          sessionId={sessionId}
+        />
+        {issues.length > 0 && (
+          <>
+            <Spacer size="sm" shrinks={false} />
+            <AssessmentsPaneIssuesSection issues={issues} selectedIssueId={selectedIssueId} />
+          </>
+        )}
+        <Spacer size="sm" shrinks={false} />
+        <AssessmentsPaneNotesSection key={traceId} traceId={traceId} feedbacks={feedbacks} />
+      </div>
     </div>
   );
 };
