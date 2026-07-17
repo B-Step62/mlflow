@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import { Button, SidebarCollapseIcon } from '@databricks/design-system';
+import { Button, PencilIcon } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
@@ -16,10 +16,9 @@ export const AssessmentPaneToggle = ({ children }: { children?: ReactNode }) => 
   return (
     <Button
       disabled={!assessmentsPaneEnabled}
-      type="primary"
       componentId="shared.model-trace-explorer.assessments-pane-toggle"
       size="small"
-      icon={<SidebarCollapseIcon />}
+      icon={<PencilIcon />}
       onClick={() => setAssessmentsPaneExpanded?.(true)}
     >
       {children ?? (

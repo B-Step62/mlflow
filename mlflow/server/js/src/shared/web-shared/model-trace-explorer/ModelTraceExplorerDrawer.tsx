@@ -5,8 +5,9 @@ import {
   Button,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CopyIcon,
+  DatabaseIcon,
   FlagPointerIcon,
-  PlusIcon,
   Notification,
   SparkleIcon,
   Tooltip,
@@ -18,7 +19,10 @@ import { Global } from '@emotion/react';
 import { useAssistant } from '@mlflow/mlflow/src/assistant';
 
 import { ModelTraceExplorerSkeleton } from './ModelTraceExplorerSkeleton';
-import { useModelTraceExplorerContext } from './ModelTraceExplorerContext';
+import {
+  ModelTraceExplorerRightPaneHeaderActionsProvider,
+  useModelTraceExplorerContext,
+} from './ModelTraceExplorerContext';
 import type { ModelTraceInfoV3 } from './ModelTrace.types';
 import { getAiGradientBorderStyle } from '../design-system/aiGradientBorderStyle';
 import { copyToClipboard } from '../../../common/utils/copyToClipboard';
@@ -102,6 +106,21 @@ export const ModelTraceExplorerDrawer = ({
     }
   }, []);
 
+  const handleCopyTraceIdClick = useCallback(async () => {
+    if (!traceInfo?.trace_id) {
+      return;
+    }
+
+    const success = await copyToClipboard(traceInfo.trace_id);
+    if (success) {
+      setShowCopiedNotification(true);
+      setTimeout(() => setShowCopiedNotification(false), 2000);
+    } else {
+      setShowCopyError(true);
+      setTimeout(() => setShowCopyError(false), 2000);
+    }
+  }, [traceInfo?.trace_id]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement) {
@@ -147,16 +166,85 @@ export const ModelTraceExplorerDrawer = ({
               handleDismissFlagGuidance();
             }
           },
+          popoverAlign: 'end',
           children: (
-            <Button componentId="mlflow.evaluations_review.modal.flag_for_review" icon={<FlagPointerIcon />}>
+            <Button
+              componentId="mlflow.evaluations_review.modal.flag_for_review"
+              icon={<FlagPointerIcon />}
+              size="small"
+            >
               <FormattedMessage
-                defaultMessage="Flag for review"
+                defaultMessage="Review"
                 description="Button text for assigning a trace to reviewers via a review queue"
               />
             </Button>
           ),
         })
       : null;
+
+  const hasRightPaneHeaderActions = showAddToDatasetButton || showFlagForReviewButton;
+  const rightPaneHeaderActions = hasRightPaneHeaderActions ? (
+    <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexShrink: 0 }}>
+      {showAddToDatasetButton && (
+        <Tooltip
+          componentId="mlflow.evaluations_review.modal.add_to_dataset.tooltip"
+          content={
+            <FormattedMessage defaultMessage="Add to dataset" description="Tooltip for adding a trace to a dataset" />
+          }
+        >
+          <Button
+            componentId="mlflow.evaluations_review.modal.add_to_dataset"
+            onClick={handleAddToDatasetClick}
+            icon={<DatabaseIcon />}
+            size="small"
+          >
+            <FormattedMessage
+              defaultMessage="Dataset"
+              description="Short button text for adding a trace to a dataset"
+            />
+          </Button>
+        </Tooltip>
+      )}
+      {showFlagForReviewButton && (
+        <>
+          {showFlagGuidance && (
+            <Global
+              styles={{
+                '@keyframes flagGuidanceFadeIn': {
+                  from: { opacity: 0 },
+                  to: { opacity: 1 },
+                },
+                [RADIX_POPPER_WRAPPER_SELECTOR]: {
+                  animation: 'flagGuidanceFadeIn 300ms ease-in',
+                },
+              }}
+            />
+          )}
+          <Tooltip
+            componentId="mlflow.evaluations_review.modal.flag_for_review.guidance"
+            open={showFlagGuidance || undefined}
+            content={
+              showFlagGuidance ? (
+                <div data-flag-guidance onClick={handleDismissFlagGuidance} css={{ cursor: 'pointer' }}>
+                  <FormattedMessage
+                    defaultMessage="New! Flag traces for review and add them to a review queue."
+                    description="Guidance tooltip message for the flag for review button in the trace drawer"
+                  />
+                </div>
+              ) : (
+                <FormattedMessage
+                  defaultMessage="Flag for review"
+                  description="Tooltip for assigning a trace to reviewers via a review queue"
+                />
+              )
+            }
+          >
+            <div>{flagForReviewButton}</div>
+          </Tooltip>
+        </>
+      )}
+    </div>
+  ) : null;
 
   return (
     <DrawerComponent.Root
@@ -190,22 +278,43 @@ export const ModelTraceExplorerDrawer = ({
               {compactTraceId ? (
                 <Tooltip
                   componentId="mlflow.evaluations_review.modal.trace-id-tooltip"
-                  content={traceInfo?.trace_id}
+                  content={
+                    <FormattedMessage
+                      defaultMessage="Copy trace ID: {traceId}"
+                      description="Tooltip for copying the trace ID from the trace drawer header"
+                      values={{ traceId: traceInfo?.trace_id }}
+                    />
+                  }
                   maxWidth={400}
                 >
-                  <Typography.Text
-                    color="secondary"
+                  <Button
+                    componentId="mlflow.evaluations_review.modal.copy_trace_id"
+                    onClick={handleCopyTraceIdClick}
+                    type="tertiary"
+                    icon={<CopyIcon />}
                     css={{
+                      flexShrink: 1,
+                      minWidth: 0,
+                      maxWidth: '100%',
+                      justifyContent: 'flex-start',
                       fontFamily: 'monospace',
-                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <FormattedMessage
-                      defaultMessage="trace #{traceId}"
-                      description="Compact trace id label shown in the trace drawer header"
-                      values={{ traceId: compactTraceId }}
-                    />
-                  </Typography.Text>
+                    <Typography.Text
+                      color="secondary"
+                      size="lg"
+                      css={{
+                        fontFamily: 'monospace',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <FormattedMessage
+                        defaultMessage="trace #{traceId}"
+                        description="Compact trace id label shown in the trace drawer header"
+                        values={{ traceId: compactTraceId }}
+                      />
+                    </Typography.Text>
+                  </Button>
                 </Tooltip>
               ) : (
                 renderModalTitle()
@@ -226,49 +335,6 @@ export const ModelTraceExplorerDrawer = ({
                   description="Button that opens the MLflow assistant side panel to analyze the current trace"
                 />
               </Button>
-            )}
-            {showAddToDatasetButton && (
-              <Button
-                componentId="mlflow.evaluations_review.modal.add_to_dataset"
-                onClick={handleAddToDatasetClick}
-                icon={<PlusIcon />}
-              >
-                <FormattedMessage
-                  defaultMessage="Add to dataset"
-                  description="Button text for adding a trace to a dataset"
-                />
-              </Button>
-            )}
-            {showFlagForReviewButton && (
-              <>
-                {showFlagGuidance && (
-                  <Global
-                    styles={{
-                      '@keyframes flagGuidanceFadeIn': {
-                        from: { opacity: 0 },
-                        to: { opacity: 1 },
-                      },
-                      [RADIX_POPPER_WRAPPER_SELECTOR]: {
-                        animation: 'flagGuidanceFadeIn 300ms ease-in',
-                      },
-                    }}
-                  />
-                )}
-                <Tooltip
-                  componentId="mlflow.evaluations_review.modal.flag_for_review.guidance"
-                  open={showFlagGuidance}
-                  content={
-                    <div data-flag-guidance onClick={handleDismissFlagGuidance} css={{ cursor: 'pointer' }}>
-                      <FormattedMessage
-                        defaultMessage="New! Flag traces for review and add them to a review queue."
-                        description="Guidance tooltip message for the flag for review button in the trace drawer"
-                      />
-                    </div>
-                  }
-                >
-                  <div>{flagForReviewButton}</div>
-                </Tooltip>
-              </>
             )}
             <Tooltip
               componentId="mlflow.evaluations_review.modal.share-tooltip"
@@ -303,7 +369,12 @@ export const ModelTraceExplorerDrawer = ({
         ]}
       >
         <ApplyDesignSystemContextOverrides zIndexBase={2 * theme.options.zIndexBase}>
-          {isLoading ? <ModelTraceExplorerSkeleton /> : <>{children}</>}
+          <ModelTraceExplorerRightPaneHeaderActionsProvider
+            openAddToDatasetModal={showAddToDatasetButton ? handleAddToDatasetClick : undefined}
+            rightPaneHeaderActions={rightPaneHeaderActions}
+          >
+            {isLoading ? <ModelTraceExplorerSkeleton /> : <>{children}</>}
+          </ModelTraceExplorerRightPaneHeaderActionsProvider>
         </ApplyDesignSystemContextOverrides>
         {renderExportTracesToDatasetsModal?.({
           selectedTraceInfos: traceInfo ? [traceInfo] : [],

@@ -24,6 +24,7 @@ import {
   isV3ModelTraceInfo,
 } from '../ModelTraceExplorer.utils';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
+import { useModelTraceExplorerContext } from '../ModelTraceExplorerContext';
 import { isTraceCostType, type TraceCost } from '../ModelTraceExplorerCostHoverCard';
 import { isTokenUsageType, type TokenUsage } from '../ModelTraceExplorerTokenUsageHoverCard';
 import { SESSION_ID_METADATA_KEY } from '../constants';
@@ -266,6 +267,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
   showAssessmentsToggle: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
+  const { rightPaneHeaderActions } = useModelTraceExplorerContext();
   const { rootNode } = useModelTraceExplorerViewState();
   const activeSpanTitle = typeof activeSpan.title === 'string' ? activeSpan.title : undefined;
   const hasException = getSpanExceptionCount(activeSpan) > 0;
@@ -365,14 +367,17 @@ export const ModelTraceExplorerRightPaneHeader = ({
             {activeSpan.title}
           </Typography.Text>
         </div>
-        {showAssessmentsToggle && (
-          <div css={{ flexShrink: 0 }}>
-            <AssessmentPaneToggle>
-              <FormattedMessage
-                defaultMessage="Annotate"
-                description="Label for the button to open the assessments pane from the trace details column"
-              />
-            </AssessmentPaneToggle>
+        {(rightPaneHeaderActions || showAssessmentsToggle) && (
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexShrink: 0 }}>
+            {rightPaneHeaderActions}
+            {showAssessmentsToggle && (
+              <AssessmentPaneToggle>
+                <FormattedMessage
+                  defaultMessage="Annotate"
+                  description="Label for the button to open the assessments pane from the trace details column"
+                />
+              </AssessmentPaneToggle>
+            )}
           </div>
         )}
       </div>

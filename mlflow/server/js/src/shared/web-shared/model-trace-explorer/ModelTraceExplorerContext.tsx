@@ -41,6 +41,7 @@ export interface ModelTraceExplorerContextValue {
   DrawerComponent: DrawerComponentType;
   /** When set (e.g. by the evaluation review drawer), content can show "Add to dataset" that calls openModal */
   addToDatasetAction?: AddToDatasetAction;
+  rightPaneHeaderActions?: ReactNode;
   drawerWidth?: string | number;
 }
 
@@ -48,6 +49,7 @@ const ModelTraceExplorerContext = createContext<ModelTraceExplorerContextValue>(
   renderExportTracesToDatasetsModal: () => null,
   DrawerComponent: Drawer,
   addToDatasetAction: undefined,
+  rightPaneHeaderActions: undefined,
 });
 
 interface ModelTraceExplorerContextProviderProps {
@@ -85,6 +87,23 @@ export const ModelTraceExplorerAddToDatasetProvider: React.FC<{
 }> = ({ openModal, children }) => {
   const parent = useContext(ModelTraceExplorerContext);
   const value = useMemo(() => ({ ...parent, addToDatasetAction: { openModal } }), [parent, openModal]);
+  return <ModelTraceExplorerContext.Provider value={value}>{children}</ModelTraceExplorerContext.Provider>;
+};
+
+export const ModelTraceExplorerRightPaneHeaderActionsProvider: React.FC<{
+  openAddToDatasetModal?: () => void;
+  rightPaneHeaderActions?: ReactNode;
+  children: ReactNode;
+}> = ({ openAddToDatasetModal, rightPaneHeaderActions, children }) => {
+  const parent = useContext(ModelTraceExplorerContext);
+  const value = useMemo(
+    () => ({
+      ...parent,
+      addToDatasetAction: openAddToDatasetModal ? { openModal: openAddToDatasetModal } : parent.addToDatasetAction,
+      rightPaneHeaderActions,
+    }),
+    [parent, openAddToDatasetModal, rightPaneHeaderActions],
+  );
   return <ModelTraceExplorerContext.Provider value={value}>{children}</ModelTraceExplorerContext.Provider>;
 };
 
