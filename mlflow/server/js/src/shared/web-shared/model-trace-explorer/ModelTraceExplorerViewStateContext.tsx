@@ -1,4 +1,3 @@
-import { isNil } from 'lodash';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ModelTrace, ModelTraceExplorerTab, ModelTraceSpanNode } from './ModelTrace.types';
@@ -59,7 +58,7 @@ export type ModelTraceExplorerViewState = {
 export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplorerViewState>({
   rootNode: null,
   nodeMap: {},
-  activeView: 'summary',
+  activeView: 'detail',
   setActiveView: () => {},
   selectedNode: undefined,
   setSelectedNode: () => {},
@@ -87,7 +86,6 @@ export const useModelTraceExplorerViewState = () => {
 
 export const ModelTraceExplorerViewStateProvider = ({
   modelTrace,
-  initialActiveView,
   selectedSpanIdOnRender,
   // assessments pane is disabled if
   // the trace doesn't exist in the backend
@@ -114,7 +112,6 @@ export const ModelTraceExplorerViewStateProvider = ({
   const selectedSpanOnRender = searchTreeBySpanId(rootNode, selectedSpanIdOnRender);
   const defaultSelectedNode = selectedSpanOnRender ?? rootNode ?? undefined;
   const hasAssessments = (defaultSelectedNode?.assessments?.length ?? 0) > 0;
-  const hasInputsOrOutputs = !isNil(rootNode?.inputs) || !isNil(rootNode?.outputs);
 
   const preferences = useModelTraceExplorerPreferences();
 
@@ -132,16 +129,7 @@ export const ModelTraceExplorerViewStateProvider = ({
     };
   }, []);
 
-  const [activeView, setActiveViewInternal] = useState<'summary' | 'detail'>(() => {
-    if (preferences.activeView !== undefined) {
-      return preferences.activeView;
-    }
-    // Default to detail view when rootNode is null
-    if (!rootNode) {
-      return 'detail';
-    }
-    return initialActiveView ?? (hasInputsOrOutputs ? 'summary' : 'detail');
-  });
+  const [activeView, setActiveViewInternal] = useState<'summary' | 'detail'>('detail');
 
   const setActiveView = useCallback(
     (view: 'summary' | 'detail') => {
@@ -205,13 +193,6 @@ export const ModelTraceExplorerViewStateProvider = ({
     const defaultActiveTab = getDefaultActiveTab(selectedNode);
     setActiveTab(defaultActiveTab);
   }, [selectedNode]);
-
-  // Switch to detail view if currently on summary and rootNode becomes null
-  useEffect(() => {
-    if (!rootNode && activeView === 'summary') {
-      setActiveView('detail');
-    }
-  }, [rootNode, activeView, setActiveView]);
 
   const value = useMemo(
     () => ({
