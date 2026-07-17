@@ -6,7 +6,6 @@ import { FormattedMessage } from '@databricks/i18n';
 import { CodeSnippetRenderMode, type ModelTraceSpanNode, type SearchMatch } from '../ModelTrace.types';
 import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
 import { useModelTraceExplorerPreferences } from '../ModelTraceExplorerPreferencesContext';
-import { SpanModelCostBadge } from './SpanModelCostBadge';
 
 export function ModelTraceExplorerAttributesTab({
   activeSpan,
@@ -32,17 +31,14 @@ export function ModelTraceExplorerAttributesTab({
   if (!containsAttributes || isNil(attributes)) {
     return (
       <div css={{ marginTop: theme.spacing.sm }}>
-        <SpanModelCostBadge css={{ marginLeft: theme.spacing.sm }} activeSpan={activeSpan} />
-        <div css={{ marginTop: theme.spacing.sm }}>
-          <Empty
-            description={
-              <FormattedMessage
-                defaultMessage="No attributes found"
-                description="Empty state for the attributes tab in the model trace explorer. Attributes are properties of a span that the user defines."
-              />
-            }
-          />
-        </div>
+        <Empty
+          description={
+            <FormattedMessage
+              defaultMessage="No attributes found"
+              description="Empty state for the attributes tab in the model trace explorer. Attributes are properties of a span that the user defines."
+            />
+          }
+        />
       </div>
     );
   }
@@ -56,7 +52,6 @@ export function ModelTraceExplorerAttributesTab({
         padding: theme.spacing.sm,
       }}
     >
-      <SpanModelCostBadge activeSpan={activeSpan} />
       {Object.entries(attributes).map(([key, value]) => (
         <ModelTraceExplorerCodeSnippet
           key={key}

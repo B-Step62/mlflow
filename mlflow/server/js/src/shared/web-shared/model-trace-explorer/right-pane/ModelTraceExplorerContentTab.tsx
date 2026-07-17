@@ -1,9 +1,6 @@
-import { useDesignSystemTheme } from '@databricks/design-system';
-
 import { ModelTraceExplorerDefaultSpanView } from './ModelTraceExplorerDefaultSpanView';
 import type { ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
 import { useModelTraceExplorerPreferences } from '../ModelTraceExplorerPreferencesContext';
-import { SpanModelCostBadge } from './SpanModelCostBadge';
 
 export function ModelTraceExplorerContentTab({
   activeSpan,
@@ -16,7 +13,6 @@ export function ModelTraceExplorerContentTab({
   searchFilter: string;
   activeMatch: SearchMatch | null;
 }) {
-  const { theme } = useDesignSystemTheme();
   const { renderMode } = useModelTraceExplorerPreferences();
 
   return (
@@ -27,16 +23,6 @@ export function ModelTraceExplorerContentTab({
       className={className}
       data-testid="model-trace-explorer-content-tab"
     >
-      <div
-        css={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          marginBottom: theme.spacing.sm,
-          marginRight: 'auto',
-        }}
-      >
-        <SpanModelCostBadge css={{ marginRight: 'auto' }} activeSpan={activeSpan} />
-      </div>
       <ModelTraceExplorerDefaultSpanView
         activeSpan={activeSpan}
         className={className}
