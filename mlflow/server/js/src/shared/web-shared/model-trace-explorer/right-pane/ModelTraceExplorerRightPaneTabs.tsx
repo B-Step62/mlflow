@@ -2,20 +2,20 @@ import type { Interpolation, Theme } from '@emotion/react';
 import { isNil } from 'lodash';
 import React, { useCallback, useMemo, useState } from 'react';
 
-import { Empty, Tabs, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Empty, Tabs, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
 import { ModelTraceExplorerAttributesTab } from './ModelTraceExplorerAttributesTab';
 import { ModelTraceExplorerChatTab } from './ModelTraceExplorerChatTab';
 import { ModelTraceExplorerContentTab } from './ModelTraceExplorerContentTab';
 import { ModelTraceExplorerEventsTab } from './ModelTraceExplorerEventsTab';
+import { ModelTraceExplorerRightPaneHeader } from './ModelTraceExplorerRightPaneHeader';
 import { SimplifiedAssessmentView } from './SimplifiedAssessmentView';
-import type { ModelTraceExplorerTab, ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
+import type { ModelTrace, ModelTraceExplorerTab, ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
 import { getSpanExceptionCount, getTraceLevelAssessments } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerBadge } from '../ModelTraceExplorerBadge';
 import ModelTraceExplorerResizablePane from '../ModelTraceExplorerResizablePane';
 import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
-import { AssessmentPaneToggle } from '../assessments-pane/AssessmentPaneToggle';
 import { AssessmentsPane } from '../assessments-pane/AssessmentsPane';
 import { ASSESSMENT_PANE_MIN_WIDTH } from '../assessments-pane/AssessmentsPane.utils';
 
@@ -25,12 +25,14 @@ export const RIGHT_PANE_MIN_WIDTH = CONTENT_PANE_MIN_WIDTH + ASSESSMENT_PANE_MIN
 
 function ModelTraceExplorerRightPaneTabsImpl({
   activeSpan,
+  modelTraceInfo,
   searchFilter,
   activeMatch,
   activeTab,
   setActiveTab,
 }: {
   activeSpan: ModelTraceSpanNode | undefined;
+  modelTraceInfo: ModelTrace['info'];
   searchFilter: string;
   activeMatch: SearchMatch | null;
   activeTab: ModelTraceExplorerTab;
@@ -67,7 +69,6 @@ function ModelTraceExplorerRightPaneTabsImpl({
   const exceptionCount = getSpanExceptionCount(activeSpan);
   const hasException = exceptionCount > 0;
   const hasInputsOrOutputs = !isNil(activeSpan?.inputs) || !isNil(activeSpan?.outputs);
-  const activeSpanTitle = typeof activeSpan.title === 'string' ? activeSpan.title : undefined;
 
   const tabContent = (
     <Tabs.Root
@@ -83,52 +84,11 @@ function ModelTraceExplorerRightPaneTabsImpl({
       value={activeTab}
       onValueChange={(tab: string) => setActiveTab(tab as ModelTraceExplorerTab)}
     >
-      <div
-        css={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: theme.spacing.sm,
-          minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
-          padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-          borderTop: `1px solid ${theme.colors.border}`,
-          borderBottom: `1px solid ${theme.colors.border}`,
-          boxSizing: 'border-box',
-        }}
-      >
-        <div
-          css={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.xs,
-            minWidth: 0,
-          }}
-        >
-          {activeSpan.icon}
-          <Typography.Text
-            bold
-            title={activeSpanTitle}
-            css={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-            }}
-          >
-            {activeSpan.title}
-          </Typography.Text>
-        </div>
-        {!displayReadOnlyAssessments && !assessmentsPaneExpanded && (
-          <div css={{ flexShrink: 0 }}>
-            <AssessmentPaneToggle>
-              <FormattedMessage
-                defaultMessage="Annotate"
-                description="Label for the button to open the assessments pane from the trace details column"
-              />
-            </AssessmentPaneToggle>
-          </div>
-        )}
-      </div>
+      <ModelTraceExplorerRightPaneHeader
+        activeSpan={activeSpan}
+        modelTraceInfo={modelTraceInfo}
+        showAssessmentsToggle={!displayReadOnlyAssessments && !assessmentsPaneExpanded}
+      />
       <Tabs.List
         css={{
           padding: 0,

@@ -10,6 +10,7 @@ import {
   Notification,
   SparkleIcon,
   Tooltip,
+  Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
@@ -132,6 +133,7 @@ export const ModelTraceExplorerDrawer = ({
 
   const showAddToDatasetButton = Boolean(renderExportTracesToDatasetsModal && experimentId && traceInfo);
   const handleAddToDatasetClick = useCallback(() => setShowDatasetModal(true), []);
+  const compactTraceId = traceInfo?.trace_id ? traceInfo.trace_id.slice(0, 8) : undefined;
 
   const showFlagGuidance = showFlagForReviewButton && !hasSeenFlagGuidance && isDrawerAnimationDone;
 
@@ -184,7 +186,31 @@ export const ModelTraceExplorerDrawer = ({
             >
               <ChevronRightIcon />
             </Button>
-            <div css={{ flex: 1, overflow: 'hidden' }}>{renderModalTitle()}</div>
+            <div css={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+              {compactTraceId ? (
+                <Tooltip
+                  componentId="mlflow.evaluations_review.modal.trace-id-tooltip"
+                  content={traceInfo?.trace_id}
+                  maxWidth={400}
+                >
+                  <Typography.Text
+                    color="secondary"
+                    css={{
+                      fontFamily: 'monospace',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <FormattedMessage
+                      defaultMessage="trace #{traceId}"
+                      description="Compact trace id label shown in the trace drawer header"
+                      values={{ traceId: compactTraceId }}
+                    />
+                  </Typography.Text>
+                </Tooltip>
+              ) : (
+                renderModalTitle()
+              )}
+            </div>
             {isLocalServer && (
               // data-assistant-ui marks this as assistant UI so AssistantAwareDrawer won't treat
               // the click as an outside-click and close. See AssistantAwareDrawer.tsx.

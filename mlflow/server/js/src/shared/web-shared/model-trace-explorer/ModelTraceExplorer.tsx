@@ -10,7 +10,6 @@ import { ModelTraceExplorerGenericErrorState } from './ModelTraceExplorerGeneric
 import { ModelTraceExplorerSkeleton } from './ModelTraceExplorerSkeleton';
 import { ModelTraceExplorerTraceTooLargeView } from './ModelTraceExplorerTraceTooLargeView';
 import { ModelTraceExplorerViewStateProvider } from './ModelTraceExplorerViewStateContext';
-import { ModelTraceHeaderDetails } from './ModelTraceHeaderDetails';
 import { useGetModelTraceInfo } from './hooks/useGetModelTraceInfo';
 import { useTraceCachedActions } from './hooks/useTraceCachedActions';
 
@@ -96,15 +95,12 @@ export const ModelTraceExplorerImpl = ({
         {showLoadingState ? (
           <ModelTraceExplorerSkeleton />
         ) : (
-          <>
-            <ModelTraceHeaderDetails modelTraceInfo={modelTrace.info} />
-            <ModelTraceExplorerContent
-              modelTraceInfo={modelTrace.info}
-              className={className}
-              selectedSpanId={selectedSpanId}
-              onSelectSpan={onSelectSpan}
-            />
-          </>
+          <ModelTraceExplorerContent
+            modelTraceInfo={modelTrace.info}
+            className={className}
+            selectedSpanId={selectedSpanId}
+            onSelectSpan={onSelectSpan}
+          />
         )}
       </ModelTraceExplorerViewStateProvider>
     </ContextProviders>

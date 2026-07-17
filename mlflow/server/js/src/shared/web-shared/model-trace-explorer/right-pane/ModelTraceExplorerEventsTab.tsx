@@ -7,7 +7,6 @@ import { CodeSnippetRenderMode, type ModelTraceSpanNode, type SearchMatch } from
 import { getEventAttributeKey } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
-import { SpanModelCostBadge } from './SpanModelCostBadge';
 
 export function ModelTraceExplorerEventsTab({
   activeSpan,
@@ -25,27 +24,20 @@ export function ModelTraceExplorerEventsTab({
   if (!Array.isArray(events) || events.length === 0) {
     return (
       <div css={{ marginTop: theme.spacing.sm }}>
-        <SpanModelCostBadge css={{ marginLeft: theme.spacing.sm }} activeSpan={activeSpan} />
-        <div css={{ marginTop: theme.spacing.sm }}>
-          <Empty
-            description={
-              <FormattedMessage
-                defaultMessage="No events found"
-                description="Empty state for the events tab in the model trace explorer. Events are logs of arbitrary things (e.g. exceptions) that occur during the execution of a span, and can be user-defined."
-              />
-            }
-          />
-        </div>
+        <Empty
+          description={
+            <FormattedMessage
+              defaultMessage="No events found"
+              description="Empty state for the events tab in the model trace explorer. Events are logs of arbitrary things (e.g. exceptions) that occur during the execution of a span, and can be user-defined."
+            />
+          }
+        />
       </div>
     );
   }
 
   return (
     <div>
-      <SpanModelCostBadge
-        css={{ marginLeft: theme.spacing.sm, marginBlock: theme.spacing.sm }}
-        activeSpan={activeSpan}
-      />
       {events.map((event, index) => {
         const attributes = event.attributes;
         const title =

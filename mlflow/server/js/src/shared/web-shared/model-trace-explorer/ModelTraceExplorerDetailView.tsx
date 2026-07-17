@@ -429,6 +429,7 @@ export const ModelTraceExplorerDetailView = ({
         rightChild={
           <ModelTraceExplorerRightPaneTabs
             activeSpan={selectedNode}
+            modelTraceInfo={modelTraceInfo}
             searchFilter={searchFilter}
             activeMatch={matchData.match}
             activeTab={activeTab}

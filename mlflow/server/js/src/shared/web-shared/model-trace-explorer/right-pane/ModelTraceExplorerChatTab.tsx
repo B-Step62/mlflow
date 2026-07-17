@@ -5,7 +5,6 @@ import { ModelTraceExplorerChatTool } from './ModelTraceExplorerChatTool';
 import { ModelTraceExplorerConversation } from './ModelTraceExplorerConversation';
 import type { ModelTraceSpanNode } from '../ModelTrace.types';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
-import { SpanModelCostBadge } from './SpanModelCostBadge';
 
 export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTraceSpanNode }) {
   const { theme } = useDesignSystemTheme();
@@ -18,10 +17,6 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
       }}
       data-testid="model-trace-explorer-chat-tab"
     >
-      <SpanModelCostBadge
-        css={{ marginBlock: theme.spacing.sm, marginLeft: theme.spacing.sm }}
-        activeSpan={activeSpan}
-      />
       {chatTools && (
         <ModelTraceExplorerCollapsibleSection
           withBorder
