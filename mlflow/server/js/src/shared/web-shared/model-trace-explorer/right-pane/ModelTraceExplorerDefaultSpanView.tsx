@@ -1,13 +1,11 @@
 import { isNil } from 'lodash';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
-import { useDesignSystemTheme } from '@databricks/design-system';
+import { Button, ChevronDownIcon, DropdownMenu, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 
-import type { ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
-import { CodeSnippetRenderMode } from '../ModelTrace.types';
-import { createListFromObject, buildAggregatedJsonFromKeyValueList } from '../ModelTraceExplorer.utils';
-import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
+import type { ModelTraceExplorerRenderMode, ModelTraceSpanNode, SearchMatch } from '../ModelTrace.types';
+import { createListFromObject } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerCollapsibleSection } from '../ModelTraceExplorerCollapsibleSection';
 import { ModelTraceExplorerFieldRenderer } from '../field-renderers/ModelTraceExplorerFieldRenderer';
 
@@ -16,19 +14,18 @@ export function ModelTraceExplorerDefaultSpanView({
   className,
   searchFilter,
   activeMatch,
-  renderMode = 'default',
+  defaultRenderMode,
 }: {
   activeSpan: ModelTraceSpanNode | undefined;
   className?: string;
   searchFilter: string;
   activeMatch: SearchMatch | null;
-  renderMode?: 'default' | 'json' | 'table';
+  defaultRenderMode: ModelTraceExplorerRenderMode;
 }) {
   const { theme } = useDesignSystemTheme();
+  const [fieldRenderModes, setFieldRenderModes] = useState<Record<string, ModelTraceExplorerRenderMode>>({});
   const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
   const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
-  const aggregatedInputJson = useMemo(() => buildAggregatedJsonFromKeyValueList(inputList), [inputList]);
-  const aggregatedOutputJson = useMemo(() => buildAggregatedJsonFromKeyValueList(outputList), [outputList]);
 
   if (isNil(activeSpan)) {
     return null;
@@ -38,6 +35,95 @@ export function ModelTraceExplorerDefaultSpanView({
   const containsOutputs = outputList.length > 0;
 
   const isActiveMatchSpan = !isNil(activeMatch) && activeMatch.span.key === activeSpan.key;
+
+  const renderModeDropdown = (
+    renderMode: ModelTraceExplorerRenderMode,
+    setRenderMode: (mode: ModelTraceExplorerRenderMode) => void,
+  ) => (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button
+          size="small"
+          componentId="shared.model-trace-explorer.default-span-view.render-mode"
+          type="tertiary"
+          endIcon={<ChevronDownIcon />}
+        >
+          {renderMode === 'default' ? (
+            <FormattedMessage
+              defaultMessage="Default"
+              description="Label for the default render mode in the model trace explorer inputs/outputs section"
+            />
+          ) : renderMode === 'json' ? (
+            <FormattedMessage
+              defaultMessage="JSON"
+              description="Label for the JSON render mode in the model trace explorer inputs/outputs section"
+            />
+          ) : (
+            <FormattedMessage
+              defaultMessage="Table"
+              description="Label for the Table render mode in the model trace explorer inputs/outputs section"
+            />
+          )}
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.RadioGroup
+          componentId="shared.model-trace-explorer.default-span-view.render-mode-radio"
+          value={renderMode}
+          onValueChange={(value) => setRenderMode(value as ModelTraceExplorerRenderMode)}
+        >
+          <DropdownMenu.RadioItem value="default">
+            <DropdownMenu.ItemIndicator />
+            <FormattedMessage
+              defaultMessage="Default"
+              description="Label for the default render mode dropdown item in the model trace explorer inputs/outputs section"
+            />
+          </DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem value="json">
+            <DropdownMenu.ItemIndicator />
+            <FormattedMessage
+              defaultMessage="JSON"
+              description="Label for the JSON render mode dropdown item in the model trace explorer inputs/outputs section"
+            />
+          </DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem value="table">
+            <DropdownMenu.ItemIndicator />
+            <FormattedMessage
+              defaultMessage="Table"
+              description="Label for the Table render mode dropdown item in the model trace explorer inputs/outputs section"
+            />
+          </DropdownMenu.RadioItem>
+        </DropdownMenu.RadioGroup>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  );
+
+  const getFieldRenderMode = (fieldId: string) => fieldRenderModes[fieldId] ?? defaultRenderMode;
+
+  const renderFields = (section: 'inputs' | 'outputs', fields: typeof inputList) => (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+      {fields.map(({ key, value }, index) => {
+        const fieldId = `${section}:${key || index}`;
+        const renderMode = getFieldRenderMode(fieldId);
+
+        return (
+          <ModelTraceExplorerFieldRenderer
+            key={key || index}
+            title={key}
+            data={value}
+            renderMode={renderMode}
+            assessments={activeSpan?.assessments}
+            searchFilter={searchFilter}
+            activeMatch={activeMatch}
+            containsActiveMatch={isActiveMatchSpan && activeMatch.section === section && activeMatch.key === key}
+            titleSuffix={renderModeDropdown(renderMode, (mode) =>
+              setFieldRenderModes((current) => ({ ...current, [fieldId]: mode })),
+            )}
+          />
+        );
+      })}
+    </div>
+  );
 
   return (
     <div data-testid="model-trace-explorer-default-span-view">
@@ -63,40 +149,7 @@ export function ModelTraceExplorerDefaultSpanView({
             </div>
           }
         >
-          {renderMode === 'table' ? (
-            <ModelTraceExplorerCodeSnippet
-              title=""
-              data={aggregatedInputJson}
-              initialRenderMode={CodeSnippetRenderMode.TABLE}
-              hideRenderModeDropdown
-            />
-          ) : renderMode === 'default' ? (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-              {inputList.map(({ key, value }, index) => (
-                <ModelTraceExplorerFieldRenderer
-                  key={key || index}
-                  title={key}
-                  data={value}
-                  renderMode={renderMode}
-                  assessments={activeSpan?.assessments}
-                />
-              ))}
-            </div>
-          ) : (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-              {inputList.map(({ key, value }, index) => (
-                <ModelTraceExplorerCodeSnippet
-                  key={key || index}
-                  title={key}
-                  data={value}
-                  initialRenderMode={renderMode === 'json' ? CodeSnippetRenderMode.JSON : undefined}
-                  searchFilter={searchFilter}
-                  activeMatch={activeMatch}
-                  containsActiveMatch={isActiveMatchSpan && activeMatch.section === 'inputs' && activeMatch.key === key}
-                />
-              ))}
-            </div>
-          )}
+          {renderFields('inputs', inputList)}
         </ModelTraceExplorerCollapsibleSection>
       )}
       {containsOutputs && (
@@ -112,42 +165,7 @@ export function ModelTraceExplorerDefaultSpanView({
             </div>
           }
         >
-          {renderMode === 'table' ? (
-            <ModelTraceExplorerCodeSnippet
-              title=""
-              data={aggregatedOutputJson}
-              initialRenderMode={CodeSnippetRenderMode.TABLE}
-              hideRenderModeDropdown
-            />
-          ) : renderMode === 'default' ? (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-              {outputList.map(({ key, value }, index) => (
-                <ModelTraceExplorerFieldRenderer
-                  key={key || index}
-                  title={key}
-                  data={value}
-                  renderMode={renderMode}
-                  assessments={activeSpan?.assessments}
-                />
-              ))}
-            </div>
-          ) : (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-              {outputList.map(({ key, value }) => (
-                <ModelTraceExplorerCodeSnippet
-                  key={key}
-                  title={key}
-                  data={value}
-                  initialRenderMode={renderMode === 'json' ? CodeSnippetRenderMode.JSON : undefined}
-                  searchFilter={searchFilter}
-                  activeMatch={activeMatch}
-                  containsActiveMatch={
-                    isActiveMatchSpan && activeMatch.section === 'outputs' && activeMatch.key === key
-                  }
-                />
-              ))}
-            </div>
-          )}
+          {renderFields('outputs', outputList)}
         </ModelTraceExplorerCollapsibleSection>
       )}
     </div>

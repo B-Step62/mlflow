@@ -65,7 +65,7 @@ export const ModelTraceExplorerViewStateContext = createContext<ModelTraceExplor
   setSelectedNode: () => {},
   activeTab: 'content',
   setActiveTab: () => {},
-  showGraph: true,
+  showGraph: false,
   setShowGraph: () => {},
   showTimelineTreeGantt: false,
   setShowTimelineTreeGantt: () => {},
@@ -154,7 +154,7 @@ export const ModelTraceExplorerViewStateProvider = ({
   const [selectedNode, setSelectedNode] = useState<ModelTraceSpanNode | undefined>(defaultSelectedNode);
   const defaultActiveTab = getDefaultActiveTab(selectedNode);
   const [activeTab, setActiveTab] = useState<ModelTraceExplorerTab>(defaultActiveTab);
-  const [showGraph, setShowGraph] = useState(Boolean(rootNode));
+  const [showGraph, setShowGraph] = useState(false);
   const [showTimelineTreeGantt, setShowTimelineTreeGantt] = useState(false);
   const [assessmentsPaneExpanded, setAssessmentsPaneExpandedInternal] = useState(() => {
     if (preferences.assessmentsPaneExpanded !== undefined) {

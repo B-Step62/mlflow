@@ -9,7 +9,7 @@ import { ModelTraceExplorerChatToolsRenderer } from './ModelTraceExplorerChatToo
 import { ModelTraceExplorerRetrieverFieldRenderer } from './ModelTraceExplorerRetrieverFieldRenderer';
 import { ModelTraceExplorerTextFieldRenderer } from './ModelTraceExplorerTextFieldRenderer';
 import { containsAttachmentUri, parseAttachmentUri } from '../attachment-utils';
-import type { Assessment } from '../ModelTrace.types';
+import type { Assessment, SearchMatch } from '../ModelTrace.types';
 import { CodeSnippetRenderMode } from '../ModelTrace.types';
 import { isModelTraceChatTool, isRetrieverDocument, normalizeConversation } from '../ModelTraceExplorer.utils';
 import { ModelTraceExplorerCodeSnippet } from '../ModelTraceExplorerCodeSnippet';
@@ -50,6 +50,10 @@ export const ModelTraceExplorerFieldRenderer = ({
   chatMessageFormat,
   maxVisibleMessages = DEFAULT_MAX_VISIBLE_CHAT_MESSAGES,
   assessments,
+  titleSuffix,
+  searchFilter,
+  activeMatch,
+  containsActiveMatch,
 }: {
   title: string;
   data: string;
@@ -57,6 +61,10 @@ export const ModelTraceExplorerFieldRenderer = ({
   chatMessageFormat?: string;
   maxVisibleMessages?: number;
   assessments?: Assessment[];
+  titleSuffix?: React.ReactNode;
+  searchFilter?: string;
+  activeMatch?: SearchMatch | null;
+  containsActiveMatch?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [messagesExpanded, setMessagesExpanded] = useState(false);
@@ -99,10 +107,22 @@ export const ModelTraceExplorerFieldRenderer = ({
           borderRadius: theme.borders.borderRadiusSm,
         }}
       >
-        {title && (
-          <Typography.Title level={4} color="secondary" withoutMargins css={{ marginLeft: theme.spacing.xs }}>
-            {title}
-          </Typography.Title>
+        {(title || titleSuffix) && (
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingInline: theme.spacing.xs,
+            }}
+          >
+            {title && (
+              <Typography.Title level={4} color="secondary" withoutMargins>
+                {title}
+              </Typography.Title>
+            )}
+            {titleSuffix}
+          </div>
         )}
         {shouldTruncateMessages && (
           <Typography.Link
@@ -130,15 +150,48 @@ export const ModelTraceExplorerFieldRenderer = ({
   }
 
   if (renderMode === 'json') {
-    return <ModelTraceExplorerCodeSnippet title={title} data={data} initialRenderMode={CodeSnippetRenderMode.JSON} />;
+    return (
+      <ModelTraceExplorerCodeSnippet
+        title={title}
+        data={data}
+        initialRenderMode={CodeSnippetRenderMode.JSON}
+        titleSuffix={titleSuffix}
+        searchFilter={searchFilter}
+        activeMatch={activeMatch}
+        containsActiveMatch={containsActiveMatch}
+        hideRenderModeDropdown={Boolean(titleSuffix)}
+      />
+    );
   }
 
   if (renderMode === 'text') {
-    return <ModelTraceExplorerCodeSnippet title={title} data={data} initialRenderMode={CodeSnippetRenderMode.TEXT} />;
+    return (
+      <ModelTraceExplorerCodeSnippet
+        title={title}
+        data={data}
+        initialRenderMode={CodeSnippetRenderMode.TEXT}
+        titleSuffix={titleSuffix}
+        searchFilter={searchFilter}
+        activeMatch={activeMatch}
+        containsActiveMatch={containsActiveMatch}
+        hideRenderModeDropdown={Boolean(titleSuffix)}
+      />
+    );
   }
 
   if (renderMode === 'table') {
-    return <ModelTraceExplorerCodeSnippet title={title} data={data} initialRenderMode={CodeSnippetRenderMode.TABLE} />;
+    return (
+      <ModelTraceExplorerCodeSnippet
+        title={title}
+        data={data}
+        initialRenderMode={CodeSnippetRenderMode.TABLE}
+        titleSuffix={titleSuffix}
+        searchFilter={searchFilter}
+        activeMatch={activeMatch}
+        containsActiveMatch={containsActiveMatch}
+        hideRenderModeDropdown={Boolean(titleSuffix)}
+      />
+    );
   }
 
   if (dataIsScalar) {
@@ -148,6 +201,7 @@ export const ModelTraceExplorerFieldRenderer = ({
         return (
           <ModelTraceExplorerAttachmentRenderer
             title={title}
+            titleSuffix={titleSuffix}
             attachmentId={attachment.attachmentId}
             traceId={attachment.traceId}
             contentType={attachment.contentType}
@@ -156,15 +210,22 @@ export const ModelTraceExplorerFieldRenderer = ({
         );
       }
     }
-    return <ModelTraceExplorerTextFieldRenderer title={title} value={String(parsedData)} />;
+    return <ModelTraceExplorerTextFieldRenderer title={title} titleSuffix={titleSuffix} value={String(parsedData)} />;
   }
 
   if (isChatTools) {
-    return <ModelTraceExplorerChatToolsRenderer title={title} tools={parsedData} />;
+    return <ModelTraceExplorerChatToolsRenderer title={title} titleSuffix={titleSuffix} tools={parsedData} />;
   }
 
   if (isRetrieverDocuments) {
-    return <ModelTraceExplorerRetrieverFieldRenderer title={title} documents={parsedData} assessments={assessments} />;
+    return (
+      <ModelTraceExplorerRetrieverFieldRenderer
+        title={title}
+        titleSuffix={titleSuffix}
+        documents={parsedData}
+        assessments={assessments}
+      />
+    );
   }
 
   // Check for attachment URIs embedded in complex JSON structures
@@ -183,11 +244,18 @@ export const ModelTraceExplorerFieldRenderer = ({
               size={att.size}
             />
           ))}
-          <ModelTraceExplorerCodeSnippet title={title} data={data} />
+          <ModelTraceExplorerCodeSnippet title={title} titleSuffix={titleSuffix} data={data} />
         </div>
       );
     }
   }
 
-  return <ModelTraceExplorerCodeSnippet title={title} data={data} />;
+  return (
+    <ModelTraceExplorerCodeSnippet
+      title={title}
+      data={data}
+      titleSuffix={titleSuffix}
+      hideRenderModeDropdown={Boolean(titleSuffix)}
+    />
+  );
 };

@@ -47,6 +47,7 @@ export function ModelTraceExplorerCodeSnippet({
   initialRenderMode,
   initialExpanded,
   hideRenderModeDropdown = false,
+  titleSuffix,
 }: {
   title: string;
   tokens?: number;
@@ -61,6 +62,7 @@ export function ModelTraceExplorerCodeSnippet({
   initialExpanded?: boolean;
   /** When true, the per-snippet render mode dropdown is hidden (e.g. for aggregated table view). */
   hideRenderModeDropdown?: boolean;
+  titleSuffix?: React.ReactNode;
 }) {
   const parsedData = useMemo(() => JSON.parse(data), [data]);
   const dataIsString = isString(parsedData);
@@ -80,7 +82,7 @@ export function ModelTraceExplorerCodeSnippet({
   return (
     <div css={{ position: 'relative' }}>
       <div css={{ overflow: 'hidden' }}>
-        {(title || shouldShowRenderModeDropdown) && (
+        {(title || shouldShowRenderModeDropdown || titleSuffix) && (
           <div
             css={{
               display: 'flex',
@@ -153,6 +155,7 @@ export function ModelTraceExplorerCodeSnippet({
                 </DropdownMenu.Root>
               )}
             </div>
+            {titleSuffix}
           </div>
         )}
         <div

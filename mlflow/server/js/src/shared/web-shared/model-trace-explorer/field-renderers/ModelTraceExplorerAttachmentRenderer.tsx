@@ -16,12 +16,14 @@ import { useTraceAttachment } from '../hooks/useTraceAttachment';
 
 export const ModelTraceExplorerAttachmentRenderer = ({
   title,
+  titleSuffix,
   attachmentId,
   traceId,
   contentType,
   size,
 }: {
   title: string;
+  titleSuffix?: React.ReactNode;
   attachmentId: string;
   traceId: string;
   contentType: string;
@@ -65,14 +67,25 @@ export const ModelTraceExplorerAttachmentRenderer = ({
 
   const exceedsRenderLimit = exceedsRenderSizeLimit(contentType, contentLength);
 
+  const titleHeader = (marginBottom = theme.spacing.xs) =>
+    (title || titleSuffix) && (
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom,
+        }}
+      >
+        {title && <Typography.Text bold>{title}</Typography.Text>}
+        {titleSuffix}
+      </div>
+    );
+
   if (exceedsRenderLimit) {
     return (
       <div css={{ padding: theme.spacing.sm }}>
-        {title && (
-          <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-            {title}
-          </Typography.Text>
-        )}
+        {titleHeader()}
         {objectUrl ? (
           <DownloadLink
             url={objectUrl}
@@ -99,11 +112,7 @@ export const ModelTraceExplorerAttachmentRenderer = ({
   if (contentType.startsWith('image/')) {
     return (
       <div css={{ padding: theme.spacing.sm }}>
-        {title && (
-          <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-            {title}
-          </Typography.Text>
-        )}
+        {titleHeader()}
         <img
           src={objectUrl}
           alt={`Attachment ${attachmentId}`}
@@ -136,11 +145,7 @@ export const ModelTraceExplorerAttachmentRenderer = ({
   if (contentType.startsWith('audio/')) {
     return (
       <div css={{ padding: theme.spacing.sm }}>
-        {title && (
-          <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-            {title}
-          </Typography.Text>
-        )}
+        {titleHeader()}
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <audio
           controls
@@ -155,11 +160,7 @@ export const ModelTraceExplorerAttachmentRenderer = ({
   if (contentType === 'application/pdf') {
     return (
       <div css={{ padding: theme.spacing.sm }}>
-        {title && (
-          <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-            {title}
-          </Typography.Text>
-        )}
+        {titleHeader()}
         <iframe
           src={objectUrl}
           title={`PDF Attachment ${attachmentId}`}
@@ -176,6 +177,7 @@ export const ModelTraceExplorerAttachmentRenderer = ({
 
   return (
     <div css={{ padding: theme.spacing.sm }}>
+      {titleHeader()}
       <a href={objectUrl} download={`attachment-${attachmentId}`} onClick={(e) => downloadEventContext.onClick(e)}>
         <FormattedMessage
           defaultMessage="Download attachment ({contentType})"

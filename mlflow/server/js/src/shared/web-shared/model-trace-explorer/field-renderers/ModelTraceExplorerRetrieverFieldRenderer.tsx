@@ -8,10 +8,12 @@ import { ModelTraceExplorerRetrieverDocument } from '../right-pane/ModelTraceExp
 
 export const ModelTraceExplorerRetrieverFieldRenderer = ({
   title,
+  titleSuffix,
   documents,
   assessments,
 }: {
   title: string;
+  titleSuffix?: React.ReactNode;
   documents: RetrieverDocument[];
   assessments?: Assessment[];
 }) => {
@@ -30,14 +32,18 @@ export const ModelTraceExplorerRetrieverFieldRenderer = ({
         marginInline: theme.spacing.sm,
       }}
     >
-      {title && (
+      {(title || titleSuffix) && (
         <div
           css={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
             padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
             borderBottom: `1px solid ${theme.colors.border}`,
           }}
         >
-          <Typography.Text bold>{title}</Typography.Text>
+          {title && <Typography.Text bold>{title}</Typography.Text>}
+          {titleSuffix}
         </div>
       )}
       {documents.map((document, idx) => (

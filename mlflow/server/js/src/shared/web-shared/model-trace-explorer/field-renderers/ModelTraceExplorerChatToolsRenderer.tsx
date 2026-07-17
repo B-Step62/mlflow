@@ -5,9 +5,11 @@ import { ModelTraceExplorerChatTool } from '../right-pane/ModelTraceExplorerChat
 
 export const ModelTraceExplorerChatToolsRenderer = ({
   title,
+  titleSuffix,
   tools,
 }: {
   title: string;
+  titleSuffix?: React.ReactNode;
   tools: ModelTraceChatTool[];
 }) => {
   const { theme } = useDesignSystemTheme();
@@ -22,10 +24,15 @@ export const ModelTraceExplorerChatToolsRenderer = ({
         borderRadius: theme.borders.borderRadiusSm,
       }}
     >
-      {title && (
-        <Typography.Text css={{ marginLeft: theme.spacing.xs }} bold>
-          {title}
-        </Typography.Text>
+      {(title || titleSuffix) && (
+        <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {title && (
+            <Typography.Text css={{ marginLeft: theme.spacing.xs }} bold>
+              {title}
+            </Typography.Text>
+          )}
+          {titleSuffix}
+        </div>
       )}
       {tools.map((tool) => (
         <ModelTraceExplorerChatTool key={tool.function.name} tool={tool} />

@@ -280,7 +280,7 @@ export const GenAiEvaluationTracesReviewModal = React.memo(
           isPreviousAvailable={isPreviousAvailable}
           selectNextEval={selectNextEval}
           selectPreviousEval={selectPreviousEval}
-          renderModalTitle={renderModalTitle}
+          renderModalTitle={() => null}
           isLoading={currentTraceQueryResult.isLoading}
           experimentId={experimentId}
           traceInfo={currentTraceInfo}

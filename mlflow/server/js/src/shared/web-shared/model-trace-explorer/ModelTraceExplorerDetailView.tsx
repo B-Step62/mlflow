@@ -9,7 +9,6 @@ import { ResizableBox } from 'react-resizable';
 import type { ModelTrace, ModelTraceSpanNode } from './ModelTrace.types';
 import type { ModelTraceExplorerResizablePaneRef } from './ModelTraceExplorerResizablePane';
 import ModelTraceExplorerResizablePane from './ModelTraceExplorerResizablePane';
-import ModelTraceExplorerSearchBox from './ModelTraceExplorerSearchBox';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
 import { useModelTraceSearch } from './hooks/useModelTraceSearch';
 import { ModelTraceExplorerRightPaneTabs, RIGHT_PANE_MIN_WIDTH } from './right-pane/ModelTraceExplorerRightPaneTabs';
@@ -244,16 +243,7 @@ export const ModelTraceExplorerDetailView = ({
     [selectedWorkflowNode, sortedSpans, handleNavigateSpan, setSelectedNode],
   );
 
-  const {
-    matchData,
-    searchFilter,
-    setSearchFilter,
-    spanFilterState,
-    setSpanFilterState,
-    filteredTreeNodes,
-    handleNextSearchMatch,
-    handlePreviousSearchMatch,
-  } = useModelTraceSearch({
+  const { matchData, searchFilter, spanFilterState, setSpanFilterState, filteredTreeNodes } = useModelTraceSearch({
     treeNodes: topLevelNodes,
     selectedNode,
     setSelectedNode,
@@ -328,20 +318,6 @@ export const ModelTraceExplorerDetailView = ({
       }}
       className={className}
     >
-      <div
-        css={{
-          padding: theme.spacing.xs,
-          borderBottom: `1px solid ${theme.colors.border}`,
-        }}
-      >
-        <ModelTraceExplorerSearchBox
-          searchFilter={searchFilter}
-          setSearchFilter={setSearchFilter}
-          matchData={matchData}
-          handleNextSearchMatch={handleNextSearchMatch}
-          handlePreviousSearchMatch={handlePreviousSearchMatch}
-        />
-      </div>
       <ModelTraceExplorerResizablePane
         ref={paneRef}
         initialRatio={getPaneSizeRatios().detailsPane}

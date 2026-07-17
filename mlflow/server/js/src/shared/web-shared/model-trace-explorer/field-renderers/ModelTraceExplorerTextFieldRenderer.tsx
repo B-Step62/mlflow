@@ -6,7 +6,15 @@ import { GenAIMarkdownRenderer } from '../../genai-markdown-renderer/GenAIMarkdo
 
 const STRING_TRUNCATION_LIMIT = 400;
 
-export const ModelTraceExplorerTextFieldRenderer = ({ title, value }: { title: string; value: string }) => {
+export const ModelTraceExplorerTextFieldRenderer = ({
+  title,
+  titleSuffix,
+  value,
+}: {
+  title: string;
+  titleSuffix?: React.ReactNode;
+  value: string;
+}) => {
   const { theme } = useDesignSystemTheme();
   const [expanded, setExpanded] = useState(false);
 
@@ -20,7 +28,7 @@ export const ModelTraceExplorerTextFieldRenderer = ({ title, value }: { title: s
         borderRadius: theme.borders.borderRadiusSm,
       }}
     >
-      {title && (
+      {(title || titleSuffix) && (
         <div
           role="button"
           css={{
@@ -31,9 +39,12 @@ export const ModelTraceExplorerTextFieldRenderer = ({ title, value }: { title: s
             marginBottom: theme.spacing.xs,
           }}
         >
-          <Typography.Title css={{ marginLeft: theme.spacing.xs }} level={4} color="secondary" withoutMargins>
-            {title}
-          </Typography.Title>
+          {title && (
+            <Typography.Title css={{ marginLeft: theme.spacing.xs }} level={4} color="secondary" withoutMargins>
+              {title}
+            </Typography.Title>
+          )}
+          {titleSuffix}
         </div>
       )}
       <div

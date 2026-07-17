@@ -1,5 +1,5 @@
 import { jest, beforeAll, afterAll, describe, it, expect } from '@jest/globals';
-import { render, screen, within, waitForElementToBeRemoved, waitFor } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { cloneDeep } from 'lodash';
 import { rest } from 'msw';
@@ -139,35 +139,6 @@ describe('ModelTraceExplorer', () => {
     },
   );
 
-  it('filters the tree based on the search string', async () => {
-    render(<TestComponent modelTrace={MOCK_TRACE} />);
-
-    // de-select "show parents" button so the rest of the test is easier to run
-    const filterButton = screen.getByRole('button', { name: /Filter/i });
-    await userEvent.click(filterButton);
-    const showParentsCheckbox = screen.getByRole('checkbox', { name: /Show all parent spans/i });
-    await userEvent.click(showParentsCheckbox);
-
-    // enter search term
-    const searchBar = screen.getByPlaceholderText('Search');
-
-    await userEvent.type(searchBar, 'rephrase');
-    await waitForElementToBeRemoved(await screen.findByText('document-qa-chain'));
-
-    // Assert that only the filtered span is rendered
-    expect(await screen.findByText('rephrase_chat_to_queue')).toBeInTheDocument();
-
-    await userEvent.clear(searchBar);
-
-    // Assert that the tree is reset
-    expect(await screen.findByText('document-qa-chain')).toBeInTheDocument();
-
-    await userEvent.type(searchBar, 'string with no match');
-
-    // Assert that no spans are rendered
-    expect(await screen.findByText('No results found. Try using a different search term.')).toBeInTheDocument();
-  });
-
   it('rerenders only when a new root span ID is provided', async () => {
     const { rerender } = render(<TestComponent modelTrace={MOCK_TRACE} />);
 
@@ -201,78 +172,6 @@ describe('ModelTraceExplorer', () => {
 
     // expect that the span selection doesn't change if the previous node is still in the tree
     expect(await screen.findByText('rephrase_chat_to_queue-input')).toBeInTheDocument();
-  });
-
-  it('should allow jumping to matches', async () => {
-    render(<TestComponent modelTrace={MOCK_TRACE} />);
-
-    // Search for the word "input"
-    const searchBar = screen.getByPlaceholderText('Search');
-    await userEvent.type(searchBar, 'input');
-
-    // expect 3 matches (one in each span)
-    expect(await screen.findByText('1 / 3')).toBeInTheDocument();
-
-    // assert that the first span is selected by checking for the output
-    // text (since the input text is broken up by a highlighted span)
-    expect(await screen.findByText('document-qa-chain-output')).toBeInTheDocument();
-
-    // next match
-    const nextButton = await screen.findByTestId('next-search-match');
-    await userEvent.click(nextButton);
-
-    // assert that match label updates, and new span is selected
-    expect(await screen.findByText('2 / 3')).toBeInTheDocument();
-    expect(await screen.findByText('_generate_response-output')).toBeInTheDocument();
-
-    await userEvent.click(nextButton);
-    expect(await screen.findByText('3 / 3')).toBeInTheDocument();
-    expect(await screen.findByText('rephrase_chat_to_queue-output')).toBeInTheDocument();
-
-    // user shouldn't be able to progress past the last match
-    await userEvent.click(nextButton);
-    expect(await screen.findByText('3 / 3')).toBeInTheDocument();
-    expect(await screen.findByText('rephrase_chat_to_queue-output')).toBeInTheDocument();
-
-    const prevButton = await screen.findByTestId('prev-search-match');
-    await userEvent.click(prevButton);
-    expect(await screen.findByText('2 / 3')).toBeInTheDocument();
-    expect(await screen.findByText('_generate_response-output')).toBeInTheDocument();
-
-    await userEvent.click(prevButton);
-    expect(await screen.findByText('1 / 3')).toBeInTheDocument();
-    expect(await screen.findByText('document-qa-chain-output')).toBeInTheDocument();
-
-    // user shouldn't be able to progress past the first match
-    await userEvent.click(prevButton);
-    expect(await screen.findByText('1 / 3')).toBeInTheDocument();
-    expect(await screen.findByText('document-qa-chain-output')).toBeInTheDocument();
-  });
-
-  it('should open the correct tabs when searching', async () => {
-    const trace = {
-      data: {
-        spans: [MOCK_EVENTS_SPAN],
-      },
-      info: {},
-    };
-
-    render(<TestComponent modelTrace={trace} />);
-
-    // expect that the content tab is open by default
-    expect(await screen.findByText('events_span-input')).toBeInTheDocument();
-
-    // search for an attribute
-    const searchBar = screen.getByPlaceholderText('Search');
-    await userEvent.type(searchBar, 'top-level-attribute');
-
-    // expect that the attributes tab is open
-    expect(await screen.findByText('top-level-attribute')).toBeInTheDocument();
-
-    await userEvent.clear(searchBar);
-    await userEvent.type(searchBar, 'event1-attr1');
-
-    expect(await screen.findByText('event-level-attribute')).toBeInTheDocument();
   });
 
   it('should default to content tab when the selected node does not have chats', async () => {
