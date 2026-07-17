@@ -2,16 +2,18 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import {
   ApplyDesignSystemContextOverrides,
+  ArrowDownIcon,
+  ArrowUpIcon,
   Button,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CopyIcon,
   DatabaseIcon,
   FlagPointerIcon,
+  FullscreenExitIcon,
+  FullscreenIcon,
+  LinkIcon,
   Notification,
+  SearchIcon,
   SparkleIcon,
   Tooltip,
-  Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
@@ -54,7 +56,6 @@ export const ModelTraceExplorerDrawer = ({
   selectNextEval,
   isPreviousAvailable,
   isNextAvailable,
-  renderModalTitle,
   handleClose,
   children,
   isLoading,
@@ -66,6 +67,8 @@ export const ModelTraceExplorerDrawer = ({
   const [showDatasetModal, setShowDatasetModal] = useState(false);
   const [showCopiedNotification, setShowCopiedNotification] = useState(false);
   const [showCopyError, setShowCopyError] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isSearchVisible, setSearchVisible] = useState(false);
   const {
     renderExportTracesToDatasetsModal,
     renderAddToReviewQueueDropdown,
@@ -106,21 +109,6 @@ export const ModelTraceExplorerDrawer = ({
     }
   }, []);
 
-  const handleCopyTraceIdClick = useCallback(async () => {
-    if (!traceInfo?.trace_id) {
-      return;
-    }
-
-    const success = await copyToClipboard(traceInfo.trace_id);
-    if (success) {
-      setShowCopiedNotification(true);
-      setTimeout(() => setShowCopiedNotification(false), 2000);
-    } else {
-      setShowCopyError(true);
-      setTimeout(() => setShowCopyError(false), 2000);
-    }
-  }, [traceInfo?.trace_id]);
-
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement) {
@@ -132,10 +120,12 @@ export const ModelTraceExplorerDrawer = ({
           return;
         }
       }
-      if (e.key === 'ArrowLeft' && isPreviousAvailable) {
+      if (e.key === 'ArrowUp' && isPreviousAvailable) {
+        e.preventDefault();
         e.stopPropagation();
         selectPreviousEval();
-      } else if (e.key === 'ArrowRight' && isNextAvailable) {
+      } else if (e.key === 'ArrowDown' && isNextAvailable) {
+        e.preventDefault();
         e.stopPropagation();
         selectNextEval();
       }
@@ -152,7 +142,8 @@ export const ModelTraceExplorerDrawer = ({
 
   const showAddToDatasetButton = Boolean(renderExportTracesToDatasetsModal && experimentId && traceInfo);
   const handleAddToDatasetClick = useCallback(() => setShowDatasetModal(true), []);
-  const compactTraceId = traceInfo?.trace_id ? traceInfo.trace_id.slice(0, 8) : undefined;
+  const handleToggleFullscreen = useCallback(() => setIsFullscreen((value) => !value), []);
+  const handleFindClick = useCallback(() => setSearchVisible((visible) => !visible), []);
 
   const showFlagGuidance = showFlagForReviewButton && !hasSeenFlagGuidance && isDrawerAnimationDone;
 
@@ -255,71 +246,75 @@ export const ModelTraceExplorerDrawer = ({
         }
       }}
     >
+      {isFullscreen && (
+        <Global
+          styles={{
+            '[data-component-id="mlflow.evaluations_review.modal"]': {
+              left: '0 !important',
+              right: '0 !important',
+              width: '100vw !important',
+              minWidth: '100vw !important',
+              maxWidth: 'none !important',
+              height: '100vh !important',
+            },
+            '[data-drawer-resize-handle="true"]': {
+              display: 'none !important',
+            },
+          }}
+        />
+      )}
       <DrawerComponent.Content
         componentId="mlflow.evaluations_review.modal"
-        width={drawerWidth}
+        width={isFullscreen ? '100vw' : drawerWidth}
         title={
           <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
+            <Tooltip
+              componentId="mlflow.evaluations_review.modal.fullscreen-tooltip"
+              content={
+                isFullscreen ? (
+                  <FormattedMessage
+                    defaultMessage="Exit full screen"
+                    description="Tooltip for collapsing the trace drawer from full screen"
+                  />
+                ) : (
+                  <FormattedMessage
+                    defaultMessage="Full screen"
+                    description="Tooltip for expanding the trace drawer to full screen"
+                  />
+                )
+              }
+            >
+              <Button
+                componentId="mlflow.evaluations_review.modal.fullscreen"
+                aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                icon={isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+                onClick={handleToggleFullscreen}
+              />
+            </Tooltip>
             <Button
               componentId="mlflow.evaluations_review.modal.previous_eval"
+              aria-label="Previous trace"
+              icon={<ArrowUpIcon />}
               disabled={!isPreviousAvailable}
               onClick={() => selectPreviousEval()}
-            >
-              <ChevronLeftIcon />
-            </Button>
+            />
             <Button
               componentId="mlflow.evaluations_review.modal.next_eval"
+              aria-label="Next trace"
+              icon={<ArrowDownIcon />}
               disabled={!isNextAvailable}
               onClick={() => selectNextEval()}
-            >
-              <ChevronRightIcon />
-            </Button>
-            <div css={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-              {compactTraceId ? (
-                <Tooltip
-                  componentId="mlflow.evaluations_review.modal.trace-id-tooltip"
-                  content={
-                    <FormattedMessage
-                      defaultMessage="Copy trace ID: {traceId}"
-                      description="Tooltip for copying the trace ID from the trace drawer header"
-                      values={{ traceId: traceInfo?.trace_id }}
-                    />
-                  }
-                  maxWidth={400}
-                >
-                  <Button
-                    componentId="mlflow.evaluations_review.modal.copy_trace_id"
-                    onClick={handleCopyTraceIdClick}
-                    type="tertiary"
-                    icon={<CopyIcon />}
-                    css={{
-                      flexShrink: 1,
-                      minWidth: 0,
-                      maxWidth: '100%',
-                      justifyContent: 'flex-start',
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    <Typography.Text
-                      color="secondary"
-                      size="lg"
-                      css={{
-                        fontFamily: 'monospace',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <FormattedMessage
-                        defaultMessage="trace #{traceId}"
-                        description="Compact trace id label shown in the trace drawer header"
-                        values={{ traceId: compactTraceId }}
-                      />
-                    </Typography.Text>
-                  </Button>
-                </Tooltip>
-              ) : (
-                renderModalTitle()
-              )}
-            </div>
+            />
+            <div
+              css={{
+                width: 1,
+                alignSelf: 'stretch',
+                backgroundColor: theme.colors.border,
+                marginLeft: theme.spacing.xs,
+                marginRight: theme.spacing.xs,
+              }}
+            />
+            <div css={{ flex: 1, overflow: 'hidden', minWidth: 0 }} />
             {isLocalServer && (
               // data-assistant-ui marks this as assistant UI so AssistantAwareDrawer won't treat
               // the click as an outside-click and close. See AssistantAwareDrawer.tsx.
@@ -337,6 +332,24 @@ export const ModelTraceExplorerDrawer = ({
               </Button>
             )}
             <Tooltip
+              componentId="mlflow.evaluations_review.modal.find-tooltip"
+              content={
+                <FormattedMessage
+                  defaultMessage="Find in trace"
+                  description="Tooltip for opening the trace search row"
+                />
+              }
+            >
+              <Button
+                componentId="mlflow.evaluations_review.modal.find-button"
+                icon={<SearchIcon />}
+                onClick={handleFindClick}
+                aria-pressed={isSearchVisible}
+              >
+                <FormattedMessage defaultMessage="Find" description="Label for the trace search button" />
+              </Button>
+            </Tooltip>
+            <Tooltip
               componentId="mlflow.evaluations_review.modal.share-tooltip"
               content={
                 <FormattedMessage
@@ -345,7 +358,11 @@ export const ModelTraceExplorerDrawer = ({
                 />
               }
             >
-              <Button componentId="mlflow.evaluations_review.modal.share-button" onClick={handleShareClick}>
+              <Button
+                componentId="mlflow.evaluations_review.modal.share-button"
+                icon={<LinkIcon />}
+                onClick={handleShareClick}
+              >
                 <FormattedMessage defaultMessage="Share" description="Label for the share trace button" />
               </Button>
             </Tooltip>
@@ -354,6 +371,17 @@ export const ModelTraceExplorerDrawer = ({
         expandContentToFullHeight
         css={[
           {
+            ...(isFullscreen
+              ? {
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: '100vw !important',
+                  minWidth: '100vw !important',
+                  maxWidth: 'none !important',
+                  height: '100vh',
+                }
+              : {}),
             '&>div': {
               overflow: 'hidden',
             },
@@ -372,6 +400,8 @@ export const ModelTraceExplorerDrawer = ({
           <ModelTraceExplorerRightPaneHeaderActionsProvider
             openAddToDatasetModal={showAddToDatasetButton ? handleAddToDatasetClick : undefined}
             rightPaneHeaderActions={rightPaneHeaderActions}
+            isSearchVisible={isSearchVisible}
+            setSearchVisible={setSearchVisible}
           >
             {isLoading ? <ModelTraceExplorerSkeleton /> : <>{children}</>}
           </ModelTraceExplorerRightPaneHeaderActionsProvider>

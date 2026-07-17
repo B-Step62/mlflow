@@ -75,11 +75,12 @@ function Content({
   const { isPanelOpen } = useAssistant();
   const isModal = useContext(AssistantDrawerModalContext);
   const { theme } = useDesignSystemTheme();
+  const isFullWidthDrawer = width === '100vw';
 
   // When assistant is open, position on left and use fixed width
   // When assistant is closed, position on right with user-specified width
-  const position = isPanelOpen ? 'left' : 'right';
-  const baseWidth = isPanelOpen ? ASSISTANT_OPEN_DRAWER_WIDTH : width;
+  const position = !isFullWidthDrawer && isPanelOpen ? 'left' : 'right';
+  const baseWidth = !isFullWidthDrawer && isPanelOpen ? ASSISTANT_OPEN_DRAWER_WIDTH : width;
 
   // Resizable width state
   const [drawerWidth, setDrawerWidth] = useState(() => resolveWidthToPixels(baseWidth));
@@ -88,13 +89,13 @@ function Content({
 
   // Reset width when assistant panel state or initial width changes
   useEffect(() => {
-    setDrawerWidth(resolveWidthToPixels(isPanelOpen ? ASSISTANT_OPEN_DRAWER_WIDTH : width));
-  }, [isPanelOpen, width]);
+    setDrawerWidth(resolveWidthToPixels(!isFullWidthDrawer && isPanelOpen ? ASSISTANT_OPEN_DRAWER_WIDTH : width));
+  }, [isFullWidthDrawer, isPanelOpen, width]);
 
   // While open on the right, this drawer reserves its width on the right edge so the
   // floating Assistant button repositions to its left instead of overlapping it. When
   // the assistant panel is open the drawer flips to the left, leaving the right edge free.
-  useRegisterFloatingObstruction(position === 'right' ? drawerWidth : 0);
+  useRegisterFloatingObstruction(position === 'right' && !isFullWidthDrawer ? drawerWidth : 0);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -151,7 +152,7 @@ function Content({
       {isDragging && <Global styles={{ 'body, body *': { userSelect: 'none', cursor: 'col-resize !important' } }} />}
       <Drawer.Content
         componentId={componentId}
-        width={drawerWidth}
+        width={isFullWidthDrawer ? width : drawerWidth}
         title={title}
         position={position}
         footer={footer}
@@ -178,42 +179,43 @@ function Content({
       >
         {children}
       </Drawer.Content>
-      {createPortal(
-        <div
-          data-drawer-resize-handle="true"
-          onMouseDown={handleMouseDown}
-          css={{
-            position: 'fixed',
-            top: 0,
-            bottom: 0,
-            ...(position === 'right' ? { right: drawerWidth - 6 } : { left: drawerWidth - 6 }),
-            width: 12,
-            cursor: 'col-resize',
-            // Above drawer content (design system uses zIndexBase + 2 for content)
-            zIndex: theme.options.zIndexBase + 3,
-            // Thin centered line shown on hover/active
-            '&::after': {
-              content: '""',
-              position: 'absolute',
+      {!isFullWidthDrawer &&
+        createPortal(
+          <div
+            data-drawer-resize-handle="true"
+            onMouseDown={handleMouseDown}
+            css={{
+              position: 'fixed',
               top: 0,
               bottom: 0,
-              left: '50%',
-              width: 2,
-              transform: 'translateX(-50%)',
-              backgroundColor: 'transparent',
-              borderRadius: 1,
-              transition: 'background-color 0.15s',
-            },
-            '&:hover::after': {
-              backgroundColor: theme.colors.borderDecorative,
-            },
-            '&:active::after': {
-              backgroundColor: theme.colors.border,
-            },
-          }}
-        />,
-        document.body,
-      )}
+              ...(position === 'right' ? { right: drawerWidth - 6 } : { left: drawerWidth - 6 }),
+              width: 12,
+              cursor: 'col-resize',
+              // Above drawer content (design system uses zIndexBase + 2 for content)
+              zIndex: theme.options.zIndexBase + 3,
+              // Thin centered line shown on hover/active
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: '50%',
+                width: 2,
+                transform: 'translateX(-50%)',
+                backgroundColor: 'transparent',
+                borderRadius: 1,
+                transition: 'background-color 0.15s',
+              },
+              '&:hover::after': {
+                backgroundColor: theme.colors.borderDecorative,
+              },
+              '&:active::after': {
+                backgroundColor: theme.colors.border,
+              },
+            }}
+          />,
+          document.body,
+        )}
     </>
   );
 }

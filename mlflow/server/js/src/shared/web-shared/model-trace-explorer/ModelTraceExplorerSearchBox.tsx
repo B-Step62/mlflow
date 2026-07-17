@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
 
 import {
@@ -34,24 +34,36 @@ const ModelTraceExplorerSearchBox = ({
   const debouncedSetSearchFilter = useDebouncedCallback(setSearchFilter, 350);
   const { theme } = useDesignSystemTheme();
 
+  const clearSearch = useCallback(() => {
+    debouncedSetSearchFilter.cancel();
+    setSearchFilter('');
+    setSearchValue('');
+  }, [debouncedSetSearchFilter, setSearchFilter]);
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearchFilter.cancel();
+    };
+  }, [debouncedSetSearchFilter]);
+
   return (
     <div
       css={{
         display: 'flex',
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
         gap: theme.spacing.sm,
+        width: '100%',
       }}
     >
       <Input
         componentId="shared.model-trace-explorer.search-input"
         allowClear
+        autoFocus
         placeholder="Search"
         value={searchValue}
-        onClear={() => {
-          setSearchFilter('');
-          setSearchValue('');
-        }}
+        onClear={clearSearch}
         onChange={(e) => {
           setSearchValue(e.target.value);
           debouncedSetSearchFilter(e.target.value.toLowerCase());

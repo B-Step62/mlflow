@@ -1,14 +1,16 @@
 import { Global } from '@emotion/react';
 import { clamp, values, isString } from 'lodash';
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useDesignSystemTheme } from '@databricks/design-system';
 import { useResizeObserver } from '@databricks/web-shared/hooks';
 import { ResizableBox } from 'react-resizable';
 
 import type { ModelTrace, ModelTraceSpanNode } from './ModelTrace.types';
+import { useModelTraceExplorerContext } from './ModelTraceExplorerContext';
 import type { ModelTraceExplorerResizablePaneRef } from './ModelTraceExplorerResizablePane';
 import ModelTraceExplorerResizablePane from './ModelTraceExplorerResizablePane';
+import ModelTraceExplorerSearchBox from './ModelTraceExplorerSearchBox';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
 import { useModelTraceSearch } from './hooks/useModelTraceSearch';
 import { ModelTraceExplorerRightPaneTabs, RIGHT_PANE_MIN_WIDTH } from './right-pane/ModelTraceExplorerRightPaneTabs';
@@ -90,6 +92,7 @@ export const ModelTraceExplorerDetailView = ({
   const [isResizing, setIsResizing] = useState(false);
   const [isGraphExpanded, setIsGraphExpanded] = useState(false);
   const preExpandPaneRatioRef = useRef<number | null>(null);
+  const { isSearchVisible } = useModelTraceExplorerContext();
 
   // Ratio-based graph height: same pattern as ModelTraceExplorerResizablePane.
   // Store the ratio in a ref so it persists across container resizes without
@@ -243,7 +246,16 @@ export const ModelTraceExplorerDetailView = ({
     [selectedWorkflowNode, sortedSpans, handleNavigateSpan, setSelectedNode],
   );
 
-  const { matchData, searchFilter, spanFilterState, setSpanFilterState, filteredTreeNodes } = useModelTraceSearch({
+  const {
+    matchData,
+    searchFilter,
+    setSearchFilter,
+    spanFilterState,
+    setSpanFilterState,
+    filteredTreeNodes,
+    handleNextSearchMatch,
+    handlePreviousSearchMatch,
+  } = useModelTraceSearch({
     treeNodes: topLevelNodes,
     selectedNode,
     setSelectedNode,
@@ -251,6 +263,12 @@ export const ModelTraceExplorerDetailView = ({
     setExpandedKeys,
     modelTraceInfo,
   });
+
+  useEffect(() => {
+    if (!isSearchVisible) {
+      setSearchFilter('');
+    }
+  }, [isSearchVisible, setSearchFilter]);
 
   const onSelectNode = (node?: ModelTraceSpanNode) => {
     setSelectedNode(node);
@@ -318,6 +336,26 @@ export const ModelTraceExplorerDetailView = ({
       }}
       className={className}
     >
+      {isSearchVisible && (
+        <div
+          css={{
+            display: 'flex',
+            alignItems: 'center',
+            flexShrink: 0,
+            borderBottom: `1px solid ${theme.colors.border}`,
+            backgroundColor: theme.colors.backgroundPrimary,
+            padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+          }}
+        >
+          <ModelTraceExplorerSearchBox
+            searchFilter={searchFilter}
+            setSearchFilter={setSearchFilter}
+            matchData={matchData}
+            handleNextSearchMatch={handleNextSearchMatch}
+            handlePreviousSearchMatch={handlePreviousSearchMatch}
+          />
+        </div>
+      )}
       <ModelTraceExplorerResizablePane
         ref={paneRef}
         initialRatio={getPaneSizeRatios().detailsPane}
@@ -372,6 +410,7 @@ export const ModelTraceExplorerDetailView = ({
                 setSpanFilterState={setSpanFilterState}
                 showGraph={showGraph && graphAvailable}
                 onToggleGraph={graphAvailable ? handleToggleGraph : undefined}
+                traceId={modelTraceInfo.trace_id}
               />
             </div>
 

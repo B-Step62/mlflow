@@ -43,6 +43,8 @@ export interface ModelTraceExplorerContextValue {
   addToDatasetAction?: AddToDatasetAction;
   rightPaneHeaderActions?: ReactNode;
   drawerWidth?: string | number;
+  isSearchVisible?: boolean;
+  setSearchVisible?: (visible: boolean) => void;
 }
 
 const ModelTraceExplorerContext = createContext<ModelTraceExplorerContextValue>({
@@ -50,6 +52,7 @@ const ModelTraceExplorerContext = createContext<ModelTraceExplorerContextValue>(
   DrawerComponent: Drawer,
   addToDatasetAction: undefined,
   rightPaneHeaderActions: undefined,
+  isSearchVisible: false,
 });
 
 interface ModelTraceExplorerContextProviderProps {
@@ -93,16 +96,20 @@ export const ModelTraceExplorerAddToDatasetProvider: React.FC<{
 export const ModelTraceExplorerRightPaneHeaderActionsProvider: React.FC<{
   openAddToDatasetModal?: () => void;
   rightPaneHeaderActions?: ReactNode;
+  isSearchVisible?: boolean;
+  setSearchVisible?: (visible: boolean) => void;
   children: ReactNode;
-}> = ({ openAddToDatasetModal, rightPaneHeaderActions, children }) => {
+}> = ({ openAddToDatasetModal, rightPaneHeaderActions, isSearchVisible, setSearchVisible, children }) => {
   const parent = useContext(ModelTraceExplorerContext);
   const value = useMemo(
     () => ({
       ...parent,
       addToDatasetAction: openAddToDatasetModal ? { openModal: openAddToDatasetModal } : parent.addToDatasetAction,
       rightPaneHeaderActions,
+      isSearchVisible: isSearchVisible ?? parent.isSearchVisible,
+      setSearchVisible: setSearchVisible ?? parent.setSearchVisible,
     }),
-    [parent, openAddToDatasetModal, rightPaneHeaderActions],
+    [parent, openAddToDatasetModal, rightPaneHeaderActions, isSearchVisible, setSearchVisible],
   );
   return <ModelTraceExplorerContext.Provider value={value}>{children}</ModelTraceExplorerContext.Provider>;
 };

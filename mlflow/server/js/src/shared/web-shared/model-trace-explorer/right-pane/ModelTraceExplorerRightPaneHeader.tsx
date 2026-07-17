@@ -313,7 +313,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
       css={{
         display: 'flex',
         flexDirection: 'column',
-        borderTop: `1px solid ${theme.colors.border}`,
+        borderTop: `2px solid ${theme.colors.border}`,
         boxSizing: 'border-box',
       }}
     >

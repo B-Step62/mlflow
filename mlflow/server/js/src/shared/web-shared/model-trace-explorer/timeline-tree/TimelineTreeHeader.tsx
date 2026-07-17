@@ -5,6 +5,7 @@ import {
   ListBorderIcon,
   SegmentedControlButton,
   SegmentedControlGroup,
+  Tag,
   Tooltip,
   Typography,
   useDesignSystemTheme,
@@ -13,6 +14,14 @@ import { FormattedMessage } from '@databricks/i18n';
 
 import { TimelineTreeFilterButton } from './TimelineTreeFilterButton';
 import type { SpanFilterState } from '../ModelTrace.types';
+import { copyToClipboard } from '../../../../common/utils/copyToClipboard';
+
+const getCompactTraceId = (traceId?: string) => {
+  if (!traceId) {
+    return undefined;
+  }
+  return traceId.startsWith('tr-') ? traceId.slice(3, 11) : traceId.slice(0, 8);
+};
 
 export const TimelineTreeHeader = ({
   showTimelineInfo,
@@ -21,6 +30,7 @@ export const TimelineTreeHeader = ({
   setSpanFilterState,
   showGraph,
   onToggleGraph,
+  traceId,
 }: {
   showTimelineInfo: boolean;
   setShowTimelineInfo: (showTimelineInfo: boolean) => void;
@@ -28,15 +38,22 @@ export const TimelineTreeHeader = ({
   setSpanFilterState: (state: SpanFilterState) => void;
   showGraph?: boolean;
   onToggleGraph?: () => void;
+  traceId?: string;
 }) => {
   const { theme } = useDesignSystemTheme();
+  const compactTraceId = getCompactTraceId(traceId);
+  const handleCopyTraceId = async () => {
+    if (traceId) {
+      await copyToClipboard(traceId);
+    }
+  };
 
   return (
     <div
       css={{
         padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
         paddingBottom: 3,
-        borderTop: `1px solid ${theme.colors.border}`,
+        borderTop: `2px solid ${theme.colors.border}`,
         borderBottom: `1px solid ${theme.colors.border}`,
         boxSizing: 'border-box',
         minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
@@ -47,9 +64,56 @@ export const TimelineTreeHeader = ({
         gap: theme.spacing.xs,
       }}
     >
-      <Typography.Text bold css={{ whiteSpace: 'nowrap' }}>
-        <FormattedMessage defaultMessage="Trace" description="Header for the trace column within the MLflow trace UI" />
-      </Typography.Text>
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.xs,
+          minWidth: 0,
+        }}
+      >
+        <Typography.Text bold css={{ whiteSpace: 'nowrap' }}>
+          <FormattedMessage
+            defaultMessage="Trace"
+            description="Header for the trace column within the MLflow trace UI"
+          />
+        </Typography.Text>
+        {traceId && compactTraceId && (
+          <Tooltip
+            componentId="shared.model-trace-explorer.trace-id-badge-tooltip"
+            content={
+              <FormattedMessage
+                defaultMessage="Copy trace ID: {traceId}"
+                description="Tooltip for copying the trace ID from the trace column header"
+                values={{ traceId }}
+              />
+            }
+            maxWidth={400}
+          >
+            <Tag
+              componentId="shared.model-trace-explorer.trace-id-badge"
+              onClick={handleCopyTraceId}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleCopyTraceId();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              css={{
+                cursor: 'pointer',
+                margin: 0,
+                maxWidth: 96,
+              }}
+            >
+              <Typography.Text size="sm" color="secondary" css={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                {compactTraceId}
+              </Typography.Text>
+            </Tag>
+          </Tooltip>
+        )}
+      </div>
       <div css={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.sm, flexShrink: 0 }}>
         {onToggleGraph && (
           <Tooltip

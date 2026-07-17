@@ -117,7 +117,7 @@ export const AssessmentsPane = ({
           gap: theme.spacing.sm,
           minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
           padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-          borderTop: `1px solid ${theme.colors.border}`,
+          borderTop: `2px solid ${theme.colors.border}`,
           borderBottom: `1px solid ${theme.colors.border}`,
           boxSizing: 'border-box',
         }}
