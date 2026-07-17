@@ -12,6 +12,7 @@ import {
   LinkIcon,
   Notification,
   SearchIcon,
+  SendIcon,
   SparkleIcon,
   Tooltip,
   useDesignSystemTheme,
@@ -63,12 +64,14 @@ export const ModelTraceExplorerDrawer = ({
   traceInfo,
 }: ModelTraceExplorerDrawerProps) => {
   const { theme } = useDesignSystemTheme();
-  const { isLocalServer, openPanel } = useAssistant();
+  const { isLocalServer, isStreaming, openPanel, sendMessage } = useAssistant();
   const [showDatasetModal, setShowDatasetModal] = useState(false);
   const [showCopiedNotification, setShowCopiedNotification] = useState(false);
   const [showCopyError, setShowCopyError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSearchVisible, setSearchVisible] = useState(false);
+  const [assistantPrompt, setAssistantPrompt] = useState('');
+  const [isAssistantPromptFocused, setAssistantPromptFocused] = useState(false);
   const {
     renderExportTracesToDatasetsModal,
     renderAddToReviewQueueDropdown,
@@ -144,6 +147,28 @@ export const ModelTraceExplorerDrawer = ({
   const handleAddToDatasetClick = useCallback(() => setShowDatasetModal(true), []);
   const handleToggleFullscreen = useCallback(() => setIsFullscreen((value) => !value), []);
   const handleFindClick = useCallback(() => setSearchVisible((visible) => !visible), []);
+  const assistantPlaceholder = traceInfo?.state === 'ERROR' ? 'Debug error in this trace' : 'Analyze this trace. ';
+
+  const handleAssistantSubmit = useCallback(() => {
+    const prompt = assistantPrompt.trim() || assistantPlaceholder.trim();
+    if (!prompt || isStreaming) {
+      return;
+    }
+    openPanel();
+    sendMessage(prompt);
+    setAssistantPrompt('');
+  }, [assistantPlaceholder, assistantPrompt, isStreaming, openPanel, sendMessage]);
+
+  const handleAssistantKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== 'Enter' || e.nativeEvent.isComposing) {
+        return;
+      }
+      e.preventDefault();
+      handleAssistantSubmit();
+    },
+    [handleAssistantSubmit],
+  );
 
   const showFlagGuidance = showFlagForReviewButton && !hasSeenFlagGuidance && isDrawerAnimationDone;
 
@@ -316,20 +341,69 @@ export const ModelTraceExplorerDrawer = ({
             />
             <div css={{ flex: 1, overflow: 'hidden', minWidth: 0 }} />
             {isLocalServer && (
-              // data-assistant-ui marks this as assistant UI so AssistantAwareDrawer won't treat
-              // the click as an outside-click and close. See AssistantAwareDrawer.tsx.
-              <Button
-                componentId="mlflow.assistant.trace_header_button"
+              <div
                 data-assistant-ui="true"
-                icon={<SparkleIcon color="ai" />}
-                onClick={openPanel}
-                css={{ flexShrink: 0, ...getAiGradientBorderStyle(theme) }}
+                onFocusCapture={() => setAssistantPromptFocused(true)}
+                onBlurCapture={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) {
+                    setAssistantPromptFocused(false);
+                  }
+                }}
+                css={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.xs,
+                  flex: '0 1 340px',
+                  minWidth: 240,
+                  height: 32,
+                  padding: `0 ${theme.spacing.sm}px`,
+                  borderRadius: theme.borders.borderRadiusSm,
+                  ...getAiGradientBorderStyle(theme),
+                }}
               >
-                <FormattedMessage
-                  defaultMessage="Analyze with Assistant"
-                  description="Button that opens the MLflow assistant side panel to analyze the current trace"
+                <SparkleIcon color="ai" css={{ flexShrink: 0, fontSize: 16 }} />
+                <input
+                  aria-label="Ask the MLflow assistant about this trace"
+                  placeholder={assistantPlaceholder}
+                  value={assistantPrompt}
+                  onChange={(e) => setAssistantPrompt(e.target.value)}
+                  onKeyDown={handleAssistantKeyDown}
+                  css={{
+                    minWidth: 0,
+                    flex: 1,
+                    height: '100%',
+                    padding: 0,
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    color: theme.colors.textPrimary,
+                    fontFamily: 'inherit',
+                    fontSize: theme.typography.fontSizeBase,
+                    lineHeight: 'normal',
+                    '&::placeholder': {
+                      color: theme.colors.textPlaceholder,
+                    },
+                  }}
                 />
-              </Button>
+                {isAssistantPromptFocused && (
+                  <Button
+                    componentId="mlflow.assistant.trace_header_send"
+                    aria-label="Send message to assistant"
+                    data-assistant-ui="true"
+                    icon={<SendIcon />}
+                    onClick={handleAssistantSubmit}
+                    disabled={isStreaming}
+                    size="small"
+                    css={{
+                      flexShrink: 0,
+                      minWidth: 24,
+                      width: 24,
+                      height: 24,
+                      padding: 0,
+                    }}
+                  />
+                )}
+              </div>
             )}
             <Tooltip
               componentId="mlflow.evaluations_review.modal.find-tooltip"
