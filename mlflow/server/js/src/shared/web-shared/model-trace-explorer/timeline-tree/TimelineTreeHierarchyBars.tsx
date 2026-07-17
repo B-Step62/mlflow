@@ -12,12 +12,12 @@ const IconBottomConnector = ({ active }: { active: boolean }) => {
       css={{
         position: 'absolute',
         left: '100%',
+        top: theme.spacing.md,
         bottom: 0,
         // not sure why the +1 is necessary but
         // there is a 1 pixel misalignment with the
         // left connector otherwise
         width: SPAN_INDENT_WIDTH / 2 + 1,
-        height: theme.spacing.md,
         boxSizing: 'border-box',
         borderTopRightRadius: theme.borders.borderRadiusMd,
         borderTop: `1px solid ${borderColor}`,
@@ -50,7 +50,7 @@ const IconLeftConnector = ({ active }: { active: boolean }) => {
   );
 };
 
-const VerticalConnector = ({ active }: { active: boolean }) => {
+const VerticalConnector = ({ active, rowHeight }: { active: boolean; rowHeight: number }) => {
   const { theme } = useDesignSystemTheme();
   const borderColor = active ? theme.colors.blue500 : theme.colors.border;
 
@@ -60,7 +60,7 @@ const VerticalConnector = ({ active }: { active: boolean }) => {
         position: 'absolute',
         width: SPAN_INDENT_WIDTH / 2,
         left: '50%',
-        height: SPAN_ROW_HEIGHT,
+        height: rowHeight,
         borderLeft: `1px solid ${borderColor}`,
         boxSizing: 'border-box',
         zIndex: active ? TimelineTreeZIndex.NORMAL : TimelineTreeZIndex.LOW,
@@ -79,6 +79,7 @@ export const TimelineTreeHierarchyBars = ({
   linesToRender,
   hasChildren,
   isExpanded,
+  rowHeight = SPAN_ROW_HEIGHT,
 }: {
   // whether or not the current span is active
   isActiveSpan: boolean;
@@ -88,13 +89,14 @@ export const TimelineTreeHierarchyBars = ({
   linesToRender: Array<HierarchyBar>;
   hasChildren: boolean;
   isExpanded: boolean;
+  rowHeight?: number;
 }) => {
   if (linesToRender.length === 0) {
     return (
       <div
         css={{
           width: 0,
-          height: SPAN_ROW_HEIGHT,
+          height: rowHeight,
           boxSizing: 'border-box',
           position: 'relative',
         }}
@@ -114,14 +116,14 @@ export const TimelineTreeHierarchyBars = ({
           key={idx}
           css={{
             width: SPAN_INDENT_WIDTH,
-            height: SPAN_ROW_HEIGHT,
+            height: rowHeight,
             boxSizing: 'border-box',
             position: 'relative',
           }}
         >
           {shouldRender && (
             // render a vertical bar in the middle of the spacer
-            <VerticalConnector active={isActive} />
+            <VerticalConnector active={isActive} rowHeight={rowHeight} />
           )}
           {idx === linesToRender.length - 1 && (
             // at the last spacer, render a curved

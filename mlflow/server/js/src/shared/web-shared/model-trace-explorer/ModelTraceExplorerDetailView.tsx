@@ -32,7 +32,7 @@ const GraphViewWorkflowCanvas = React.lazy(() =>
 );
 
 const LEFT_PANE_MIN_WIDTH_LARGE_SPACINGS = 7;
-const LEFT_PANE_HEADER_MIN_WIDTH_PX = 350;
+const LEFT_PANE_HEADER_MIN_WIDTH_PX = 280;
 const GRAPH_MIN_HEIGHT = 120;
 // Minimum space reserved for the tree section above the graph
 const TREE_MIN_HEIGHT = 200;
