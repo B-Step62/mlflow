@@ -29,7 +29,7 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
           }
           sectionKey="messages"
         >
-          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, paddingLeft: theme.spacing.md }}>
             {chatTools.map((tool) => (
               <ModelTraceExplorerChatTool key={tool.function.name} tool={tool} />
             ))}
@@ -47,7 +47,9 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
         sectionKey="messages"
         withBorder
       >
-        <ModelTraceExplorerConversation messages={chatMessages ?? []} />
+        <div css={{ paddingLeft: theme.spacing.md }}>
+          <ModelTraceExplorerConversation messages={chatMessages ?? []} />
+        </div>
       </ModelTraceExplorerCollapsibleSection>
     </div>
   );

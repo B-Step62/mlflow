@@ -25,11 +25,14 @@ export const ModelTraceExplorerIcon = ({
   isInTooltip = false,
   hasException = false,
   isRootSpan = false,
+  // render the icon in the default gray styling, skipping the per-type accent color
+  neutral = false,
 }: {
   type?: ModelIconType;
   isInTooltip?: boolean;
   hasException?: boolean;
   isRootSpan?: boolean;
+  neutral?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
 
@@ -66,7 +69,7 @@ export const ModelTraceExplorerIcon = ({
   let color: string = theme.colors.actionDefaultIconDefault;
   let tooltipColor: string = theme.colors.actionPrimaryIcon;
   let backgroundColor: string = theme.colors.backgroundSecondary;
-  switch (type) {
+  switch (neutral ? undefined : type) {
     case ModelIconType.SEARCH:
       color = theme.colors.textValidationSuccess;
       tooltipColor = theme.colors.green500;
@@ -81,6 +84,13 @@ export const ModelTraceExplorerIcon = ({
       color = theme.isDarkMode ? theme.colors.red500 : theme.colors.red700;
       tooltipColor = theme.isDarkMode ? theme.colors.red700 : theme.colors.red500;
       backgroundColor = theme.isDarkMode ? theme.colors.red800 : theme.colors.red100;
+      break;
+    case ModelIconType.USER:
+      color = theme.colors.purple;
+      tooltipColor = theme.colors.purple;
+      // `purple` has no tint shades in the palette, so derive a subtle
+      // background from it via alpha (matching the other role icon colors).
+      backgroundColor = theme.isDarkMode ? `${theme.colors.purple}40` : `${theme.colors.purple}24`;
       break;
   }
 

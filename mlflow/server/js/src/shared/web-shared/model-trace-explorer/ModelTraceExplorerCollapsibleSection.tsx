@@ -41,9 +41,11 @@ export const ModelTraceExplorerCollapsibleSection = ({
           flexDirection: 'row',
           gap: theme.spacing.xs,
           padding: withBorder ? theme.spacing.sm : 0,
-          background: withBorder ? headerBackground : undefined,
+          // Only exception sections get a header background + border (for danger
+          // emphasis); normal section headers stay borderless and transparent.
+          background: withBorder && isExceptionSection ? headerBackground : undefined,
           marginBottom: withBorder ? 0 : theme.spacing.sm,
-          borderBlock: withBorder ? `1px solid ${borderColor}` : undefined,
+          borderBlock: withBorder && isExceptionSection ? `1px solid ${borderColor}` : undefined,
         }}
       >
         <Button

@@ -19,8 +19,8 @@ export function ModelTraceExplorerToolCallMessage({ toolCall }: { toolCall: Mode
         }}
       >
         <FormattedMessage
-          defaultMessage="called {functionName} in {toolCallId}"
-          description="A message that shows the tool calls that an AI assistant made. The full message reads (for example): 'Assistant called get_weather in id_123'."
+          defaultMessage="call {functionName} in {toolCallId} with:"
+          description="A message that shows the tool calls that an AI assistant made, followed by the call arguments. The full message reads (for example): 'Assistant call get_weather in id_123 with:'."
           values={{
             functionName: (
               <Tag

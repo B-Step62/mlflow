@@ -1,9 +1,10 @@
 import { useState } from 'react';
 
-import { ChevronDownIcon, ChevronRightIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Typography, useDesignSystemTheme } from '@databricks/design-system';
 
 import { ModelTraceExplorerChatToolParam } from './ModelTraceExplorerChatToolParam';
-import type { ModelTraceChatTool } from '../ModelTrace.types';
+import { ModelIconType, type ModelTraceChatTool } from '../ModelTrace.types';
+import { ModelTraceExplorerIcon } from '../ModelTraceExplorerIcon';
 
 export function ModelTraceExplorerChatTool({ tool }: { tool: ModelTraceChatTool }) {
   const { theme } = useDesignSystemTheme();
@@ -47,7 +48,7 @@ export function ModelTraceExplorerChatTool({ tool }: { tool: ModelTraceChatTool 
         onClick={() => setExpanded(!expanded)}
         data-testid="model-trace-explorer-chat-tool-toggle"
       >
-        {isExpandable && (expanded ? <ChevronDownIcon /> : <ChevronRightIcon />)}
+        <ModelTraceExplorerIcon type={ModelIconType.WRENCH} neutral />
         <Typography.Text
           bold
           withoutMargins
