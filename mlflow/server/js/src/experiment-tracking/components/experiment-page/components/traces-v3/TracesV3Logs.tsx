@@ -192,21 +192,6 @@ const TracesV3LogsImpl = React.memo(
     );
     const [searchParams, setSearchParams] = useSearchParams();
 
-    // Auto-open the detection modal when deep-linked (e.g. "Run detection again" on a low-result run)
-    useEffect(() => {
-      if (searchParams.get('detectIssues') === 'true' && !disableActions) {
-        setIsIssueDetectionModalOpen(true);
-        setSearchParams(
-          (params) => {
-            const next = new URLSearchParams(params);
-            next.delete('detectIssues');
-            return next;
-          },
-          { replace: true },
-        );
-      }
-    }, [searchParams, setSearchParams, disableActions]);
-
     // Check if we're already inside a provider (e.g., from SelectTracesModal)
     // If so, we won't create our own provider to avoid shadowing the parent's selection state
     const hasExternalProvider = useIsInsideGenAiTraceTableRowSelectionProvider();
@@ -339,6 +324,22 @@ const TracesV3LogsImpl = React.memo(
       tableSort,
       disabled: isQueryDisabled,
     });
+
+    // Auto-open the detection modal when deep-linked (e.g. "Run detection again" on a low-result run).
+    // Waits for trace metadata so the modal opens with the loaded traces preselected.
+    useEffect(() => {
+      if (searchParams.get('detectIssues') === 'true' && !disableActions && !traceInfosLoading) {
+        setIsIssueDetectionModalOpen(true);
+        setSearchParams(
+          (params) => {
+            const next = new URLSearchParams(params);
+            next.delete('detectIssues');
+            return next;
+          },
+          { replace: true },
+        );
+      }
+    }, [searchParams, setSearchParams, disableActions, traceInfosLoading]);
 
     const deleteTracesMutation = useDeleteTracesMutation();
 
