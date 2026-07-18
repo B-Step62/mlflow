@@ -279,13 +279,6 @@ describe('IssueDetectionModal', () => {
     expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
   });
 
-  test('shows estimated cost scaled to the selected trace count', () => {
-    const ids = Array.from({ length: 100 }, (_, i) => `trace-${i}`);
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
-
-    expect(screen.getByText(/Estimated cost: ~\$0\.25–\$1\.00/)).toBeInTheDocument();
-  });
-
   test('logs submit context telemetry on submit', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
@@ -298,8 +291,6 @@ describe('IssueDetectionModal', () => {
           value: JSON.stringify({
             selectedTraceCount: 1,
             lowTraceWarningShown: true,
-            estimatedCostLowUsd: 0.0025,
-            estimatedCostHighUsd: 0.01,
           }),
         }),
       );

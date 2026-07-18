@@ -97,7 +97,9 @@ interface GenAIModelSelectionProps {
   /** Telemetry component ID prefix used for all child elements. */
   componentId: string;
   /** Subtitle shown below the "Select Model" heading. */
-  description: React.ReactNode;
+  description?: React.ReactNode;
+  /** Renders a small "Model" label instead of the "Select Model" heading and description. */
+  compact?: boolean;
   /** Rendered at the end of the "Advanced settings" panel (forces the panel to render). */
   children?: React.ReactNode;
 }
@@ -113,6 +115,7 @@ export const GenAIModelSelection = forwardRef<GenAIModelSelectionRef, GenAIModel
       onSelectionChange,
       componentId,
       description,
+      compact = false,
       children,
     },
     ref,
@@ -317,24 +320,34 @@ export const GenAIModelSelection = forwardRef<GenAIModelSelectionRef, GenAIModel
       <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
         <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
           <div>
-            <Typography.Title level={4} css={{ margin: 0, marginBottom: theme.spacing.xs }}>
-              <FormattedMessage
-                defaultMessage="Select Model"
-                description="Header for the model selection step in issue detection modal"
-              />{' '}
-              {!showCreateEndpoint && (
-                <Tooltip
-                  componentId={`${componentId}.endpoint-tip-tooltip`}
-                  content={intl.formatMessage({
-                    defaultMessage: 'Create an AI Gateway endpoint in AI Gateway → Endpoints tab to reuse it here',
-                    description: 'Tooltip suggesting to create an endpoint for reuse',
-                  })}
-                >
-                  <InfoSmallIcon css={{ color: theme.colors.textSecondary, cursor: 'help', verticalAlign: 'middle' }} />
-                </Tooltip>
-              )}
-            </Typography.Title>
-            <Typography.Text color="secondary">{description}</Typography.Text>
+            {compact ? (
+              <Typography.Text bold>
+                <FormattedMessage defaultMessage="Model" description="Compact label for the model selection section" />
+              </Typography.Text>
+            ) : (
+              <>
+                <Typography.Title level={4} css={{ margin: 0, marginBottom: theme.spacing.xs }}>
+                  <FormattedMessage
+                    defaultMessage="Select Model"
+                    description="Header for the model selection step in issue detection modal"
+                  />{' '}
+                  {!showCreateEndpoint && (
+                    <Tooltip
+                      componentId={`${componentId}.endpoint-tip-tooltip`}
+                      content={intl.formatMessage({
+                        defaultMessage: 'Create an AI Gateway endpoint in AI Gateway → Endpoints tab to reuse it here',
+                        description: 'Tooltip suggesting to create an endpoint for reuse',
+                      })}
+                    >
+                      <InfoSmallIcon
+                        css={{ color: theme.colors.textSecondary, cursor: 'help', verticalAlign: 'middle' }}
+                      />
+                    </Tooltip>
+                  )}
+                </Typography.Title>
+                {description && <Typography.Text color="secondary">{description}</Typography.Text>}
+              </>
+            )}
           </div>
 
           {/* Model source selector - only show dropdown when there are endpoints */}

@@ -1811,10 +1811,6 @@
     "defaultMessage": "Predict on a Spark DataFrame:",
     "description": "Section heading to display the code block on how we can use registered model to predict using spark DataFrame"
   },
-  "6xlCY9": {
-    "defaultMessage": "Estimated cost: ~{low}–{high} · <link>See benchmark</link>",
-    "description": "Estimated USD cost range for the issue detection run, with link to benchmark docs"
-  },
   "6y36Fr": {
     "defaultMessage": "Add new chart",
     "description": "Title of the modal when adding a new runs comparison chart"
@@ -4706,10 +4702,6 @@
   "LfggX9": {
     "defaultMessage": "Loading users…",
     "description": "Review queue: owner roster loading"
-  },
-  "LgnR+r": {
-    "defaultMessage": "Configure the model to power issue detection.",
-    "description": "Description for model selection in issue detection modal"
   },
   "LhxSrc": {
     "defaultMessage": "Incorrect",
@@ -9442,6 +9434,10 @@
   "hg+bcy": {
     "defaultMessage": "Enable telemetry",
     "description": "Enable telemetry settings title"
+  },
+  "hg9VuZ": {
+    "defaultMessage": "Model",
+    "description": "Compact label for the model selection section"
   },
   "hh+/og": {
     "defaultMessage": "Settings",

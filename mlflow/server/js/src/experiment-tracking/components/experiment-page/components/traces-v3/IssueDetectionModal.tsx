@@ -13,7 +13,6 @@ import { FormattedMessage } from '@databricks/i18n';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
 import { shouldEnableBackgroundIssueDetection } from '../../../../../common/utils/FeatureUtils';
 import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
-import { estimateIssueDetectionCostUsd, formatEstimatedCostUsd } from './issueDetectionCostEstimate';
 import Routes from '../../../../routes';
 import { getTimeRangeQueryString } from '../../../../pages/experiment-page-tabs/side-nav/utils';
 import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
@@ -58,7 +57,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
   const quickSelectCount = Math.min(QUICK_SELECT_TRACE_COUNT, availableTraceIds.length);
   const canQuickSelectTraces = quickSelectCount > selectedTraceIds.length;
-  const estimatedCost = estimateIssueDetectionCostUsd(selectedTraceIds.length);
 
   const {
     mutate: createSecret,
@@ -105,8 +103,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       value: JSON.stringify({
         selectedTraceCount: selectedTraceIds.length,
         lowTraceWarningShown: showLowTraceWarning,
-        estimatedCostLowUsd: estimatedCost.low,
-        estimatedCostHighUsd: estimatedCost.high,
       }),
     });
 
@@ -241,25 +237,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
               values={{ count: selectedTraceIds.length }}
             />
           </Typography.Text>
-          <Typography.Hint>
-            <FormattedMessage
-              defaultMessage="Estimated cost: ~{low}–{high} · <link>See benchmark</link>"
-              description="Estimated USD cost range for the issue detection run, with link to benchmark docs"
-              values={{
-                low: formatEstimatedCostUsd(estimatedCost.low),
-                high: formatEstimatedCostUsd(estimatedCost.high),
-                link: (chunks: React.ReactNode) => (
-                  <a
-                    href="https://mlflow.org/docs/latest/genai/eval-monitor/ai-insights/detect-issues/#cost-benchmark"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {chunks}
-                  </a>
-                ),
-              }}
-            />
-          </Typography.Hint>
           {showLowTraceWarning && (
             <Alert
               componentId="mlflow.traces.issue-detection-modal.low-trace-warning"
@@ -296,13 +273,8 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
           ref={modelSelectionRef}
           onValidityChange={handleModelSelectionValidityChange}
           showConfigureDirectly
+          compact
           componentId="mlflow.traces.issue-detection-modal"
-          description={
-            <FormattedMessage
-              defaultMessage="Configure the model to power issue detection."
-              description="Description for model selection in issue detection modal"
-            />
-          }
         >
           <div css={{ marginTop: theme.spacing.sm }}>
             <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.sm }}>
