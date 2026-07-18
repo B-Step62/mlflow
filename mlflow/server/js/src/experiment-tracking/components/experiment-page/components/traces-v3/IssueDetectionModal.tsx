@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
-  Accordion,
   Modal,
   Button,
   useDesignSystemTheme,
@@ -11,15 +10,12 @@ import {
   DesignSystemEventProviderComponentTypes,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
-import { MetricViewType, AggregationType, TraceMetricKey } from '@databricks/web-shared/model-trace-explorer';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
 import { shouldEnableBackgroundIssueDetection } from '../../../../../common/utils/FeatureUtils';
-import { useTraceMetricsQuery } from '../../../../pages/experiment-overview/hooks/useTraceMetricsQuery';
 import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
 import { estimateIssueDetectionCostUsd, formatEstimatedCostUsd } from './issueDetectionCostEstimate';
 import Routes from '../../../../routes';
 import { getTimeRangeQueryString } from '../../../../pages/experiment-page-tabs/side-nav/utils';
-import { SelectTracesModal } from '../../../SelectTracesModal';
 import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
 import { ALL_ISSUE_CATEGORIES, IssueCategoryList, type IssueCategory } from './IssueDetectionCategories';
 import { GenAIModelSelection, type GenAIModelSelectionRef } from './GenAIModelSelection';
@@ -30,7 +26,6 @@ interface IssueDetectionModalProps {
   experimentId?: string;
   initialSelectedTraceIds?: string[];
   availableTraceIds?: string[];
-  defaultGroupBySession?: boolean;
   /**
    * When provided (and background issue detection is enabled), the modal hands the
    * submitted job to the parent for background tracking instead of navigating away.
@@ -39,14 +34,13 @@ interface IssueDetectionModalProps {
 }
 
 const MIN_RECOMMENDED_TRACE_COUNT = 10;
-const QUICK_SELECT_TRACE_COUNT = 30;
+const QUICK_SELECT_TRACE_COUNT = 50;
 
 export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   onClose,
   experimentId,
   initialSelectedTraceIds = [],
   availableTraceIds = [],
-  defaultGroupBySession = false,
   onSubmitted,
 }) => {
   const { theme } = useDesignSystemTheme();
@@ -59,17 +53,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const [selectedTraceIds, setSelectedTraceIds] = useState<string[]>(() => {
     return initialSelectedTraceIds.length > 0 ? initialSelectedTraceIds : availableTraceIds;
   });
-  const [isSelectTracesModalOpen, setIsSelectTracesModalOpen] = useState(false);
   const [isModelSelectionValid, setIsModelSelectionValid] = useState(false);
-
-  const { data: traceCountMetrics } = useTraceMetricsQuery({
-    experimentIds: experimentId ? [experimentId] : [],
-    viewType: MetricViewType.TRACES,
-    metricName: TraceMetricKey.TRACE_COUNT,
-    aggregations: [{ aggregation_type: AggregationType.COUNT }],
-    enabled: Boolean(experimentId),
-  });
-  const totalTraceCount = traceCountMetrics?.data_points?.[0]?.values?.[AggregationType.COUNT];
 
   const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
   const quickSelectCount = Math.min(QUICK_SELECT_TRACE_COUNT, availableTraceIds.length);
@@ -120,7 +104,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       eventType: DesignSystemEventProviderAnalyticsEventTypes.OnView,
       value: JSON.stringify({
         selectedTraceCount: selectedTraceIds.length,
-        totalTraceCount: totalTraceCount ?? null,
         lowTraceWarningShown: showLowTraceWarning,
         estimatedCostLowUsd: estimatedCost.low,
         estimatedCostHighUsd: estimatedCost.high,
@@ -221,194 +204,125 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   );
 
   return (
-    <>
-      <Modal
-        componentId="mlflow.traces.issue-detection-modal"
-        title={
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-            <SparkleIcon color="ai" />
-            <FormattedMessage
-              defaultMessage="Detect Issues"
-              description="Title of the issue detection configuration modal"
-            />
-          </div>
-        }
-        visible
-        onCancel={isCreatingSecret || isInvokingIssueDetection ? undefined : handleClose}
-        footer={renderFooter()}
-      >
-        {(createSecretError || issueDetectionError) && (
-          <Alert
-            componentId="mlflow.traces.issue-detection-modal.error"
-            type="error"
-            message={createSecretError?.message || issueDetectionError?.message}
-            closable
-            onClose={() => {
-              resetCreateSecret();
-              resetIssueDetection();
-            }}
-            css={{ marginBottom: theme.spacing.md }}
-          />
-        )}
-        <Typography.Text color="secondary" css={{ display: 'block', marginBottom: theme.spacing.lg }}>
+    <Modal
+      componentId="mlflow.traces.issue-detection-modal"
+      title={
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <SparkleIcon color="ai" />
           <FormattedMessage
-            defaultMessage="Use AI to automatically analyze your traces and identify potential issues"
-            description="Description text for issue detection modal"
+            defaultMessage="Detect Issues"
+            description="Title of the issue detection configuration modal"
           />
-        </Typography.Text>
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-          <div>
-            <Typography.Text bold>
-              <FormattedMessage defaultMessage="Traces" description="Section header for trace selection" />
-            </Typography.Text>
-            <div css={{ marginTop: theme.spacing.sm, display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-              <Button
-                componentId="mlflow.traces.issue-detection-modal.select-traces"
-                data-testid="select-traces"
-                onClick={() => setIsSelectTracesModalOpen(true)}
-              >
-                {selectedTraceIds.length > 0 ? (
-                  <FormattedMessage
-                    defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
-                    description="Label showing number of traces selected"
-                    values={{ count: selectedTraceIds.length }}
-                  />
-                ) : (
-                  <FormattedMessage defaultMessage="Select traces" description="Button to open trace selection modal" />
-                )}
-              </Button>
-              {totalTraceCount !== undefined && (
-                <Typography.Hint>
-                  <FormattedMessage
-                    defaultMessage="of {totalCount} traces in this experiment"
-                    description="Hint showing the total number of traces available in the experiment"
-                    values={{ totalCount: totalTraceCount }}
-                  />
-                </Typography.Hint>
-              )}
-            </div>
-            {selectedTraceIds.length > 0 && (
-              <Typography.Hint css={{ display: 'block', marginTop: theme.spacing.xs }}>
-                <FormattedMessage
-                  defaultMessage="Estimated cost: ~{low}–{high} · <link>See benchmark</link>"
-                  description="Estimated USD cost range for the issue detection run, with link to benchmark docs"
-                  values={{
-                    low: formatEstimatedCostUsd(estimatedCost.low),
-                    high: formatEstimatedCostUsd(estimatedCost.high),
-                    link: (chunks: React.ReactNode) => (
-                      <a
-                        href="https://mlflow.org/docs/latest/genai/eval-monitor/ai-insights/detect-issues/#cost-benchmark"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {chunks}
-                      </a>
-                    ),
-                  }}
-                />
-              </Typography.Hint>
-            )}
-            {showLowTraceWarning && (
-              <Alert
-                componentId="mlflow.traces.issue-detection-modal.low-trace-warning"
-                type="warning"
-                closable={false}
-                css={{ marginTop: theme.spacing.sm }}
-                message={
-                  <FormattedMessage
-                    defaultMessage="Small samples can miss real issues — we recommend at least {recommended} traces."
-                    description="Warning shown when fewer than the recommended number of traces are selected"
-                    values={{ recommended: MIN_RECOMMENDED_TRACE_COUNT }}
-                  />
-                }
-                description={
-                  canQuickSelectTraces ? (
-                    <Button
-                      componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
-                      data-testid="quick-select-traces"
-                      size="small"
-                      onClick={() => setSelectedTraceIds(availableTraceIds.slice(0, quickSelectCount))}
-                    >
-                      <FormattedMessage
-                        defaultMessage="Select {count} most recent traces"
-                        description="Button to select the most recent traces in one click"
-                        values={{ count: quickSelectCount }}
-                      />
-                    </Button>
-                  ) : (
-                    <Button
-                      componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
-                      data-testid="quick-select-traces"
-                      size="small"
-                      onClick={() => setIsSelectTracesModalOpen(true)}
-                    >
-                      <FormattedMessage
-                        defaultMessage="Select more traces"
-                        description="Button to open the trace selection modal to add more traces"
-                      />
-                    </Button>
-                  )
-                }
-              />
-            )}
-          </div>
-          <GenAIModelSelection
-            ref={modelSelectionRef}
-            onValidityChange={handleModelSelectionValidityChange}
-            showConfigureDirectly
-            componentId="mlflow.traces.issue-detection-modal"
-            description={
-              <FormattedMessage
-                defaultMessage="Configure the model to power issue detection."
-                description="Description for model selection in issue detection modal"
-              />
-            }
-          />
-          <Accordion
-            componentId="mlflow.traces.issue-detection-modal.categories-section"
-            dangerouslyAppendEmotionCSS={{
-              background: 'transparent',
-              border: 'none',
-            }}
-          >
-            <Accordion.Panel
-              key="categories"
-              header={
-                <div css={{ display: 'flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
-                  <FormattedMessage
-                    defaultMessage="Issue categories"
-                    description="Collapsible section for selecting which issue categories to detect"
-                  />
-                  <Typography.Text color={selectedCategories.size === 0 ? 'error' : 'secondary'} size="sm">
-                    {selectedCategories.size} / {ALL_ISSUE_CATEGORIES.length}
-                  </Typography.Text>
-                </div>
-              }
-            >
-              <IssueCategoryList selectedCategories={selectedCategories} onToggle={handleCategoryToggle} />
-            </Accordion.Panel>
-          </Accordion>
-          {selectedCategories.size === 0 && (
-            <Typography.Text color="error" size="sm">
-              <FormattedMessage
-                defaultMessage="Select at least one issue category"
-                description="Validation message when no issue categories are selected"
-              />
-            </Typography.Text>
-          )}
         </div>
-      </Modal>
-      {isSelectTracesModalOpen && (
-        <SelectTracesModal
-          onClose={() => setIsSelectTracesModalOpen(false)}
-          onSuccess={(traceIds) => {
-            setSelectedTraceIds(traceIds);
-            setIsSelectTracesModalOpen(false);
+      }
+      visible
+      onCancel={isCreatingSecret || isInvokingIssueDetection ? undefined : handleClose}
+      footer={renderFooter()}
+    >
+      {(createSecretError || issueDetectionError) && (
+        <Alert
+          componentId="mlflow.traces.issue-detection-modal.error"
+          type="error"
+          message={createSecretError?.message || issueDetectionError?.message}
+          closable
+          onClose={() => {
+            resetCreateSecret();
+            resetIssueDetection();
           }}
-          initialTraceIdsSelected={selectedTraceIds}
-          defaultGroupBySession={defaultGroupBySession}
+          css={{ marginBottom: theme.spacing.md }}
         />
       )}
-    </>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+        <div>
+          <Typography.Text css={{ display: 'block' }}>
+            <FormattedMessage
+              defaultMessage="Analyze {count, plural, one {1 trace} other {# traces}} with AI to identify quality issues."
+              description="Summary of how many traces the issue detection run will analyze"
+              values={{ count: selectedTraceIds.length }}
+            />
+          </Typography.Text>
+          <Typography.Hint>
+            <FormattedMessage
+              defaultMessage="Estimated cost: ~{low}–{high} · <link>See benchmark</link>"
+              description="Estimated USD cost range for the issue detection run, with link to benchmark docs"
+              values={{
+                low: formatEstimatedCostUsd(estimatedCost.low),
+                high: formatEstimatedCostUsd(estimatedCost.high),
+                link: (chunks: React.ReactNode) => (
+                  <a
+                    href="https://mlflow.org/docs/latest/genai/eval-monitor/ai-insights/detect-issues/#cost-benchmark"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {chunks}
+                  </a>
+                ),
+              }}
+            />
+          </Typography.Hint>
+          {showLowTraceWarning && (
+            <Alert
+              componentId="mlflow.traces.issue-detection-modal.low-trace-warning"
+              type="warning"
+              closable={false}
+              css={{ marginTop: theme.spacing.sm }}
+              message={
+                <FormattedMessage
+                  defaultMessage="Small samples can miss real issues — we recommend at least {recommended} traces."
+                  description="Warning shown when fewer than the recommended number of traces are selected"
+                  values={{ recommended: MIN_RECOMMENDED_TRACE_COUNT }}
+                />
+              }
+              description={
+                canQuickSelectTraces ? (
+                  <Button
+                    componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
+                    data-testid="quick-select-traces"
+                    size="small"
+                    onClick={() => setSelectedTraceIds(availableTraceIds.slice(0, quickSelectCount))}
+                  >
+                    <FormattedMessage
+                      defaultMessage="Select {count} most recent traces"
+                      description="Button to select the most recent traces in one click"
+                      values={{ count: quickSelectCount }}
+                    />
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
+        </div>
+        <GenAIModelSelection
+          ref={modelSelectionRef}
+          onValidityChange={handleModelSelectionValidityChange}
+          showConfigureDirectly
+          componentId="mlflow.traces.issue-detection-modal"
+          description={
+            <FormattedMessage
+              defaultMessage="Configure the model to power issue detection."
+              description="Description for model selection in issue detection modal"
+            />
+          }
+        >
+          <div css={{ marginTop: theme.spacing.sm }}>
+            <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.sm }}>
+              <FormattedMessage
+                defaultMessage="Issue categories"
+                description="Label for the issue category selection inside advanced settings"
+              />
+            </Typography.Text>
+            <IssueCategoryList selectedCategories={selectedCategories} onToggle={handleCategoryToggle} />
+          </div>
+        </GenAIModelSelection>
+        {selectedCategories.size === 0 && (
+          <Typography.Text color="error" size="sm">
+            <FormattedMessage
+              defaultMessage="Select at least one issue category in Advanced settings"
+              description="Validation message when no issue categories are selected"
+            />
+          </Typography.Text>
+        )}
+      </div>
+    </Modal>
   );
 };

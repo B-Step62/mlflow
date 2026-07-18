@@ -659,10 +659,6 @@
     "defaultMessage": "Issues",
     "description": "Run details page > tab selector > issues tab"
   },
-  "12XIai": {
-    "defaultMessage": "Select at least one issue category",
-    "description": "Validation message when no issue categories are selected"
-  },
   "13vJft": {
     "defaultMessage": "View Examples",
     "description": "Experiment page > new run modal > prompt examples button"
@@ -2379,6 +2375,10 @@
     "defaultMessage": "Overview",
     "description": "Tab label for endpoint overview"
   },
+  "9O3K/4": {
+    "defaultMessage": "Issue categories",
+    "description": "Label for the issue category selection inside advanced settings"
+  },
   "9Sxo9h": {
     "defaultMessage": "Max length",
     "description": "Text max length input"
@@ -2915,10 +2915,6 @@
     "defaultMessage": "Create new endpoint",
     "description": "Button text to create a new endpoint"
   },
-  "Bqn/5s": {
-    "defaultMessage": "Traces",
-    "description": "Section header for trace selection"
-  },
   "BrMzik": {
     "defaultMessage": "Add Tag",
     "description": "Save button text for adding a new tag"
@@ -3130,10 +3126,6 @@
   "CpLnGS": {
     "defaultMessage": "Metrics",
     "description": "Table title text for metrics table in the model comparison page"
-  },
-  "CpUD2P": {
-    "defaultMessage": "Select traces",
-    "description": "Button to open trace selection modal"
   },
   "Cq6NMs": {
     "defaultMessage": "Issue detection failed",
@@ -3859,6 +3851,10 @@
     "defaultMessage": "null",
     "description": "Null value in the evaluations table."
   },
+  "H3qWxB": {
+    "defaultMessage": "Analyze {count, plural, one {1 trace} other {# traces}} with AI to identify quality issues.",
+    "description": "Summary of how many traces the issue detection run will analyze"
+  },
   "H7JwOl": {
     "defaultMessage": "Delete version",
     "description": "A label for a button to delete prompt version on the prompt details page"
@@ -4130,10 +4126,6 @@
   "IMkDgM": {
     "defaultMessage": "Experiments",
     "description": "Link label for the experiments page"
-  },
-  "INrdWe": {
-    "defaultMessage": "{count, plural, one {1 trace selected} other {# traces selected}}",
-    "description": "Label showing number of traces selected"
   },
   "ISy30V": {
     "defaultMessage": "Are you sure you want to delete the dataset \"{name}\"? This action cannot be undone.",
@@ -5831,10 +5823,6 @@
     "defaultMessage": "Metric",
     "description": "Label for the metric column in the logged model details metrics table"
   },
-  "R/v0uf": {
-    "defaultMessage": "of {totalCount} traces in this experiment",
-    "description": "Hint showing the total number of traces available in the experiment"
-  },
   "R1FeSE": {
     "defaultMessage": "Advanced settings (optional)",
     "description": "Toggle button for advanced settings in prompt creation modal"
@@ -6843,10 +6831,6 @@
     "defaultMessage": "Cancel",
     "description": "A label for the cancel button in the delete prompt version modal"
   },
-  "VqIfsV": {
-    "defaultMessage": "Issue categories",
-    "description": "Collapsible section for selecting which issue categories to detect"
-  },
   "VqSjYH": {
     "defaultMessage": "MLflow documentation",
     "description": "AI Gateway setup guide > Documentation link text"
@@ -7690,6 +7674,10 @@
   "Zj5ugd": {
     "defaultMessage": "Permission",
     "description": "Permissions table column header for the permission level"
+  },
+  "ZlV0kS": {
+    "defaultMessage": "Select at least one issue category in Advanced settings",
+    "description": "Validation message when no issue categories are selected"
   },
   "ZlokCq": {
     "defaultMessage": "Cancel",
@@ -10098,10 +10086,6 @@
   "kNTkr+": {
     "defaultMessage": "Discard",
     "description": "Experiment page > artifact compare view > prompt lab artifact synchronization > submit button label"
-  },
-  "kPLEh+": {
-    "defaultMessage": "Select more traces",
-    "description": "Button to open the trace selection modal to add more traces"
   },
   "kQ9rmr": {
     "defaultMessage": "Operator",
@@ -12838,10 +12822,6 @@
   "y2rjoF": {
     "defaultMessage": "No trace data recorded",
     "description": "Empty state in the v2 dataset record side-panel trace modal when the trace has no spans"
-  },
-  "y52/L4": {
-    "defaultMessage": "Use AI to automatically analyze your traces and identify potential issues",
-    "description": "Description text for issue detection modal"
   },
   "y56Vz9": {
     "defaultMessage": "In progress",

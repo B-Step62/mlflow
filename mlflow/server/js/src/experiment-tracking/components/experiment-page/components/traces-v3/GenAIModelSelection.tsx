@@ -98,6 +98,8 @@ interface GenAIModelSelectionProps {
   componentId: string;
   /** Subtitle shown below the "Select Model" heading. */
   description: React.ReactNode;
+  /** Rendered at the end of the "Advanced settings" panel (forces the panel to render). */
+  children?: React.ReactNode;
 }
 
 export const GenAIModelSelection = forwardRef<GenAIModelSelectionRef, GenAIModelSelectionProps>(
@@ -111,6 +113,7 @@ export const GenAIModelSelection = forwardRef<GenAIModelSelectionRef, GenAIModel
       onSelectionChange,
       componentId,
       description,
+      children,
     },
     ref,
   ) {
@@ -583,7 +586,7 @@ export const GenAIModelSelection = forwardRef<GenAIModelSelectionRef, GenAIModel
           />
         )}
 
-        {mode === 'direct' && showConfigureDirectly && shouldShowAdvancedSettings && !readOnly && (
+        {((mode === 'direct' && showConfigureDirectly && shouldShowAdvancedSettings && !readOnly) || children) && (
           <Accordion
             componentId={`${componentId}.advanced-settings`}
             activeKey={isAdvancedSettingsExpanded ? ['advanced'] : []}
@@ -600,16 +603,19 @@ export const GenAIModelSelection = forwardRef<GenAIModelSelectionRef, GenAIModel
               })}
               key="advanced"
             >
-              <GenAIAdvancedSettings
-                provider={provider}
-                model={model}
-                onModelChange={setModel}
-                apiKeyConfig={apiKeyConfig}
-                onApiKeyConfigChange={setApiKeyConfig}
-                authModes={authModes}
-                defaultAuthMode={defaultAuthMode}
-                showModelSelector={Boolean(DEFAULT_MODEL_BY_PROVIDER[provider])}
-              />
+              {mode === 'direct' && showConfigureDirectly && shouldShowAdvancedSettings && !readOnly && (
+                <GenAIAdvancedSettings
+                  provider={provider}
+                  model={model}
+                  onModelChange={setModel}
+                  apiKeyConfig={apiKeyConfig}
+                  onApiKeyConfigChange={setApiKeyConfig}
+                  authModes={authModes}
+                  defaultAuthMode={defaultAuthMode}
+                  showModelSelector={Boolean(DEFAULT_MODEL_BY_PROVIDER[provider])}
+                />
+              )}
+              {children}
             </Accordion.Panel>
           </Accordion>
         )}

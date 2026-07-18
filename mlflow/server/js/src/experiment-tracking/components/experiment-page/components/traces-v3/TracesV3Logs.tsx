@@ -656,7 +656,6 @@ const TracesV3LogsImpl = React.memo(
                 .filter(([, isSelected]) => isSelected)
                 .map(([traceId]) => traceId)}
               availableTraceIds={traceInfos?.map((trace) => trace.trace_id) ?? []}
-              defaultGroupBySession={forceGroupBySession || isGroupedBySession}
             />
           )}
         </GenAITracesTableProvider>

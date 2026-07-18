@@ -1,19 +1,14 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
-import { AggregationType } from '@databricks/web-shared/model-trace-explorer';
 import { renderWithDesignSystem, screen, waitFor } from '../../../../../common/utils/TestUtils.react18';
 import { IssueDetectionModal } from './IssueDetectionModal';
 import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
 import { useInvokeIssueDetection } from './hooks/useInvokeIssueDetection';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
-import { useTraceMetricsQuery } from '../../../../pages/experiment-overview/hooks/useTraceMetricsQuery';
 import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
 
 jest.mock('../../../../../gateway/hooks/useCreateSecret');
 jest.mock('./hooks/useInvokeIssueDetection');
-jest.mock('../../../../pages/experiment-overview/hooks/useTraceMetricsQuery', () => ({
-  useTraceMetricsQuery: jest.fn(),
-}));
 jest.mock('../../../../../telemetry/hooks/useLogTelemetryEvent', () => ({
   useLogTelemetryEvent: jest.fn(),
 }));
@@ -58,8 +53,10 @@ jest.mock('./GenAIModelSelection', () => {
     GenAIModelSelection: React.forwardRef(function GenAIModelSelection(
       {
         onValidityChange,
+        children,
       }: {
         onValidityChange: (isValid: boolean) => void;
+        children?: React.ReactNode;
       },
       ref: any,
     ) {
@@ -133,33 +130,12 @@ jest.mock('./GenAIModelSelection', () => {
           >
             Set invalid
           </button>
+          <div data-testid="advanced-settings-content">{children}</div>
         </div>
       );
     }),
   };
 });
-
-jest.mock('../../../SelectTracesModal', () => ({
-  SelectTracesModal: ({
-    onClose,
-    onSuccess,
-    defaultGroupBySession,
-  }: {
-    onClose: () => void;
-    onSuccess: (traceIds: string[]) => void;
-    defaultGroupBySession?: boolean;
-  }) => (
-    <div data-testid="select-traces-modal">
-      <div data-testid="default-group-by-session">{String(defaultGroupBySession)}</div>
-      <button data-testid="select-traces-cancel" onClick={onClose}>
-        Cancel
-      </button>
-      <button data-testid="select-traces-confirm" onClick={() => onSuccess(['trace-1', 'trace-2'])}>
-        Select
-      </button>
-    </div>
-  ),
-}));
 
 describe('IssueDetectionModal', () => {
   const defaultProps = {
@@ -181,10 +157,6 @@ describe('IssueDetectionModal', () => {
     jest.mocked(useLocation).mockReturnValue({ search: '', pathname: '/', hash: '', state: null, key: 'default' });
     mockLogTelemetryEvent = jest.fn();
     jest.mocked(useLogTelemetryEvent).mockReturnValue(mockLogTelemetryEvent as any);
-    jest.mocked(useTraceMetricsQuery).mockReturnValue({
-      data: { data_points: [{ values: { [AggregationType.COUNT]: 412 } }] },
-      isLoading: false,
-    } as any);
     // Reset mock values
     mockModelSelectionValues = {
       mode: 'direct',
@@ -226,34 +198,31 @@ describe('IssueDetectionModal', () => {
     } as any);
   });
 
-  // Helper to expand the collapsed section containing category selection
-  const expandCategoriesSection = async () => {
-    await userEvent.click(screen.getByText('Issue categories'));
-  };
-
-  test('renders traces, model selection, and issue categories in a single step', () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
+  test('renders trace summary, model selection, and categories in a single step', () => {
+    renderWithDesignSystem(
+      <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']} />,
+    );
 
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
-    expect(screen.getByText('Traces')).toBeInTheDocument();
+    expect(screen.getByText(/Analyze 3 traces/)).toBeInTheDocument();
     expect(screen.getByTestId('model-selection')).toBeInTheDocument();
     expect(screen.getByText('Issue categories')).toBeInTheDocument();
     expect(screen.getByText('Run Analysis')).toBeInTheDocument();
   });
 
-  test('shows all categories selected by default in the categories section header', () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
+  test('defaults to all available traces when none are preselected', () => {
+    const availableTraceIds = Array.from({ length: 40 }, (_, i) => `trace-${i}`);
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} availableTraceIds={availableTraceIds} />);
 
-    expect(screen.getByText('6 / 6')).toBeInTheDocument();
+    expect(screen.getByText(/Analyze 40 traces/)).toBeInTheDocument();
   });
 
-  test('category selection is available inside the collapsed categories section', async () => {
+  test('renders category selection with all categories selected by default', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    await expandCategoriesSection();
 
     expect(screen.getByText('Correctness')).toBeInTheDocument();
     expect(screen.getByText('Safety')).toBeInTheDocument();
+    expect(screen.queryByText('Select at least one issue category in Advanced settings')).not.toBeInTheDocument();
   });
 
   test('deselecting all categories disables submit and shows validation message', async () => {
@@ -263,24 +232,16 @@ describe('IssueDetectionModal', () => {
     const submitButton = screen.getByText('Run Analysis').closest('button');
     expect(submitButton).not.toBeDisabled();
 
-    await expandCategoriesSection();
     for (const category of ['Correctness', 'Latency', 'Execution', 'Adherence', 'Relevance', 'Safety']) {
       await userEvent.click(screen.getByText(category));
     }
 
-    expect(screen.getByText('0 / 6')).toBeInTheDocument();
-    expect(screen.getByText('Select at least one issue category')).toBeInTheDocument();
+    expect(screen.getByText('Select at least one issue category in Advanced settings')).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
   });
 
-  test('shows the total trace count of the experiment', () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
-
-    expect(screen.getByText('of 412 traces in this experiment')).toBeInTheDocument();
-  });
-
   test('shows low trace warning with quick select when few traces are selected', async () => {
-    const availableTraceIds = Array.from({ length: 50 }, (_, i) => `trace-${i}`);
+    const availableTraceIds = Array.from({ length: 80 }, (_, i) => `trace-${i}`);
     renderWithDesignSystem(
       <IssueDetectionModal
         {...defaultProps}
@@ -290,15 +251,15 @@ describe('IssueDetectionModal', () => {
     );
 
     expect(screen.getByText(/Small samples can miss real issues/)).toBeInTheDocument();
-    expect(screen.getByText('Select 30 most recent traces')).toBeInTheDocument();
+    expect(screen.getByText('Select 50 most recent traces')).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('quick-select-traces'));
 
-    expect(screen.getByText('30 traces selected')).toBeInTheDocument();
+    expect(screen.getByText(/Analyze 50 traces/)).toBeInTheDocument();
     expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
   });
 
-  test('low trace warning falls back to opening trace selection when no more traces are available', async () => {
+  test('low trace warning has no quick select when no more traces are available', () => {
     renderWithDesignSystem(
       <IssueDetectionModal
         {...defaultProps}
@@ -308,21 +269,12 @@ describe('IssueDetectionModal', () => {
     );
 
     expect(screen.getByText(/Small samples can miss real issues/)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId('quick-select-traces'));
-
-    expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
+    expect(screen.queryByTestId('quick-select-traces')).not.toBeInTheDocument();
   });
 
   test('does not show low trace warning when enough traces are selected', () => {
     const ids = Array.from({ length: 12 }, (_, i) => `trace-${i}`);
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
-
-    expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
-  });
-
-  test('does not show low trace warning when no traces are selected', () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
     expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
   });
@@ -345,7 +297,6 @@ describe('IssueDetectionModal', () => {
           componentId: 'mlflow.traces.issue-detection-modal.submit-context',
           value: JSON.stringify({
             selectedTraceCount: 1,
-            totalTraceCount: 412,
             lowTraceWarningShown: true,
             estimatedCostLowUsd: 0.0025,
             estimatedCostHighUsd: 0.01,
@@ -353,14 +304,6 @@ describe('IssueDetectionModal', () => {
         }),
       );
     });
-  });
-
-  test('renders description text', () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    expect(
-      screen.getByText('Use AI to automatically analyze your traces and identify potential issues'),
-    ).toBeInTheDocument();
   });
 
   test('submit button is disabled when form is invalid', async () => {
@@ -378,20 +321,11 @@ describe('IssueDetectionModal', () => {
     expect(submitButton).toBeDisabled();
   });
 
-  test('submit button is enabled when form is valid with existing key', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
+  test('submit button is disabled when no traces are selected', async () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
 
-    const submitButton = screen.getByText('Run Analysis').closest('button');
-    expect(submitButton).not.toBeDisabled();
-  });
-
-  test('submit button is enabled when form is valid with new key', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
-    await userEvent.click(screen.getByTestId('set-valid-new-key'));
-
-    const submitButton = screen.getByText('Run Analysis').closest('button');
-    expect(submitButton).not.toBeDisabled();
+    expect(screen.getByText('Run Analysis').closest('button')).toBeDisabled();
   });
 
   test('calls onClose when cancel button is clicked', async () => {
@@ -419,38 +353,6 @@ describe('IssueDetectionModal', () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled();
     });
-  });
-
-  test('shows trace count when initial traces are provided', async () => {
-    renderWithDesignSystem(
-      <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']} />,
-    );
-
-    expect(screen.getByText('3 traces selected')).toBeInTheDocument();
-  });
-
-  test('opens select traces modal when button is clicked', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-    await userEvent.click(screen.getByTestId('select-traces'));
-
-    expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
-  });
-
-  test('updates trace count after selecting traces', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-    await userEvent.click(screen.getByTestId('select-traces'));
-    await userEvent.click(screen.getByTestId('select-traces-confirm'));
-
-    expect(screen.getByText('2 traces selected')).toBeInTheDocument();
-  });
-
-  test('closes select traces modal when cancel is clicked', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-    await userEvent.click(screen.getByTestId('select-traces'));
-    expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId('select-traces-cancel'));
-    expect(screen.queryByTestId('select-traces-modal')).not.toBeInTheDocument();
   });
 
   test('saves secret when form is submitted with new key', async () => {
@@ -552,31 +454,5 @@ describe('IssueDetectionModal', () => {
         search: '?startTimeLabel=LAST_7_DAYS',
       });
     });
-  });
-
-  test('passes defaultGroupBySession prop to SelectTracesModal when set to true', async () => {
-    renderWithDesignSystem(
-      <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} defaultGroupBySession />,
-    );
-
-    // Open the select traces modal
-    const selectTracesButton = screen.getByTestId('select-traces');
-    await userEvent.click(selectTracesButton);
-
-    // Verify the SelectTracesModal receives defaultGroupBySession=true
-    expect(screen.getByTestId('default-group-by-session')).toHaveTextContent('true');
-  });
-
-  test('passes defaultGroupBySession prop to SelectTracesModal when set to false', async () => {
-    renderWithDesignSystem(
-      <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} defaultGroupBySession={false} />,
-    );
-
-    // Open the select traces modal
-    const selectTracesButton = screen.getByTestId('select-traces');
-    await userEvent.click(selectTracesButton);
-
-    // Verify the SelectTracesModal receives defaultGroupBySession=false
-    expect(screen.getByTestId('default-group-by-session')).toHaveTextContent('false');
   });
 });
