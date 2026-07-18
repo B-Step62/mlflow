@@ -67,6 +67,10 @@
     "defaultMessage": "Python",
     "description": "Tab label for the runnable Python code-snippet path in the eval-runs empty state"
   },
+  "+F0t1y": {
+    "defaultMessage": "Hide",
+    "description": "Link to collapse the model provider picker"
+  },
   "+HgSTK": {
     "defaultMessage": "Use these code examples to call your endpoint. Choose between unified APIs for seamless model switching or passthrough APIs for provider-specific features.",
     "description": "Endpoint usage modal description"
@@ -1195,10 +1199,6 @@
     "defaultMessage": "AI Gateway",
     "description": "Feature card title for AI Gateway"
   },
-  "3pUugt": {
-    "defaultMessage": "Run Analysis",
-    "description": "Submit button to trigger issue detection job"
-  },
   "3sDV5K": {
     "defaultMessage": "Description",
     "description": "experiment page > edit experiment modal > description label"
@@ -1827,6 +1827,10 @@
     "defaultMessage": "Correctness",
     "description": "Evaluation results > known type of evaluation result assessment > correctness assessment. Used to indicate if the result is correct in context of LLMs evaluation. Label displayed if user provided custom value, e.g. \"Correctness: mostly yes, have gaps\""
   },
+  "7+ufqR": {
+    "defaultMessage": "Illustration of traces being analyzed for issues",
+    "description": "Alt text for the issue detection illustration"
+  },
   "7/urtn": {
     "defaultMessage": "Automatically log traces for LangChain or LangGraph invocations by calling the {code} function. For example:",
     "description": "Description of how to log traces for the LangChain/LangGraph package using MLflow autologging. This message is followed by a code example."
@@ -2370,10 +2374,6 @@
   "9MHcPE": {
     "defaultMessage": "Overview",
     "description": "Tab label for endpoint overview"
-  },
-  "9O3K/4": {
-    "defaultMessage": "Issue categories",
-    "description": "Label for the issue category selection inside advanced settings"
   },
   "9Sxo9h": {
     "defaultMessage": "Max length",
@@ -3275,6 +3275,10 @@
     "defaultMessage": "No traces found",
     "description": "No traces found message"
   },
+  "DiSs4C": {
+    "defaultMessage": "Close",
+    "description": "Button to dismiss the submission error dialog"
+  },
   "Dk2itm": {
     "defaultMessage": "Pre-built LLM-as-a-judge | Trace level",
     "description": "Label indicating a pre-built trace-level LLM-as-a-judge template"
@@ -3847,10 +3851,6 @@
     "defaultMessage": "null",
     "description": "Null value in the evaluations table."
   },
-  "H3qWxB": {
-    "defaultMessage": "Analyze {count, plural, one {1 trace} other {# traces}} with AI to identify quality issues.",
-    "description": "Summary of how many traces the issue detection run will analyze"
-  },
   "H7JwOl": {
     "defaultMessage": "Delete version",
     "description": "A label for a button to delete prompt version on the prompt details page"
@@ -4122,6 +4122,10 @@
   "IMkDgM": {
     "defaultMessage": "Experiments",
     "description": "Link label for the experiments page"
+  },
+  "INrdWe": {
+    "defaultMessage": "{count, plural, one {1 trace selected} other {# traces selected}}",
+    "description": "Label showing number of traces selected"
   },
   "ISy30V": {
     "defaultMessage": "Are you sure you want to delete the dataset \"{name}\"? This action cannot be undone.",
@@ -4543,6 +4547,10 @@
     "defaultMessage": "This queue has no questions attached.",
     "description": "Add to review queue: custom queue disabled reason"
   },
+  "KoteXA": {
+    "defaultMessage": "Open AI Gateway",
+    "description": "Link to the AI Gateway page from the submission error dialog"
+  },
   "KpFPCX": {
     "defaultMessage": "Settings",
     "description": "Subsection header listing model settings stored with the selected prompt version on the playground prompt-registry picker modal"
@@ -4590,6 +4598,10 @@
   "KzU2hx": {
     "defaultMessage": "Trace status: OK, ERROR, or IN_PROGRESS",
     "description": "Tooltip description for the State column in the traces table"
+  },
+  "L++5dm": {
+    "defaultMessage": "Provider",
+    "description": "Column header for the model provider"
   },
   "L/4iQO": {
     "defaultMessage": "Delete",
@@ -4991,6 +5003,10 @@
     "defaultMessage": "Completeness",
     "description": "LLM template option"
   },
+  "N185tw": {
+    "defaultMessage": "Traces",
+    "description": "Column header for the analyzed traces"
+  },
   "N1G2a5": {
     "defaultMessage": "Expected facts",
     "description": "Evaluation review > Response section > expected facts > title"
@@ -5018,10 +5034,6 @@
   "N7BCue": {
     "defaultMessage": "Create dataset",
     "description": "Create evaluation dataset button"
-  },
-  "N7E9Hz": {
-    "defaultMessage": "Small samples can miss real issues — we recommend at least {recommended} traces.",
-    "description": "Warning shown when fewer than the recommended number of traces are selected"
   },
   "N8/kmr": {
     "defaultMessage": "Invalid JSON",
@@ -7667,10 +7679,6 @@
     "defaultMessage": "Permission",
     "description": "Permissions table column header for the permission level"
   },
-  "ZlV0kS": {
-    "defaultMessage": "Select at least one issue category in Advanced settings",
-    "description": "Validation message when no issue categories are selected"
-  },
   "ZlokCq": {
     "defaultMessage": "Cancel",
     "description": "A label for the cancel button in the delete prompt modal"
@@ -7742,6 +7750,10 @@
   "a1liZ7": {
     "defaultMessage": "Export",
     "description": "Export traces to dataset modal action button"
+  },
+  "a2OFJh": {
+    "defaultMessage": "Run",
+    "description": "Submit button to trigger issue detection job"
   },
   "a3G5A7": {
     "defaultMessage": "Provider",
@@ -9163,6 +9175,10 @@
     "defaultMessage": "Create new workspace",
     "description": "Create workspace button"
   },
+  "gY+/r3": {
+    "defaultMessage": "Unable to start issue detection",
+    "description": "Title of the dialog shown when submitting an issue detection job fails"
+  },
   "gY9VVl": {
     "defaultMessage": "Instructions for reviewers on how to answer this question",
     "description": "Review question instruction input placeholder"
@@ -9434,10 +9450,6 @@
   "hg+bcy": {
     "defaultMessage": "Enable telemetry",
     "description": "Enable telemetry settings title"
-  },
-  "hg9VuZ": {
-    "defaultMessage": "Model",
-    "description": "Compact label for the model selection section"
   },
   "hh+/og": {
     "defaultMessage": "Settings",
@@ -10627,6 +10639,10 @@
     "defaultMessage": "Edit history",
     "description": "Title of a modal that shows the edit history of an assessment"
   },
+  "n7Jaek": {
+    "defaultMessage": "AI Gateway endpoint",
+    "description": "Hint marking an option as an AI Gateway endpoint"
+  },
   "n7MxV7": {
     "defaultMessage": "Use multiple models for load balancing by splitting traffic with weights",
     "description": "Gateway > Endpoint details > Description for adding more primary models"
@@ -11042,10 +11058,6 @@
   "pCaE4I": {
     "defaultMessage": "Sessions",
     "description": "Label for the scorer evaluation scope selection"
-  },
-  "pClBtS": {
-    "defaultMessage": "Cancel",
-    "description": "Cancel button in issue detection modal"
   },
   "pDCDkJ": {
     "defaultMessage": "Showing {visibleCount} out of {totalCount} {groupName}. Select columns to view more.",
@@ -11939,6 +11951,10 @@
     "defaultMessage": "Roles",
     "description": "Users table roles header — roles render as multiple <workspace> → <role_name> lines per user"
   },
+  "tN8qhP": {
+    "defaultMessage": "Change",
+    "description": "Link to expand the model provider picker"
+  },
   "tNL+F4": {
     "defaultMessage": "Full trace with an agent using the right part of the trace to use to judge",
     "description": "Description for trace variable"
@@ -11982,6 +11998,10 @@
   "tdmVWN": {
     "defaultMessage": "While deleting an experiment run, an error occurred.",
     "description": "Experiment tracking > delete run modal > error message"
+  },
+  "tek6qD": {
+    "defaultMessage": "Small samples can miss real issues.",
+    "description": "Warning shown when fewer than the recommended number of traces are selected"
   },
   "tiQptW": {
     "defaultMessage": "Learn more",
@@ -12354,6 +12374,10 @@
   "vtQvcd": {
     "defaultMessage": "Save version",
     "description": "Confirm-button label on the playground save-prompt-version modal"
+  },
+  "vtv7uU": {
+    "defaultMessage": "AI scans your traces and groups failures into issues.",
+    "description": "Description text for issue detection modal"
   },
   "vwD2zW": {
     "defaultMessage": "Unified APIs",
