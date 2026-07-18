@@ -1,13 +1,12 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
+  Accordion,
   Modal,
   Button,
   useDesignSystemTheme,
   SparkleIcon,
   Typography,
   Alert,
-  ChevronLeftIcon,
-  ChevronRightIcon,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
@@ -15,8 +14,7 @@ import Routes from '../../../../routes';
 import { getTimeRangeQueryString } from '../../../../pages/experiment-page-tabs/side-nav/utils';
 import { SelectTracesModal } from '../../../SelectTracesModal';
 import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
-import { ALL_ISSUE_CATEGORIES, type IssueCategory } from './IssueDetectionCategories';
-import { IssueDetectionCategorySelection } from './IssueDetectionCategorySelection';
+import { ALL_ISSUE_CATEGORIES, IssueCategoryList, type IssueCategory } from './IssueDetectionCategories';
 import { GenAIModelSelection, type GenAIModelSelectionRef } from './GenAIModelSelection';
 import { useInvokeIssueDetection } from './hooks/useInvokeIssueDetection';
 
@@ -40,7 +38,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const location = useLocation();
   const modelSelectionRef = useRef<GenAIModelSelectionRef>(null);
 
-  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [selectedCategories, setSelectedCategories] = useState<Set<IssueCategory>>(new Set(ALL_ISSUE_CATEGORIES));
   const [selectedTraceIds, setSelectedTraceIds] = useState<string[]>(() => {
     return initialSelectedTraceIds.length > 0 ? initialSelectedTraceIds : availableTraceIds;
@@ -63,7 +60,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   } = useInvokeIssueDetection();
 
   const resetForm = useCallback(() => {
-    setCurrentStep(1);
     setSelectedCategories(new Set(ALL_ISSUE_CATEGORIES));
     setSelectedTraceIds([]);
     setIsModelSelectionValid(false);
@@ -80,14 +76,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       }
       return next;
     });
-  }, []);
-
-  const handleNext = useCallback(() => {
-    setCurrentStep(2);
-  }, []);
-
-  const handlePrevious = useCallback(() => {
-    setCurrentStep(1);
   }, []);
 
   const handleSubmit = () => {
@@ -158,45 +146,23 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
     onClose();
   }, [resetForm, resetCreateSecret, resetIssueDetection, onClose]);
 
-  const isStep1Valid = selectedCategories.size > 0;
-  const isStep2Valid = isModelSelectionValid && selectedTraceIds.length > 0;
+  const isFormValid = isModelSelectionValid && selectedTraceIds.length > 0 && selectedCategories.size > 0;
 
   const handleModelSelectionValidityChange = useCallback((isValid: boolean) => {
     setIsModelSelectionValid(isValid);
   }, []);
 
-  const renderStep1Footer = () => (
+  const renderFooter = () => (
     <div css={{ display: 'flex', justifyContent: 'flex-end' }}>
       <Button componentId="mlflow.traces.issue-detection-modal.cancel" onClick={handleClose}>
         <FormattedMessage defaultMessage="Cancel" description="Cancel button in issue detection modal" />
-      </Button>
-      <Button
-        componentId="mlflow.traces.issue-detection-modal.next"
-        type="primary"
-        onClick={handleNext}
-        disabled={!isStep1Valid}
-        endIcon={<ChevronRightIcon />}
-      >
-        <FormattedMessage defaultMessage="Next" description="Next button to proceed to provider configuration" />
-      </Button>
-    </div>
-  );
-
-  const renderStep2Footer = () => (
-    <div css={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <Button
-        componentId="mlflow.traces.issue-detection-modal.previous"
-        onClick={handlePrevious}
-        icon={<ChevronLeftIcon />}
-      >
-        <FormattedMessage defaultMessage="Previous" description="Previous button to go back to category selection" />
       </Button>
       <Button
         componentId="mlflow.traces.issue-detection-modal.submit"
         type="primary"
         onClick={handleSubmit}
         loading={isCreatingSecret || isInvokingIssueDetection}
-        disabled={!isStep2Valid}
+        disabled={!isFormValid}
       >
         <SparkleIcon css={{ marginRight: theme.spacing.xs }} />
         <FormattedMessage defaultMessage="Run Analysis" description="Submit button to trigger issue detection job" />
@@ -219,7 +185,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
         }
         visible
         onCancel={isCreatingSecret || isInvokingIssueDetection ? undefined : handleClose}
-        footer={currentStep === 1 ? renderStep1Footer() : renderStep2Footer()}
+        footer={renderFooter()}
       >
         {(createSecretError || issueDetectionError) && (
           <Alert
@@ -240,76 +206,111 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
             description="Description text for issue detection modal"
           />
         </Typography.Text>
-        {currentStep === 1 ? (
-          <IssueDetectionCategorySelection
-            selectedCategories={selectedCategories}
-            onCategoryToggle={handleCategoryToggle}
-          />
-        ) : (
-          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-            <div>
-              <Typography.Text bold>
-                <FormattedMessage defaultMessage="Traces" description="Section header for trace selection" />
-              </Typography.Text>
-              <Typography.Text color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+          <div>
+            <Typography.Text bold>
+              <FormattedMessage defaultMessage="Traces" description="Section header for trace selection" />
+            </Typography.Text>
+            <Typography.Text color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
+              <FormattedMessage
+                defaultMessage="Select the traces to analyze for issues"
+                description="Description for trace selection section"
+              />
+            </Typography.Text>
+            <div css={{ marginTop: theme.spacing.sm }}>
+              <Button
+                componentId="mlflow.traces.issue-detection-modal.select-traces"
+                data-testid="select-traces"
+                onClick={() => setIsSelectTracesModalOpen(true)}
+              >
+                {selectedTraceIds.length > 0 ? (
+                  <FormattedMessage
+                    defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
+                    description="Label showing number of traces selected"
+                    values={{ count: selectedTraceIds.length }}
+                  />
+                ) : (
+                  <FormattedMessage
+                    defaultMessage="Select traces"
+                    description="Button to open trace selection modal"
+                  />
+                )}
+              </Button>
+            </div>
+          </div>
+          <GenAIModelSelection
+            ref={modelSelectionRef}
+            onValidityChange={handleModelSelectionValidityChange}
+            showConfigureDirectly
+            componentId="mlflow.traces.issue-detection-modal"
+            description={
+              <>
                 <FormattedMessage
-                  defaultMessage="Select the traces to analyze for issues"
-                  description="Description for trace selection section"
+                  defaultMessage="Configure the model to power issue detection."
+                  description="Description for model selection in issue detection modal"
+                />
+                <br />
+                <FormattedMessage
+                  defaultMessage="Rough cost: under $0.5 for ~100 traces, actual cost varies by selected model. <link>See benchmark</link>."
+                  description="Approximate USD cost ranges for issue detection as a hint, with link to benchmark docs"
+                  values={{
+                    link: (chunks: React.ReactNode) => (
+                      <a
+                        href="https://mlflow.org/docs/latest/genai/eval-monitor/ai-insights/detect-issues/#cost-benchmark"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {chunks}
+                      </a>
+                    ),
+                  }}
+                />
+              </>
+            }
+          />
+          <Accordion
+            componentId="mlflow.traces.issue-detection-modal.advanced-config"
+            dangerouslyAppendEmotionCSS={{
+              background: 'transparent',
+              border: 'none',
+            }}
+          >
+            <Accordion.Panel
+              key="advanced"
+              header={
+                <div css={{ display: 'flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
+                  <FormattedMessage
+                    defaultMessage="Advanced configuration"
+                    description="Collapsible section for advanced issue detection configuration"
+                  />
+                  <Typography.Text color={selectedCategories.size === 0 ? 'error' : 'secondary'} size="sm">
+                    <FormattedMessage
+                      defaultMessage="Categories: {selectedCount} of {totalCount}"
+                      description="Summary of selected issue categories shown in the advanced configuration header"
+                      values={{ selectedCount: selectedCategories.size, totalCount: ALL_ISSUE_CATEGORIES.length }}
+                    />
+                  </Typography.Text>
+                </div>
+              }
+            >
+              <Typography.Text color="secondary" css={{ display: 'block', marginBottom: theme.spacing.sm }}>
+                <FormattedMessage
+                  defaultMessage="Choose which types of issues to detect in your traces"
+                  description="Description for the issue category selection"
                 />
               </Typography.Text>
-              <div css={{ marginTop: theme.spacing.sm }}>
-                <Button
-                  componentId="mlflow.traces.issue-detection-modal.select-traces"
-                  data-testid="select-traces"
-                  onClick={() => setIsSelectTracesModalOpen(true)}
-                >
-                  {selectedTraceIds.length > 0 ? (
-                    <FormattedMessage
-                      defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
-                      description="Label showing number of traces selected"
-                      values={{ count: selectedTraceIds.length }}
-                    />
-                  ) : (
-                    <FormattedMessage
-                      defaultMessage="Select traces"
-                      description="Button to open trace selection modal"
-                    />
-                  )}
-                </Button>
-              </div>
-            </div>
-            <GenAIModelSelection
-              ref={modelSelectionRef}
-              onValidityChange={handleModelSelectionValidityChange}
-              showConfigureDirectly
-              componentId="mlflow.traces.issue-detection-modal"
-              description={
-                <>
-                  <FormattedMessage
-                    defaultMessage="Configure the model to power issue detection."
-                    description="Description for model selection in issue detection modal"
-                  />
-                  <br />
-                  <FormattedMessage
-                    defaultMessage="Rough cost: under $0.5 for ~100 traces, actual cost varies by selected model. <link>See benchmark</link>."
-                    description="Approximate USD cost ranges for issue detection as a hint, with link to benchmark docs"
-                    values={{
-                      link: (chunks: React.ReactNode) => (
-                        <a
-                          href="https://mlflow.org/docs/latest/genai/eval-monitor/ai-insights/detect-issues/#cost-benchmark"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {chunks}
-                        </a>
-                      ),
-                    }}
-                  />
-                </>
-              }
-            />
-          </div>
-        )}
+              <IssueCategoryList selectedCategories={selectedCategories} onToggle={handleCategoryToggle} />
+            </Accordion.Panel>
+          </Accordion>
+          {selectedCategories.size === 0 && (
+            <Typography.Text color="error" size="sm">
+              <FormattedMessage
+                defaultMessage="Select at least one issue category in Advanced configuration"
+                description="Validation message when no issue categories are selected"
+              />
+            </Typography.Text>
+          )}
+        </div>
       </Modal>
       {isSelectTracesModalOpen && (
         <SelectTracesModal

@@ -2423,10 +2423,6 @@
     "defaultMessage": "No assertions recorded for this test.",
     "description": "Empty assertions state in the regression-test detail"
   },
-  "9icYIV": {
-    "defaultMessage": "Select Categories",
-    "description": "Header for the category selection step in issue detection modal"
-  },
   "9kTEoo": {
     "defaultMessage": "Is the app's response grounded in retrieved information?",
     "description": "Hint for RetrievalGroundedness template"
@@ -3271,6 +3267,10 @@
     "defaultMessage": "Pre-built LLM-as-a-judge | Trace level",
     "description": "Label indicating a pre-built trace-level LLM-as-a-judge template"
   },
+  "Dm2MfY": {
+    "defaultMessage": "Choose which types of issues to detect in your traces",
+    "description": "Description for the issue category selection"
+  },
   "Dm4Ez0": {
     "defaultMessage": "Filter",
     "description": "Label for the filter button in the trace explorer."
@@ -3406,6 +3406,10 @@
   "ERWI9o": {
     "defaultMessage": "Text",
     "description": "Label for text prompt type in the prompt creation modal"
+  },
+  "ERfrYP": {
+    "defaultMessage": "Categories: {selectedCount} of {totalCount}",
+    "description": "Summary of selected issue categories shown in the advanced configuration header"
   },
   "ES/pmW": {
     "defaultMessage": "Select the traces to evaluate.",
@@ -5847,6 +5851,10 @@
     "defaultMessage": "Feedback",
     "description": "Label for the value of an feedback assessment"
   },
+  "RGchEp": {
+    "defaultMessage": "Select at least one issue category in Advanced configuration",
+    "description": "Validation message when no issue categories are selected"
+  },
   "RHoQ7a": {
     "defaultMessage": "Users",
     "description": "Add to review queue: per-user personal-queue section header"
@@ -6122,10 +6130,6 @@
   "SbMdmm": {
     "defaultMessage": "{spanName} was called",
     "description": "Label for an intermediate node in the trace explorer summary view, indicating that a span/function was called in the course of execution."
-  },
-  "ScrXYc": {
-    "defaultMessage": "Previous",
-    "description": "Previous button to go back to category selection"
   },
   "Sd7sQi": {
     "defaultMessage": "Traces are only available for experiment-scoped prompts.",
@@ -7682,10 +7686,6 @@
   "ZwyDx6": {
     "defaultMessage": "Users",
     "description": "Admin users tab"
-  },
-  "a+uNeX": {
-    "defaultMessage": "Next",
-    "description": "Next button to proceed to provider configuration"
   },
   "a02Pn6": {
     "defaultMessage": "Step",
@@ -10291,10 +10291,6 @@
     "defaultMessage": "We couldn't load your workspaces.",
     "description": "Home page workspaces error message"
   },
-  "lrhKxR": {
-    "defaultMessage": "Choose which types of issues to detect in your traces",
-    "description": "Description for the category selection step"
-  },
   "ls3868": {
     "defaultMessage": "Guidelines",
     "description": "Evaluation results > known type of evaluation result assessment > guidelines assessment. Used to indicate if the result adheres to the guidelines in context of LLMs evaluation. Label displayed if user provided custom value, e.g. \"Guidelines: moderate\""
@@ -11318,6 +11314,10 @@
   "qvEOHi": {
     "defaultMessage": "MLflow collects usage data to improve the product. To confirm your preferences, please visit the settings page in the navigation sidebar. To learn more about what data is collected, please visit the <documentation>documentation</documentation>.",
     "description": "Telemetry alert description"
+  },
+  "qvtFFX": {
+    "defaultMessage": "Advanced configuration",
+    "description": "Collapsible section for advanced issue detection configuration"
   },
   "qwSqlQ": {
     "defaultMessage": "Rationale (optional)",

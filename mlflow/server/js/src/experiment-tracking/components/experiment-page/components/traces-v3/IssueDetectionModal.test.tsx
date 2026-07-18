@@ -210,17 +210,51 @@ describe('IssueDetectionModal', () => {
     } as any);
   });
 
-  // Helper to navigate to step 2 (provider/model configuration)
-  const navigateToStep2 = async () => {
-    const nextButton = screen.getByText('Next').closest('button')!;
-    await userEvent.click(nextButton);
+  // Helper to expand the advanced configuration section containing category selection
+  const expandAdvancedConfig = async () => {
+    await userEvent.click(screen.getByText('Advanced configuration'));
   };
 
-  test('renders modal with step 1 (category selection)', () => {
+  test('renders traces, model selection, and advanced configuration in a single step', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
-    expect(screen.getByText('Select Categories')).toBeInTheDocument();
+    expect(screen.getByText('Traces')).toBeInTheDocument();
+    expect(screen.getByTestId('model-selection')).toBeInTheDocument();
+    expect(screen.getByText('Advanced configuration')).toBeInTheDocument();
+    expect(screen.getByText('Run Analysis')).toBeInTheDocument();
+  });
+
+  test('shows all categories selected by default in the advanced configuration header', () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
+
+    expect(screen.getByText('Categories: 6 of 6')).toBeInTheDocument();
+  });
+
+  test('category selection is available inside advanced configuration', async () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
+
+    await expandAdvancedConfig();
+
+    expect(screen.getByText('Correctness')).toBeInTheDocument();
+    expect(screen.getByText('Safety')).toBeInTheDocument();
+  });
+
+  test('deselecting all categories disables submit and shows validation message', async () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
+
+    await userEvent.click(screen.getByTestId('set-valid-existing-key'));
+    const submitButton = screen.getByText('Run Analysis').closest('button');
+    expect(submitButton).not.toBeDisabled();
+
+    await expandAdvancedConfig();
+    for (const category of ['Correctness', 'Latency', 'Execution', 'Adherence', 'Relevance', 'Safety']) {
+      await userEvent.click(screen.getByText(category));
+    }
+
+    expect(screen.getByText('Categories: 0 of 6')).toBeInTheDocument();
+    expect(screen.getByText('Select at least one issue category in Advanced configuration')).toBeInTheDocument();
+    expect(submitButton).toBeDisabled();
   });
 
   test('renders description text', () => {
@@ -231,18 +265,8 @@ describe('IssueDetectionModal', () => {
     ).toBeInTheDocument();
   });
 
-  test('renders model selection in step 2', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    await navigateToStep2();
-
-    expect(screen.getByTestId('model-selection')).toBeInTheDocument();
-  });
-
   test('submit button is disabled when form is invalid', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
-
-    await navigateToStep2();
     // Form starts invalid
     const submitButton = screen.getByText('Run Analysis').closest('button');
     expect(submitButton).toBeDisabled();
@@ -258,8 +282,6 @@ describe('IssueDetectionModal', () => {
 
   test('submit button is enabled when form is valid with existing key', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button');
@@ -268,8 +290,6 @@ describe('IssueDetectionModal', () => {
 
   test('submit button is enabled when form is valid with new key', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-new-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button');
@@ -293,8 +313,6 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(
       <IssueDetectionModal {...defaultProps} onClose={onClose} initialSelectedTraceIds={['trace-1']} />,
     );
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button')!;
@@ -310,15 +328,11 @@ describe('IssueDetectionModal', () => {
       <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']} />,
     );
 
-    await navigateToStep2();
-
     expect(screen.getByText('3 traces selected')).toBeInTheDocument();
   });
 
   test('opens select traces modal when button is clicked', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('select-traces'));
 
     expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
@@ -326,8 +340,6 @@ describe('IssueDetectionModal', () => {
 
   test('updates trace count after selecting traces', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('select-traces'));
     await userEvent.click(screen.getByTestId('select-traces-confirm'));
 
@@ -336,8 +348,6 @@ describe('IssueDetectionModal', () => {
 
   test('closes select traces modal when cancel is clicked', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('select-traces'));
     expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
 
@@ -351,8 +361,6 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(
       <IssueDetectionModal {...defaultProps} onClose={onClose} initialSelectedTraceIds={['trace-1']} />,
     );
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-new-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button')!;
@@ -377,8 +385,6 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(
       <IssueDetectionModal {...defaultProps} onClose={onClose} initialSelectedTraceIds={['trace-1']} />,
     );
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button')!;
@@ -396,8 +402,6 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(
       <IssueDetectionModal {...defaultProps} onClose={onClose} initialSelectedTraceIds={['trace-1']} />,
     );
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button')!;
@@ -425,8 +429,6 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(
       <IssueDetectionModal {...defaultProps} onClose={onClose} initialSelectedTraceIds={['trace-1']} />,
     );
-
-    await navigateToStep2();
     await userEvent.click(screen.getByTestId('set-valid-existing-key'));
 
     const submitButton = screen.getByText('Run Analysis').closest('button')!;
@@ -445,8 +447,6 @@ describe('IssueDetectionModal', () => {
       <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} defaultGroupBySession />,
     );
 
-    await navigateToStep2();
-
     // Open the select traces modal
     const selectTracesButton = screen.getByTestId('select-traces');
     await userEvent.click(selectTracesButton);
@@ -459,8 +459,6 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(
       <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} defaultGroupBySession={false} />,
     );
-
-    await navigateToStep2();
 
     // Open the select traces modal
     const selectTracesButton = screen.getByTestId('select-traces');

@@ -2199,6 +2199,7 @@ module.exports = {
   // -- mlflow.traces --
   "mlflow.traces.empty_state_generic_quickstart.copy": "",
   "mlflow.traces.issue-detection-modal": "",
+  "mlflow.traces.issue-detection-modal.advanced-config": "",
   "mlflow.traces.issue-detection-modal.cancel": "",
   "mlflow.traces.issue-detection-modal.category.adherence": "",
   "mlflow.traces.issue-detection-modal.category.correctness": "",
@@ -2208,8 +2209,6 @@ module.exports = {
   "mlflow.traces.issue-detection-modal.category.safety": "",
   "mlflow.traces.issue-detection-modal.error": "",
   "mlflow.traces.issue-detection-modal.model": "",
-  "mlflow.traces.issue-detection-modal.next": "",
-  "mlflow.traces.issue-detection-modal.previous": "",
   "mlflow.traces.issue-detection-modal.select-traces": "",
   "mlflow.traces.issue-detection-modal.submit": "",
   "mlflow.traces.issue-detection.api-key.auth-mode-radio-group": "",
