@@ -18,6 +18,7 @@ import Utils from '../../../../common/utils/Utils';
 import { useSearchIssuesQuery } from '../hooks/useSearchIssuesQuery';
 import { JobStatus, isJobComplete } from '../hooks/useFetchJobStatus';
 import { useCancelJob } from '../hooks/useCancelJob';
+import { IssueDetectionLowResultsCallout } from '../IssueDetectionLowResultsCallout';
 import { useLogTelemetryEvent } from '../../../../telemetry/hooks/useLogTelemetryEvent';
 
 export interface IssueJobResult {
@@ -283,6 +284,15 @@ export const IssueDetectionProgress = ({
           )}
         </div>
       </div>
+
+      {isJobSucceeded && identifiedIssues <= 1 && (
+        <div css={{ marginTop: theme.spacing.md }}>
+          <IssueDetectionLowResultsCallout
+            issueCount={identifiedIssues}
+            tracesAnalyzed={result?.total_traces_analyzed ?? totalTraces}
+          />
+        </div>
+      )}
 
       {isJobFailed && jobErrorMessage && (
         <>

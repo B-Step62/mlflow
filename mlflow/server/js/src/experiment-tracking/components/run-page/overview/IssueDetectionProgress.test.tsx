@@ -1,5 +1,5 @@
 import { jest, describe, test, expect, beforeEach } from '@jest/globals';
-import { act, renderWithIntl } from '@mlflow/mlflow/src/common/utils/TestUtils.react18';
+import { act, renderWithIntl, screen } from '@mlflow/mlflow/src/common/utils/TestUtils.react18';
 import { MemoryRouter } from '../../../../common/utils/RoutingUtils';
 import { IssueDetectionProgress } from './IssueDetectionProgress';
 import { JobStatus } from '../hooks/useFetchJobStatus';
@@ -69,5 +69,62 @@ describe('IssueDetectionProgress telemetry', () => {
     });
 
     expect(mockLogTelemetryEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssueDetectionProgress low-result callout', () => {
+  const { useSearchIssuesQuery } = jest.requireMock('../hooks/useSearchIssuesQuery') as {
+    useSearchIssuesQuery: jest.Mock;
+  };
+
+  const renderProgress = async (jobStatus: JobStatus, issues: unknown[], tracesAnalyzed = 5) => {
+    useSearchIssuesQuery.mockReturnValue({ issues });
+    await act(async () => {
+      renderWithIntl(
+        <MemoryRouter>
+          <IssueDetectionProgress
+            jobStatus={jobStatus}
+            totalTraces={tracesAnalyzed}
+            result={{ issues: issues.length, total_traces_analyzed: tracesAnalyzed }}
+          />
+        </MemoryRouter>,
+      );
+    });
+  };
+
+  test('shows guidance when a succeeded job found no issues', async () => {
+    await renderProgress(JobStatus.SUCCEEDED, []);
+
+    expect(screen.getByText("0 issues doesn't always mean all clear")).toBeInTheDocument();
+    expect(screen.getByText(/only 5 traces were analyzed/)).toBeInTheDocument();
+    expect(screen.getByTestId('low-results-run-again')).toBeInTheDocument();
+    expect(screen.getByText('Add user feedback')).toBeInTheDocument();
+    expect(screen.getByText('Annotate traces')).toBeInTheDocument();
+  });
+
+  test('shows single-issue guidance variant', async () => {
+    await renderProgress(JobStatus.SUCCEEDED, [{ issue_id: 'iss-1' }]);
+
+    expect(screen.getByText('Only 1 issue found — there may be more')).toBeInTheDocument();
+  });
+
+  test('omits the add-more-traces suggestion for large runs', async () => {
+    await renderProgress(JobStatus.SUCCEEDED, [], 100);
+
+    expect(screen.getByText("0 issues doesn't always mean all clear")).toBeInTheDocument();
+    expect(screen.queryByText(/traces were analyzed/)).not.toBeInTheDocument();
+  });
+
+  test('does not show guidance when multiple issues are found', async () => {
+    await renderProgress(JobStatus.SUCCEEDED, [{ issue_id: 'iss-1' }, { issue_id: 'iss-2' }]);
+
+    expect(screen.queryByText("0 issues doesn't always mean all clear")).not.toBeInTheDocument();
+    expect(screen.queryByText('Only 1 issue found — there may be more')).not.toBeInTheDocument();
+  });
+
+  test('does not show guidance while the job is running', async () => {
+    await renderProgress(JobStatus.RUNNING, []);
+
+    expect(screen.queryByText("0 issues doesn't always mean all clear")).not.toBeInTheDocument();
   });
 });

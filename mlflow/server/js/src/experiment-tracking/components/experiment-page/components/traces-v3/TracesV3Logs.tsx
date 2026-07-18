@@ -85,6 +85,7 @@ import {
 } from '../../../../pages/experiment-scorers/hooks/useRunScorerInTracesViewConfiguration';
 import { IssueDetectionModal } from './IssueDetectionModal';
 import { IssueDetectionStatusChip, type SubmittedIssueDetectionJob } from './IssueDetectionStatusChip';
+import { useSearchParams } from '../../../../../common/utils/RoutingUtils';
 import { useCountInfo } from './hooks/useCountInfo';
 import { useAssessmentCountMetrics } from './hooks/useAssessmentCountMetrics';
 
@@ -189,6 +190,22 @@ const TracesV3LogsImpl = React.memo(
     const [submittedIssueDetectionJob, setSubmittedIssueDetectionJob] = useState<SubmittedIssueDetectionJob | null>(
       null,
     );
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Auto-open the detection modal when deep-linked (e.g. "Run detection again" on a low-result run)
+    useEffect(() => {
+      if (searchParams.get('detectIssues') === 'true' && !disableActions) {
+        setIsIssueDetectionModalOpen(true);
+        setSearchParams(
+          (params) => {
+            const next = new URLSearchParams(params);
+            next.delete('detectIssues');
+            return next;
+          },
+          { replace: true },
+        );
+      }
+    }, [searchParams, setSearchParams, disableActions]);
 
     // Check if we're already inside a provider (e.g., from SelectTracesModal)
     // If so, we won't create our own provider to avoid shadowing the parent's selection state
