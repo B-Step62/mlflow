@@ -2175,6 +2175,10 @@
     "defaultMessage": "Select output type",
     "description": "Placeholder for output type selection"
   },
+  "8c+D0n": {
+    "defaultMessage": "Select {count} most recent traces",
+    "description": "Button to select the most recent traces in one click"
+  },
   "8eVxXM": {
     "defaultMessage": "Cancel",
     "description": "Cancel delete webhook button"
@@ -3423,10 +3427,6 @@
     "defaultMessage": "Using regular expression quick filter. The following query will be used: {filterSample}",
     "description": "Experiment page > control bar > search filter > a label displayed when user has entered a simple query that will be automatically transformed into RLIKE SQL query before being sent to the API"
   },
-  "ETbUBU": {
-    "defaultMessage": "Rough cost: under $0.5 for ~100 traces, actual cost varies by selected model. <link>See benchmark</link>.",
-    "description": "Approximate USD cost ranges for issue detection as a hint, with link to benchmark docs"
-  },
   "EWf8NH": {
     "defaultMessage": "Learn more",
     "description": "Documentation link text"
@@ -3670,6 +3670,10 @@
   "Ft2NsS": {
     "defaultMessage": "High",
     "description": "Issue severity tag label for high severity"
+  },
+  "FtwEhj": {
+    "defaultMessage": "Small samples can miss real issues",
+    "description": "Title of the warning shown when fewer than the recommended number of traces are selected"
   },
   "FxQYyX": {
     "defaultMessage": "Select your workflow type. Choose GenAI when working on apps and agents, and select model training when working on classical ML or deep learning problems.",
@@ -5603,6 +5607,10 @@
     "defaultMessage": "Parameters ({length})",
     "description": "Run page > Overview > Parameters table > Section title"
   },
+  "Q0WaP0": {
+    "defaultMessage": "Estimated cost: ~{low}–{high} for {count, plural, one {1 trace} other {# traces}} — actual varies by model. <link>See benchmark</link>.",
+    "description": "Estimated USD cost range for the issue detection run, with link to benchmark docs"
+  },
   "Q0i5xG": {
     "defaultMessage": "Scatter chart",
     "description": "Experiment tracking > runs charts > add chart menu > scatter plot"
@@ -5794,6 +5802,10 @@
   "R/4/8G": {
     "defaultMessage": "Metric",
     "description": "Label for the metric column in the logged model details metrics table"
+  },
+  "R/v0uf": {
+    "defaultMessage": "of {totalCount} traces in this experiment",
+    "description": "Hint showing the total number of traces available in the experiment"
   },
   "R1FeSE": {
     "defaultMessage": "Advanced settings (optional)",
@@ -10023,6 +10035,10 @@
     "defaultMessage": "Discard",
     "description": "Experiment page > artifact compare view > prompt lab artifact synchronization > submit button label"
   },
+  "kPLEh+": {
+    "defaultMessage": "Select more traces",
+    "description": "Button to open the trace selection modal to add more traces"
+  },
   "kQ9rmr": {
     "defaultMessage": "Operator",
     "description": "Usage overview > filter row > operator column label"
@@ -11142,6 +11158,10 @@
   "q0fV0H": {
     "defaultMessage": "Latency",
     "description": "Issue category title for latency"
+  },
+  "q5YN6v": {
+    "defaultMessage": "You selected {count, plural, one {only 1 trace} other {only # traces}}. We recommend analyzing at least {recommended} traces for reliable issue coverage.",
+    "description": "Body of the warning shown when fewer than the recommended number of traces are selected"
   },
   "q8rYCQ": {
     "defaultMessage": "Data Type",

@@ -1,13 +1,22 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
+import { AggregationType } from '@databricks/web-shared/model-trace-explorer';
 import { renderWithDesignSystem, screen, waitFor } from '../../../../../common/utils/TestUtils.react18';
 import { IssueDetectionModal } from './IssueDetectionModal';
 import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
 import { useInvokeIssueDetection } from './hooks/useInvokeIssueDetection';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
+import { useTraceMetricsQuery } from '../../../../pages/experiment-overview/hooks/useTraceMetricsQuery';
+import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
 
 jest.mock('../../../../../gateway/hooks/useCreateSecret');
 jest.mock('./hooks/useInvokeIssueDetection');
+jest.mock('../../../../pages/experiment-overview/hooks/useTraceMetricsQuery', () => ({
+  useTraceMetricsQuery: jest.fn(),
+}));
+jest.mock('../../../../../telemetry/hooks/useLogTelemetryEvent', () => ({
+  useLogTelemetryEvent: jest.fn(),
+}));
 jest.mock('../../../../../common/utils/RoutingUtils', () => ({
   ...jest.requireActual<typeof import('../../../../../common/utils/RoutingUtils')>(
     '../../../../../common/utils/RoutingUtils',
@@ -163,12 +172,19 @@ describe('IssueDetectionModal', () => {
   let mockInvokeIssueDetection: jest.Mock;
   let mockResetIssueDetection: jest.Mock;
   let mockNavigate: jest.Mock;
+  let mockLogTelemetryEvent: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockNavigate = jest.fn();
     jest.mocked(useNavigate).mockReturnValue(mockNavigate);
     jest.mocked(useLocation).mockReturnValue({ search: '', pathname: '/', hash: '', state: null, key: 'default' });
+    mockLogTelemetryEvent = jest.fn();
+    jest.mocked(useLogTelemetryEvent).mockReturnValue(mockLogTelemetryEvent as any);
+    jest.mocked(useTraceMetricsQuery).mockReturnValue({
+      data: { data_points: [{ values: { [AggregationType.COUNT]: 412 } }] },
+      isLoading: false,
+    } as any);
     // Reset mock values
     mockModelSelectionValues = {
       mode: 'direct',
@@ -255,6 +271,88 @@ describe('IssueDetectionModal', () => {
     expect(screen.getByText('Categories: 0 of 6')).toBeInTheDocument();
     expect(screen.getByText('Select at least one issue category in Advanced configuration')).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
+  });
+
+  test('shows the total trace count of the experiment', () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
+
+    expect(screen.getByText('of 412 traces in this experiment')).toBeInTheDocument();
+  });
+
+  test('shows low trace warning with quick select when few traces are selected', async () => {
+    const availableTraceIds = Array.from({ length: 50 }, (_, i) => `trace-${i}`);
+    renderWithDesignSystem(
+      <IssueDetectionModal
+        {...defaultProps}
+        initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']}
+        availableTraceIds={availableTraceIds}
+      />,
+    );
+
+    expect(screen.getByText('Small samples can miss real issues')).toBeInTheDocument();
+    expect(screen.getByText('Select 30 most recent traces')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('quick-select-traces'));
+
+    expect(screen.getByText('30 traces selected')).toBeInTheDocument();
+    expect(screen.queryByText('Small samples can miss real issues')).not.toBeInTheDocument();
+  });
+
+  test('low trace warning falls back to opening trace selection when no more traces are available', async () => {
+    renderWithDesignSystem(
+      <IssueDetectionModal
+        {...defaultProps}
+        initialSelectedTraceIds={['trace-1', 'trace-2']}
+        availableTraceIds={['trace-1', 'trace-2']}
+      />,
+    );
+
+    expect(screen.getByText('Small samples can miss real issues')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('quick-select-traces'));
+
+    expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
+  });
+
+  test('does not show low trace warning when enough traces are selected', () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `trace-${i}`);
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
+
+    expect(screen.queryByText('Small samples can miss real issues')).not.toBeInTheDocument();
+  });
+
+  test('does not show low trace warning when no traces are selected', () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
+
+    expect(screen.queryByText('Small samples can miss real issues')).not.toBeInTheDocument();
+  });
+
+  test('shows estimated cost scaled to the selected trace count', () => {
+    const ids = Array.from({ length: 100 }, (_, i) => `trace-${i}`);
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
+
+    expect(screen.getByText(/Estimated cost: ~\$0\.25–\$1\.00 for 100 traces/)).toBeInTheDocument();
+  });
+
+  test('logs submit context telemetry on submit', async () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
+    await userEvent.click(screen.getByTestId('set-valid-existing-key'));
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
+
+    await waitFor(() => {
+      expect(mockLogTelemetryEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          componentId: 'mlflow.traces.issue-detection-modal.submit-context',
+          value: JSON.stringify({
+            selectedTraceCount: 1,
+            totalTraceCount: 412,
+            lowTraceWarningShown: true,
+            estimatedCostLowUsd: 0.0025,
+            estimatedCostHighUsd: 0.01,
+          }),
+        }),
+      );
+    });
   });
 
   test('renders description text', () => {
