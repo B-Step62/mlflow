@@ -2199,8 +2199,8 @@ module.exports = {
   // -- mlflow.traces --
   "mlflow.traces.empty_state_generic_quickstart.copy": "",
   "mlflow.traces.issue-detection-modal": "",
-  "mlflow.traces.issue-detection-modal.advanced-config": "",
   "mlflow.traces.issue-detection-modal.cancel": "",
+  "mlflow.traces.issue-detection-modal.categories-section": "",
   "mlflow.traces.issue-detection-modal.category.adherence": "",
   "mlflow.traces.issue-detection-modal.category.correctness": "",
   "mlflow.traces.issue-detection-modal.category.execution": "",

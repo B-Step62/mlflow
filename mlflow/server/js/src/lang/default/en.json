@@ -659,6 +659,10 @@
     "defaultMessage": "Issues",
     "description": "Run details page > tab selector > issues tab"
   },
+  "12XIai": {
+    "defaultMessage": "Select at least one issue category",
+    "description": "Validation message when no issue categories are selected"
+  },
   "13vJft": {
     "defaultMessage": "View Examples",
     "description": "Experiment page > new run modal > prompt examples button"
@@ -1810,6 +1814,10 @@
   "6xPc4W": {
     "defaultMessage": "Predict on a Spark DataFrame:",
     "description": "Section heading to display the code block on how we can use registered model to predict using spark DataFrame"
+  },
+  "6xlCY9": {
+    "defaultMessage": "Estimated cost: ~{low}–{high} · <link>See benchmark</link>",
+    "description": "Estimated USD cost range for the issue detection run, with link to benchmark docs"
   },
   "6y36Fr": {
     "defaultMessage": "Add new chart",
@@ -3283,10 +3291,6 @@
     "defaultMessage": "Pre-built LLM-as-a-judge | Trace level",
     "description": "Label indicating a pre-built trace-level LLM-as-a-judge template"
   },
-  "Dm2MfY": {
-    "defaultMessage": "Choose which types of issues to detect in your traces",
-    "description": "Description for the issue category selection"
-  },
   "Dm4Ez0": {
     "defaultMessage": "Filter",
     "description": "Label for the filter button in the trace explorer."
@@ -3422,10 +3426,6 @@
   "ERWI9o": {
     "defaultMessage": "Text",
     "description": "Label for text prompt type in the prompt creation modal"
-  },
-  "ERfrYP": {
-    "defaultMessage": "Categories: {selectedCount} of {totalCount}",
-    "description": "Summary of selected issue categories shown in the advanced configuration header"
   },
   "ES/pmW": {
     "defaultMessage": "Select the traces to evaluate.",
@@ -3682,10 +3682,6 @@
   "Ft2NsS": {
     "defaultMessage": "High",
     "description": "Issue severity tag label for high severity"
-  },
-  "FtwEhj": {
-    "defaultMessage": "Small samples can miss real issues",
-    "description": "Title of the warning shown when fewer than the recommended number of traces are selected"
   },
   "FxQYyX": {
     "defaultMessage": "Select your workflow type. Choose GenAI when working on apps and agents, and select model training when working on classical ML or deep learning problems.",
@@ -5039,6 +5035,10 @@
     "defaultMessage": "Create dataset",
     "description": "Create evaluation dataset button"
   },
+  "N7E9Hz": {
+    "defaultMessage": "Small samples can miss real issues — we recommend at least {recommended} traces.",
+    "description": "Warning shown when fewer than the recommended number of traces are selected"
+  },
   "N8/kmr": {
     "defaultMessage": "Invalid JSON",
     "description": "Inline error shown under a dataset record JSON editor when the contents do not parse as a JSON object"
@@ -5639,10 +5639,6 @@
     "defaultMessage": "Parameters ({length})",
     "description": "Run page > Overview > Parameters table > Section title"
   },
-  "Q0WaP0": {
-    "defaultMessage": "Estimated cost: ~{low}–{high} for {count, plural, one {1 trace} other {# traces}} — actual varies by model. <link>See benchmark</link>.",
-    "description": "Estimated USD cost range for the issue detection run, with link to benchmark docs"
-  },
   "Q0i5xG": {
     "defaultMessage": "Scatter chart",
     "description": "Experiment tracking > runs charts > add chart menu > scatter plot"
@@ -5894,10 +5890,6 @@
   "RGKRP9": {
     "defaultMessage": "Feedback",
     "description": "Label for the value of an feedback assessment"
-  },
-  "RGchEp": {
-    "defaultMessage": "Select at least one issue category in Advanced configuration",
-    "description": "Validation message when no issue categories are selected"
   },
   "RHoQ7a": {
     "defaultMessage": "Users",
@@ -6850,6 +6842,10 @@
   "VpFZR/": {
     "defaultMessage": "Cancel",
     "description": "A label for the cancel button in the delete prompt version modal"
+  },
+  "VqIfsV": {
+    "defaultMessage": "Issue categories",
+    "description": "Collapsible section for selecting which issue categories to detect"
   },
   "VqSjYH": {
     "defaultMessage": "MLflow documentation",
@@ -7910,10 +7906,6 @@
   "abIH3b": {
     "defaultMessage": "All providers",
     "description": "Label for selector when all providers are selected"
-  },
-  "acbe7K": {
-    "defaultMessage": "Select the traces to analyze for issues",
-    "description": "Description for trace selection section"
   },
   "adOmg9": {
     "defaultMessage": "Add more traces for broader coverage",
@@ -11231,10 +11223,6 @@
     "defaultMessage": "Latency",
     "description": "Issue category title for latency"
   },
-  "q5YN6v": {
-    "defaultMessage": "You selected {count, plural, one {only 1 trace} other {only # traces}}. We recommend analyzing at least {recommended} traces for reliable issue coverage.",
-    "description": "Body of the warning shown when fewer than the recommended number of traces are selected"
-  },
   "q8rYCQ": {
     "defaultMessage": "Data Type",
     "description": "Field label for assessment data type in a creation form"
@@ -11406,10 +11394,6 @@
   "qvEOHi": {
     "defaultMessage": "MLflow collects usage data to improve the product. To confirm your preferences, please visit the settings page in the navigation sidebar. To learn more about what data is collected, please visit the <documentation>documentation</documentation>.",
     "description": "Telemetry alert description"
-  },
-  "qvtFFX": {
-    "defaultMessage": "Advanced configuration",
-    "description": "Collapsible section for advanced issue detection configuration"
   },
   "qwSqlQ": {
     "defaultMessage": "Rationale (optional)",

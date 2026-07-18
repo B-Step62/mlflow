@@ -226,31 +226,31 @@ describe('IssueDetectionModal', () => {
     } as any);
   });
 
-  // Helper to expand the advanced configuration section containing category selection
-  const expandAdvancedConfig = async () => {
-    await userEvent.click(screen.getByText('Advanced configuration'));
+  // Helper to expand the collapsed section containing category selection
+  const expandCategoriesSection = async () => {
+    await userEvent.click(screen.getByText('Issue categories'));
   };
 
-  test('renders traces, model selection, and advanced configuration in a single step', () => {
+  test('renders traces, model selection, and issue categories in a single step', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
     expect(screen.getByText('Traces')).toBeInTheDocument();
     expect(screen.getByTestId('model-selection')).toBeInTheDocument();
-    expect(screen.getByText('Advanced configuration')).toBeInTheDocument();
+    expect(screen.getByText('Issue categories')).toBeInTheDocument();
     expect(screen.getByText('Run Analysis')).toBeInTheDocument();
   });
 
-  test('shows all categories selected by default in the advanced configuration header', () => {
+  test('shows all categories selected by default in the categories section header', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
-    expect(screen.getByText('Categories: 6 of 6')).toBeInTheDocument();
+    expect(screen.getByText('6 / 6')).toBeInTheDocument();
   });
 
-  test('category selection is available inside advanced configuration', async () => {
+  test('category selection is available inside the collapsed categories section', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
-    await expandAdvancedConfig();
+    await expandCategoriesSection();
 
     expect(screen.getByText('Correctness')).toBeInTheDocument();
     expect(screen.getByText('Safety')).toBeInTheDocument();
@@ -263,13 +263,13 @@ describe('IssueDetectionModal', () => {
     const submitButton = screen.getByText('Run Analysis').closest('button');
     expect(submitButton).not.toBeDisabled();
 
-    await expandAdvancedConfig();
+    await expandCategoriesSection();
     for (const category of ['Correctness', 'Latency', 'Execution', 'Adherence', 'Relevance', 'Safety']) {
       await userEvent.click(screen.getByText(category));
     }
 
-    expect(screen.getByText('Categories: 0 of 6')).toBeInTheDocument();
-    expect(screen.getByText('Select at least one issue category in Advanced configuration')).toBeInTheDocument();
+    expect(screen.getByText('0 / 6')).toBeInTheDocument();
+    expect(screen.getByText('Select at least one issue category')).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
   });
 
@@ -289,13 +289,13 @@ describe('IssueDetectionModal', () => {
       />,
     );
 
-    expect(screen.getByText('Small samples can miss real issues')).toBeInTheDocument();
+    expect(screen.getByText(/Small samples can miss real issues/)).toBeInTheDocument();
     expect(screen.getByText('Select 30 most recent traces')).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('quick-select-traces'));
 
     expect(screen.getByText('30 traces selected')).toBeInTheDocument();
-    expect(screen.queryByText('Small samples can miss real issues')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
   });
 
   test('low trace warning falls back to opening trace selection when no more traces are available', async () => {
@@ -307,7 +307,7 @@ describe('IssueDetectionModal', () => {
       />,
     );
 
-    expect(screen.getByText('Small samples can miss real issues')).toBeInTheDocument();
+    expect(screen.getByText(/Small samples can miss real issues/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('quick-select-traces'));
 
@@ -318,20 +318,20 @@ describe('IssueDetectionModal', () => {
     const ids = Array.from({ length: 12 }, (_, i) => `trace-${i}`);
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
 
-    expect(screen.queryByText('Small samples can miss real issues')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
   });
 
   test('does not show low trace warning when no traces are selected', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
-    expect(screen.queryByText('Small samples can miss real issues')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Small samples can miss real issues/)).not.toBeInTheDocument();
   });
 
   test('shows estimated cost scaled to the selected trace count', () => {
     const ids = Array.from({ length: 100 }, (_, i) => `trace-${i}`);
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
 
-    expect(screen.getByText(/Estimated cost: ~\$0\.25–\$1\.00 for 100 traces/)).toBeInTheDocument();
+    expect(screen.getByText(/Estimated cost: ~\$0\.25–\$1\.00/)).toBeInTheDocument();
   });
 
   test('logs submit context telemetry on submit', async () => {

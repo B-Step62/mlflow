@@ -261,12 +261,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
             <Typography.Text bold>
               <FormattedMessage defaultMessage="Traces" description="Section header for trace selection" />
             </Typography.Text>
-            <Typography.Text color="secondary" css={{ display: 'block', marginTop: theme.spacing.xs }}>
-              <FormattedMessage
-                defaultMessage="Select the traces to analyze for issues"
-                description="Description for trace selection section"
-              />
-            </Typography.Text>
             <div css={{ marginTop: theme.spacing.sm, display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
               <Button
                 componentId="mlflow.traces.issue-detection-modal.select-traces"
@@ -296,12 +290,11 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
             {selectedTraceIds.length > 0 && (
               <Typography.Hint css={{ display: 'block', marginTop: theme.spacing.xs }}>
                 <FormattedMessage
-                  defaultMessage="Estimated cost: ~{low}–{high} for {count, plural, one {1 trace} other {# traces}} — actual varies by model. <link>See benchmark</link>."
+                  defaultMessage="Estimated cost: ~{low}–{high} · <link>See benchmark</link>"
                   description="Estimated USD cost range for the issue detection run, with link to benchmark docs"
                   values={{
                     low: formatEstimatedCostUsd(estimatedCost.low),
                     high: formatEstimatedCostUsd(estimatedCost.high),
-                    count: selectedTraceIds.length,
                     link: (chunks: React.ReactNode) => (
                       <a
                         href="https://mlflow.org/docs/latest/genai/eval-monitor/ai-insights/detect-issues/#cost-benchmark"
@@ -323,46 +316,38 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
                 css={{ marginTop: theme.spacing.sm }}
                 message={
                   <FormattedMessage
-                    defaultMessage="Small samples can miss real issues"
-                    description="Title of the warning shown when fewer than the recommended number of traces are selected"
+                    defaultMessage="Small samples can miss real issues — we recommend at least {recommended} traces."
+                    description="Warning shown when fewer than the recommended number of traces are selected"
+                    values={{ recommended: MIN_RECOMMENDED_TRACE_COUNT }}
                   />
                 }
                 description={
-                  <div>
-                    <FormattedMessage
-                      defaultMessage="You selected {count, plural, one {only 1 trace} other {only # traces}}. We recommend analyzing at least {recommended} traces for reliable issue coverage."
-                      description="Body of the warning shown when fewer than the recommended number of traces are selected"
-                      values={{ count: selectedTraceIds.length, recommended: MIN_RECOMMENDED_TRACE_COUNT }}
-                    />
-                    <div css={{ marginTop: theme.spacing.sm }}>
-                      {canQuickSelectTraces ? (
-                        <Button
-                          componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
-                          data-testid="quick-select-traces"
-                          size="small"
-                          onClick={() => setSelectedTraceIds(availableTraceIds.slice(0, quickSelectCount))}
-                        >
-                          <FormattedMessage
-                            defaultMessage="Select {count} most recent traces"
-                            description="Button to select the most recent traces in one click"
-                            values={{ count: quickSelectCount }}
-                          />
-                        </Button>
-                      ) : (
-                        <Button
-                          componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
-                          data-testid="quick-select-traces"
-                          size="small"
-                          onClick={() => setIsSelectTracesModalOpen(true)}
-                        >
-                          <FormattedMessage
-                            defaultMessage="Select more traces"
-                            description="Button to open the trace selection modal to add more traces"
-                          />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                  canQuickSelectTraces ? (
+                    <Button
+                      componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
+                      data-testid="quick-select-traces"
+                      size="small"
+                      onClick={() => setSelectedTraceIds(availableTraceIds.slice(0, quickSelectCount))}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Select {count} most recent traces"
+                        description="Button to select the most recent traces in one click"
+                        values={{ count: quickSelectCount }}
+                      />
+                    </Button>
+                  ) : (
+                    <Button
+                      componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
+                      data-testid="quick-select-traces"
+                      size="small"
+                      onClick={() => setIsSelectTracesModalOpen(true)}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Select more traces"
+                        description="Button to open the trace selection modal to add more traces"
+                      />
+                    </Button>
+                  )
                 }
               />
             )}
@@ -380,43 +365,33 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
             }
           />
           <Accordion
-            componentId="mlflow.traces.issue-detection-modal.advanced-config"
+            componentId="mlflow.traces.issue-detection-modal.categories-section"
             dangerouslyAppendEmotionCSS={{
               background: 'transparent',
               border: 'none',
             }}
           >
             <Accordion.Panel
-              key="advanced"
+              key="categories"
               header={
                 <div css={{ display: 'flex', alignItems: 'baseline', gap: theme.spacing.sm }}>
                   <FormattedMessage
-                    defaultMessage="Advanced configuration"
-                    description="Collapsible section for advanced issue detection configuration"
+                    defaultMessage="Issue categories"
+                    description="Collapsible section for selecting which issue categories to detect"
                   />
                   <Typography.Text color={selectedCategories.size === 0 ? 'error' : 'secondary'} size="sm">
-                    <FormattedMessage
-                      defaultMessage="Categories: {selectedCount} of {totalCount}"
-                      description="Summary of selected issue categories shown in the advanced configuration header"
-                      values={{ selectedCount: selectedCategories.size, totalCount: ALL_ISSUE_CATEGORIES.length }}
-                    />
+                    {selectedCategories.size} / {ALL_ISSUE_CATEGORIES.length}
                   </Typography.Text>
                 </div>
               }
             >
-              <Typography.Text color="secondary" css={{ display: 'block', marginBottom: theme.spacing.sm }}>
-                <FormattedMessage
-                  defaultMessage="Choose which types of issues to detect in your traces"
-                  description="Description for the issue category selection"
-                />
-              </Typography.Text>
               <IssueCategoryList selectedCategories={selectedCategories} onToggle={handleCategoryToggle} />
             </Accordion.Panel>
           </Accordion>
           {selectedCategories.size === 0 && (
             <Typography.Text color="error" size="sm">
               <FormattedMessage
-                defaultMessage="Select at least one issue category in Advanced configuration"
+                defaultMessage="Select at least one issue category"
                 description="Validation message when no issue categories are selected"
               />
             </Typography.Text>
