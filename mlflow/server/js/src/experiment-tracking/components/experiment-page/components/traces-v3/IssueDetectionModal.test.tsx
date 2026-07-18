@@ -494,6 +494,20 @@ describe('IssueDetectionModal', () => {
     expect(mockCreateSecret).not.toHaveBeenCalled();
   });
 
+  test('hands submitted job to parent instead of navigating when onSubmitted is provided', async () => {
+    const onSubmitted = jest.fn();
+    renderWithDesignSystem(
+      <IssueDetectionModal {...defaultProps} onSubmitted={onSubmitted} initialSelectedTraceIds={['trace-1']} />,
+    );
+    await userEvent.click(screen.getByTestId('set-valid-existing-key'));
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
+
+    await waitFor(() => {
+      expect(onSubmitted).toHaveBeenCalledWith({ jobId: 'job-123', runId: 'run-456', traceCount: 1 });
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   test('navigates to run details page when form is submitted', async () => {
     const onClose = jest.fn();
 

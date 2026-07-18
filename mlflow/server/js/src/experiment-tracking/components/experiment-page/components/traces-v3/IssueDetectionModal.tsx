@@ -13,6 +13,7 @@ import {
 import { FormattedMessage } from '@databricks/i18n';
 import { MetricViewType, AggregationType, TraceMetricKey } from '@databricks/web-shared/model-trace-explorer';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
+import { shouldEnableBackgroundIssueDetection } from '../../../../../common/utils/FeatureUtils';
 import { useTraceMetricsQuery } from '../../../../pages/experiment-overview/hooks/useTraceMetricsQuery';
 import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
 import { estimateIssueDetectionCostUsd, formatEstimatedCostUsd } from './issueDetectionCostEstimate';
@@ -30,6 +31,11 @@ interface IssueDetectionModalProps {
   initialSelectedTraceIds?: string[];
   availableTraceIds?: string[];
   defaultGroupBySession?: boolean;
+  /**
+   * When provided (and background issue detection is enabled), the modal hands the
+   * submitted job to the parent for background tracking instead of navigating away.
+   */
+  onSubmitted?: (job: { jobId: string; runId: string; traceCount: number }) => void;
 }
 
 const MIN_RECOMMENDED_TRACE_COUNT = 10;
@@ -41,6 +47,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   initialSelectedTraceIds = [],
   availableTraceIds = [],
   defaultGroupBySession = false,
+  onSubmitted,
 }) => {
   const { theme } = useDesignSystemTheme();
   const navigate = useNavigate();
@@ -135,8 +142,13 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
         },
         {
           onSuccess: (response) => {
+            const traceCount = selectedTraceIds.length;
             resetForm();
             onClose();
+            if (shouldEnableBackgroundIssueDetection() && onSubmitted) {
+              onSubmitted({ jobId: response.job_id, runId: response.run_id, traceCount });
+              return;
+            }
             navigate({
               pathname: Routes.getIssueDetectionRunDetailsRoute(experimentId, response.run_id),
               search: getTimeRangeQueryString(location.search),
@@ -268,10 +280,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
                     values={{ count: selectedTraceIds.length }}
                   />
                 ) : (
-                  <FormattedMessage
-                    defaultMessage="Select traces"
-                    description="Button to open trace selection modal"
-                  />
+                  <FormattedMessage defaultMessage="Select traces" description="Button to open trace selection modal" />
                 )}
               </Button>
               {totalTraceCount !== undefined && (

@@ -5,6 +5,10 @@ import { Alert, Tabs, Typography, useDesignSystemTheme } from '@databricks/desig
 import { FormattedMessage, useIntl } from 'react-intl';
 import { shouldEnableIssueDetection } from '../../../common/utils/FeatureUtils';
 import { IssueDetectionModal } from '../../components/experiment-page/components/traces-v3/IssueDetectionModal';
+import {
+  IssueDetectionStatusChip,
+  type SubmittedIssueDetectionJob,
+} from '../../components/experiment-page/components/traces-v3/IssueDetectionStatusChip';
 import { DetectIssuesButton } from '../../../shared/web-shared/genai-traces-table/components/DetectIssuesButton';
 import { useLocalStorage } from '@databricks/web-shared/hooks';
 import { useIsFileStore } from '../../hooks/useServerInfo';
@@ -57,6 +61,7 @@ const ExperimentGenAIOverviewPageImpl = () => {
   const [activeTab, setActiveTab] = useOverviewTab();
   const [selectedTimeUnit, setSelectedTimeUnit] = useState<TimeUnit | null>(null);
   const [isIssueDetectionModalOpen, setIsIssueDetectionModalOpen] = useState(false);
+  const [submittedIssueDetectionJob, setSubmittedIssueDetectionJob] = useState<SubmittedIssueDetectionJob | null>(null);
   const isFileStore = useIsFileStore();
   const sqlWarehouseContext = useSqlWarehouseContextSafe();
 
@@ -290,7 +295,8 @@ const ExperimentGenAIOverviewPageImpl = () => {
           <TracesV3DateSelector excludeOptions={['ALL']} componentId="mlflow.experiment.overview" />
 
           {shouldEnableIssueDetection() && (
-            <div css={{ marginLeft: 'auto' }}>
+            <div css={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <IssueDetectionStatusChip experimentId={experimentId} submittedJob={submittedIssueDetectionJob} />
               <DetectIssuesButton
                 componentId="mlflow.experiment.overview.detect-issues-button"
                 onClick={() => setIsIssueDetectionModalOpen(true)}
@@ -376,7 +382,11 @@ const ExperimentGenAIOverviewPageImpl = () => {
         </OverviewChartProvider>
       </Tabs.Root>
       {isIssueDetectionModalOpen && (
-        <IssueDetectionModal onClose={() => setIsIssueDetectionModalOpen(false)} experimentId={experimentId} />
+        <IssueDetectionModal
+          onClose={() => setIsIssueDetectionModalOpen(false)}
+          onSubmitted={setSubmittedIssueDetectionJob}
+          experimentId={experimentId}
+        />
       )}
     </div>
   );
