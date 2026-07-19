@@ -1,4 +1,4 @@
-import { Radio, Typography, useDesignSystemTheme, type RadioChangeEvent } from '@databricks/design-system';
+import { CheckIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 import { ModelSelect } from '../../../../../gateway/components/create-endpoint/ModelSelect';
 import type { Endpoint } from '../../../../../gateway/types';
@@ -29,9 +29,6 @@ export const ISSUE_DETECTION_PROVIDERS: ProviderOption[] = [
 
 export const GATEWAY_LOGO = MLflowGatewayLogo;
 
-const ENDPOINT_VALUE_PREFIX = 'endpoint:';
-const PROVIDER_VALUE_PREFIX = 'direct:';
-
 export const ProviderLogo = ({ src }: { src: string }) => {
   const { theme } = useDesignSystemTheme();
   return (
@@ -43,11 +40,48 @@ export const ProviderLogo = ({ src }: { src: string }) => {
   );
 };
 
+const SelectableCard = ({
+  isSelected,
+  onClick,
+  children,
+  testId,
+}: {
+  isSelected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  testId?: string;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-testid={testId}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onClick();
+      }}
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+        padding: theme.spacing.sm,
+        border: `1px solid ${isSelected ? theme.colors.actionDefaultBorderFocus : theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        cursor: 'pointer',
+        '&:hover': {
+          backgroundColor: theme.colors.actionTertiaryBackgroundHover,
+        },
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
 /**
- * Picks the model powering issue detection: an AI Gateway endpoint or a core
- * provider + model. Never asks for API keys - endpoints carry their own and
- * direct providers use the key already saved in AI Gateway (or the server's
- * environment).
+ * Card list for picking the model powering issue detection: an AI Gateway
+ * endpoint or a core provider + model. Never asks for API keys.
  */
 export const IssueDetectionProviderPicker = ({
   endpoints,
@@ -60,66 +94,59 @@ export const IssueDetectionProviderPicker = ({
 }) => {
   const { theme } = useDesignSystemTheme();
 
-  const radioValue =
-    value.mode === 'endpoint'
-      ? `${ENDPOINT_VALUE_PREFIX}${value.endpointName}`
-      : `${PROVIDER_VALUE_PREFIX}${value.provider}`;
-
-  const handleRadioChange = (e: RadioChangeEvent) => {
-    const selected: string = e.target.value;
-    if (selected.startsWith(ENDPOINT_VALUE_PREFIX)) {
-      // Keep provider/model defaults populated; the backend prefers endpoint_name when set
-      onChange({
-        mode: 'endpoint',
-        endpointName: selected.slice(ENDPOINT_VALUE_PREFIX.length),
-        provider: ISSUE_DETECTION_PROVIDERS[0].id,
-        model: ISSUE_DETECTION_PROVIDERS[0].defaultModel,
-      });
-    } else {
-      const providerId = selected.slice(PROVIDER_VALUE_PREFIX.length);
-      const provider = ISSUE_DETECTION_PROVIDERS.find((p) => p.id === providerId);
-      onChange({ mode: 'direct', provider: providerId, model: provider?.defaultModel ?? '' });
-    }
-  };
+  const rowCss = { display: 'flex', alignItems: 'center', gap: theme.spacing.sm } as const;
 
   return (
-    <div>
-      <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.sm }}>
-        <FormattedMessage defaultMessage="Select a model" description="Title of the model provider picker" />
-      </Typography.Text>
-      <Radio.Group
-        name="issue-detection-provider"
-        componentId="mlflow.traces.issue-detection-modal.provider-picker"
-        value={radioValue}
-        onChange={handleRadioChange}
-        css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, width: '100%' }}
-      >
-        {endpoints.map((endpoint) => (
-          <div key={endpoint.name}>
-            <Radio value={`${ENDPOINT_VALUE_PREFIX}${endpoint.name}`}>
-              <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <ProviderLogo src={GATEWAY_LOGO} />
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+      {endpoints.map((endpoint) => {
+        const isSelected = value.mode === 'endpoint' && value.endpointName === endpoint.name;
+        return (
+          <SelectableCard
+            key={endpoint.name}
+            testId={`model-option-endpoint-${endpoint.name}`}
+            isSelected={isSelected}
+            onClick={() =>
+              onChange({
+                mode: 'endpoint',
+                endpointName: endpoint.name,
+                provider: ISSUE_DETECTION_PROVIDERS[0].id,
+                model: ISSUE_DETECTION_PROVIDERS[0].defaultModel,
+              })
+            }
+          >
+            <div css={rowCss}>
+              <ProviderLogo src={GATEWAY_LOGO} />
+              <Typography.Text css={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {endpoint.name}
-                <Typography.Hint>
-                  <FormattedMessage
-                    defaultMessage="AI Gateway endpoint"
-                    description="Hint marking an option as an AI Gateway endpoint"
-                  />
-                </Typography.Hint>
-              </span>
-            </Radio>
-          </div>
-        ))}
-        {ISSUE_DETECTION_PROVIDERS.map((provider) => (
-          <div key={provider.id}>
-            <Radio value={`${PROVIDER_VALUE_PREFIX}${provider.id}`}>
-              <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <ProviderLogo src={provider.logo} />
-                {provider.name}
-              </span>
-            </Radio>
-            {value.mode === 'direct' && value.provider === provider.id && (
-              <div css={{ marginLeft: theme.spacing.lg, marginBottom: theme.spacing.sm, maxWidth: 300 }}>
+              </Typography.Text>
+              <Typography.Hint>
+                <FormattedMessage
+                  defaultMessage="AI Gateway endpoint"
+                  description="Hint marking an option as an AI Gateway endpoint"
+                />
+              </Typography.Hint>
+              {isSelected && <CheckIcon css={{ color: theme.colors.actionDefaultBorderFocus }} />}
+            </div>
+          </SelectableCard>
+        );
+      })}
+      {ISSUE_DETECTION_PROVIDERS.map((provider) => {
+        const isSelected = value.mode === 'direct' && value.provider === provider.id;
+        return (
+          <SelectableCard
+            key={provider.id}
+            testId={`model-option-${provider.id}`}
+            isSelected={isSelected}
+            onClick={() => onChange({ mode: 'direct', provider: provider.id, model: provider.defaultModel })}
+          >
+            <div css={rowCss}>
+              <ProviderLogo src={provider.logo} />
+              <Typography.Text css={{ flex: 1 }}>{provider.name}</Typography.Text>
+              {isSelected && <CheckIcon css={{ color: theme.colors.actionDefaultBorderFocus }} />}
+            </div>
+            {isSelected && (
+              // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+              <div css={{ maxWidth: 300 }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                 <ModelSelect
                   componentId="mlflow.traces.issue-detection-modal.model"
                   provider={provider.id}
@@ -130,9 +157,9 @@ export const IssueDetectionProviderPicker = ({
                 />
               </div>
             )}
-          </div>
-        ))}
-      </Radio.Group>
+          </SelectableCard>
+        );
+      })}
     </div>
   );
 };

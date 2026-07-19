@@ -3,12 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { renderWithDesignSystem, screen, waitFor } from '../../../../../common/utils/TestUtils.react18';
 import { IssueDetectionModal } from './IssueDetectionModal';
 import { useInvokeIssueDetection } from './hooks/useInvokeIssueDetection';
+import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
 import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUtils';
 import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
 import { useEndpointsQuery } from '../../../../../gateway/hooks/useEndpointsQuery';
 import { useApiKeyConfiguration } from '../../../../../gateway/components/model-configuration/hooks/useApiKeyConfiguration';
 
 jest.mock('./hooks/useInvokeIssueDetection');
+jest.mock('../../../../../gateway/hooks/useCreateSecret');
 jest.mock('../../../../../telemetry/hooks/useLogTelemetryEvent', () => ({
   useLogTelemetryEvent: jest.fn(),
 }));
@@ -47,6 +49,7 @@ describe('IssueDetectionModal', () => {
   };
 
   let mockInvokeIssueDetection: jest.Mock;
+  let mockCreateSecret: jest.Mock;
   let mockNavigate: jest.Mock;
   let mockLogTelemetryEvent: jest.Mock;
 
@@ -80,6 +83,18 @@ describe('IssueDetectionModal', () => {
       error: null,
       reset: jest.fn(),
     } as any);
+
+    mockCreateSecret = jest.fn((_request, options) => {
+      (options as { onSuccess?: (response: { secret: { secret_id: string } }) => void })?.onSuccess?.({
+        secret: { secret_id: 'new-secret-123' },
+      });
+    });
+    jest.mocked(useCreateSecret).mockReturnValue({
+      mutate: mockCreateSecret,
+      isLoading: false,
+      error: null,
+      reset: jest.fn(),
+    } as any);
   });
 
   test('renders hero, provider summary, trace count, and Run button', () => {
@@ -87,12 +102,12 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} availableTraceIds={availableTraceIds} />);
 
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
-    expect(screen.getByText('Find failure patterns hiding in your traces — automatically.')).toBeInTheDocument();
+    expect(screen.getByText('Find failure patterns hiding in your traces, automatically.')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('OpenAI')).toBeInTheDocument();
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument();
     expect(screen.getByText('40 traces selected')).toBeInTheDocument();
-    expect(screen.getByText(/Estimated cost: ~\$0\.10–\$0\.40/)).toBeInTheDocument();
+    expect(screen.getByText(/Estimated cost: ~\$0\.10-\$0\.40/)).toBeInTheDocument();
     expect(screen.getByText('Run')).toBeInTheDocument();
     // No API key input anywhere
     expect(screen.queryByText(/API key/i)).not.toBeInTheDocument();
@@ -108,7 +123,7 @@ describe('IssueDetectionModal', () => {
   test('tells the user to log traces first when the experiment has none', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
-    expect(screen.getByText('No traces yet — log traces to this experiment first.')).toBeInTheDocument();
+    expect(screen.getByText('No traces yet. Log traces to this experiment first.')).toBeInTheDocument();
     expect(screen.getByText('Run').closest('button')).toBeDisabled();
   });
 
@@ -130,29 +145,32 @@ describe('IssueDetectionModal', () => {
     });
   });
 
-  test('picker is hidden by default and toggles via Change/Hide', async () => {
+  test('clicking the model card opens the chooser and Done returns to the main view', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    expect(screen.queryByTestId('provider-picker')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('choose-model-view')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByText('Change'));
-    expect(screen.getByTestId('provider-picker')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('model-card'));
+    expect(screen.getByTestId('choose-model-view')).toBeInTheDocument();
+    expect(screen.getByText('Choose a model')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText('Hide'));
-    expect(screen.queryByTestId('provider-picker')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText('Done'));
+    expect(screen.queryByTestId('choose-model-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('model-card')).toBeInTheDocument();
   });
 
-  test('changing provider in the picker updates the summary', async () => {
+  test('changing provider in the chooser updates the model card', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    await userEvent.click(screen.getByText('Change'));
+    await userEvent.click(screen.getByTestId('model-card'));
     await userEvent.click(screen.getByTestId('pick-anthropic'));
+    await userEvent.click(screen.getByText('Done'));
 
     expect(screen.getByText('Anthropic')).toBeInTheDocument();
     expect(screen.getByText('claude-sonnet-4-6')).toBeInTheDocument();
   });
 
-  test('shows error dialog when submission fails', async () => {
+  test('missing API key turns into the one-last-step view and Continue and run submits', async () => {
     jest.mocked(useInvokeIssueDetection).mockReturnValue({
       mutate: mockInvokeIssueDetection,
       isLoading: false,
@@ -164,9 +182,41 @@ describe('IssueDetectionModal', () => {
 
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    expect(screen.getByText('Unable to start issue detection')).toBeInTheDocument();
-    expect(screen.getByText(/No API key available for provider 'openai'/)).toBeInTheDocument();
-    expect(screen.getByText('Open AI Gateway')).toBeInTheDocument();
+    expect(await screen.findByTestId('api-key-view')).toBeInTheDocument();
+    expect(screen.getByText('One last step to run issue detection')).toBeInTheDocument();
+    expect(screen.queryByText(/No API key available/)).not.toBeInTheDocument();
+
+    const continueButton = screen.getByText('Continue and run').closest('button')!;
+    expect(continueButton).toBeDisabled();
+
+    await userEvent.type(screen.getByTestId('api-key-input'), 'sk-test-key');
+    expect(continueButton).not.toBeDisabled();
+
+    await userEvent.click(continueButton);
+    await waitFor(() => {
+      expect(mockCreateSecret).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'openai', secret_value: { api_key: 'sk-test-key' } }),
+        expect.any(Object),
+      );
+      expect(mockInvokeIssueDetection).toHaveBeenCalledWith(
+        expect.objectContaining({ secret_id: 'new-secret-123' }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  test('generic submission errors show an inline alert', () => {
+    jest.mocked(useInvokeIssueDetection).mockReturnValue({
+      mutate: mockInvokeIssueDetection,
+      isLoading: false,
+      error: new Error('Job execution is disabled on this server'),
+      reset: jest.fn(),
+    } as any);
+
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
+
+    expect(screen.getByText('Job execution is disabled on this server')).toBeInTheDocument();
+    expect(screen.queryByTestId('api-key-view')).not.toBeInTheDocument();
   });
 
   test('submits all categories and the saved secret for direct providers', async () => {

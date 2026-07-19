@@ -67,10 +67,6 @@
     "defaultMessage": "Python",
     "description": "Tab label for the runnable Python code-snippet path in the eval-runs empty state"
   },
-  "+F0t1y": {
-    "defaultMessage": "Hide",
-    "description": "Link to collapse the model provider picker"
-  },
   "+HgSTK": {
     "defaultMessage": "Use these code examples to call your endpoint. Choose between unified APIs for seamless model switching or passthrough APIs for provider-specific features.",
     "description": "Endpoint usage modal description"
@@ -682,6 +678,10 @@
   "18/UVG": {
     "defaultMessage": "Using controls above, select at least one artifact containing table.",
     "description": "Experiment page > artifact compare view > empty state for no tables selected > subtitle with the hint"
+  },
+  "19CglZ": {
+    "defaultMessage": "AI reviews every trace, groups failures into issues, and shows you what to fix. No manual trace reading required.",
+    "description": "Supporting description for the issue detection modal"
   },
   "1BIc9x": {
     "defaultMessage": "Launch Demo",
@@ -2107,10 +2107,6 @@
     "defaultMessage": "Total",
     "description": "Label for the total tokensin the tooltip for the tokens cell."
   },
-  "84sIcN": {
-    "defaultMessage": "Find failure patterns hiding in your traces — automatically.",
-    "description": "Headline for the issue detection modal"
-  },
   "88bRGB": {
     "defaultMessage": "Select record {recordId}",
     "description": "Aria label for the per-row select checkbox in the V2 dataset records table"
@@ -2142,10 +2138,6 @@
   "8Gz0OE": {
     "defaultMessage": "Unhide group",
     "description": "A tooltip for the visibility icon button in the runs table next to the hidden run group"
-  },
-  "8HGwBV": {
-    "defaultMessage": "Select a model",
-    "description": "Title of the model provider picker"
   },
   "8HwtfM": {
     "defaultMessage": "New password",
@@ -3283,10 +3275,6 @@
     "defaultMessage": "No traces found",
     "description": "No traces found message"
   },
-  "DiSs4C": {
-    "defaultMessage": "Close",
-    "description": "Button to dismiss the submission error dialog"
-  },
   "Dk2itm": {
     "defaultMessage": "Pre-built LLM-as-a-judge | Trace level",
     "description": "Label indicating a pre-built trace-level LLM-as-a-judge template"
@@ -3535,6 +3523,10 @@
     "defaultMessage": "Table view",
     "description": "Label for the table view toggle button in the logged model list page"
   },
+  "FA55BK": {
+    "defaultMessage": "API key",
+    "description": "Placeholder of the API key input in the issue detection modal"
+  },
   "FA9oSo": {
     "defaultMessage": "Judge is running…",
     "description": "Tooltip shown in assessment cell while a judge is executing on this trace"
@@ -3642,6 +3634,10 @@
   "FiKsFK": {
     "defaultMessage": "Last modified",
     "description": "Header for the last modified column in the registered prompts table"
+  },
+  "Fj1MKc": {
+    "defaultMessage": "{provider} needs an API key. Paste it once and MLflow saves it securely in AI Gateway for all future runs.",
+    "description": "Explanation of the API key step in the issue detection modal"
   },
   "Fk4w6k": {
     "defaultMessage": "Status",
@@ -4559,10 +4555,6 @@
     "defaultMessage": "This queue has no questions attached.",
     "description": "Add to review queue: custom queue disabled reason"
   },
-  "KoteXA": {
-    "defaultMessage": "Open AI Gateway",
-    "description": "Link to the AI Gateway page from the submission error dialog"
-  },
   "KpFPCX": {
     "defaultMessage": "Settings",
     "description": "Subsection header listing model settings stored with the selected prompt version on the playground prompt-registry picker modal"
@@ -4891,10 +4883,6 @@
     "defaultMessage": "Created at",
     "description": "Label for the creation timestamp of a logged model on the logged model details page"
   },
-  "MUuKkl": {
-    "defaultMessage": "Add more traces — only {count, plural, one {1 trace was} other {# traces were}} analyzed",
-    "description": "Suggestion to analyze more traces, with the number analyzed in this run"
-  },
   "MX4ypf": {
     "defaultMessage": "Save",
     "description": "Save button for the edit model config modal"
@@ -5142,6 +5130,10 @@
   "NX60WQ": {
     "defaultMessage": "Override saved view",
     "description": "Experiment page > shared view banner > button that overwrites the user's own saved view with the shared view"
+  },
+  "Ncu7Xt": {
+    "defaultMessage": "One last step to run issue detection",
+    "description": "Headline of the API key step in the issue detection modal"
   },
   "NekUba": {
     "defaultMessage": "Add to dataset",
@@ -6235,6 +6227,10 @@
     "defaultMessage": "Custom code judge feedback",
     "description": "Tooltip content for custom code judge feedback"
   },
+  "Sw9saQ": {
+    "defaultMessage": "Add more traces. Only {count, plural, one {1 trace was} other {# traces were}} analyzed.",
+    "description": "Suggestion to analyze more traces, with the number analyzed in this run"
+  },
   "SwvkMI": {
     "defaultMessage": "Is the summary faithful, complete, and concise?",
     "description": "Hint for Summarization template"
@@ -6442,6 +6438,10 @@
   "U+nNo1": {
     "defaultMessage": "An error occurred while updating the budget policy. Please try again.",
     "description": "Generic error message for budget policy update"
+  },
+  "U0eQAT": {
+    "defaultMessage": "Only 1 issue found. There may be more.",
+    "description": "Title of the guidance callout when an issue detection run found a single issue"
   },
   "U0joaT": {
     "defaultMessage": "Select traces",
@@ -7007,10 +7007,6 @@
     "defaultMessage": "Tags",
     "description": "Header for the dataset record tags column"
   },
-  "WYrVOP": {
-    "defaultMessage": "Only 1 issue found — there may be more",
-    "description": "Title of the guidance callout when an issue detection run found a single issue"
-  },
   "Wbpp7P": {
     "defaultMessage": "Create a role to assign permissions to users.",
     "description": "Empty state description for roles table"
@@ -7042,6 +7038,10 @@
   "WiaEQ3": {
     "defaultMessage": "Model output",
     "description": "Evaluation review > Response section > model output > title"
+  },
+  "Wk06FO": {
+    "defaultMessage": "Back",
+    "description": "Button to go back from the model chooser to the main issue detection view"
   },
   "WlZLz9": {
     "defaultMessage": "Expectations Guidelines",
@@ -7338,6 +7338,10 @@
   "Y1eg9D": {
     "defaultMessage": "In progress",
     "description": "Model trace header > status label > in progress"
+  },
+  "Y31bI7": {
+    "defaultMessage": "Try a stronger model. Model quality directly affects detection accuracy.",
+    "description": "Suggestion to use a stronger model for issue detection"
   },
   "Y47tVZ": {
     "defaultMessage": "Time (relative)",
@@ -7979,6 +7983,10 @@
     "defaultMessage": "Full Path:",
     "description": "Label to display the full path of where the artifact of the experiment runs is located"
   },
+  "b+qDMK": {
+    "defaultMessage": "Find failure patterns hiding in your traces, automatically.",
+    "description": "Headline for the issue detection modal"
+  },
   "b0KTgh": {
     "defaultMessage": "Add/edit alias for prompt version {version}",
     "description": "Title for the edit aliases modal on the registered prompt details page"
@@ -8158,10 +8166,6 @@
   "buuQsF": {
     "defaultMessage": "A tag value is required",
     "description": "Key-value tag editor modal > Value required error message"
-  },
-  "bvLZn/": {
-    "defaultMessage": "No traces to analyze — log traces to this experiment first.",
-    "description": "Tooltip on the disabled Run button when the experiment has no traces"
   },
   "by+x8N": {
     "defaultMessage": "Type",
@@ -9191,10 +9195,6 @@
     "defaultMessage": "Create new workspace",
     "description": "Create workspace button"
   },
-  "gY+/r3": {
-    "defaultMessage": "Unable to start issue detection",
-    "description": "Title of the dialog shown when submitting an issue detection job fails"
-  },
   "gY9VVl": {
     "defaultMessage": "Instructions for reviewers on how to answer this question",
     "description": "Review question instruction input placeholder"
@@ -9355,6 +9355,10 @@
     "defaultMessage": "Resource",
     "description": "Permissions table column header for the resource"
   },
+  "hACf1k": {
+    "defaultMessage": "No traces yet. Log traces to this experiment first.",
+    "description": "Message shown in the issue detection modal when the experiment has no traces"
+  },
   "hBAhI8": {
     "defaultMessage": "Copy",
     "description": "Tooltip message displayed on copy action"
@@ -9507,10 +9511,6 @@
     "defaultMessage": "To use other providers, create an AI Gateway endpoint and select it.",
     "description": "Hint explaining how to use other providers via Gateway"
   },
-  "hslmpL": {
-    "defaultMessage": "Try a stronger model — model quality directly affects detection accuracy",
-    "description": "Suggestion to use a stronger model for issue detection"
-  },
   "hv0wlb": {
     "defaultMessage": "Select or create review queues",
     "description": "Add to review queue: destination dropdown label"
@@ -9578,10 +9578,6 @@
   "i49wE6": {
     "defaultMessage": "We couldn't load your experiments.",
     "description": "Home page experiments error message"
-  },
-  "i5B+/a": {
-    "defaultMessage": "AI reviews every trace, groups failures into issues, and shows you what to fix — no manual trace reading required.",
-    "description": "Supporting description for the issue detection modal"
   },
   "i5mE0b": {
     "defaultMessage": "Execution",
@@ -10235,6 +10231,10 @@
     "defaultMessage": "Edit tags",
     "description": "Label for the edit tags button in the registered prompts table"
   },
+  "lAJITf": {
+    "defaultMessage": "Choose a model",
+    "description": "Title of the model chooser view"
+  },
   "lCfyQO": {
     "defaultMessage": "Dataset",
     "description": "Label for the dataset column in the logged model details metrics table"
@@ -10602,10 +10602,6 @@
   "ms+6Z2": {
     "defaultMessage": "Value",
     "description": "Field label for assessment value in a creation form"
-  },
-  "ms9K2g": {
-    "defaultMessage": "No traces yet — log traces to this experiment first.",
-    "description": "Message shown in the issue detection modal when the experiment has no traces"
   },
   "msllnR": {
     "defaultMessage": "Datasets used",
@@ -10975,6 +10971,10 @@
     "defaultMessage": "Compact view",
     "description": "Run page > artifact view > logged table view > compact view toggle button"
   },
+  "oeMUBG": {
+    "defaultMessage": "Done",
+    "description": "Button to confirm the model choice"
+  },
   "ofL8Me": {
     "defaultMessage": "e.g. 1.0",
     "description": "Placeholder for the top-p input on the playground parameters panel"
@@ -10998,6 +10998,10 @@
   "okQ1oB": {
     "defaultMessage": "Please input a new name for the new experiment.",
     "description": "Error message for name requirement in create experiment for MLflow"
+  },
+  "olUQpR": {
+    "defaultMessage": "Continue and run",
+    "description": "Button to save the API key and start issue detection"
   },
   "olY499": {
     "defaultMessage": "Search datasets",
@@ -11066,6 +11070,10 @@
   "p2po2x": {
     "defaultMessage": "Delete prompt",
     "description": "A header for the delete prompt modal"
+  },
+  "p345Li": {
+    "defaultMessage": "Estimated cost: ~{low}-{high}",
+    "description": "Estimated USD cost range for the issue detection run"
   },
   "p9ZErC": {
     "defaultMessage": "Start review",
@@ -11523,10 +11531,6 @@
     "defaultMessage": "This passphrase protects encryption keys and should never be shared. {securityNote}",
     "description": "AI Gateway setup guide > Passphrase warning"
   },
-  "rDQwwl": {
-    "defaultMessage": "Estimated cost: ~{low}–{high}",
-    "description": "Estimated USD cost range for the issue detection run"
-  },
   "rDxqAu": {
     "defaultMessage": "Response",
     "description": "Review queue table: response column"
@@ -11978,10 +11982,6 @@
   "tMlCTg": {
     "defaultMessage": "Roles",
     "description": "Users table roles header — roles render as multiple <workspace> → <role_name> lines per user"
-  },
-  "tN8qhP": {
-    "defaultMessage": "Change",
-    "description": "Link to expand the model provider picker"
   },
   "tNL+F4": {
     "defaultMessage": "Full trace with an agent using the right part of the trace to use to judge",
@@ -12647,6 +12647,10 @@
     "defaultMessage": "Nothing to compare!",
     "description": "Header displayed in the metrics and params compare plot when no values are selected"
   },
+  "x1AvSq": {
+    "defaultMessage": "Back",
+    "description": "Button to go back from the API key step"
+  },
   "x1Lbmd": {
     "defaultMessage": "{gpuCount, plural, =0 {} one {# GPU} other {# GPUs}} selected",
     "description": "Count of selected GPUs displayed in the node level metric charts node selector"
@@ -12950,6 +12954,10 @@
   "yWRwlk": {
     "defaultMessage": "Traces show you how your LLM calls behave: what they cost, how they perform, and where things go wrong. Get started in a few minutes.",
     "description": "Subtitle for the empty state when no traces are recorded"
+  },
+  "yd6Poj": {
+    "defaultMessage": "No traces to analyze. Log traces to this experiment first.",
+    "description": "Tooltip on the disabled Run button when the experiment has no traces"
   },
   "ydoHrJ": {
     "defaultMessage": "Output",

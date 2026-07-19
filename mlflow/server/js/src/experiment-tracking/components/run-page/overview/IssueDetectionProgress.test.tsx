@@ -96,7 +96,7 @@ describe('IssueDetectionProgress low-result callout', () => {
     await renderProgress(JobStatus.SUCCEEDED, []);
 
     expect(screen.getByText("0 issues doesn't always mean all clear")).toBeInTheDocument();
-    expect(screen.getByText(/only 5 traces were analyzed/)).toBeInTheDocument();
+    expect(screen.getByText(/Only 5 traces were analyzed/)).toBeInTheDocument();
     expect(screen.getByTestId('low-results-run-again')).toBeInTheDocument();
     expect(screen.getByText('Add user feedback')).toBeInTheDocument();
     expect(screen.getByText('Annotate traces')).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe('IssueDetectionProgress low-result callout', () => {
   test('shows single-issue guidance variant', async () => {
     await renderProgress(JobStatus.SUCCEEDED, [{ issue_id: 'iss-1' }]);
 
-    expect(screen.getByText('Only 1 issue found — there may be more')).toBeInTheDocument();
+    expect(screen.getByText('Only 1 issue found. There may be more.')).toBeInTheDocument();
   });
 
   test('omits the add-more-traces suggestion for large runs', async () => {
@@ -119,7 +119,7 @@ describe('IssueDetectionProgress low-result callout', () => {
     await renderProgress(JobStatus.SUCCEEDED, [{ issue_id: 'iss-1' }, { issue_id: 'iss-2' }]);
 
     expect(screen.queryByText("0 issues doesn't always mean all clear")).not.toBeInTheDocument();
-    expect(screen.queryByText('Only 1 issue found — there may be more')).not.toBeInTheDocument();
+    expect(screen.queryByText('Only 1 issue found. There may be more.')).not.toBeInTheDocument();
   });
 
   test('does not show guidance while the job is running', async () => {

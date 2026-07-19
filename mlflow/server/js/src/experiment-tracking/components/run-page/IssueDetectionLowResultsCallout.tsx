@@ -40,7 +40,7 @@ export const IssueDetectionLowResultsCallout = ({
           />
         ) : (
           <FormattedMessage
-            defaultMessage="Only 1 issue found — there may be more"
+            defaultMessage="Only 1 issue found. There may be more."
             description="Title of the guidance callout when an issue detection run found a single issue"
           />
         )
@@ -56,7 +56,7 @@ export const IssueDetectionLowResultsCallout = ({
               <li>
                 {tracesAnalyzed !== undefined ? (
                   <FormattedMessage
-                    defaultMessage="Add more traces — only {count, plural, one {1 trace was} other {# traces were}} analyzed"
+                    defaultMessage="Add more traces. Only {count, plural, one {1 trace was} other {# traces were}} analyzed."
                     description="Suggestion to analyze more traces, with the number analyzed in this run"
                     values={{ count: tracesAnalyzed }}
                   />
@@ -70,7 +70,7 @@ export const IssueDetectionLowResultsCallout = ({
             )}
             <li>
               <FormattedMessage
-                defaultMessage="Try a stronger model — model quality directly affects detection accuracy"
+                defaultMessage="Try a stronger model. Model quality directly affects detection accuracy."
                 description="Suggestion to use a stronger model for issue detection"
               />
             </li>
