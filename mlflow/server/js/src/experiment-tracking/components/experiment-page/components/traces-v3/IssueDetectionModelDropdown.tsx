@@ -171,7 +171,6 @@ export const IssueDetectionModelDropdown = ({
             alignItems: 'center',
             gap: theme.spacing.sm,
             width: '100%',
-            height: '100%',
             padding: theme.spacing.sm,
             background: 'none',
             textAlign: 'left',

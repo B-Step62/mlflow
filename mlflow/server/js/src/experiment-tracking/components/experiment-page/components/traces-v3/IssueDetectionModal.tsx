@@ -211,7 +211,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing.sm,
-    height: '100%',
     padding: theme.spacing.sm,
     border: `1px solid ${theme.colors.border}`,
     borderRadius: theme.borders.borderRadiusMd,
@@ -279,6 +278,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       <div
         css={{
           display: 'flex',
+          alignItems: 'flex-start',
           gap: theme.spacing.md,
           marginTop: theme.spacing.md,
           paddingTop: theme.spacing.sm,
