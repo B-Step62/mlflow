@@ -1,8 +1,10 @@
 import { jest, describe, test, expect, beforeEach } from '@jest/globals';
-import { act, renderWithIntl, screen } from '@mlflow/mlflow/src/common/utils/TestUtils.react18';
+import userEvent from '@testing-library/user-event';
+import { act, renderWithIntl, screen, waitFor } from '@mlflow/mlflow/src/common/utils/TestUtils.react18';
 import { MemoryRouter } from '../../../../common/utils/RoutingUtils';
 import { IssueDetectionProgress } from './IssueDetectionProgress';
 import { JobStatus } from '../hooks/useFetchJobStatus';
+import { useCancelJob } from '../hooks/useCancelJob';
 
 jest.mock('@mlflow/mlflow/src/telemetry/hooks/useLogTelemetryEvent', () => ({
   useLogTelemetryEvent: jest.fn(() => jest.fn()),
@@ -21,12 +23,64 @@ jest.mock('../hooks/useSearchIssuesQuery', () => ({
 }));
 
 jest.mock('../hooks/useCancelJob', () => ({
-  useCancelJob: jest.fn(() => ({ cancelJob: jest.fn(), isCancelling: false })),
+  useCancelJob: jest.fn(() => ({
+    cancelJob: jest.fn(),
+    cancelJobAsync: jest.fn(() => Promise.resolve()),
+    isCancelling: false,
+  })),
 }));
 
 const { useLogTelemetryEvent } = jest.requireMock('@mlflow/mlflow/src/telemetry/hooks/useLogTelemetryEvent') as {
   useLogTelemetryEvent: jest.Mock;
 };
+
+describe('IssueDetectionProgress cancel', () => {
+  test('offers Cancel while running', () => {
+    renderWithIntl(
+      <MemoryRouter>
+        <IssueDetectionProgress jobStatus={JobStatus.RUNNING} totalTraces={10} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+  });
+
+  test('does not offer Cancel once the job is complete', () => {
+    renderWithIntl(
+      <MemoryRouter>
+        <IssueDetectionProgress jobStatus={JobStatus.SUCCEEDED} totalTraces={10} result={{ issues: 3 }} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
+  });
+
+  test('asks for confirmation before canceling the run', async () => {
+    const mockCancelAsync = jest.fn(() => Promise.resolve());
+    jest.mocked(useCancelJob).mockReturnValue({
+      cancelJob: jest.fn(),
+      cancelJobAsync: mockCancelAsync,
+      isCancelling: false,
+    } as any);
+
+    renderWithIntl(
+      <MemoryRouter>
+        <IssueDetectionProgress jobStatus={JobStatus.RUNNING} jobId="job-1" totalTraces={10} />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByText('Cancel'));
+
+    // Confirmation dialog appears; nothing is canceled yet
+    expect(screen.getByText('Cancel issue detection?')).toBeInTheDocument();
+    expect(mockCancelAsync).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText('Cancel run'));
+    await waitFor(() => {
+      expect(mockCancelAsync).toHaveBeenCalledWith({ jobId: 'job-1', runUuid: 'test-run-uuid' });
+    });
+  });
+});
 
 describe('IssueDetectionProgress telemetry', () => {
   let mockLogTelemetryEvent: jest.Mock;
