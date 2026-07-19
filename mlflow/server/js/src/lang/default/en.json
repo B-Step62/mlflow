@@ -11383,6 +11383,10 @@
     "defaultMessage": "Line smoothing",
     "description": "Runs charts > line chart > configuration > label for line smoothing slider control. The control allows changing data trace line smoothness from 1 to 100, where 1 is the original data trace and 100 is the smoothest trace. Line smoothing helps eliminate noise in the data."
   },
+  "qmF8dw": {
+    "defaultMessage": "You selected only {count, plural, one {1 trace} other {# traces}}. Analyze at least {recommended} for more accurate results.",
+    "description": "Tip shown when fewer than the recommended number of traces are selected"
+  },
   "qmTNy1": {
     "defaultMessage": "Failed to delete sessions. Error: {error}",
     "description": "Error message when deleting sessions fails"

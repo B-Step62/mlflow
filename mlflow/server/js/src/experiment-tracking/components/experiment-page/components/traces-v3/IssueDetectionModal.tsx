@@ -3,6 +3,7 @@ import {
   Modal,
   Button,
   Input,
+  LightbulbIcon,
   PencilIcon,
   useDesignSystemTheme,
   SparkleIcon,
@@ -49,6 +50,7 @@ interface IssueDetectionModalProps {
 }
 
 const QUICK_SELECT_TRACE_COUNT = 50;
+const MIN_RECOMMENDED_TRACE_COUNT = 10;
 
 const MISSING_API_KEY_ERROR_FRAGMENT = 'No API key available';
 
@@ -107,6 +109,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const { activeRun } = useActiveIssueDetectionRun({ experimentId, enabled: Boolean(experimentId) });
 
   const hasNoTraces = selectedTraceIds.length === 0 && availableTraceIds.length === 0;
+  const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
   const estimatedCost = estimateIssueDetectionCostUsd(selectedTraceIds.length);
 
   const {
@@ -148,6 +151,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       eventType: DesignSystemEventProviderAnalyticsEventTypes.OnView,
       value: JSON.stringify({
         selectedTraceCount: selectedTraceIds.length,
+        lowTraceWarningShown: showLowTraceWarning,
       }),
     });
 
@@ -337,6 +341,30 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
           )}
         </div>
       </div>
+      {showLowTraceWarning && (
+        <div
+          data-testid="low-trace-warning"
+          css={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: theme.spacing.sm,
+            marginTop: theme.spacing.md,
+            padding: theme.spacing.sm,
+            backgroundColor: theme.colors.backgroundWarning,
+            border: `1px solid ${theme.colors.borderWarning}`,
+            borderRadius: theme.borders.borderRadiusMd,
+          }}
+        >
+          <LightbulbIcon css={{ color: theme.colors.textValidationWarning, marginTop: 2 }} />
+          <Typography.Text>
+            <FormattedMessage
+              defaultMessage="You selected only {count, plural, one {1 trace} other {# traces}}. Analyze at least {recommended} for more accurate results."
+              description="Tip shown when fewer than the recommended number of traces are selected"
+              values={{ count: selectedTraceIds.length, recommended: MIN_RECOMMENDED_TRACE_COUNT }}
+            />
+          </Typography.Text>
+        </div>
+      )}
     </>
   );
 

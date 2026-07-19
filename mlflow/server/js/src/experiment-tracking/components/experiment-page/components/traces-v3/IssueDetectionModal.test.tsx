@@ -294,6 +294,22 @@ describe('IssueDetectionModal', () => {
     });
   });
 
+  test('shows a low-trace tip when fewer than 10 traces are selected', () => {
+    renderWithDesignSystem(
+      <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']} />,
+    );
+
+    const tip = screen.getByTestId('low-trace-warning');
+    expect(tip).toHaveTextContent('You selected only 3 traces. Analyze at least 10 for more accurate results.');
+  });
+
+  test('does not show the low-trace tip when at least 10 traces are selected', () => {
+    const ids = Array.from({ length: 10 }, (_, i) => `trace-${i}`);
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
+
+    expect(screen.queryByTestId('low-trace-warning')).not.toBeInTheDocument();
+  });
+
   test('logs submit context telemetry on submit', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
@@ -305,6 +321,7 @@ describe('IssueDetectionModal', () => {
           componentId: 'mlflow.traces.issue-detection-modal.submit-context',
           value: JSON.stringify({
             selectedTraceCount: 1,
+            lowTraceWarningShown: true,
           }),
         }),
       );
