@@ -2879,6 +2879,10 @@
     "defaultMessage": "Issue detection summary",
     "description": "Issue detection summary > Title"
   },
+  "BcmFvf": {
+    "defaultMessage": "Create endpoint",
+    "description": "Action in the model dropdown to create a new AI Gateway endpoint"
+  },
   "Bcr4hl": {
     "defaultMessage": "Fetching traces failed",
     "description": "Evaluation review > evaluations list > error state title"
@@ -7299,10 +7303,6 @@
     "defaultMessage": "Some traces are hidden by your time range filter: \"{filterLabel}\"",
     "description": "Message shown when traces are hidden by time filter"
   },
-  "XvRBmV": {
-    "defaultMessage": "AI Gateway",
-    "description": "Section label for AI Gateway endpoints in the model dropdown"
-  },
   "XvzXs3": {
     "defaultMessage": "The parallel coordinates chart shows runs with columns that are either numbers or strings. If a column has string entries, the runs corresponding to the 30 most recent unique values will be shown. Only runs with all relevant metrics and/or parameters will be displayed.",
     "description": "Experiment page > charts > parallel coordinates chart > tooltip explaining what data is expected to be rendered"
@@ -9086,6 +9086,10 @@
   "g5myH8": {
     "defaultMessage": "Webhooks",
     "description": "Sidebar link: Settings > Webhooks"
+  },
+  "g6nof1": {
+    "defaultMessage": "AI Gateway",
+    "description": "Model dropdown group for AI Gateway endpoints"
   },
   "g7xNvF": {
     "defaultMessage": "Display points",
@@ -11946,10 +11950,6 @@
   "tEX/Gk": {
     "defaultMessage": "Select a Guardrail Model endpoint to create this guardrail.",
     "description": "Tooltip shown when create button is disabled because guardrail model is not selected"
-  },
-  "tEt1YM": {
-    "defaultMessage": "Providers",
-    "description": "Section label for model providers in the model dropdown"
   },
   "tEwQWS": {
     "defaultMessage": "Active",
