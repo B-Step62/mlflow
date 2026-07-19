@@ -76,7 +76,19 @@ describe('IssueDetectionModelDropdown', () => {
     );
 
     await userEvent.click(screen.getByTestId('model-dropdown-trigger'));
-    // OpenAI's group is expanded by default (matches the current selection); no models returned -> default shown
+    // All providers start collapsed; expand OpenAI, which returns no models -> default shown
+    await userEvent.click(screen.getByTestId('model-provider-openai'));
     expect(screen.getByTestId('model-option-openai-gpt-5.5')).toBeInTheDocument();
+  });
+
+  test('all provider groups start collapsed when the dropdown opens', async () => {
+    renderWithDesignSystem(
+      <IssueDetectionModelDropdown endpoints={[]} value={OPENAI_SELECTION} onChange={jest.fn()} />,
+    );
+
+    await userEvent.click(screen.getByTestId('model-dropdown-trigger'));
+
+    expect(screen.getByTestId('model-provider-openai')).toBeInTheDocument();
+    expect(screen.queryByTestId('model-option-openai-gpt-5.5')).not.toBeInTheDocument();
   });
 });

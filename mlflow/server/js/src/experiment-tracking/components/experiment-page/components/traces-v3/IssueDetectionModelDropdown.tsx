@@ -134,9 +134,15 @@ export const IssueDetectionModelDropdown = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const [open, setOpen] = useState(false);
-  const [expandedProvider, setExpandedProvider] = useState<string | null>(
-    value.mode === 'direct' ? value.provider : null,
-  );
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+
+  // Reset to all-collapsed each time the dropdown opens
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setExpandedProvider(null);
+    }
+  };
 
   const isEndpoint = value.mode === 'endpoint';
   const selectedProvider = ISSUE_DETECTION_PROVIDERS.find((p) => p.id === value.provider);
@@ -151,7 +157,11 @@ export const IssueDetectionModelDropdown = ({
   };
 
   return (
-    <Popover.Root componentId="mlflow.traces.issue-detection-modal.model-dropdown" open={open} onOpenChange={setOpen}>
+    <Popover.Root
+      componentId="mlflow.traces.issue-detection-modal.model-dropdown"
+      open={open}
+      onOpenChange={handleOpenChange}
+    >
       <Popover.Trigger asChild>
         <button
           type="button"
