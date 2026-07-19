@@ -22,7 +22,7 @@ export interface ProviderOption {
 }
 
 export const ISSUE_DETECTION_PROVIDERS: ProviderOption[] = [
-  { id: 'openai', name: 'OpenAI', logo: OpenAiLogo, defaultModel: 'gpt-5.4' },
+  { id: 'openai', name: 'OpenAI', logo: OpenAiLogo, defaultModel: 'gpt-5.5' },
   { id: 'anthropic', name: 'Anthropic', logo: AnthropicLogo, defaultModel: 'claude-sonnet-4-6' },
   { id: 'gemini', name: 'Google Gemini', logo: GeminiLogo, defaultModel: 'gemini-2.5-pro' },
 ];

@@ -4599,10 +4599,6 @@
     "defaultMessage": "Trace status: OK, ERROR, or IN_PROGRESS",
     "description": "Tooltip description for the State column in the traces table"
   },
-  "L++5dm": {
-    "defaultMessage": "Provider",
-    "description": "Column header for the model provider"
-  },
   "L/4iQO": {
     "defaultMessage": "Delete",
     "description": "Label for the delete experiments action on the experiments list page"
@@ -5610,6 +5606,10 @@
   "PuXTcZ": {
     "defaultMessage": "Welcome to MLflow",
     "description": "Workspace landing page title"
+  },
+  "Pv88gx": {
+    "defaultMessage": "Model",
+    "description": "Column header for the model powering issue detection"
   },
   "PvgihY": {
     "defaultMessage": "Session assessments{count, plural, =0 {} other { (#)}}",
@@ -11498,6 +11498,10 @@
   "rDIzM4": {
     "defaultMessage": "This passphrase protects encryption keys and should never be shared. {securityNote}",
     "description": "AI Gateway setup guide > Passphrase warning"
+  },
+  "rDQwwl": {
+    "defaultMessage": "Estimated cost: ~{low}–{high}",
+    "description": "Estimated USD cost range for the issue detection run"
   },
   "rDxqAu": {
     "defaultMessage": "Response",

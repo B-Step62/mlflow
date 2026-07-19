@@ -88,10 +88,11 @@ describe('IssueDetectionModal', () => {
 
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
     expect(screen.getByText('AI scans your traces and groups failures into issues.')).toBeInTheDocument();
-    expect(screen.getByText('Provider')).toBeInTheDocument();
+    expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('OpenAI')).toBeInTheDocument();
-    expect(screen.getByText('gpt-5.4')).toBeInTheDocument();
+    expect(screen.getByText('gpt-5.5')).toBeInTheDocument();
     expect(screen.getByText('40 traces selected')).toBeInTheDocument();
+    expect(screen.getByText(/Estimated cost: ~\$0\.10–\$0\.40/)).toBeInTheDocument();
     expect(screen.getByText('Run')).toBeInTheDocument();
     // No API key input anywhere
     expect(screen.queryByText(/API key/i)).not.toBeInTheDocument();
@@ -164,7 +165,7 @@ describe('IssueDetectionModal', () => {
         expect.objectContaining({
           categories: ['correctness', 'latency', 'execution', 'adherence', 'relevance', 'safety'],
           provider: 'openai',
-          model: 'gpt-5.4',
+          model: 'gpt-5.5',
           secret_id: 'secret-123',
           endpoint_name: undefined,
         }),

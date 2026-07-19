@@ -25,7 +25,8 @@ import {
   type IssueDetectionModelSelection,
 } from './IssueDetectionProviderPicker';
 import { useInvokeIssueDetection } from './hooks/useInvokeIssueDetection';
-import heroImg from '../../../../../common/static/eval-runs-empty.svg';
+import { estimateIssueDetectionCostUsd, formatEstimatedCostUsd } from './issueDetectionCostEstimate';
+import heroImg from '../../../../../common/static/issue-detection-empty.svg';
 
 interface IssueDetectionModalProps {
   onClose: () => void;
@@ -88,6 +89,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
   const quickSelectCount = Math.min(QUICK_SELECT_TRACE_COUNT, availableTraceIds.length);
   const canQuickSelectTraces = quickSelectCount > selectedTraceIds.length;
+  const estimatedCost = estimateIssueDetectionCostUsd(selectedTraceIds.length);
 
   const {
     mutate: invokeIssueDetection,
@@ -173,6 +175,15 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   return (
     <Modal
       componentId="mlflow.traces.issue-detection-modal"
+      title={
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <SparkleIcon color="ai" />
+          <FormattedMessage
+            defaultMessage="Detect Issues"
+            description="Title of the issue detection configuration modal"
+          />
+        </div>
+      }
       visible
       onCancel={isInvokingIssueDetection ? undefined : handleClose}
       footer={
@@ -225,13 +236,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
           })}
           css={{ maxWidth: '100%', maxHeight: 160 }}
         />
-        <Typography.Title level={3} css={{ marginTop: theme.spacing.lg, marginBottom: theme.spacing.xs }}>
-          <FormattedMessage
-            defaultMessage="Detect Issues"
-            description="Title of the issue detection configuration modal"
-          />
-        </Typography.Title>
-        <Typography.Text color="secondary">
+        <Typography.Text color="secondary" css={{ marginTop: theme.spacing.md }}>
           <FormattedMessage
             defaultMessage="AI scans your traces and groups failures into issues."
             description="Description text for issue detection modal"
@@ -249,7 +254,10 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       >
         <div css={{ flex: 1, minWidth: 0 }}>
           <Typography.Text bold color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
-            <FormattedMessage defaultMessage="Provider" description="Column header for the model provider" />
+            <FormattedMessage
+              defaultMessage="Model"
+              description="Column header for the model powering issue detection"
+            />
           </Typography.Text>
           {renderProviderSummary()}
           <Typography.Link
@@ -267,13 +275,25 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
           <Typography.Text bold color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
             <FormattedMessage defaultMessage="Traces" description="Column header for the analyzed traces" />
           </Typography.Text>
-          <Typography.Text>
+          <Typography.Text css={{ display: 'block' }}>
             <FormattedMessage
               defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
               description="Label showing number of traces selected"
               values={{ count: selectedTraceIds.length }}
             />
           </Typography.Text>
+          {selectedTraceIds.length > 0 && (
+            <Typography.Hint>
+              <FormattedMessage
+                defaultMessage="Estimated cost: ~{low}–{high}"
+                description="Estimated USD cost range for the issue detection run"
+                values={{
+                  low: formatEstimatedCostUsd(estimatedCost.low),
+                  high: formatEstimatedCostUsd(estimatedCost.high),
+                }}
+              />
+            </Typography.Hint>
+          )}
           {showLowTraceWarning && (
             <div css={{ marginTop: theme.spacing.xs }}>
               <Typography.Text size="sm" css={{ display: 'block', color: theme.colors.textValidationWarning }}>
