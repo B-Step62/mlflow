@@ -28,6 +28,19 @@ jest.mock('../../../../../common/utils/RoutingUtils', () => ({
   useLocation: jest.fn(),
 }));
 
+jest.mock('../../../SelectTracesModal', () => ({
+  SelectTracesModal: ({ onClose, onSuccess }: { onClose: () => void; onSuccess: (traceIds: string[]) => void }) => (
+    <div data-testid="select-traces-modal">
+      <button data-testid="select-traces-cancel" onClick={onClose}>
+        Cancel
+      </button>
+      <button data-testid="select-traces-confirm" onClick={() => onSuccess(['trace-1', 'trace-2'])}>
+        Select
+      </button>
+    </div>
+  ),
+}));
+
 jest.mock('./IssueDetectionProviderPicker', () => ({
   ...jest.requireActual<typeof import('./IssueDetectionProviderPicker')>('./IssueDetectionProviderPicker'),
   IssueDetectionProviderPicker: ({ onChange }: { onChange: (value: unknown) => void }) => (
@@ -108,7 +121,7 @@ describe('IssueDetectionModal', () => {
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument();
     expect(screen.getByText('40 traces selected')).toBeInTheDocument();
     expect(screen.getByText(/Estimated cost: ~\$0\.10-\$0\.40/)).toBeInTheDocument();
-    expect(screen.getByText('Run')).toBeInTheDocument();
+    expect(screen.getByText('Run Analysis')).toBeInTheDocument();
     // No API key input anywhere
     expect(screen.queryByText(/API key/i)).not.toBeInTheDocument();
   });
@@ -124,7 +137,20 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
 
     expect(screen.getByText('No traces yet. Log traces to this experiment first.')).toBeInTheDocument();
-    expect(screen.getByText('Run').closest('button')).toBeDisabled();
+    expect(screen.getByText('Run Analysis').closest('button')).toBeDisabled();
+  });
+
+  test('clicking the traces card opens trace selection and updates the count', async () => {
+    renderWithDesignSystem(
+      <IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']} />,
+    );
+
+    await userEvent.click(screen.getByTestId('traces-card'));
+    expect(screen.getByTestId('select-traces-modal')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('select-traces-confirm'));
+    expect(screen.queryByTestId('select-traces-modal')).not.toBeInTheDocument();
+    expect(screen.getByText('2 traces selected')).toBeInTheDocument();
   });
 
   test('defaults to the first gateway endpoint when endpoints exist', async () => {
@@ -136,7 +162,7 @@ describe('IssueDetectionModal', () => {
 
     expect(screen.getByText('my-endpoint')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText('Run').closest('button')!);
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
     await waitFor(() => {
       expect(mockInvokeIssueDetection).toHaveBeenCalledWith(
         expect.objectContaining({ endpoint_name: 'my-endpoint', secret_id: undefined }),
@@ -222,7 +248,7 @@ describe('IssueDetectionModal', () => {
   test('submits all categories and the saved secret for direct providers', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    await userEvent.click(screen.getByText('Run').closest('button')!);
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
 
     await waitFor(() => {
       expect(mockInvokeIssueDetection).toHaveBeenCalledWith(
@@ -279,7 +305,7 @@ describe('IssueDetectionModal', () => {
   test('logs submit context telemetry on submit', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    await userEvent.click(screen.getByText('Run').closest('button')!);
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
 
     await waitFor(() => {
       expect(mockLogTelemetryEvent).toHaveBeenCalledWith(
@@ -306,7 +332,7 @@ describe('IssueDetectionModal', () => {
       />,
     );
 
-    await userEvent.click(screen.getByText('Run').closest('button')!);
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
 
     await waitFor(() => {
       expect(onSubmitted).toHaveBeenCalledWith({ jobId: 'job-123', runId: 'run-456', traceCount: 1 });
@@ -318,7 +344,7 @@ describe('IssueDetectionModal', () => {
   test('navigates to run details page when submitted without onSubmitted', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    await userEvent.click(screen.getByText('Run').closest('button')!);
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({
@@ -339,7 +365,7 @@ describe('IssueDetectionModal', () => {
 
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    await userEvent.click(screen.getByText('Run').closest('button')!);
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({

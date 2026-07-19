@@ -21,6 +21,7 @@ import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelem
 import Routes from '../../../../routes';
 import { getTimeRangeQueryString } from '../../../../pages/experiment-page-tabs/side-nav/utils';
 import { useCreateSecret } from '../../../../../gateway/hooks/useCreateSecret';
+import { SelectTracesModal } from '../../../SelectTracesModal';
 import { useEndpointsQuery } from '../../../../../gateway/hooks/useEndpointsQuery';
 import { useApiKeyConfiguration } from '../../../../../gateway/components/model-configuration/hooks/useApiKeyConfiguration';
 import { ALL_ISSUE_CATEGORIES } from './IssueDetectionCategories';
@@ -40,6 +41,7 @@ interface IssueDetectionModalProps {
   experimentId?: string;
   initialSelectedTraceIds?: string[];
   availableTraceIds?: string[];
+  defaultGroupBySession?: boolean;
   /**
    * When provided (and background issue detection is enabled), the modal hands the
    * submitted job to the parent for background tracking instead of navigating away.
@@ -59,6 +61,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   experimentId,
   initialSelectedTraceIds = [],
   availableTraceIds = [],
+  defaultGroupBySession = false,
   onSubmitted,
 }) => {
   const { theme } = useDesignSystemTheme();
@@ -76,6 +79,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const [selection, setSelection] = useState<IssueDetectionModelSelection | null>(null);
   const [view, setView] = useState<ModalView>('main');
   const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const [isSelectTracesModalOpen, setIsSelectTracesModalOpen] = useState(false);
 
   const { data: endpoints, isLoading: isLoadingEndpoints } = useEndpointsQuery();
 
@@ -201,6 +205,21 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
 
   const selectedProvider = ISSUE_DETECTION_PROVIDERS.find((p) => p.id === selection?.provider);
 
+  const summaryCardCss = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    height: '100%',
+    padding: theme.spacing.sm,
+    border: `1px solid ${theme.colors.border}`,
+    borderRadius: theme.borders.borderRadiusMd,
+    cursor: 'pointer',
+    '&:hover': {
+      backgroundColor: theme.colors.actionTertiaryBackgroundHover,
+      borderColor: theme.colors.actionDefaultBorderHover,
+    },
+  } as const;
+
   const renderModelCard = () => {
     if (!selection) {
       return null;
@@ -218,19 +237,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') setView('chooseModel');
         }}
-        css={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          padding: theme.spacing.sm,
-          border: `1px solid ${theme.colors.border}`,
-          borderRadius: theme.borders.borderRadiusMd,
-          cursor: 'pointer',
-          '&:hover': {
-            backgroundColor: theme.colors.actionTertiaryBackgroundHover,
-            borderColor: theme.colors.actionDefaultBorderHover,
-          },
-        }}
+        css={summaryCardCss}
       >
         {logo && <ProviderLogo src={logo} />}
         <div css={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
@@ -298,25 +305,39 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
               />
             </Typography.Text>
           ) : (
-            <Typography.Text css={{ display: 'block' }}>
-              <FormattedMessage
-                defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
-                description="Label showing number of traces selected"
-                values={{ count: selectedTraceIds.length }}
-              />
-            </Typography.Text>
-          )}
-          {selectedTraceIds.length > 0 && (
-            <Typography.Hint>
-              <FormattedMessage
-                defaultMessage="Estimated cost: ~{low}-{high}"
-                description="Estimated USD cost range for the issue detection run"
-                values={{
-                  low: formatEstimatedCostUsd(estimatedCost.low),
-                  high: formatEstimatedCostUsd(estimatedCost.high),
-                }}
-              />
-            </Typography.Hint>
+            <div
+              role="button"
+              tabIndex={0}
+              data-testid="traces-card"
+              onClick={() => setIsSelectTracesModalOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') setIsSelectTracesModalOpen(true);
+              }}
+              css={summaryCardCss}
+            >
+              <div css={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
+                <Typography.Text css={{ display: 'block' }}>
+                  <FormattedMessage
+                    defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
+                    description="Label showing number of traces selected"
+                    values={{ count: selectedTraceIds.length }}
+                  />
+                </Typography.Text>
+                {selectedTraceIds.length > 0 && (
+                  <Typography.Hint>
+                    <FormattedMessage
+                      defaultMessage="Estimated cost: ~{low}-{high}"
+                      description="Estimated USD cost range for the issue detection run"
+                      values={{
+                        low: formatEstimatedCostUsd(estimatedCost.low),
+                        high: formatEstimatedCostUsd(estimatedCost.high),
+                      }}
+                    />
+                  </Typography.Hint>
+                )}
+              </div>
+              <PencilIcon css={{ color: theme.colors.textSecondary }} />
+            </div>
           )}
           {showLowTraceWarning && (
             <div css={{ marginTop: theme.spacing.xs }}>
@@ -475,7 +496,10 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
             disabled={!isFormValid}
           >
             <SparkleIcon css={{ marginRight: theme.spacing.xs }} />
-            <FormattedMessage defaultMessage="Run" description="Submit button to trigger issue detection job" />
+            <FormattedMessage
+              defaultMessage="Run Analysis"
+              description="Submit button to trigger issue detection job"
+            />
           </Button>
         </span>
       </Tooltip>
@@ -495,7 +519,13 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
         </div>
       }
       visible
-      dangerouslySetAntdProps={{ width: 520 }}
+      dangerouslySetAntdProps={{
+        width: 520,
+        // The modal's dynamic sizing under-allocates the body by ~16px, leaving a
+        // spurious scrollbar. Disable body scrolling (content is always well under the
+        // viewport height) and reserve bottom padding so nothing real is clipped.
+        bodyStyle: { paddingLeft: 32, paddingRight: 32, paddingBottom: 24, overflowY: 'hidden' },
+      }}
       onCancel={isInvokingIssueDetection || isCreatingSecret ? undefined : handleClose}
       footer={renderFooter()}
     >
@@ -512,6 +542,17 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       {view === 'main' && renderMainView()}
       {view === 'chooseModel' && renderChooseModelView()}
       {view === 'apiKey' && renderApiKeyView()}
+      {isSelectTracesModalOpen && (
+        <SelectTracesModal
+          onClose={() => setIsSelectTracesModalOpen(false)}
+          onSuccess={(traceIds) => {
+            setSelectedTraceIds(traceIds);
+            setIsSelectTracesModalOpen(false);
+          }}
+          initialTraceIdsSelected={selectedTraceIds}
+          defaultGroupBySession={defaultGroupBySession}
+        />
+      )}
     </Modal>
   );
 };

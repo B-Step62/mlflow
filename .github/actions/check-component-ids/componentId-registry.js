@@ -2222,7 +2222,6 @@ module.exports = {
   "mlflow.traces.issue-detection.low-results-callout.review-queue-link": "",
   "mlflow.traces.issue-detection.low-results-callout.run-again": "",
   "mlflow.traces.issue-detection.started-toast.view-progress": "",
-  "mlflow.traces.issue-detection.status-chip": "",
   "mlflow.traces.issue-detection.view-issues-button": "",
   "mlflow.traces.issue-detection.view-issues-link": "",
   "mlflow.traces.issue-detection.view-traces-link": "",

@@ -84,7 +84,7 @@ import {
   useRunJudgesOnTracesConfiguration,
 } from '../../../../pages/experiment-scorers/hooks/useRunScorerInTracesViewConfiguration';
 import { IssueDetectionModal } from './IssueDetectionModal';
-import { IssueDetectionStatusChip, type SubmittedIssueDetectionJob } from './IssueDetectionStatusChip';
+import { IssueDetectionJobWatcher, type SubmittedIssueDetectionJob } from './IssueDetectionJobWatcher';
 import { useSearchParams } from '../../../../../common/utils/RoutingUtils';
 import { useCountInfo } from './hooks/useCountInfo';
 import { useAssessmentCountMetrics } from './hooks/useAssessmentCountMetrics';
@@ -628,17 +628,7 @@ const TracesV3LogsImpl = React.memo(
               isMetadataLoading={isMetadataLoading}
               metadataError={metadataError}
               usesV4APIs={usesV4APIs}
-              addons={
-                <>
-                  {toolbarAddons}
-                  {!disableActions && (
-                    <IssueDetectionStatusChip
-                      experimentId={singleExperimentId}
-                      submittedJob={submittedIssueDetectionJob}
-                    />
-                  )}
-                </>
-              }
+              addons={toolbarAddons}
               isGroupedBySession={forceGroupBySession || isGroupedBySession}
               forceGroupBySession={forceGroupBySession}
               onToggleSessionGrouping={onToggleSessionGrouping}
@@ -647,6 +637,9 @@ const TracesV3LogsImpl = React.memo(
             {JudgesStatusBanner}
             {renderMainContent()}
           </div>
+          {!disableActions && (
+            <IssueDetectionJobWatcher experimentId={singleExperimentId} submittedJob={submittedIssueDetectionJob} />
+          )}
           {!disableActions && isIssueDetectionModalOpen && (
             <IssueDetectionModal
               key={singleExperimentId}
@@ -657,6 +650,7 @@ const TracesV3LogsImpl = React.memo(
                 .filter(([, isSelected]) => isSelected)
                 .map(([traceId]) => traceId)}
               availableTraceIds={traceInfos?.map((trace) => trace.trace_id) ?? []}
+              defaultGroupBySession={forceGroupBySession || isGroupedBySession}
             />
           )}
         </GenAITracesTableProvider>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Spinner, Typography, useLegacyNotification } from '@databricks/design-system';
+import { Typography, useLegacyNotification } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
 import { useNavigate } from '../../../../../common/utils/RoutingUtils';
 import { shouldEnableBackgroundIssueDetection } from '../../../../../common/utils/FeatureUtils';
@@ -19,18 +19,18 @@ interface TrackedJob {
   runId: string;
 }
 
-interface IssueDetectionStatusChipProps {
+interface IssueDetectionJobWatcherProps {
   experimentId?: string;
   /** Job submitted from this session's modal, tracked immediately without waiting for run discovery. */
   submittedJob?: SubmittedIssueDetectionJob | null;
 }
 
 /**
- * Background status for issue detection jobs: shows a small progress chip while
- * a job is running (click-through to the run page, where Cancel lives) and
- * raises top-right notifications when a job is started and when it completes.
+ * Invisible watcher for background issue detection jobs. Renders only a
+ * notification context holder and raises top-right notifications when a job
+ * is started and when it completes.
  */
-export const IssueDetectionStatusChip = ({ experimentId, submittedJob }: IssueDetectionStatusChipProps) => {
+export const IssueDetectionJobWatcher = ({ experimentId, submittedJob }: IssueDetectionJobWatcherProps) => {
   const navigate = useNavigate();
   const [notification, notificationContextHolder] = useLegacyNotification();
   const enabled = shouldEnableBackgroundIssueDetection();
@@ -91,7 +91,7 @@ export const IssueDetectionStatusChip = ({ experimentId, submittedJob }: IssueDe
     }
   }, [enabled, trackedJob, activeRun]);
 
-  const { status, status_details, result } = useFetchJobStatus({
+  const { status, result } = useFetchJobStatus({
     jobId: trackedJob?.jobId,
     enabled: enabled && Boolean(trackedJob),
   });
@@ -194,31 +194,5 @@ export const IssueDetectionStatusChip = ({ experimentId, submittedJob }: IssueDe
     return null;
   }
 
-  const isDetecting = Boolean(trackedJob) && Boolean(status) && !isJobComplete(status);
-
-  return (
-    <>
-      {notificationContextHolder}
-      {isDetecting && trackedJob && (
-        <Button
-          componentId="mlflow.traces.issue-detection.status-chip"
-          data-testid="issue-detection-status-chip"
-          size="small"
-          icon={<Spinner size="small" />}
-          onClick={() => {
-            if (experimentId) {
-              navigate(Routes.getIssueDetectionRunDetailsRoute(experimentId, trackedJob.runId));
-            }
-          }}
-        >
-          {status_details?.stage ?? (
-            <FormattedMessage
-              defaultMessage="Detecting issues…"
-              description="Label of the toolbar chip shown while an issue detection job is running"
-            />
-          )}
-        </Button>
-      )}
-    </>
-  );
+  return <>{notificationContextHolder}</>;
 };

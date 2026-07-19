@@ -1,7 +1,7 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
 import { renderWithDesignSystem, screen, waitFor } from '../../../../../common/utils/TestUtils.react18';
-import { IssueDetectionStatusChip } from './IssueDetectionStatusChip';
+import { IssueDetectionJobWatcher } from './IssueDetectionJobWatcher';
 import { JobStatus, useFetchJobStatus } from '../../../run-page/hooks/useFetchJobStatus';
 import { useActiveIssueDetectionRun } from './hooks/useActiveIssueDetectionRun';
 import { useNavigate } from '../../../../../common/utils/RoutingUtils';
@@ -34,7 +34,7 @@ const mockJobStatus = (status?: JobStatus, stage?: string, result?: unknown) => 
   });
 };
 
-describe('IssueDetectionStatusChip', () => {
+describe('IssueDetectionJobWatcher', () => {
   let mockNavigate: jest.Mock;
 
   beforeEach(() => {
@@ -45,30 +45,23 @@ describe('IssueDetectionStatusChip', () => {
     mockJobStatus(undefined);
   });
 
-  test('renders nothing when there is no active job', () => {
-    renderWithDesignSystem(<IssueDetectionStatusChip experimentId="exp-1" />);
+  test('renders no visible UI', () => {
+    mockJobStatus(JobStatus.RUNNING);
+    const { container } = renderWithDesignSystem(
+      <IssueDetectionJobWatcher
+        experimentId="exp-1"
+        submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
+      />,
+    );
 
-    expect(screen.queryByTestId('issue-detection-status-chip')).not.toBeInTheDocument();
-  });
-
-  test('shows chip with stage for a running job discovered in the experiment', async () => {
-    jest.mocked(useActiveIssueDetectionRun).mockReturnValue({ activeRun: { runId: 'run-1', jobId: 'job-1' } });
-    mockJobStatus(JobStatus.RUNNING, 'Scanning traces');
-
-    renderWithDesignSystem(<IssueDetectionStatusChip experimentId="exp-1" />);
-
-    const chip = await screen.findByTestId('issue-detection-status-chip');
-    expect(chip).toHaveTextContent('Scanning traces');
-
-    await userEvent.click(chip);
-    expect(mockNavigate).toHaveBeenCalledWith('/experiments/exp-1/evaluation-runs/run-1');
+    expect(container.querySelectorAll('button').length).toBe(0);
   });
 
   test('shows started notification when a job is submitted from this session', async () => {
     mockJobStatus(JobStatus.PENDING);
 
     renderWithDesignSystem(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 48 }}
       />,
@@ -82,16 +75,16 @@ describe('IssueDetectionStatusChip', () => {
   test('shows completion notification with issues link when job succeeds', async () => {
     mockJobStatus(JobStatus.RUNNING);
     const { rerender } = renderWithDesignSystem(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 48 }}
       />,
     );
-    await screen.findByTestId('issue-detection-status-chip');
+    await screen.findByText('Issue detection started');
 
     mockJobStatus(JobStatus.SUCCEEDED, undefined, { issues: 4, total_traces_analyzed: 48 });
     rerender(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 48 }}
       />,
@@ -102,26 +95,34 @@ describe('IssueDetectionStatusChip', () => {
 
     await userEvent.click(screen.getByText('View issues'));
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/experiments/exp-1/evaluation-runs/run-1'));
+  });
 
-    // Chip disappears once the job is complete
-    await waitFor(() => {
-      expect(screen.queryByTestId('issue-detection-status-chip')).not.toBeInTheDocument();
-    });
+  test('notifies for a running job discovered in the experiment once it completes', async () => {
+    jest.mocked(useActiveIssueDetectionRun).mockReturnValue({ activeRun: { runId: 'run-1', jobId: 'job-1' } });
+    mockJobStatus(JobStatus.RUNNING);
+
+    const { rerender } = renderWithDesignSystem(<IssueDetectionJobWatcher experimentId="exp-1" />);
+
+    mockJobStatus(JobStatus.SUCCEEDED, undefined, { issues: 2, total_traces_analyzed: 10 });
+    rerender(<IssueDetectionJobWatcher experimentId="exp-1" />);
+
+    expect(await screen.findByText('Issue detection completed')).toBeInTheDocument();
+    expect(screen.getByText('Found 2 issues across 10 traces.')).toBeInTheDocument();
   });
 
   test('low-result completion links to details instead of issues', async () => {
     mockJobStatus(JobStatus.RUNNING);
     const { rerender } = renderWithDesignSystem(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
       />,
     );
-    await screen.findByTestId('issue-detection-status-chip');
+    await screen.findByText('Issue detection started');
 
     mockJobStatus(JobStatus.SUCCEEDED, undefined, { issues: 0, total_traces_analyzed: 5 });
     rerender(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
       />,
@@ -135,16 +136,16 @@ describe('IssueDetectionStatusChip', () => {
   test('shows failure notification when job fails', async () => {
     mockJobStatus(JobStatus.RUNNING);
     const { rerender } = renderWithDesignSystem(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
       />,
     );
-    await screen.findByTestId('issue-detection-status-chip');
+    await screen.findByText('Issue detection started');
 
     mockJobStatus(JobStatus.FAILED, undefined, 'boom');
     rerender(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
       />,
@@ -156,25 +157,24 @@ describe('IssueDetectionStatusChip', () => {
   test('does not show any notification for canceled jobs', async () => {
     mockJobStatus(JobStatus.RUNNING);
     const { rerender } = renderWithDesignSystem(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
       />,
     );
-    await screen.findByTestId('issue-detection-status-chip');
+    await screen.findByText('Issue detection started');
 
     mockJobStatus(JobStatus.CANCELED);
     rerender(
-      <IssueDetectionStatusChip
+      <IssueDetectionJobWatcher
         experimentId="exp-1"
         submittedJob={{ jobId: 'job-1', runId: 'run-1', traceCount: 5 }}
       />,
     );
 
     await waitFor(() => {
-      expect(screen.queryByTestId('issue-detection-status-chip')).not.toBeInTheDocument();
+      expect(screen.queryByText('Issue detection completed')).not.toBeInTheDocument();
     });
-    expect(screen.queryByText('Issue detection completed')).not.toBeInTheDocument();
     expect(screen.queryByText('Issue detection failed')).not.toBeInTheDocument();
   });
 });

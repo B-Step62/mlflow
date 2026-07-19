@@ -1199,6 +1199,10 @@
     "defaultMessage": "AI Gateway",
     "description": "Feature card title for AI Gateway"
   },
+  "3pUugt": {
+    "defaultMessage": "Run Analysis",
+    "description": "Submit button to trigger issue detection job"
+  },
   "3sDV5K": {
     "defaultMessage": "Description",
     "description": "experiment page > edit experiment modal > description label"
@@ -6623,10 +6627,6 @@
     "defaultMessage": "Model registered successfully",
     "description": "Notification title for model registration succeeded on the logged model details page"
   },
-  "UxarfO": {
-    "defaultMessage": "Detecting issues…",
-    "description": "Label of the toolbar chip shown while an issue detection job is running"
-  },
   "UzZf+2": {
     "defaultMessage": "Add chart",
     "description": "Confirm button label within a modal when adding a new runs comparison chart"
@@ -7766,10 +7766,6 @@
   "a1liZ7": {
     "defaultMessage": "Export",
     "description": "Export traces to dataset modal action button"
-  },
-  "a2OFJh": {
-    "defaultMessage": "Run",
-    "description": "Submit button to trigger issue detection job"
   },
   "a3G5A7": {
     "defaultMessage": "Provider",
