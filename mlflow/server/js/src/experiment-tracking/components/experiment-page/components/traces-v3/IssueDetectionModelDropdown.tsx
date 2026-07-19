@@ -194,8 +194,27 @@ export const IssueDetectionModelDropdown = ({
           <ChevronDownIcon css={{ color: theme.colors.textSecondary }} />
         </button>
       </Popover.Trigger>
-      <Popover.Content align="start" style={{ padding: 0, minWidth: 260 }}>
-        <div css={{ maxHeight: 320, overflowY: 'auto', paddingTop: theme.spacing.xs, paddingBottom: theme.spacing.xs }}>
+      <Popover.Content
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        collisionPadding={16}
+        // Keep the dropdown anchored below the card. Without this it flips above
+        // when a provider group is expanded and the content grows.
+        avoidCollisions={false}
+        style={{ padding: 0, minWidth: 260 }}
+      >
+        <div
+          css={{
+            // Cap to the space available below the trigger (minus a margin from the
+            // window edge) so expanding a group scrolls internally instead of growing
+            // the popover past the viewport.
+            maxHeight: 'min(320px, calc(var(--radix-popover-content-available-height, 320px) - 24px))',
+            overflowY: 'auto',
+            paddingTop: theme.spacing.xs,
+            paddingBottom: theme.spacing.xs,
+          }}
+        >
           {endpoints.length > 0 && (
             <>
               <Typography.Hint css={sectionLabelCss}>

@@ -36,3 +36,4 @@ yarn-error.log*
 /src/lang/default/en.json
 
 tsconfig.tsbuildinfo
+.playwright-mcp/
