@@ -8,8 +8,12 @@ import { useLocation, useNavigate } from '../../../../../common/utils/RoutingUti
 import { useLogTelemetryEvent } from '../../../../../telemetry/hooks/useLogTelemetryEvent';
 import { useEndpointsQuery } from '../../../../../gateway/hooks/useEndpointsQuery';
 import { useApiKeyConfiguration } from '../../../../../gateway/components/model-configuration/hooks/useApiKeyConfiguration';
+import { useActiveIssueDetectionRun } from './hooks/useActiveIssueDetectionRun';
 
 jest.mock('./hooks/useInvokeIssueDetection');
+jest.mock('./hooks/useActiveIssueDetectionRun', () => ({
+  useActiveIssueDetectionRun: jest.fn(),
+}));
 jest.mock('../../../../../gateway/hooks/useCreateSecret');
 jest.mock('../../../../../telemetry/hooks/useLogTelemetryEvent', () => ({
   useLogTelemetryEvent: jest.fn(),
@@ -41,10 +45,19 @@ jest.mock('../../../SelectTracesModal', () => ({
   ),
 }));
 
-jest.mock('./IssueDetectionProviderPicker', () => ({
-  ...jest.requireActual<typeof import('./IssueDetectionProviderPicker')>('./IssueDetectionProviderPicker'),
-  IssueDetectionProviderPicker: ({ onChange }: { onChange: (value: unknown) => void }) => (
-    <div data-testid="provider-picker">
+jest.mock('./IssueDetectionModelDropdown', () => ({
+  ...jest.requireActual<typeof import('./IssueDetectionModelDropdown')>('./IssueDetectionModelDropdown'),
+  IssueDetectionModelDropdown: ({
+    value,
+    onChange,
+  }: {
+    value: { mode: string; provider: string; model: string; endpointName?: string };
+    onChange: (value: unknown) => void;
+  }) => (
+    <div data-testid="model-dropdown">
+      <span data-testid="model-dropdown-value">
+        {value.mode === 'endpoint' ? value.endpointName : `${value.provider}/${value.model}`}
+      </span>
       <button
         data-testid="pick-anthropic"
         onClick={() => onChange({ mode: 'direct', provider: 'anthropic', model: 'claude-sonnet-4-6' })}
@@ -73,6 +86,7 @@ describe('IssueDetectionModal', () => {
     jest.mocked(useLocation).mockReturnValue({ search: '', pathname: '/', hash: '', state: null, key: 'default' });
     mockLogTelemetryEvent = jest.fn();
     jest.mocked(useLogTelemetryEvent).mockReturnValue(mockLogTelemetryEvent as any);
+    jest.mocked(useActiveIssueDetectionRun).mockReturnValue({ activeRun: undefined });
     jest.mocked(useEndpointsQuery).mockReturnValue({ data: [], isLoading: false, refetch: jest.fn() } as any);
     jest.mocked(useApiKeyConfiguration).mockReturnValue({
       existingSecrets: [{ secret_id: 'secret-123', secret_name: 'my-key' }],
@@ -117,8 +131,7 @@ describe('IssueDetectionModal', () => {
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
     expect(screen.getByText('Find failure patterns hiding in your traces, automatically.')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
-    expect(screen.getByText('OpenAI')).toBeInTheDocument();
-    expect(screen.getByText('gpt-5.5')).toBeInTheDocument();
+    expect(screen.getByTestId('model-dropdown-value')).toHaveTextContent('openai/gpt-5.5');
     expect(screen.getByText('40 traces selected')).toBeInTheDocument();
     expect(screen.getByText(/Estimated cost: ~\$0\.10-\$0\.40/)).toBeInTheDocument();
     expect(screen.getByText('Run Analysis')).toBeInTheDocument();
@@ -138,6 +151,31 @@ describe('IssueDetectionModal', () => {
 
     expect(screen.getByText('No traces yet. Log traces to this experiment first.')).toBeInTheDocument();
     expect(screen.getByText('Run Analysis').closest('button')).toBeDisabled();
+  });
+
+  test('shows an in-progress banner when a run is already active and links to it', async () => {
+    jest
+      .mocked(useActiveIssueDetectionRun)
+      .mockReturnValue({ activeRun: { runId: 'run-active', jobId: 'job-active' } });
+    const onClose = jest.fn();
+
+    renderWithDesignSystem(
+      <IssueDetectionModal {...defaultProps} onClose={onClose} initialSelectedTraceIds={['trace-1']} />,
+    );
+
+    expect(screen.getByText('An issue detection run is already in progress.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('View progress'));
+    expect(onClose).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringContaining('/experiments/exp-123/evaluation-runs/run-active'),
+    );
+  });
+
+  test('does not show the in-progress banner when no run is active', () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
+
+    expect(screen.queryByText('An issue detection run is already in progress.')).not.toBeInTheDocument();
   });
 
   test('clicking the traces card opens trace selection and updates the count', async () => {
@@ -160,7 +198,7 @@ describe('IssueDetectionModal', () => {
 
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    expect(screen.getByText('my-endpoint')).toBeInTheDocument();
+    expect(screen.getByTestId('model-dropdown-value')).toHaveTextContent('my-endpoint');
 
     await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
     await waitFor(() => {
@@ -171,29 +209,21 @@ describe('IssueDetectionModal', () => {
     });
   });
 
-  test('clicking the model card opens the chooser and Done returns to the main view', async () => {
+  test('changing the model in the dropdown updates the selection and submission', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
-    expect(screen.queryByTestId('choose-model-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('model-dropdown-value')).toHaveTextContent('openai/gpt-5.5');
 
-    await userEvent.click(screen.getByTestId('model-card'));
-    expect(screen.getByTestId('choose-model-view')).toBeInTheDocument();
-    expect(screen.getByText('Choose a model')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByText('Done'));
-    expect(screen.queryByTestId('choose-model-view')).not.toBeInTheDocument();
-    expect(screen.getByTestId('model-card')).toBeInTheDocument();
-  });
-
-  test('changing provider in the chooser updates the model card', async () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
-
-    await userEvent.click(screen.getByTestId('model-card'));
     await userEvent.click(screen.getByTestId('pick-anthropic'));
-    await userEvent.click(screen.getByText('Done'));
+    expect(screen.getByTestId('model-dropdown-value')).toHaveTextContent('anthropic/claude-sonnet-4-6');
 
-    expect(screen.getByText('Anthropic')).toBeInTheDocument();
-    expect(screen.getByText('claude-sonnet-4-6')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Run Analysis').closest('button')!);
+    await waitFor(() => {
+      expect(mockInvokeIssueDetection).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-4-6' }),
+        expect.any(Object),
+      );
+    });
   });
 
   test('missing API key turns into the one-last-step view and Continue and run submits', async () => {

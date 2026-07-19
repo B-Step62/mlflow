@@ -67,6 +67,10 @@
     "defaultMessage": "Python",
     "description": "Tab label for the runnable Python code-snippet path in the eval-runs empty state"
   },
+  "+Fna82": {
+    "defaultMessage": "An issue detection run is already in progress.",
+    "description": "Banner shown in the modal when an issue detection run is already running"
+  },
   "+HgSTK": {
     "defaultMessage": "Use these code examples to call your endpoint. Choose between unified APIs for seamless model switching or passthrough APIs for provider-specific features.",
     "description": "Endpoint usage modal description"
@@ -5887,6 +5891,10 @@
     "defaultMessage": "Question for reviewer",
     "description": "Review question name input"
   },
+  "RFfm4n": {
+    "defaultMessage": "View progress",
+    "description": "Link to the in-progress issue detection run from the modal banner"
+  },
   "RGKRP9": {
     "defaultMessage": "Feedback",
     "description": "Label for the value of an feedback assessment"
@@ -7039,10 +7047,6 @@
     "defaultMessage": "Model output",
     "description": "Evaluation review > Response section > model output > title"
   },
-  "Wk06FO": {
-    "defaultMessage": "Back",
-    "description": "Button to go back from the model chooser to the main issue detection view"
-  },
   "WlZLz9": {
     "defaultMessage": "Expectations Guidelines",
     "description": "LLM template option"
@@ -7294,6 +7298,10 @@
   "XuzIWs": {
     "defaultMessage": "Some traces are hidden by your time range filter: \"{filterLabel}\"",
     "description": "Message shown when traces are hidden by time filter"
+  },
+  "XvRBmV": {
+    "defaultMessage": "AI Gateway",
+    "description": "Section label for AI Gateway endpoints in the model dropdown"
   },
   "XvzXs3": {
     "defaultMessage": "The parallel coordinates chart shows runs with columns that are either numbers or strings. If a column has string entries, the runs corresponding to the 30 most recent unique values will be shown. Only runs with all relevant metrics and/or parameters will be displayed.",
@@ -10227,10 +10235,6 @@
     "defaultMessage": "Edit tags",
     "description": "Label for the edit tags button in the registered prompts table"
   },
-  "lAJITf": {
-    "defaultMessage": "Choose a model",
-    "description": "Title of the model chooser view"
-  },
   "lCfyQO": {
     "defaultMessage": "Dataset",
     "description": "Label for the dataset column in the logged model details metrics table"
@@ -10655,10 +10659,6 @@
     "defaultMessage": "Edit history",
     "description": "Title of a modal that shows the edit history of an assessment"
   },
-  "n7Jaek": {
-    "defaultMessage": "AI Gateway endpoint",
-    "description": "Hint marking an option as an AI Gateway endpoint"
-  },
   "n7MxV7": {
     "defaultMessage": "Use multiple models for load balancing by splitting traffic with weights",
     "description": "Gateway > Endpoint details > Description for adding more primary models"
@@ -10966,10 +10966,6 @@
   "odkg7W": {
     "defaultMessage": "Compact view",
     "description": "Run page > artifact view > logged table view > compact view toggle button"
-  },
-  "oeMUBG": {
-    "defaultMessage": "Done",
-    "description": "Button to confirm the model choice"
   },
   "ofL8Me": {
     "defaultMessage": "e.g. 1.0",
@@ -11950,6 +11946,10 @@
   "tEX/Gk": {
     "defaultMessage": "Select a Guardrail Model endpoint to create this guardrail.",
     "description": "Tooltip shown when create button is disabled because guardrail model is not selected"
+  },
+  "tEt1YM": {
+    "defaultMessage": "Providers",
+    "description": "Section label for model providers in the model dropdown"
   },
   "tEwQWS": {
     "defaultMessage": "Active",

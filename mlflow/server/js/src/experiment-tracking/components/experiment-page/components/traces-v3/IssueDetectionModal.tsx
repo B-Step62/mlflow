@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Modal,
   Button,
-  ChevronLeftIcon,
   Input,
   PencilIcon,
   useDesignSystemTheme,
@@ -26,13 +25,13 @@ import { useEndpointsQuery } from '../../../../../gateway/hooks/useEndpointsQuer
 import { useApiKeyConfiguration } from '../../../../../gateway/components/model-configuration/hooks/useApiKeyConfiguration';
 import { ALL_ISSUE_CATEGORIES } from './IssueDetectionCategories';
 import {
-  IssueDetectionProviderPicker,
+  IssueDetectionModelDropdown,
   ISSUE_DETECTION_PROVIDERS,
-  GATEWAY_LOGO,
   ProviderLogo,
   type IssueDetectionModelSelection,
-} from './IssueDetectionProviderPicker';
+} from './IssueDetectionModelDropdown';
 import { useInvokeIssueDetection } from './hooks/useInvokeIssueDetection';
+import { useActiveIssueDetectionRun } from './hooks/useActiveIssueDetectionRun';
 import { estimateIssueDetectionCostUsd, formatEstimatedCostUsd } from './issueDetectionCostEstimate';
 import heroImg from '../../../../../common/static/issue-detection-empty.svg';
 
@@ -54,7 +53,7 @@ const QUICK_SELECT_TRACE_COUNT = 50;
 
 const MISSING_API_KEY_ERROR_FRAGMENT = 'No API key available';
 
-type ModalView = 'main' | 'chooseModel' | 'apiKey';
+type ModalView = 'main' | 'apiKey';
 
 export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   onClose,
@@ -104,6 +103,9 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const { existingSecrets } = useApiKeyConfiguration({
     provider: selection?.mode === 'direct' ? selection.provider : ISSUE_DETECTION_PROVIDERS[0].id,
   });
+
+  // Surface an indicator if a run is already in progress in this experiment
+  const { activeRun } = useActiveIssueDetectionRun({ experimentId, enabled: Boolean(experimentId) });
 
   const hasNoTraces = selectedTraceIds.length === 0 && availableTraceIds.length === 0;
   const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
@@ -220,39 +222,38 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
     },
   } as const;
 
-  const renderModelCard = () => {
-    if (!selection) {
-      return null;
-    }
-    const isEndpoint = selection.mode === 'endpoint';
-    const logo = isEndpoint ? GATEWAY_LOGO : selectedProvider?.logo;
-    const name = isEndpoint ? selection.endpointName : (selectedProvider?.name ?? selection.provider);
-
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        data-testid="model-card"
-        onClick={() => setView('chooseModel')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') setView('chooseModel');
-        }}
-        css={summaryCardCss}
-      >
-        {logo && <ProviderLogo src={logo} />}
-        <div css={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
-          <Typography.Text css={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {name}
-          </Typography.Text>
-          {!isEndpoint && selection.model && <Typography.Hint>{selection.model}</Typography.Hint>}
-        </div>
-        <PencilIcon css={{ color: theme.colors.textSecondary }} />
-      </div>
-    );
-  };
-
   const renderMainView = () => (
     <>
+      {activeRun && (
+        <Alert
+          componentId="mlflow.traces.issue-detection-modal.active-run-banner"
+          type="info"
+          closable={false}
+          css={{ marginBottom: theme.spacing.md }}
+          message={
+            <FormattedMessage
+              defaultMessage="An issue detection run is already in progress."
+              description="Banner shown in the modal when an issue detection run is already running"
+            />
+          }
+          description={
+            <Typography.Link
+              componentId="mlflow.traces.issue-detection-modal.active-run-view-progress"
+              onClick={() => {
+                if (experimentId) {
+                  handleClose();
+                  navigate(Routes.getIssueDetectionRunDetailsRoute(experimentId, activeRun.runId));
+                }
+              }}
+            >
+              <FormattedMessage
+                defaultMessage="View progress"
+                description="Link to the in-progress issue detection run from the modal banner"
+              />
+            </Typography.Link>
+          }
+        />
+      )}
       <div css={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
         <img
           src={heroImg}
@@ -291,7 +292,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
               description="Column header for the model powering issue detection"
             />
           </Typography.Text>
-          {renderModelCard()}
+          {selection && <IssueDetectionModelDropdown endpoints={endpoints} value={selection} onChange={setSelection} />}
         </div>
         <div css={{ flex: 1, minWidth: 0 }}>
           <Typography.Text bold color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
@@ -369,26 +370,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
     </>
   );
 
-  const renderChooseModelView = () => (
-    <div data-testid="choose-model-view">
-      <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
-        <Button
-          componentId="mlflow.traces.issue-detection-modal.choose-model-back"
-          icon={<ChevronLeftIcon />}
-          onClick={() => setView('main')}
-          aria-label={intl.formatMessage({
-            defaultMessage: 'Back',
-            description: 'Button to go back from the model chooser to the main issue detection view',
-          })}
-        />
-        <Typography.Text bold>
-          <FormattedMessage defaultMessage="Choose a model" description="Title of the model chooser view" />
-        </Typography.Text>
-      </div>
-      {selection && <IssueDetectionProviderPicker endpoints={endpoints} value={selection} onChange={setSelection} />}
-    </div>
-  );
-
   const renderApiKeyView = () => (
     <div data-testid="api-key-view" css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
       <Typography.Text bold css={{ textAlign: 'center', marginTop: theme.spacing.sm }}>
@@ -431,17 +412,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   );
 
   const renderFooter = () => {
-    if (view === 'chooseModel') {
-      return (
-        <Button
-          componentId="mlflow.traces.issue-detection-modal.choose-model-done"
-          type="primary"
-          onClick={() => setView('main')}
-        >
-          <FormattedMessage defaultMessage="Done" description="Button to confirm the model choice" />
-        </Button>
-      );
-    }
     if (view === 'apiKey') {
       return (
         <>
@@ -540,7 +510,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
         />
       )}
       {view === 'main' && renderMainView()}
-      {view === 'chooseModel' && renderChooseModelView()}
       {view === 'apiKey' && renderApiKeyView()}
       {isSelectTracesModalOpen && (
         <SelectTracesModal
