@@ -48,7 +48,6 @@ interface IssueDetectionModalProps {
   onSubmitted?: (job: { jobId: string; runId: string; traceCount: number }) => void;
 }
 
-const MIN_RECOMMENDED_TRACE_COUNT = 10;
 const QUICK_SELECT_TRACE_COUNT = 50;
 
 const MISSING_API_KEY_ERROR_FRAGMENT = 'No API key available';
@@ -108,9 +107,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const { activeRun } = useActiveIssueDetectionRun({ experimentId, enabled: Boolean(experimentId) });
 
   const hasNoTraces = selectedTraceIds.length === 0 && availableTraceIds.length === 0;
-  const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
-  const quickSelectCount = Math.min(QUICK_SELECT_TRACE_COUNT, availableTraceIds.length);
-  const canQuickSelectTraces = quickSelectCount > selectedTraceIds.length;
   const estimatedCost = estimateIssueDetectionCostUsd(selectedTraceIds.length);
 
   const {
@@ -152,7 +148,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       eventType: DesignSystemEventProviderAnalyticsEventTypes.OnView,
       value: JSON.stringify({
         selectedTraceCount: selectedTraceIds.length,
-        lowTraceWarningShown: showLowTraceWarning,
       }),
     });
 
@@ -338,31 +333,6 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
                 )}
               </div>
               <PencilIcon css={{ color: theme.colors.textSecondary }} />
-            </div>
-          )}
-          {showLowTraceWarning && (
-            <div css={{ marginTop: theme.spacing.xs }}>
-              <Typography.Text size="sm" css={{ display: 'block', color: theme.colors.textValidationWarning }}>
-                <FormattedMessage
-                  defaultMessage="Small samples can miss real issues."
-                  description="Warning shown when fewer than the recommended number of traces are selected"
-                />
-              </Typography.Text>
-              {canQuickSelectTraces && (
-                <Button
-                  componentId="mlflow.traces.issue-detection-modal.quick-select-traces"
-                  data-testid="quick-select-traces"
-                  size="small"
-                  css={{ marginTop: theme.spacing.xs }}
-                  onClick={() => setSelectedTraceIds(availableTraceIds.slice(0, quickSelectCount))}
-                >
-                  <FormattedMessage
-                    defaultMessage="Select {count} most recent traces"
-                    description="Button to select the most recent traces in one click"
-                    values={{ count: quickSelectCount }}
-                  />
-                </Button>
-              )}
             </div>
           )}
         </div>

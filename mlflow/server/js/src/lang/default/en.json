@@ -2195,10 +2195,6 @@
     "defaultMessage": "Select output type",
     "description": "Placeholder for output type selection"
   },
-  "8c+D0n": {
-    "defaultMessage": "Select {count} most recent traces",
-    "description": "Button to select the most recent traces in one click"
-  },
   "8eVxXM": {
     "defaultMessage": "Cancel",
     "description": "Cancel delete webhook button"
@@ -12022,10 +12018,6 @@
   "tdmVWN": {
     "defaultMessage": "While deleting an experiment run, an error occurred.",
     "description": "Experiment tracking > delete run modal > error message"
-  },
-  "tek6qD": {
-    "defaultMessage": "Small samples can miss real issues.",
-    "description": "Warning shown when fewer than the recommended number of traces are selected"
   },
   "tiQptW": {
     "defaultMessage": "Learn more",

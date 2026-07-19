@@ -32,15 +32,18 @@ describe('IssueDetectionModelDropdown', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Return an unsorted list for the expanded provider; the component should sort it
-    jest.mocked(useModelsQuery).mockImplementation(({ provider } = {}) => ({
-      data:
-        provider === 'anthropic'
-          ? [{ model: 'claude-sonnet-4-5' }, { model: 'claude-opus-4-8' }, { model: 'claude-sonnet-4-6' }]
-          : undefined,
-      error: undefined,
-      isLoading: false,
-      refetch: jest.fn(),
-    })) as any;
+    jest.mocked(useModelsQuery).mockImplementation(
+      ({ provider } = {}) =>
+        ({
+          data:
+            provider === 'anthropic'
+              ? [{ model: 'claude-sonnet-4-5' }, { model: 'claude-opus-4-8' }, { model: 'claude-sonnet-4-6' }]
+              : undefined,
+          error: undefined,
+          isLoading: false,
+          refetch: jest.fn(),
+        }) as any,
+    );
     jest.mocked(useEndpointsQuery).mockReturnValue({ data: [], isLoading: false, refetch: jest.fn() } as any);
   });
 

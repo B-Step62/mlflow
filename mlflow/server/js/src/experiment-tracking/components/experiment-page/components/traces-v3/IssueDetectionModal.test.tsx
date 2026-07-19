@@ -294,44 +294,6 @@ describe('IssueDetectionModal', () => {
     });
   });
 
-  test('shows low trace warning with quick select in the traces column', async () => {
-    const availableTraceIds = Array.from({ length: 80 }, (_, i) => `trace-${i}`);
-    renderWithDesignSystem(
-      <IssueDetectionModal
-        {...defaultProps}
-        initialSelectedTraceIds={['trace-1', 'trace-2', 'trace-3']}
-        availableTraceIds={availableTraceIds}
-      />,
-    );
-
-    expect(screen.getByText('Small samples can miss real issues.')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId('quick-select-traces'));
-
-    expect(screen.getByText('50 traces selected')).toBeInTheDocument();
-    expect(screen.queryByText('Small samples can miss real issues.')).not.toBeInTheDocument();
-  });
-
-  test('low trace warning has no quick select when no more traces are available', () => {
-    renderWithDesignSystem(
-      <IssueDetectionModal
-        {...defaultProps}
-        initialSelectedTraceIds={['trace-1', 'trace-2']}
-        availableTraceIds={['trace-1', 'trace-2']}
-      />,
-    );
-
-    expect(screen.getByText('Small samples can miss real issues.')).toBeInTheDocument();
-    expect(screen.queryByTestId('quick-select-traces')).not.toBeInTheDocument();
-  });
-
-  test('does not show low trace warning when enough traces are selected', () => {
-    const ids = Array.from({ length: 12 }, (_, i) => `trace-${i}`);
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={ids} />);
-
-    expect(screen.queryByText('Small samples can miss real issues.')).not.toBeInTheDocument();
-  });
-
   test('logs submit context telemetry on submit', async () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} initialSelectedTraceIds={['trace-1']} />);
 
@@ -343,7 +305,6 @@ describe('IssueDetectionModal', () => {
           componentId: 'mlflow.traces.issue-detection-modal.submit-context',
           value: JSON.stringify({
             selectedTraceCount: 1,
-            lowTraceWarningShown: true,
           }),
         }),
       );

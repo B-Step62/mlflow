@@ -2207,7 +2207,6 @@ module.exports = {
   "mlflow.traces.issue-detection-modal.error": "",
   "mlflow.traces.issue-detection-modal.model": "",
   "mlflow.traces.issue-detection-modal.model-dropdown": "",
-  "mlflow.traces.issue-detection-modal.quick-select-traces": "",
   "mlflow.traces.issue-detection-modal.submit": "",
   "mlflow.traces.issue-detection-modal.submit-context": "",
   "mlflow.traces.issue-detection-modal.submit.tooltip": "",
