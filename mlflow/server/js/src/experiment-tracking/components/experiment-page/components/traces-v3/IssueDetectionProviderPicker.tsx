@@ -83,49 +83,56 @@ export const IssueDetectionProviderPicker = ({
   };
 
   return (
-    <Radio.Group
-      name="issue-detection-provider"
-      componentId="mlflow.traces.issue-detection-modal.provider-picker"
-      value={radioValue}
-      onChange={handleRadioChange}
-      css={{ width: '100%' }}
-    >
-      {endpoints.map((endpoint) => (
-        <Radio key={endpoint.name} value={`${ENDPOINT_VALUE_PREFIX}${endpoint.name}`}>
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
-            <ProviderLogo src={GATEWAY_LOGO} />
-            {endpoint.name}
-            <Typography.Hint>
-              <FormattedMessage
-                defaultMessage="AI Gateway endpoint"
-                description="Hint marking an option as an AI Gateway endpoint"
-              />
-            </Typography.Hint>
-          </span>
-        </Radio>
-      ))}
-      {ISSUE_DETECTION_PROVIDERS.map((provider) => (
-        <div key={provider.id}>
-          <Radio value={`${PROVIDER_VALUE_PREFIX}${provider.id}`}>
-            <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
-              <ProviderLogo src={provider.logo} />
-              {provider.name}
-            </span>
-          </Radio>
-          {value.mode === 'direct' && value.provider === provider.id && (
-            <div css={{ marginLeft: theme.spacing.lg, marginBottom: theme.spacing.sm, maxWidth: 320 }}>
-              <ModelSelect
-                componentId="mlflow.traces.issue-detection-modal.model"
-                provider={provider.id}
-                value={value.model}
-                onChange={(model) => onChange({ ...value, model })}
-                hideCapabilities
-                label={<></>}
-              />
-            </div>
-          )}
-        </div>
-      ))}
-    </Radio.Group>
+    <div>
+      <Typography.Text bold css={{ display: 'block', marginBottom: theme.spacing.sm }}>
+        <FormattedMessage defaultMessage="Select a model" description="Title of the model provider picker" />
+      </Typography.Text>
+      <Radio.Group
+        name="issue-detection-provider"
+        componentId="mlflow.traces.issue-detection-modal.provider-picker"
+        value={radioValue}
+        onChange={handleRadioChange}
+        css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, width: '100%' }}
+      >
+        {endpoints.map((endpoint) => (
+          <div key={endpoint.name}>
+            <Radio value={`${ENDPOINT_VALUE_PREFIX}${endpoint.name}`}>
+              <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <ProviderLogo src={GATEWAY_LOGO} />
+                {endpoint.name}
+                <Typography.Hint>
+                  <FormattedMessage
+                    defaultMessage="AI Gateway endpoint"
+                    description="Hint marking an option as an AI Gateway endpoint"
+                  />
+                </Typography.Hint>
+              </span>
+            </Radio>
+          </div>
+        ))}
+        {ISSUE_DETECTION_PROVIDERS.map((provider) => (
+          <div key={provider.id}>
+            <Radio value={`${PROVIDER_VALUE_PREFIX}${provider.id}`}>
+              <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <ProviderLogo src={provider.logo} />
+                {provider.name}
+              </span>
+            </Radio>
+            {value.mode === 'direct' && value.provider === provider.id && (
+              <div css={{ marginLeft: theme.spacing.lg, marginBottom: theme.spacing.sm, maxWidth: 300 }}>
+                <ModelSelect
+                  componentId="mlflow.traces.issue-detection-modal.model"
+                  provider={provider.id}
+                  value={value.model}
+                  onChange={(model) => onChange({ ...value, model })}
+                  hideCapabilities
+                  label={<></>}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </Radio.Group>
+    </div>
   );
 };

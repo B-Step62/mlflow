@@ -649,6 +649,7 @@ const TracesV3LogsImpl = React.memo(
           </div>
           {!disableActions && isIssueDetectionModalOpen && (
             <IssueDetectionModal
+              key={singleExperimentId}
               onClose={() => setIsIssueDetectionModalOpen(false)}
               onSubmitted={setSubmittedIssueDetectionJob}
               experimentId={singleExperimentId}

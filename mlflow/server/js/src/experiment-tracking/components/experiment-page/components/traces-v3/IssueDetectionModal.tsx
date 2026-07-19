@@ -4,6 +4,7 @@ import {
   Button,
   useDesignSystemTheme,
   SparkleIcon,
+  Tooltip,
   Typography,
   DesignSystemEventProviderAnalyticsEventTypes,
   DesignSystemEventProviderComponentTypes,
@@ -56,8 +57,11 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
   const location = useLocation();
   const logTelemetryEvent = useLogTelemetryEvent();
 
+  // Without an explicit table selection, default to the most recent traces
   const [selectedTraceIds, setSelectedTraceIds] = useState<string[]>(() => {
-    return initialSelectedTraceIds.length > 0 ? initialSelectedTraceIds : availableTraceIds;
+    return initialSelectedTraceIds.length > 0
+      ? initialSelectedTraceIds
+      : availableTraceIds.slice(0, QUICK_SELECT_TRACE_COUNT);
   });
   const [selection, setSelection] = useState<IssueDetectionModelSelection | null>(null);
   const [isPickerExpanded, setIsPickerExpanded] = useState(false);
@@ -86,6 +90,7 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
     provider: selection?.mode === 'direct' ? selection.provider : ISSUE_DETECTION_PROVIDERS[0].id,
   });
 
+  const hasNoTraces = selectedTraceIds.length === 0 && availableTraceIds.length === 0;
   const showLowTraceWarning = selectedTraceIds.length > 0 && selectedTraceIds.length < MIN_RECOMMENDED_TRACE_COUNT;
   const quickSelectCount = Math.min(QUICK_SELECT_TRACE_COUNT, availableTraceIds.length);
   const canQuickSelectTraces = quickSelectCount > selectedTraceIds.length;
@@ -185,18 +190,38 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
         </div>
       }
       visible
+      dangerouslySetAntdProps={{ width: 520 }}
       onCancel={isInvokingIssueDetection ? undefined : handleClose}
       footer={
-        <Button
-          componentId="mlflow.traces.issue-detection-modal.submit"
-          type="primary"
-          onClick={handleSubmit}
-          loading={isInvokingIssueDetection}
-          disabled={!isFormValid}
+        <Tooltip
+          componentId="mlflow.traces.issue-detection-modal.submit.tooltip"
+          content={
+            isFormValid ? null : hasNoTraces ? (
+              <FormattedMessage
+                defaultMessage="No traces to analyze — log traces to this experiment first."
+                description="Tooltip on the disabled Run button when the experiment has no traces"
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="Select traces to analyze first."
+                description="Tooltip on the disabled Run button when no traces are selected"
+              />
+            )
+          }
         >
-          <SparkleIcon css={{ marginRight: theme.spacing.xs }} />
-          <FormattedMessage defaultMessage="Run" description="Submit button to trigger issue detection job" />
-        </Button>
+          <span css={{ display: 'inline-block' }}>
+            <Button
+              componentId="mlflow.traces.issue-detection-modal.submit"
+              type="primary"
+              onClick={handleSubmit}
+              loading={isInvokingIssueDetection}
+              disabled={!isFormValid}
+            >
+              <SparkleIcon css={{ marginRight: theme.spacing.xs }} />
+              <FormattedMessage defaultMessage="Run" description="Submit button to trigger issue detection job" />
+            </Button>
+          </span>
+        </Tooltip>
       }
     >
       {issueDetectionError && (
@@ -234,21 +259,27 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
             defaultMessage: 'Illustration of traces being analyzed for issues',
             description: 'Alt text for the issue detection illustration',
           })}
-          css={{ maxWidth: '100%', maxHeight: 160 }}
+          css={{ maxWidth: '100%', maxHeight: 120 }}
         />
-        <Typography.Text color="secondary" css={{ marginTop: theme.spacing.md }}>
+        <Typography.Text css={{ marginTop: theme.spacing.md }}>
           <FormattedMessage
-            defaultMessage="AI scans your traces and groups failures into issues."
-            description="Description text for issue detection modal"
+            defaultMessage="Find failure patterns hiding in your traces — automatically."
+            description="Headline for the issue detection modal"
+          />
+        </Typography.Text>
+        <Typography.Text color="secondary" css={{ marginTop: theme.spacing.xs }}>
+          <FormattedMessage
+            defaultMessage="AI reviews every trace, groups failures into issues, and shows you what to fix — no manual trace reading required."
+            description="Supporting description for the issue detection modal"
           />
         </Typography.Text>
       </div>
       <div
         css={{
           display: 'flex',
-          gap: theme.spacing.lg,
-          marginTop: theme.spacing.lg,
-          paddingTop: theme.spacing.md,
+          gap: theme.spacing.md,
+          marginTop: theme.spacing.md,
+          paddingTop: theme.spacing.sm,
           borderTop: `1px solid ${theme.colors.border}`,
         }}
       >
@@ -275,13 +306,22 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
           <Typography.Text bold color="secondary" css={{ display: 'block', marginBottom: theme.spacing.xs }}>
             <FormattedMessage defaultMessage="Traces" description="Column header for the analyzed traces" />
           </Typography.Text>
-          <Typography.Text css={{ display: 'block' }}>
-            <FormattedMessage
-              defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
-              description="Label showing number of traces selected"
-              values={{ count: selectedTraceIds.length }}
-            />
-          </Typography.Text>
+          {hasNoTraces ? (
+            <Typography.Text css={{ display: 'block' }} color="secondary">
+              <FormattedMessage
+                defaultMessage="No traces yet — log traces to this experiment first."
+                description="Message shown in the issue detection modal when the experiment has no traces"
+              />
+            </Typography.Text>
+          ) : (
+            <Typography.Text css={{ display: 'block' }}>
+              <FormattedMessage
+                defaultMessage="{count, plural, one {1 trace selected} other {# traces selected}}"
+                description="Label showing number of traces selected"
+                values={{ count: selectedTraceIds.length }}
+              />
+            </Typography.Text>
+          )}
           {selectedTraceIds.length > 0 && (
             <Typography.Hint>
               <FormattedMessage

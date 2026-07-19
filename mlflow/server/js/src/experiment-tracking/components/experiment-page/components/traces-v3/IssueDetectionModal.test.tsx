@@ -87,7 +87,7 @@ describe('IssueDetectionModal', () => {
     renderWithDesignSystem(<IssueDetectionModal {...defaultProps} availableTraceIds={availableTraceIds} />);
 
     expect(screen.getByText('Detect Issues')).toBeInTheDocument();
-    expect(screen.getByText('AI scans your traces and groups failures into issues.')).toBeInTheDocument();
+    expect(screen.getByText('Find failure patterns hiding in your traces — automatically.')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('OpenAI')).toBeInTheDocument();
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument();
@@ -96,6 +96,20 @@ describe('IssueDetectionModal', () => {
     expect(screen.getByText('Run')).toBeInTheDocument();
     // No API key input anywhere
     expect(screen.queryByText(/API key/i)).not.toBeInTheDocument();
+  });
+
+  test('defaults to the 50 most recent traces when none are explicitly selected', () => {
+    const availableTraceIds = Array.from({ length: 80 }, (_, i) => `trace-${i}`);
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} availableTraceIds={availableTraceIds} />);
+
+    expect(screen.getByText('50 traces selected')).toBeInTheDocument();
+  });
+
+  test('tells the user to log traces first when the experiment has none', () => {
+    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
+
+    expect(screen.getByText('No traces yet — log traces to this experiment first.')).toBeInTheDocument();
+    expect(screen.getByText('Run').closest('button')).toBeDisabled();
   });
 
   test('defaults to the first gateway endpoint when endpoints exist', async () => {
@@ -228,12 +242,6 @@ describe('IssueDetectionModal', () => {
         }),
       );
     });
-  });
-
-  test('Run is disabled when no traces are selected', () => {
-    renderWithDesignSystem(<IssueDetectionModal {...defaultProps} />);
-
-    expect(screen.getByText('Run').closest('button')).toBeDisabled();
   });
 
   test('hands submitted job to parent instead of navigating when onSubmitted is provided', async () => {

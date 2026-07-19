@@ -2107,6 +2107,10 @@
     "defaultMessage": "Total",
     "description": "Label for the total tokensin the tooltip for the tokens cell."
   },
+  "84sIcN": {
+    "defaultMessage": "Find failure patterns hiding in your traces — automatically.",
+    "description": "Headline for the issue detection modal"
+  },
   "88bRGB": {
     "defaultMessage": "Select record {recordId}",
     "description": "Aria label for the per-row select checkbox in the V2 dataset records table"
@@ -2138,6 +2142,10 @@
   "8Gz0OE": {
     "defaultMessage": "Unhide group",
     "description": "A tooltip for the visibility icon button in the runs table next to the hidden run group"
+  },
+  "8HGwBV": {
+    "defaultMessage": "Select a model",
+    "description": "Title of the model provider picker"
   },
   "8HwtfM": {
     "defaultMessage": "New password",
@@ -4018,6 +4026,10 @@
   "Hq/vjk": {
     "defaultMessage": "All",
     "description": "Evaluation review > sidebar list of evaluation results > filter control > option for filtering evaluation results with no filter"
+  },
+  "HqkKUn": {
+    "defaultMessage": "Select traces to analyze first.",
+    "description": "Tooltip on the disabled Run button when no traces are selected"
   },
   "HrDWRj": {
     "defaultMessage": "Compare",
@@ -8147,6 +8159,10 @@
     "defaultMessage": "A tag value is required",
     "description": "Key-value tag editor modal > Value required error message"
   },
+  "bvLZn/": {
+    "defaultMessage": "No traces to analyze — log traces to this experiment first.",
+    "description": "Tooltip on the disabled Run button when the experiment has no traces"
+  },
   "by+x8N": {
     "defaultMessage": "Type",
     "description": "Run page > Overview > Experiment ID section label"
@@ -9563,6 +9579,10 @@
     "defaultMessage": "We couldn't load your experiments.",
     "description": "Home page experiments error message"
   },
+  "i5B+/a": {
+    "defaultMessage": "AI reviews every trace, groups failures into issues, and shows you what to fix — no manual trace reading required.",
+    "description": "Supporting description for the issue detection modal"
+  },
   "i5mE0b": {
     "defaultMessage": "Execution",
     "description": "Issue category title for execution"
@@ -10582,6 +10602,10 @@
   "ms+6Z2": {
     "defaultMessage": "Value",
     "description": "Field label for assessment value in a creation form"
+  },
+  "ms9K2g": {
+    "defaultMessage": "No traces yet — log traces to this experiment first.",
+    "description": "Message shown in the issue detection modal when the experiment has no traces"
   },
   "msllnR": {
     "defaultMessage": "Datasets used",
@@ -12378,10 +12402,6 @@
   "vtQvcd": {
     "defaultMessage": "Save version",
     "description": "Confirm-button label on the playground save-prompt-version modal"
-  },
-  "vtv7uU": {
-    "defaultMessage": "AI scans your traces and groups failures into issues.",
-    "description": "Description text for issue detection modal"
   },
   "vwD2zW": {
     "defaultMessage": "Unified APIs",
