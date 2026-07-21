@@ -56,7 +56,7 @@ describe('IssueDetectionProgress cancel', () => {
   });
 
   test('asks for confirmation before canceling the run', async () => {
-    const mockCancelAsync = jest.fn(() => Promise.resolve());
+    const mockCancelAsync = jest.fn<(_: { jobId: string; runUuid: string }) => Promise<void>>(() => Promise.resolve());
     jest.mocked(useCancelJob).mockReturnValue({
       cancelJob: jest.fn(),
       cancelJobAsync: mockCancelAsync,

@@ -25,9 +25,9 @@ jest.mock('../../../common/utils/FeatureUtils', () => ({
   shouldEnableIssueDetection: jest.fn(),
 }));
 
-// Mock IssueDetectionStatusChip (polls for background jobs, not relevant here)
-jest.mock('../../components/experiment-page/components/traces-v3/IssueDetectionStatusChip', () => ({
-  IssueDetectionStatusChip: () => null,
+// Mock IssueDetectionJobWatcher (polls for background jobs, not relevant here)
+jest.mock('../../components/experiment-page/components/traces-v3/IssueDetectionJobWatcher', () => ({
+  IssueDetectionJobWatcher: () => null,
 }));
 
 const TracesTabStub = () => {

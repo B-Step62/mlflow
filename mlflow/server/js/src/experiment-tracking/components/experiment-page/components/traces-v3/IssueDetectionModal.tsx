@@ -497,29 +497,31 @@ export const IssueDetectionModal: React.FC<IssueDetectionModalProps> = ({
       onCancel={isInvokingIssueDetection || isCreatingSecret ? undefined : handleClose}
       footer={renderFooter()}
     >
-      {issueDetectionError && !isMissingKeyError && (
-        <Alert
-          componentId="mlflow.traces.issue-detection-modal.error"
-          type="error"
-          message={issueDetectionError.message}
-          closable
-          onClose={() => resetIssueDetection()}
-          css={{ marginBottom: theme.spacing.md }}
-        />
-      )}
-      {view === 'main' && renderMainView()}
-      {view === 'apiKey' && renderApiKeyView()}
-      {isSelectTracesModalOpen && (
-        <SelectTracesModal
-          onClose={() => setIsSelectTracesModalOpen(false)}
-          onSuccess={(traceIds) => {
-            setSelectedTraceIds(traceIds);
-            setIsSelectTracesModalOpen(false);
-          }}
-          initialTraceIdsSelected={selectedTraceIds}
-          defaultGroupBySession={defaultGroupBySession}
-        />
-      )}
+      <div>
+        {issueDetectionError && !isMissingKeyError && (
+          <Alert
+            componentId="mlflow.traces.issue-detection-modal.error"
+            type="error"
+            message={issueDetectionError.message}
+            closable
+            onClose={() => resetIssueDetection()}
+            css={{ marginBottom: theme.spacing.md }}
+          />
+        )}
+        {view === 'main' && renderMainView()}
+        {view === 'apiKey' && renderApiKeyView()}
+        {isSelectTracesModalOpen && (
+          <SelectTracesModal
+            onClose={() => setIsSelectTracesModalOpen(false)}
+            onSuccess={(traceIds) => {
+              setSelectedTraceIds(traceIds);
+              setIsSelectTracesModalOpen(false);
+            }}
+            initialTraceIdsSelected={selectedTraceIds}
+            defaultGroupBySession={defaultGroupBySession}
+          />
+        )}
+      </div>
     </Modal>
   );
 };

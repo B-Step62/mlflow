@@ -40,6 +40,8 @@ export const IssueDetectionJobWatcher = ({ experimentId, submittedJob }: IssueDe
   const notifiedCompletionJobIdsRef = useRef<Set<string>>(new Set());
 
   const { activeRun } = useActiveIssueDetectionRun({ experimentId, enabled: enabled && !trackedJob });
+  const activeRunJobId = activeRun?.jobId;
+  const activeRunRunId = activeRun?.runId;
 
   useEffect(() => {
     if (!enabled || !submittedJob || notifiedStartJobIdsRef.current.has(submittedJob.jobId)) {
@@ -86,10 +88,16 @@ export const IssueDetectionJobWatcher = ({ experimentId, submittedJob }: IssueDe
 
   // Discover already-running jobs (e.g. after a page reload) from the experiment's runs
   useEffect(() => {
-    if (enabled && !trackedJob && activeRun?.jobId) {
-      setTrackedJob({ jobId: activeRun.jobId, runId: activeRun.runId });
+    if (
+      enabled &&
+      activeRunJobId &&
+      activeRunRunId &&
+      trackedJob?.jobId !== activeRunJobId &&
+      !notifiedCompletionJobIdsRef.current.has(activeRunJobId)
+    ) {
+      setTrackedJob({ jobId: activeRunJobId, runId: activeRunRunId });
     }
-  }, [enabled, trackedJob, activeRun]);
+  }, [enabled, trackedJob?.jobId, activeRunJobId, activeRunRunId]);
 
   const { status, result } = useFetchJobStatus({
     jobId: trackedJob?.jobId,
