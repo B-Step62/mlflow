@@ -93,7 +93,7 @@ function ModelTraceExplorerRightPaneTabsImpl({
         css={{
           padding: 0,
           paddingLeft: theme.spacing.md,
-          paddingRight: theme.spacing.sm,
+          paddingRight: theme.spacing.md,
           boxSizing: 'border-box',
           width: '100%',
         }}

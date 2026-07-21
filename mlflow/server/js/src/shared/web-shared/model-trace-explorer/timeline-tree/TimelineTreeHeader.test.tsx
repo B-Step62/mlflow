@@ -34,12 +34,11 @@ describe('TimelineTreeHeader', () => {
 
     expect(screen.getByText('false')).toBeInTheDocument();
 
-    const showTimelineButton = screen.getByTestId('show-timeline-info-button');
-    await userEvent.click(showTimelineButton);
+    const timelineButton = screen.getByTestId('show-timeline-info-button');
+    await userEvent.click(timelineButton);
     expect(await screen.findByText('true')).toBeInTheDocument();
 
-    const hideTimelineButton = screen.getByTestId('hide-timeline-info-button');
-    await userEvent.click(hideTimelineButton);
+    await userEvent.click(timelineButton);
     expect(await screen.findByText('false')).toBeInTheDocument();
   });
 });

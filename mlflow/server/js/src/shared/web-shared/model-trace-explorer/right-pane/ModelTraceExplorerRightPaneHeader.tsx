@@ -325,7 +325,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
           gap: theme.spacing.sm,
           minWidth: 0,
           minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
-          padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+          padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
           boxSizing: 'border-box',
         }}
       >
@@ -371,7 +371,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
           <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexShrink: 0 }}>
             {rightPaneHeaderActions}
             {showAssessmentsToggle && (
-              <AssessmentPaneToggle>
+              <AssessmentPaneToggle assessmentCount={activeSpan.assessments.length}>
                 <FormattedMessage
                   defaultMessage="Annotate"
                   description="Label for the button to open the assessments pane from the trace details column"
@@ -391,7 +391,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
             overflow: 'hidden',
             flexWrap: 'wrap',
             rowGap: theme.spacing.sm,
-            padding: `${theme.spacing.sm}px ${theme.spacing.sm}px ${theme.spacing.md}px`,
+            padding: `${theme.spacing.sm}px ${theme.spacing.md}px ${theme.spacing.md}px`,
             boxSizing: 'border-box',
           }}
         >

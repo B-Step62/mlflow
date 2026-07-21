@@ -21,6 +21,7 @@ import { FormattedMessage } from '@databricks/i18n';
 import { Global } from '@emotion/react';
 import { useAssistant } from '@mlflow/mlflow/src/assistant';
 
+import { ModelTraceExplorerCustomViewSelector } from './ModelTraceExplorerCustomViewSelector';
 import { ModelTraceExplorerSkeleton } from './ModelTraceExplorerSkeleton';
 import {
   ModelTraceExplorerRightPaneHeaderActionsProvider,
@@ -330,6 +331,7 @@ export const ModelTraceExplorerDrawer = ({
               disabled={!isNextAvailable}
               onClick={() => selectNextEval()}
             />
+            <ModelTraceExplorerCustomViewSelector />
             <div
               css={{
                 width: 1,
@@ -353,7 +355,7 @@ export const ModelTraceExplorerDrawer = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: theme.spacing.xs,
-                  flex: '0 1 340px',
+                  flex: '0 1 408px',
                   minWidth: 240,
                   height: 32,
                   padding: `0 ${theme.spacing.sm}px`,
