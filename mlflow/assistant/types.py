@@ -63,6 +63,21 @@ class EventType(str, Enum):
         return self.value
 
 
+class ErrorCode(str, Enum):
+    """Machine-readable codes attached to error events so the client can map a
+    failure to a recovery action (e.g. prompt for an API key) instead of only
+    showing the error text.
+    """
+
+    CLI_NOT_INSTALLED = "cli_not_installed"
+    NOT_AUTHENTICATED = "not_authenticated"
+    API_KEY_MISSING = "api_key_missing"
+    NO_PROVIDER = "no_provider"
+
+    def __str__(self):
+        return self.value
+
+
 class Event(BaseModel):
     """A common event format parsed from the raw assistant provider output."""
 
@@ -74,8 +89,11 @@ class Event(BaseModel):
         return f"event: {self.type}\ndata: {json.dumps(self.data)}\n\n"
 
     @classmethod
-    def from_error(cls, error: str) -> "Event":
-        return cls(type=EventType.ERROR, data={"error": error})
+    def from_error(cls, error: str, code: "ErrorCode | None" = None) -> "Event":
+        data: dict[str, Any] = {"error": error}
+        if code is not None:
+            data["error_code"] = str(code)
+        return cls(type=EventType.ERROR, data=data)
 
     @classmethod
     def from_exception(cls, exc: Exception) -> "Event":

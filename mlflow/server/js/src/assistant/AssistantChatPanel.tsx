@@ -6,13 +6,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
+  Alert,
   Button,
   Card,
+  CheckIcon,
+  ChevronDownIcon,
   CloseIcon,
   DesignSystemEventProviderAnalyticsEventTypes,
   DesignSystemEventProviderComponentTypes,
+  DropdownMenu,
   GearIcon,
   InfoTooltip,
+  PlusIcon,
   RefreshIcon,
   SparkleDoubleIcon,
   SparkleIcon,
@@ -29,8 +34,12 @@ import { FormattedMessage, useIntl } from '@databricks/i18n';
 
 import { useAssistant } from './AssistantContext';
 import { useAssistantPageContext } from './AssistantPageContext';
-import { getAssistantProvider } from './providerRegistry';
-import type { SelectedProvider } from './types';
+import { getAssistantProvider, getLlmProviderDisplay } from './providerRegistry';
+import { AssistantErrorCode, type ProviderInfo, type SelectedProvider } from './types';
+import { ApiKeyPrompt } from './ApiKeyPrompt';
+import { GATEWAY_PROVIDER_ID } from './constants';
+import { useEndpointsQuery } from '../gateway/hooks/useEndpointsQuery';
+import { GatewayRoutePaths } from '../gateway/routes';
 import { AssistantContextTags } from './AssistantContextTags';
 import { ToolPermissionPrompt } from './ToolPermissionPrompt';
 import { ToolCallGroup, type ToolCallPart } from './ToolCallCard';
@@ -70,34 +79,245 @@ const formatCostUsd = (cost: number): string =>
   }).format(cost);
 
 /**
- * Read-only indicator of the provider/model backing the session. Shows the provider's brand
- * logo + name, with the model name in a tooltip. Display-only — there is intentionally no
- * affordance to change the provider from the composer (that lives in Settings).
+ * Endpoint list inside the gateway submenu, plus a shortcut to create a new
+ * endpoint. Lives in its own component so the endpoints fetch only fires when
+ * the submenu is actually opened.
  */
-const ProviderIndicator = ({ provider }: { provider: SelectedProvider }) => {
-  const { theme } = useDesignSystemTheme();
-  const meta = getAssistantProvider(provider.id);
-  const label = meta?.name ?? provider.id;
+const GatewayEndpointItems = ({ onSelect }: { onSelect: (endpointName: string) => void }) => {
+  const { data: endpoints, isLoading } = useEndpointsQuery();
+
+  const openCreateEndpoint = useCallback(() => {
+    // MLflow uses hash routing, so SPA routes must be prefixed with `/#`
+    // for fresh-tab loads to land on the right page.
+    window.open(`/#${GatewayRoutePaths.createEndpointPage}`, '_blank', 'noopener');
+  }, []);
+
   return (
-    <Tooltip
-      componentId="mlflow.assistant.chat_panel.provider_info.tooltip"
-      content={
+    <>
+      {isLoading ? (
+        <DropdownMenu.Item componentId="mlflow.assistant.provider_picker.endpoint" disabled>
+          <Spinner size="small" />
+        </DropdownMenu.Item>
+      ) : (
+        endpoints.map((endpoint) => (
+          <DropdownMenu.Item
+            componentId="mlflow.assistant.provider_picker.endpoint"
+            key={endpoint.name}
+            onClick={() => onSelect(endpoint.name)}
+          >
+            {endpoint.name}
+          </DropdownMenu.Item>
+        ))
+      )}
+      <DropdownMenu.Item componentId="mlflow.assistant.provider_picker.create_endpoint" onClick={openCreateEndpoint}>
+        <PlusIcon css={{ marginRight: 4 }} />
         <FormattedMessage
-          defaultMessage="Model: {model}"
-          description="Tooltip on the assistant composer showing the active provider's configured model name"
-          values={{ model: provider.model }}
+          defaultMessage="Create new endpoint"
+          description="Option in the assistant provider picker that opens the gateway endpoint creation page"
         />
-      }
+      </DropdownMenu.Item>
+    </>
+  );
+};
+
+/** Hover explanation for providers that cannot be selected right now. */
+const disabledReasonFor = (candidate: ProviderInfo, intl: ReturnType<typeof useIntl>): string => {
+  // These CLI providers are localhost-only, so they only ever appear on the same
+  // machine that runs the server — hence "your machine", not "the MLflow server".
+  if (candidate.name === 'claude_code' || candidate.name === 'codex') {
+    return intl.formatMessage(
+      {
+        defaultMessage: 'The {name} CLI is not installed on your machine.',
+        description: 'Hover explanation for a CLI assistant provider that is not installed',
+      },
+      { name: candidate.display_name },
+    );
+  }
+  if (candidate.name === 'ollama') {
+    return intl.formatMessage({
+      defaultMessage: 'No running Ollama server was found (or it has no models pulled).',
+      description: 'Hover explanation for the Ollama assistant provider when unavailable',
+    });
+  }
+  return intl.formatMessage({
+    defaultMessage: 'This provider is not available on the MLflow server.',
+    description: 'Generic hover explanation for an unavailable assistant provider',
+  });
+};
+
+/**
+ * Provider chip in the composer: shows the provider/vendor backing the session
+ * and opens an upward menu to switch to any other discovered provider without
+ * going through Settings. Switching is optimistic and local (no backend call);
+ * the selection is persisted on the next send, and anything the new provider
+ * still needs (API key, login) is collected lazily then.
+ */
+const ProviderPicker = ({
+  provider,
+  providers,
+  disabled,
+  onSelect,
+}: {
+  provider: SelectedProvider;
+  providers: ProviderInfo[];
+  disabled?: boolean;
+  onSelect: (providerId: string, model?: string) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const intl = useIntl();
+  const meta = getAssistantProvider(provider.id);
+  // The gateway routes rather than serves models: show the endpoint's actual
+  // LLM vendor (OpenAI, Anthropic, ...) when it's known.
+  const llmVendor = provider.modelProvider ? getLlmProviderDisplay(provider.modelProvider) : undefined;
+  const label = llmVendor?.name ?? meta?.name ?? provider.id;
+  const logo = llmVendor?.logo ?? meta?.logo;
+
+  const trigger = (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label="Change assistant provider"
+      css={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: theme.spacing.xs,
+        minWidth: 0,
+        border: 'none',
+        background: 'transparent',
+        padding: 0,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
     >
-      <div css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs, minWidth: 0 }}>
-        {meta?.logo && (
-          <img src={meta.logo} alt="" aria-hidden css={{ width: 14, height: 14, flexShrink: 0, borderRadius: 2 }} />
-        )}
-        <Typography.Text size="sm" color="secondary" css={{ whiteSpace: 'nowrap' }}>
-          {label}
-        </Typography.Text>
-      </div>
-    </Tooltip>
+      {logo && <img src={logo} alt="" aria-hidden css={{ width: 14, height: 14, flexShrink: 0, borderRadius: 2 }} />}
+      <Typography.Text size="sm" color="secondary" css={{ whiteSpace: 'nowrap' }}>
+        {label}
+      </Typography.Text>
+      {!disabled && <ChevronDownIcon css={{ fontSize: 12, color: theme.colors.textSecondary }} />}
+    </button>
+  );
+
+  if (disabled) {
+    // Remote clients cannot update the server-side config, so the chip stays display-only.
+    return trigger;
+  }
+
+  return (
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
+      <DropdownMenu.Content side="top" align="start" css={{ minWidth: 220 }}>
+        {providers.map((candidate) => {
+          const candidateMeta = getAssistantProvider(candidate.name);
+          const candidateLogo = candidateMeta?.logo;
+          const candidateLabel = candidateMeta?.name ?? candidate.display_name;
+          const isCurrent = candidate.name === provider.id;
+          const itemContent = (
+            <>
+              {candidateLogo && (
+                <img
+                  src={candidateLogo}
+                  alt=""
+                  aria-hidden
+                  css={{ width: 16, height: 16, marginRight: theme.spacing.xs, borderRadius: 2 }}
+                />
+              )}
+              <span css={{ flex: 1 }}>{candidateLabel}</span>
+              {isCurrent && <CheckIcon css={{ marginLeft: theme.spacing.sm }} />}
+            </>
+          );
+          if (candidate.name === GATEWAY_PROVIDER_ID) {
+            // Always enabled: the submenu lists existing endpoints and offers
+            // creating a new one when there are none yet.
+            return (
+              <DropdownMenu.Sub key={candidate.name}>
+                <DropdownMenu.SubTrigger>{itemContent}</DropdownMenu.SubTrigger>
+                <DropdownMenu.SubContent>
+                  <GatewayEndpointItems onSelect={(endpointName) => onSelect(candidate.name, endpointName)} />
+                </DropdownMenu.SubContent>
+              </DropdownMenu.Sub>
+            );
+          }
+          return (
+            <DropdownMenu.Item
+              componentId="mlflow.assistant.provider_picker.item"
+              key={candidate.name}
+              disabled={!candidate.available}
+              disabledReason={candidate.available ? undefined : disabledReasonFor(candidate, intl)}
+              onClick={() => onSelect(candidate.name, candidate.model_options[0])}
+            >
+              {itemContent}
+            </DropdownMenu.Item>
+          );
+        })}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  );
+};
+
+const ModelPicker = ({
+  model,
+  options,
+  disabled,
+  onSelect,
+}: {
+  model: string;
+  options: string[];
+  disabled?: boolean;
+  onSelect: (model: string) => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  if (options.length === 0) {
+    return null;
+  }
+
+  const currentModel = model && model !== 'default' && options.includes(model) ? model : options[0];
+  const trigger = (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label="Change assistant model"
+      css={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: theme.spacing.xs,
+        minWidth: 0,
+        maxWidth: 180,
+        border: 'none',
+        background: 'transparent',
+        padding: 0,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      <Typography.Text
+        size="sm"
+        color="secondary"
+        css={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      >
+        {currentModel}
+      </Typography.Text>
+      {!disabled && <ChevronDownIcon css={{ fontSize: 12, color: theme.colors.textSecondary }} />}
+    </button>
+  );
+
+  if (disabled || options.length === 1) {
+    return trigger;
+  }
+
+  return (
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
+      <DropdownMenu.Content side="top" align="start" css={{ minWidth: 180 }}>
+        {options.map((option) => (
+          <DropdownMenu.Item
+            componentId="mlflow.assistant.model_picker.item"
+            key={option}
+            onClick={() => onSelect(option)}
+          >
+            <span css={{ flex: 1 }}>{option}</span>
+            {option === currentModel && <CheckIcon css={{ marginLeft: theme.spacing.sm }} />}
+          </DropdownMenu.Item>
+        ))}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
   );
 };
 
@@ -366,17 +586,102 @@ const PromptSuggestions = ({ onSelect }: { onSelect: (prompt: string) => void })
 /**
  * Chat panel content component.
  */
-const ChatPanelContent = () => {
+/**
+ * A stream error the user can act on directly (install/login/configure), rendered as a
+ * callout above the composer with a shortcut to the settings flow.
+ */
+const RecoverableErrorCallout = ({
+  errorCode,
+  error,
+  onOpenSettings,
+}: {
+  errorCode: string;
+  error: string | null;
+  onOpenSettings: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+
+  let message: React.ReactNode;
+  switch (errorCode) {
+    case AssistantErrorCode.CliNotInstalled:
+      message = (
+        <FormattedMessage
+          defaultMessage="The provider's CLI is not installed on the MLflow server. Install it, or switch to another provider."
+          description="Callout shown when the assistant provider CLI is missing"
+        />
+      );
+      break;
+    case AssistantErrorCode.NotAuthenticated:
+      message = (
+        <FormattedMessage
+          defaultMessage="The provider is not authenticated. Fix the credentials, or switch to another provider."
+          description="Callout shown when the assistant provider rejected the credentials"
+        />
+      );
+      break;
+    default:
+      message = (
+        <FormattedMessage
+          defaultMessage="No assistant provider is available. Configure one in Settings."
+          description="Callout shown when no assistant provider could serve the chat"
+        />
+      );
+  }
+
+  return (
+    <Alert
+      componentId="mlflow.assistant.chat_panel.recoverable_error"
+      type="warning"
+      closable={false}
+      css={{ marginBottom: theme.spacing.sm }}
+      message={message}
+      description={
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, alignItems: 'flex-start' }}>
+          {error && (
+            <Typography.Text size="sm" color="secondary" css={{ wordBreak: 'break-word' }}>
+              {error}
+            </Typography.Text>
+          )}
+          <Button
+            componentId="mlflow.assistant.chat_panel.recoverable_error.action"
+            size="small"
+            onClick={onOpenSettings}
+          >
+            <FormattedMessage
+              defaultMessage="Open Settings"
+              description="Button on the assistant error callout that opens the settings flow"
+            />
+          </Button>
+        </div>
+      }
+    />
+  );
+};
+
+// api_key_missing is deliberately absent: it renders the inline ApiKeyPrompt instead.
+const RECOVERABLE_ERROR_CODES = new Set<string>([
+  AssistantErrorCode.CliNotInstalled,
+  AssistantErrorCode.NotAuthenticated,
+  AssistantErrorCode.NoProvider,
+]);
+
+const ChatPanelContent = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
   const { theme } = useDesignSystemTheme();
   const {
     messages,
     isStreaming,
     error,
+    errorCode,
     sendMessage,
     regenerateLastMessage,
     cancelSession,
     tokenUsage,
     selectedProvider,
+    availableProviders,
+    selectProvider,
+    isLocalServer,
+    needsApiKey,
+    refreshConfig,
     pendingPrompt,
     clearPendingPrompt,
     pendingPermission,
@@ -386,8 +691,13 @@ const ChatPanelContent = () => {
   const viewId = useMemo(() => uuidv4(), []);
 
   const [inputValue, setInputValue] = useState('');
+  // A message stashed while the API-key modal collects the missing key; sent on save.
+  const [pendingKeyMessage, setPendingKeyMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const currentProviderInfo = selectedProvider
+    ? availableProviders.find((provider) => provider.name === selectedProvider.id)
+    : undefined;
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -413,12 +723,51 @@ const ChatPanelContent = () => {
     }
   }, [pendingPrompt, clearPendingPrompt]);
 
+  // Deliver a message, first collecting the resolved provider's API key when it
+  // is still missing (the ideal-flow popup: the first send doubles as setup).
+  const deliverMessage = useCallback(
+    (message: string) => {
+      if (needsApiKey && selectedProvider) {
+        setPendingKeyMessage(message);
+        return;
+      }
+      sendMessage(message);
+    },
+    [needsApiKey, selectedProvider, sendMessage],
+  );
+
+  const handleApiKeySaved = useCallback(() => {
+    const message = pendingKeyMessage;
+    setPendingKeyMessage(null);
+    // Send right away: this clears any api_key_missing error in the same render,
+    // so the prompt hides immediately instead of lingering while a refresh runs.
+    // (The key is already saved server-side; the send carries it.) If the prompt
+    // came from a failed send rather than a queued message, retry that turn.
+    if (message) {
+      sendMessage(message);
+    } else {
+      regenerateLastMessage();
+    }
+    // Update the resolved-provider / needsApiKey state in the background.
+    refreshConfig();
+  }, [pendingKeyMessage, sendMessage, regenerateLastMessage, refreshConfig]);
+
+  // If the key prompt is dismissed sideways (e.g. the user switches provider from
+  // the picker instead of entering a key), put the stashed message back in the
+  // input so nothing typed is lost.
+  useEffect(() => {
+    if (pendingKeyMessage != null && !needsApiKey) {
+      setInputValue((current) => current || pendingKeyMessage);
+      setPendingKeyMessage(null);
+    }
+  }, [needsApiKey, pendingKeyMessage]);
+
   const handleSend = useCallback(() => {
     if (inputValue.trim() && !isStreaming) {
-      sendMessage(inputValue.trim());
+      deliverMessage(inputValue.trim());
       setInputValue('');
     }
-  }, [inputValue, isStreaming, sendMessage]);
+  }, [inputValue, isStreaming, deliverMessage]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -441,9 +790,9 @@ const ChatPanelContent = () => {
 
   const handleSuggestionSelect = useCallback(
     (prompt: string) => {
-      sendMessage(prompt);
+      deliverMessage(prompt);
     },
-    [sendMessage],
+    [deliverMessage],
   );
 
   return (
@@ -494,6 +843,12 @@ const ChatPanelContent = () => {
         }}
       >
         {pendingPermission && <ToolPermissionPrompt request={pendingPermission} onRespond={respondToPermission} />}
+        {errorCode && RECOVERABLE_ERROR_CODES.has(errorCode) && (
+          <RecoverableErrorCallout errorCode={errorCode} error={error} onOpenSettings={onOpenSettings} />
+        )}
+        {(pendingKeyMessage != null || errorCode === AssistantErrorCode.ApiKeyMissing) && selectedProvider && (
+          <ApiKeyPrompt providerId={selectedProvider.id} onSaved={handleApiKeySaved} />
+        )}
         <div
           css={{
             display: 'flex',
@@ -545,7 +900,22 @@ const ChatPanelContent = () => {
               borderTop: `1px solid ${theme.colors.borderDecorative}`,
             }}
           >
-            {selectedProvider && <ProviderIndicator provider={selectedProvider} />}
+            {selectedProvider && (
+              <>
+                <ProviderPicker
+                  provider={selectedProvider}
+                  providers={availableProviders}
+                  disabled={!isLocalServer}
+                  onSelect={selectProvider}
+                />
+                <ModelPicker
+                  model={selectedProvider.model}
+                  options={currentProviderInfo?.model_options ?? []}
+                  disabled={!isLocalServer}
+                  onSelect={(model) => selectProvider(selectedProvider.id, model)}
+                />
+              </>
+            )}
             <div css={{ flex: 1 }} />
             {tokenUsage.totalTokens > 0 && (
               <div css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
@@ -718,8 +1088,16 @@ const SetupPrompt = ({ onSetup }: { onSetup: () => void }) => {
 export const AssistantChatPanel = () => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
-  const { closePanel, reset, setupComplete, isLoadingConfig, canUseAssistant, completeSetup, isLocalServer } =
-    useAssistant();
+  const {
+    closePanel,
+    reset,
+    setupComplete,
+    isLoadingConfig,
+    canUseAssistant,
+    completeSetup,
+    isLocalServer,
+    selectedProvider,
+  } = useAssistant();
   const context = useAssistantPageContext();
   const experimentId = context['experimentId'] as string | undefined;
 
@@ -770,16 +1148,19 @@ export const AssistantChatPanel = () => {
           <AssistantSetupWizard
             experimentId={experimentId}
             onComplete={handleSetupComplete}
-            initialStep="provider"
+            settingsProvider={selectedProvider?.id}
             onBack={handleBackFromSettings}
           />
         );
       case 'chat':
       default:
+        // With server-side default resolution this only happens when nothing is
+        // usable at all (e.g. a fresh remote-accessible server with no gateway
+        // endpoint); the wizard remains as the manual fallback.
         if (!setupComplete) {
           return <SetupPrompt onSetup={handleStartSetup} />;
         }
-        return <ChatPanelContent />;
+        return <ChatPanelContent onOpenSettings={handleOpenSettings} />;
     }
   };
 

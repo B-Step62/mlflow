@@ -41,6 +41,26 @@ def find_free_port(preferred: int, avoid: frozenset[int] = frozenset()) -> int:
     raise SystemExit(f"No free port in [{preferred}, {preferred + 100})")
 
 
+def claim_port(port: int, timeout: float = 30.0) -> int:
+    """Wait for a pinned port to become free (a just-stopped server can hold it
+    briefly) instead of drifting to another one; fail loudly if it stays taken.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise SystemExit(
+                        f"Port {port} is still in use after {timeout:.0f}s; stop the process "
+                        "using it or drop the port pin."
+                    )
+                time.sleep(1)
+                continue
+            return port
+
+
 def cleanup(children: list[subprocess.Popen[bytes]], tmp_paths: list[Path]) -> None:
     for proc in children:
         try:
@@ -139,13 +159,35 @@ def main() -> None:
             f"Available: {', '.join(dev_stubs.AVAILABLE_STUBS)}."
         ),
     )
+    parser.add_argument(
+        "--backend-port",
+        type=int,
+        default=None,
+        help=(
+            "Pin the backend to this exact port instead of picking the first free one "
+            "at/after 5000. Waits up to 30s for the port to free up, then fails."
+        ),
+    )
+    parser.add_argument(
+        "--frontend-port",
+        type=int,
+        default=None,
+        help=(
+            "Pin the frontend to this exact port instead of picking the first free one "
+            "at/after 3000. Waits up to 30s for the port to free up, then fails."
+        ),
+    )
     args = parser.parse_args()
     stub_names = [s.strip() for s in args.stub_providers.split(",") if s.strip()]
 
     subprocess.check_call(["yarn", "install"], cwd=JS_DIR)
 
-    backend_port = find_free_port(5000)
-    frontend_port = find_free_port(3000, avoid=frozenset({backend_port}))
+    backend_port = claim_port(args.backend_port) if args.backend_port else find_free_port(5000)
+    frontend_port = (
+        claim_port(args.frontend_port)
+        if args.frontend_port
+        else find_free_port(3000, avoid=frozenset({backend_port}))
+    )
     print(f"Backend:  http://localhost:{backend_port}")
     print(f"Frontend: http://localhost:{frontend_port} (with hot reload)")
 

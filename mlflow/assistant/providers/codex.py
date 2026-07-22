@@ -11,10 +11,10 @@ from mlflow.assistant.providers.base import (
     AssistantProvider,
     CLINotInstalledError,
     NotAuthenticatedError,
-    load_config,
+    load_config_or_default,
 )
 from mlflow.assistant.providers.prompts import ASSISTANT_SYSTEM_PROMPT
-from mlflow.assistant.types import Event, Message, TextBlock
+from mlflow.assistant.types import ErrorCode, Event, Message, TextBlock
 from mlflow.server.assistant.session import clear_process_pid, save_process_pid
 from mlflow.tracing.constant import CostKey, TokenUsageKey
 from mlflow.tracing.utils import calculate_cost_by_model_and_token_usage
@@ -117,11 +117,12 @@ class CodexProvider(AssistantProvider):
         if not codex_path:
             yield Event.from_error(
                 "codex CLI not found. Please install the OpenAI Codex CLI "
-                "and ensure it's in your PATH."
+                "and ensure it's in your PATH.",
+                code=ErrorCode.CLI_NOT_INSTALLED,
             )
             return
 
-        config = load_config(self.name)
+        config = load_config_or_default(self.name)
 
         if context:
             user_text = f"<context>\n{json.dumps(context)}\n</context>\n\n{prompt}"
@@ -214,7 +215,15 @@ class CodexProvider(AssistantProvider):
                     stderr_bytes.decode("utf-8", errors="replace").strip()
                     or f"Process exited with code {process.returncode}"
                 )
-                yield Event.from_error(error_msg)
+                # Same heuristic as check_connection: classify auth failures so
+                # the UI can show a login prompt instead of raw stderr.
+                lowered = error_msg.lower()
+                is_auth_error = any(
+                    s in lowered for s in ("auth", "login", "unauthorized", "api key")
+                )
+                yield Event.from_error(
+                    error_msg, code=ErrorCode.NOT_AUTHENTICATED if is_auth_error else None
+                )
             else:
                 yield Event.from_result(result=None, session_id=thread_id)
 

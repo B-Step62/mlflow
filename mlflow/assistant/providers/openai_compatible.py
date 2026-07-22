@@ -18,7 +18,7 @@ from typing import Any, AsyncGenerator
 
 import aiohttp
 
-from mlflow.assistant.config import PermissionsConfig
+from mlflow.assistant.config import PermissionsConfig, ProviderConfig
 from mlflow.assistant.providers.base import (
     AssistantProvider,
     NotAuthenticatedError,
@@ -31,7 +31,7 @@ from mlflow.assistant.providers.tool_executor import (
     execute_tool,
     static_permission_error,
 )
-from mlflow.assistant.types import Event, Message, ToolResultBlock, ToolUseBlock
+from mlflow.assistant.types import ErrorCode, Event, Message, ToolResultBlock, ToolUseBlock
 from mlflow.tracing.constant import CostKey, TokenUsageKey
 from mlflow.tracing.utils import calculate_cost_by_model_and_token_usage
 
@@ -240,6 +240,18 @@ def _merge_tool_call_chunk(accumulator: list[dict[str, Any]], chunk: dict[str, A
         entry["function"]["arguments"] += args
 
 
+def list_openai_style_models(base_url: str, api_key: str | None = None) -> list[str]:
+    """List models via the OpenAI-style `GET /models`, shared by the SaaS presets
+    (OpenAI, Anthropic, Gemini) whose compatibility APIs all expose it.
+    """
+    import requests
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    response = requests.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=10)
+    response.raise_for_status()
+    return [m["id"] for m in response.json().get("data", []) if m.get("id")]
+
+
 class OpenAICompatibleProvider(AssistantProvider):
     """Base provider for any server exposing `POST /v1/chat/completions`."""
 
@@ -254,6 +266,8 @@ class OpenAICompatibleProvider(AssistantProvider):
         default_base_url: str | None = None,
         skills_dirname: str | None = None,
         allows_remote_access: bool = False,
+        requires_api_key: bool = False,
+        default_model: str | None = None,
     ):
         self._name = name
         self._display_name = display_name
@@ -267,6 +281,8 @@ class OpenAICompatibleProvider(AssistantProvider):
         # path is preserved so users can opt-in later via skill_installer.
         self._skills_dirname = skills_dirname or ".agent"
         self._allows_remote_access = allows_remote_access
+        self._requires_api_key = requires_api_key
+        self._default_model = default_model
 
     @property
     def name(self) -> str:
@@ -284,14 +300,24 @@ class OpenAICompatibleProvider(AssistantProvider):
     def allows_remote_access(self) -> bool:
         return self._allows_remote_access
 
+    @property
+    def requires_api_key(self) -> bool:
+        return self._requires_api_key
+
+    @property
+    def default_model(self) -> str | None:
+        return self._default_model
+
     def is_available(self) -> bool:
         return True
 
-    def _load_config(self):
+    def _load_config(self) -> ProviderConfig:
+        # Fall back to defaults so an auto-resolved provider (never touched by
+        # the setup flow, hence no config entry) can still serve a chat.
         try:
             return load_config(self.name)
         except RuntimeError:
-            return None
+            return ProviderConfig()
 
     def _resolve_base_url(self, override: str | None = None) -> str | None:
         if override:
@@ -307,6 +333,59 @@ class OpenAICompatibleProvider(AssistantProvider):
         if api_key:
             return {"Authorization": f"Bearer {api_key}"}
         return {}
+
+    def _resolve_chat(
+        self, config: ProviderConfig, tracking_uri: str
+    ) -> "tuple[str | None, str | None, str | None, Event | None]":
+        """Resolve (chat_url, model, api_key, error) for a turn.
+
+        Default behavior calls the configured base URL directly. API keys are no
+        longer stored in the assistant config (SaaS credentials live in the AI
+        Gateway secret store), so `api_key` is always None here; subclasses that
+        route through the gateway override this method. A non-None error Event
+        means the turn should be aborted.
+        """
+        base_url = (config.base_url or self._default_base_url or "").rstrip("/") or None
+        chat_url = self._chat_url_builder(base_url, tracking_uri)
+        if not chat_url:
+            return (
+                None,
+                None,
+                None,
+                Event.from_error(
+                    f"{self._display_name} chat URL could not be resolved. {self._connection_hint}"
+                ),
+            )
+        model = config.model if config.model and config.model != "default" else None
+        if model is None:
+            model = self._default_model
+        if model is None:
+            # No pinned or preset default model: fall back to the first one the
+            # backend reports (e.g. the first gateway endpoint / Ollama model).
+            try:
+                available = self.list_models(base_url, None)
+            except NotImplementedError:
+                return (
+                    None,
+                    None,
+                    None,
+                    Event.from_error(
+                        f"No model selected for {self._display_name}. {self._connection_hint}"
+                    ),
+                )
+            except ProviderNotConfiguredError as e:
+                return None, None, None, Event.from_error(f"{e} {self._connection_hint}")
+            if not available:
+                return (
+                    None,
+                    None,
+                    None,
+                    Event.from_error(
+                        f"No models available from {self._display_name}. {self._connection_hint}"
+                    ),
+                )
+            model = available[0]
+        return chat_url, model, None, None
 
     def check_connection(self, echo: Callable[[str], None] | None = None) -> None:
         if self._list_models_fn is None:
@@ -326,10 +405,8 @@ class OpenAICompatibleProvider(AssistantProvider):
             )
         if echo:
             echo(f"Connecting to {self._display_name} at {base_url}...")
-        config = self._load_config()
-        api_key = getattr(config, "api_key", None) if config else None
         try:
-            self._list_models_fn(base_url, api_key)
+            self._list_models_fn(base_url, None)
         except Exception as e:
             if echo:
                 echo(f"Cannot connect: {e}")
@@ -345,9 +422,6 @@ class OpenAICompatibleProvider(AssistantProvider):
         resolved = self._resolve_base_url(base_url)
         if not resolved:
             raise ProviderNotConfiguredError(f"{self._display_name} base URL is not configured.")
-        if api_key is None:
-            config = self._load_config()
-            api_key = getattr(config, "api_key", None) if config else None
         try:
             return self._list_models_fn(resolved, api_key)
         except Exception as e:
@@ -368,42 +442,13 @@ class OpenAICompatibleProvider(AssistantProvider):
         context: dict[str, Any] | None = None,
     ) -> AsyncGenerator[Event, None]:
         config = self._load_config()
-        if config is None:
-            yield Event.from_error(
-                f"{self._display_name} is not configured. {self._connection_hint}"
-            )
+        # Subclasses (the SaaS vendor presets) override how the chat URL and model
+        # are resolved so they can route through a gateway endpoint instead of a
+        # direct vendor call. A non-None error means abort the turn.
+        chat_url, model, api_key, error = self._resolve_chat(config, tracking_uri)
+        if error is not None:
+            yield error
             return
-        base_url = (config.base_url or self._default_base_url or "").rstrip("/") or None
-        chat_url = self._chat_url_builder(base_url, tracking_uri)
-        if not chat_url:
-            yield Event.from_error(
-                f"{self._display_name} chat URL could not be resolved. {self._connection_hint}"
-            )
-            return
-
-        model = config.model if config.model and config.model != "default" else None
-        api_key = getattr(config, "api_key", None)
-
-        if model is None:
-            if self._list_models_fn is None or not base_url:
-                yield Event.from_error(
-                    f"No model selected for {self._display_name}. {self._connection_hint}"
-                )
-                return
-            try:
-                available = self._list_models_fn(base_url, api_key)
-            except Exception as e:
-                yield Event.from_error(
-                    f"Cannot connect to {self._display_name} at {base_url}: {e}. "
-                    f"{self._connection_hint}"
-                )
-                return
-            if not available:
-                yield Event.from_error(
-                    f"No models available from {self._display_name} at {base_url}."
-                )
-                return
-            model = available[0]
 
         if context:
             user_text = f"<context>\n{json.dumps(context)}\n</context>\n\n{prompt}"
@@ -490,7 +535,12 @@ class OpenAICompatibleProvider(AssistantProvider):
                             if resp.status != 200:
                                 body = await resp.text()
                                 yield Event.from_error(
-                                    f"{self._display_name} error {resp.status}: {body}"
+                                    f"{self._display_name} error {resp.status}: {body}",
+                                    code=(
+                                        ErrorCode.NOT_AUTHENTICATED
+                                        if resp.status in (401, 403)
+                                        else None
+                                    ),
                                 )
                                 return
 

@@ -1,4 +1,5 @@
 import type { AuthState } from '../types';
+import { ApiKeyAuth, isApiKeyAuthProvider } from './ApiKeyAuth';
 import { ClaudeCodeAuth } from './ClaudeCodeAuth';
 import { CodexAuth } from './CodexAuth';
 import { MLflowGatewayAuth } from './MLflowGatewayAuth';
@@ -33,6 +34,18 @@ export const SetupStepAuth = ({
   if (provider === 'codex') {
     return (
       <CodexAuth
+        cachedAuthStatus={cachedAuthStatus}
+        onAuthStatusChange={onAuthStatusChange}
+        onBack={onBack}
+        onContinue={onContinue}
+      />
+    );
+  }
+
+  if (isApiKeyAuthProvider(provider)) {
+    return (
+      <ApiKeyAuth
+        provider={provider}
         cachedAuthStatus={cachedAuthStatus}
         onAuthStatusChange={onAuthStatusChange}
         onBack={onBack}

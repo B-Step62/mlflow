@@ -403,6 +403,10 @@
     "defaultMessage": "View docs",
     "description": "Text for docs link button on experiment view page header"
   },
+  "/mbCKq": {
+    "defaultMessage": "Add your {provider} API key to continue, or pick another provider below.",
+    "description": "Explanation shown in the inline assistant API key prompt"
+  },
   "/nPZbt": {
     "defaultMessage": "{totalTokens} total tokens",
     "description": "Experiment page > artifact compare view > results table > total number of evaluated tokens"
@@ -3195,6 +3199,10 @@
     "defaultMessage": "Cancel",
     "description": "Button to cancel editing"
   },
+  "DBjMLD": {
+    "defaultMessage": "The {name} CLI is not installed on your machine.",
+    "description": "Hover explanation for a CLI assistant provider that is not installed"
+  },
   "DCC164": {
     "defaultMessage": "GenAI",
     "description": "Label for GenAI workflow type option"
@@ -3582,6 +3590,10 @@
   "FNEy+/": {
     "defaultMessage": "Used by {custom} and {user}:",
     "description": "Manage review questions: heading above the affected-queue list when the experiment also has user queues (which inherit every question)"
+  },
+  "FSICUH": {
+    "defaultMessage": "Create new endpoint",
+    "description": "Option in the assistant provider picker that opens the gateway endpoint creation page"
   },
   "FTx+Hi": {
     "defaultMessage": "(baseline)",
@@ -4651,6 +4663,10 @@
     "defaultMessage": "Endpoint",
     "description": "Run page > Overview > Endpoint used for issue detection"
   },
+  "LD27Cn": {
+    "defaultMessage": "No running Ollama server was found (or it has no models pulled).",
+    "description": "Hover explanation for the Ollama assistant provider when unavailable"
+  },
   "LED2z5": {
     "defaultMessage": "To disable or enable this display, call {disableFunction} or {enableFunction} and re-run the cell",
     "description": "Content in an info popover that instructs the user on how to disable the display. The disable and enable functions are code snippets with the real function names"
@@ -4658,6 +4674,10 @@
   "LEiN8m": {
     "defaultMessage": "Tags",
     "description": "Experiment page > group by runs control > tags section label"
+  },
+  "LH14Ea": {
+    "defaultMessage": "Continue",
+    "description": "Confirm button of the inline assistant API key prompt"
   },
   "LIgbTd": {
     "defaultMessage": "Retrieval Relevance",
@@ -4890,6 +4910,10 @@
   "MUUYWZ": {
     "defaultMessage": "Created at",
     "description": "Label for the creation timestamp of a logged model on the logged model details page"
+  },
+  "MUrZoz": {
+    "defaultMessage": "The provider's CLI is not installed on the MLflow server. Install it, or switch to another provider.",
+    "description": "Callout shown when the assistant provider CLI is missing"
   },
   "MX4ypf": {
     "defaultMessage": "Save",
@@ -5438,6 +5462,10 @@
   "P037Va": {
     "defaultMessage": "Passed",
     "description": "Pass status pill in the regression-test detail"
+  },
+  "P05k8c": {
+    "defaultMessage": "Your key is stored in MLflow LLM Connections on this server.",
+    "description": "Note in the inline assistant API key prompt about how the key is stored"
   },
   "P0Y/ks": {
     "defaultMessage": "Workspace Manager",
@@ -7791,10 +7819,6 @@
     "defaultMessage": "Add record",
     "description": "Primary button text for adding a new dataset record from the empty state"
   },
-  "aKVdS3": {
-    "defaultMessage": "Model: {model}",
-    "description": "Tooltip on the assistant composer showing the active provider's configured model name"
-  },
   "aKW54p": {
     "defaultMessage": "See it in action",
     "description": "Label on the click-to-play video preview in the traces empty state"
@@ -9063,6 +9087,10 @@
     "defaultMessage": "Delete",
     "description": "Manage review questions: confirm delete"
   },
+  "gD0OdR": {
+    "defaultMessage": "This provider is not available on the MLflow server.",
+    "description": "Generic hover explanation for an unavailable assistant provider"
+  },
   "gF1WQp": {
     "defaultMessage": "Add message",
     "description": "Label for the button that appends a new chat message on the playground page"
@@ -9999,6 +10027,10 @@
     "defaultMessage": "Create webhook",
     "description": "Create webhook button"
   },
+  "k9M+N6": {
+    "defaultMessage": "No assistant provider is available. Configure one in Settings.",
+    "description": "Callout shown when no assistant provider could serve the chat"
+  },
   "kA+QJr": {
     "defaultMessage": "Overview",
     "description": "Run details page > tab selector > overview tab"
@@ -10374,6 +10406,10 @@
   "m4159e": {
     "defaultMessage": "Metrics ({length})",
     "description": "Run page > Overview > Metrics table > Section title"
+  },
+  "m5GIsD": {
+    "defaultMessage": "Open Settings",
+    "description": "Button on the assistant error callout that opens the settings flow"
   },
   "m8ztHR": {
     "defaultMessage": "Edited {timeSince} by {source}.",
@@ -11982,6 +12018,10 @@
   "tkc+sv": {
     "defaultMessage": "No dataset",
     "description": "Label for the metrics column group header that are not grouped by dataset"
+  },
+  "tms9Qs": {
+    "defaultMessage": "The provider is not authenticated. Fix the credentials, or switch to another provider.",
+    "description": "Callout shown when the assistant provider rejected the credentials"
   },
   "tqw27y": {
     "defaultMessage": "Evaluation criteria",

@@ -8,10 +8,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   ToolCallStatus,
   type AssistantAgentContextType,
-  type AssistantConfig,
   type AssistantPart,
   type ChatMessage,
   type PermissionRequest,
+  type ProviderInfo,
+  type ProvidersResponse,
   type SelectedProvider,
   type ToolUseInfo,
   type ToolResultInfo,
@@ -21,14 +22,14 @@ import {
   cancelSession as cancelSessionApi,
   sendMessageStream,
   getConfig,
+  getProviders,
   resumeStream,
+  updateConfig,
   type SendMessageStreamCallbacks,
   type SendMessageStreamResult,
 } from './AssistantService';
 import { useLocalStorage } from '@databricks/web-shared/hooks';
 import { useAssistantPageContextActions } from './AssistantPageContext';
-import { GatewayApi } from '../gateway/api';
-import { GATEWAY_PROVIDER_ID } from './constants';
 
 const AssistantReactContext = createContext<AssistantAgentContextType | null>(null);
 
@@ -100,30 +101,31 @@ const generateMessageId = (): string => {
 };
 
 /**
- * Resolve, from the config, whether setup is complete and which provider/model backs the
- * session. `selectedProvider` is the config's selected entry (null when none); it's returned
- * even when setup is incomplete so callers can surface it, but is only *usable* when
- * `setupComplete` is true.
+ * Fold the `/providers` discovery response into the context's setup state. The server
+ * resolves which provider will serve the next chat (the explicitly selected one when
+ * usable, otherwise the best available default), so the client no longer gates the chat
+ * on a completed setup wizard: a resolved provider means the chat is ready. Anything
+ * still missing (e.g. an API key) is surfaced lazily at the first send instead.
  */
-async function resolveSetup(
-  config: AssistantConfig,
-): Promise<{ setupComplete: boolean; selectedProvider: SelectedProvider | null }> {
-  const selected = Object.entries(config.providers ?? {}).find(
-    ([, providerConfig]) => providerConfig.selected === true,
-  );
-  if (!selected) {
-    return { setupComplete: false, selectedProvider: null };
+export function resolveSetupFromProviders(providersResponse: ProvidersResponse): {
+  setupComplete: boolean;
+  selectedProvider: SelectedProvider | null;
+  needsApiKey: boolean;
+} {
+  const resolved = providersResponse.resolved;
+  if (!resolved) {
+    return { setupComplete: false, selectedProvider: null, needsApiKey: false };
   }
-
-  const [providerId, providerConfig] = selected;
-  const selectedProvider: SelectedProvider = { id: providerId, model: providerConfig.model };
-  if (providerId !== GATEWAY_PROVIDER_ID) {
-    return { setupComplete: true, selectedProvider };
-  }
-  // The endpoint must be the same as the model name
-  const { endpoints } = await GatewayApi.listEndpoints();
-  const setupComplete = endpoints.some((endpoint) => endpoint.name === providerConfig.model);
-  return { setupComplete, selectedProvider };
+  return {
+    setupComplete: true,
+    selectedProvider: {
+      id: resolved.name,
+      model: resolved.model ?? 'default',
+      autoSelected: resolved.auto_selected,
+      modelProvider: resolved.model_provider ?? undefined,
+    },
+    needsApiKey: resolved.requires_api_key && !resolved.has_api_key,
+  };
 }
 
 /**
@@ -244,9 +246,33 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   // Setup state
   const [setupComplete, setSetupComplete] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<SelectedProvider | null>(null);
+  const [availableProviders, setAvailableProviders] = useState<ProviderInfo[]>([]);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [remoteAccessAllowed, setRemoteAccessAllowed] = useState(false);
   const canUseAssistant = isLocalServer || remoteAccessAllowed;
+
+  // Whether the (possibly optimistically-picked) provider still needs an API key
+  // before it can chat. Derived from discovery so a dropdown switch flips it
+  // instantly, without a backend round trip.
+  const needsApiKey = useMemo(() => {
+    if (!selectedProvider) {
+      return false;
+    }
+    const info = availableProviders.find((p) => p.name === selectedProvider.id);
+    return Boolean(info?.requires_api_key && !info?.has_api_key);
+  }, [selectedProvider, availableProviders]);
+
+  // A provider the user picked in the composer but hasn't committed yet. The
+  // chip updates immediately (optimistic `selectedProvider`); the config write
+  // is deferred to the next send so browsing the dropdown doesn't hit the
+  // backend. Holds { name, model? } or null when nothing is pending.
+  const unsavedProviderRef = useRef<{ name: string; model?: string } | null>(null);
+
+  // Tracks whether the very first config load has completed. Later refreshes
+  // (provider switch, API key save, panel reopen) update state in place without
+  // flashing the full-panel loading screen.
+  const hasLoadedConfigRef = useRef(false);
 
   // Use ref to track current streaming message
   const openTextBufferRef = useRef<string>('');
@@ -416,24 +442,75 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
   // Setup actions
   const refreshConfig = useCallback(async () => {
-    setIsLoadingConfig(true);
+    // Only show the blocking loading screen on the first load; refreshes swap
+    // state in place so switching provider / saving a key doesn't flash it.
+    if (!hasLoadedConfigRef.current) {
+      setIsLoadingConfig(true);
+    }
     try {
-      const config = await getConfig();
-      const { setupComplete: isComplete, selectedProvider: provider } = await resolveSetup(config);
-      setSetupComplete(isComplete);
+      const [config, providersResponse] = await Promise.all([getConfig(), getProviders()]);
+      const resolved = resolveSetupFromProviders(providersResponse);
+      setSetupComplete(resolved.setupComplete);
       setRemoteAccessAllowed(config.remote_access_allowed ?? false);
-      // Only expose the provider once setup is valid, so the composer never shows a
-      // half-configured (e.g. gateway with a stale endpoint) provider as active.
-      setSelectedProvider(isComplete ? provider : null);
+      setAvailableProviders(providersResponse.providers);
+      // Don't clobber an uncommitted optimistic pick with the resolved provider;
+      // the send that persists it will refresh again and clear the ref.
+      if (!unsavedProviderRef.current) {
+        setSelectedProvider(resolved.selectedProvider);
+      }
     } catch {
       // On error, assume setup is not complete
       setSetupComplete(false);
       setRemoteAccessAllowed(false);
-      setSelectedProvider(null);
+      setAvailableProviders([]);
+      if (!unsavedProviderRef.current) {
+        setSelectedProvider(null);
+      }
     } finally {
+      hasLoadedConfigRef.current = true;
       setIsLoadingConfig(false);
     }
   }, []);
+
+  // Optimistically switch the composer's provider: update the chip immediately
+  // and record the pick to persist on the next send. `model` is a curated model
+  // for SaaS vendors, or the endpoint name when switching to the gateway.
+  const selectProvider = useCallback(
+    (providerId: string, model?: string) => {
+      const info = availableProviders.find((p) => p.name === providerId);
+      const resolvedModel = model ?? info?.model_options[0] ?? 'default';
+      unsavedProviderRef.current = { name: providerId, model: resolvedModel };
+      setSelectedProvider({
+        id: providerId,
+        model: resolvedModel,
+        // The gateway endpoint's LLM vendor is only known after the backend
+        // resolves it; a background refresh after send fills it in.
+        modelProvider: undefined,
+        autoSelected: false,
+      });
+    },
+    [availableProviders],
+  );
+
+  // Persist a pending optimistic provider pick to config before a turn streams,
+  // so the backend resolves the provider the user chose. No-op when nothing is
+  // pending. A background refresh after the turn syncs modelProvider/has_api_key.
+  const flushPendingProvider = useCallback(async () => {
+    const pending = unsavedProviderRef.current;
+    if (!pending) {
+      return;
+    }
+    unsavedProviderRef.current = null;
+    const providerUpdate: { selected: true; model?: string } = { selected: true };
+    if (pending.model && pending.model !== 'default') {
+      providerUpdate.model = pending.model;
+    }
+    await updateConfig({ providers: { [pending.name]: providerUpdate } });
+    // Sync the resolved provider in the background (fills the gateway endpoint's
+    // model vendor, clears needsApiKey after a key save). Not awaited so it
+    // never delays the stream.
+    void refreshConfig();
+  }, [refreshConfig]);
 
   const completeSetup = useCallback(() => {
     setSetupComplete(true);
@@ -472,8 +549,9 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   }, [isStreaming, messages, tokenUsage, setPersistedChat]);
 
   const failStreamingTurn = useCallback(
-    (errorMsg: string) => {
+    (errorMsg: string, code?: string) => {
       setError(errorMsg);
+      setErrorCode(code ?? null);
       setIsStreaming(false);
       setCurrentStatus(null);
       eventSourceRef.current = null;
@@ -531,6 +609,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   const openPanel = useCallback(() => {
     setIsPanelOpen(true);
     setError(null);
+    setErrorCode(null);
     // Refresh config when panel opens (intentionally not awaited)
     refreshConfig();
   }, [refreshConfig, setIsPanelOpen]);
@@ -562,6 +641,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     setMessages([]);
     setIsStreaming(false);
     setError(null);
+    setErrorCode(null);
     setCurrentStatus(null);
     setActiveTools([]);
     setTokenUsage({ promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: null });
@@ -594,6 +674,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       const isCurrent = beginRequest();
 
       setError(null);
+      setErrorCode(null);
       setIsStreaming(true);
       // A new message supersedes any prompt the user was deciding on. Clearing it
       // here drops the stale Allow/Deny so it can't resume the abandoned turn; the
@@ -627,6 +708,13 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       ]);
 
       try {
+        // Commit any optimistic provider pick so the backend resolves the
+        // provider the user chose, then sync it in the background once streamed.
+        // Only await when something is pending, so the common path still invokes
+        // the stream synchronously (a reset mid-send must catch it in flight).
+        if (unsavedProviderRef.current) {
+          await flushPendingProvider();
+        }
         const pageContext = getPageContext();
         const result = await sendMessageStream(
           {
@@ -647,7 +735,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         failStreamingTurn(err instanceof Error ? err.message : 'Failed to start chat');
       }
     },
-    [sessionId, beginRequest, attachStreamIfCurrent, getPageContext, streamCallbacks, failStreamingTurn],
+    [
+      sessionId,
+      beginRequest,
+      attachStreamIfCurrent,
+      flushPendingProvider,
+      getPageContext,
+      streamCallbacks,
+      failStreamingTurn,
+    ],
   );
 
   const respondToPermission = useCallback(
@@ -660,6 +756,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       const { sessionId: requestSessionId, requestId } = pendingPermission;
       setPendingPermission(null);
       setError(null);
+      setErrorCode(null);
       setIsStreaming(true);
 
       // The paused assistant placeholder keeps streaming — no new message; the
@@ -688,6 +785,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       const isCurrent = beginRequest();
 
       setError(null);
+      setErrorCode(null);
       setIsStreaming(true);
       setPendingPermission(null);
 
@@ -715,6 +813,12 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         },
       ]);
 
+      // Commit any optimistic provider pick before streaming the turn (await
+      // only when pending, to keep the no-switch path synchronous).
+      if (unsavedProviderRef.current) {
+        await flushPendingProvider();
+      }
+
       // Send message and stream response
       const pageContext = getPageContext();
       const result = await sendMessageStream(
@@ -728,7 +832,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       );
       attachStreamIfCurrent(isCurrent, result);
     },
-    [sessionId, startChat, beginRequest, attachStreamIfCurrent, getPageContext, streamCallbacks],
+    [sessionId, startChat, beginRequest, attachStreamIfCurrent, flushPendingProvider, getPageContext, streamCallbacks],
   );
 
   const handleCancelSession = useCallback(() => {
@@ -783,6 +887,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
     // Set streaming state BEFORE modifying messages
     setError(null);
+    setErrorCode(null);
     setIsStreaming(true);
     openTextBufferRef.current = '';
 
@@ -810,6 +915,12 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       ];
     });
 
+    // Commit any optimistic provider pick before re-streaming the turn (await
+    // only when pending, to keep the no-switch path synchronous).
+    if (unsavedProviderRef.current) {
+      await flushPendingProvider();
+    }
+
     // Re-send the last user message
     const pageContext = getPageContext();
     const result = await sendMessageStream(
@@ -822,7 +933,16 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       withGuard(isCurrent, streamCallbacks),
     );
     attachStreamIfCurrent(isCurrent, result);
-  }, [messages, sessionId, isStreaming, beginRequest, attachStreamIfCurrent, getPageContext, streamCallbacks]);
+  }, [
+    messages,
+    sessionId,
+    isStreaming,
+    beginRequest,
+    attachStreamIfCurrent,
+    flushPendingProvider,
+    getPageContext,
+    streamCallbacks,
+  ]);
 
   const value: AssistantAgentContextType = {
     // State
@@ -831,12 +951,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     messages,
     isStreaming,
     error,
+    errorCode,
     currentStatus,
     activeTools,
     setupComplete,
     isLoadingConfig,
     isLocalServer,
     selectedProvider,
+    availableProviders,
+    needsApiKey,
     pendingPrompt,
     pendingPermission,
     canUseAssistant,
@@ -845,6 +968,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     openPanel,
     closePanel,
     sendMessage: handleSendMessage,
+    selectProvider,
     prefillPrompt,
     clearPendingPrompt,
     regenerateLastMessage,
@@ -865,12 +989,15 @@ const disabledAssistantContext: AssistantAgentContextType = {
   messages: [],
   isStreaming: false,
   error: null,
+  errorCode: null,
   currentStatus: null,
   activeTools: [],
   setupComplete: false,
   isLoadingConfig: false,
   isLocalServer: false,
   selectedProvider: null,
+  availableProviders: [],
+  needsApiKey: false,
   pendingPrompt: null,
   pendingPermission: null,
   canUseAssistant: false,
@@ -878,6 +1005,7 @@ const disabledAssistantContext: AssistantAgentContextType = {
   openPanel: () => {},
   closePanel: () => {},
   sendMessage: () => {},
+  selectProvider: () => {},
   prefillPrompt: () => {},
   clearPendingPrompt: () => {},
   regenerateLastMessage: () => {},

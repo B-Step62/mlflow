@@ -36,7 +36,8 @@ def test_provider_identity():
     # backwards compatibility.
     assert p.name == "ollama"
     assert p.display_name == "Ollama"
-    assert p.is_available() is True
+    # Ollama is a local, auth-free server, so it never requires an API key.
+    assert p.requires_api_key is False
 
 
 def test_list_models_returns_model_names():

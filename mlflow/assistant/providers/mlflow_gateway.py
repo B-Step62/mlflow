@@ -1,8 +1,11 @@
 """MLflow AI Gateway preset of the OpenAI-compatible assistant provider."""
 
+import logging
 from typing import ClassVar
 
 from mlflow.assistant.providers.openai_compatible import OpenAICompatibleProvider
+
+_logger = logging.getLogger(__name__)
 
 
 class MlflowGatewayProvider(OpenAICompatibleProvider):
@@ -37,3 +40,51 @@ class MlflowGatewayProvider(OpenAICompatibleProvider):
             chat_url_builder=self._build_chat_url,
             allows_remote_access=True,
         )
+
+    @staticmethod
+    def _list_endpoints():
+        from mlflow.tracking._tracking_service.utils import _get_store
+
+        store = _get_store()
+        try:
+            return store.list_gateway_endpoints()
+        except (AttributeError, NotImplementedError):
+            # e.g. FileStore, which has no gateway support
+            return []
+
+    def list_models(self, base_url: str | None = None, api_key: str | None = None) -> list[str]:
+        """Endpoint names from the tracking store backing this server.
+
+        Both arguments are ignored: the gateway lives in the same MLflow server,
+        so there is no external backend to dial.
+        """
+        return [endpoint.name for endpoint in self._list_endpoints() if endpoint.name]
+
+    def endpoint_llm_provider(self, endpoint_name: str) -> str | None:
+        """LLM provider (e.g. 'openai', 'anthropic') behind a gateway endpoint.
+
+        The gateway itself is routing, not a model vendor, so UIs display the
+        underlying provider of the endpoint's primary model instead.
+        """
+        endpoint = next(
+            (e for e in self._list_endpoints() if e.name == endpoint_name),
+            None,
+        )
+        if endpoint is None:
+            return None
+        return next(
+            (
+                mapping.model_definition.provider
+                for mapping in endpoint.model_mappings
+                if mapping.model_definition is not None
+            ),
+            None,
+        )
+
+    def is_available(self) -> bool:
+        """Whether at least one gateway endpoint is configured on this server."""
+        try:
+            return bool(self.list_models())
+        except Exception:
+            _logger.debug("Failed to list gateway endpoints", exc_info=True)
+            return False

@@ -18,10 +18,11 @@ from mlflow.assistant.providers.base import (
     AssistantProvider,
     CLINotInstalledError,
     NotAuthenticatedError,
-    load_config,
+    load_config_or_default,
 )
 from mlflow.assistant.types import (
     ContentBlock,
+    ErrorCode,
     Event,
     Message,
     TextBlock,
@@ -432,7 +433,9 @@ class ClaudeCodeProvider(AssistantProvider):
         claude_path = shutil.which("claude")
         if not claude_path:
             yield Event.from_error(
-                "Claude CLI not found. Please install Claude Code CLI and ensure it's in your PATH."
+                "Claude CLI not found. Please install Claude Code CLI and ensure it's in your "
+                "PATH.",
+                code=ErrorCode.CLI_NOT_INSTALLED,
             )
             return
 
@@ -450,7 +453,7 @@ class ClaudeCodeProvider(AssistantProvider):
         system_prompt = _build_system_prompt(tracking_uri)
         cmd.extend(["--append-system-prompt", system_prompt])
 
-        config = load_config(self.name)
+        config = load_config_or_default(self.name)
 
         # Handle permission mode
         if config.permissions.full_access:
@@ -540,7 +543,13 @@ class ClaudeCodeProvider(AssistantProvider):
                     stderr.decode("utf-8").strip()
                     or f"Process exited with code {process.returncode}"
                 )
-                yield Event.from_error(error_msg)
+                # Same heuristic as check_connection: classify auth failures so
+                # the UI can show a login prompt instead of raw stderr.
+                lowered = error_msg.lower()
+                is_auth_error = any(s in lowered for s in ("auth", "login", "unauthorized"))
+                yield Event.from_error(
+                    error_msg, code=ErrorCode.NOT_AUTHENTICATED if is_auth_error else None
+                )
 
         except Exception as e:
             _logger.exception("Error running Claude Code CLI")

@@ -403,6 +403,84 @@ def test_update_config_sets_provider(client):
     assert data["providers"]["claude_code"]["selected"] is True
 
 
+def test_update_config_diverts_saas_api_key_to_gateway(client, isolated_config):
+    # A SaaS api_key must NOT be written to the config file; it is diverted into
+    # the AI Gateway secret store via ensure_vendor_connection.
+    with patch(
+        "mlflow.server.assistant.api.ensure_vendor_connection",
+        return_value="mlflow-assistant-openai",
+    ) as mock_connect:
+        response = client.put(
+            "/ajax-api/3.0/mlflow/assistant/config",
+            json={"providers": {"openai": {"api_key": "sk-secret-123"}}},
+        )
+
+    assert response.status_code == 200
+    mock_connect.assert_called_once_with("openai", "sk-secret-123", model="gpt-5.5")
+    # Nothing sensitive is persisted to the config file.
+    saved = (isolated_config / "config.json").read_text() if isolated_config.exists() else ""
+    assert "sk-secret-123" not in saved
+
+
+def test_update_config_diverts_saas_api_key_with_selected_model(client):
+    with patch(
+        "mlflow.server.assistant.api.ensure_vendor_connection",
+        return_value="mlflow-assistant-openai",
+    ) as mock_connect:
+        response = client.put(
+            "/ajax-api/3.0/mlflow/assistant/config",
+            json={"providers": {"openai": {"api_key": "sk-secret-123", "model": "gpt-5-mini"}}},
+        )
+
+    assert response.status_code == 200
+    mock_connect.assert_called_once_with("openai", "sk-secret-123", model="gpt-5-mini")
+
+
+def test_update_config_updates_saas_gateway_model(client):
+    with patch("mlflow.server.assistant.api.update_vendor_connection_model") as mock_update:
+        response = client.put(
+            "/ajax-api/3.0/mlflow/assistant/config",
+            json={"providers": {"openai": {"model": "gpt-5-mini", "selected": True}}},
+        )
+
+    assert response.status_code == 200
+    mock_update.assert_called_once_with("openai", "gpt-5-mini")
+
+
+def test_update_config_rejects_unsupported_saas_model(client):
+    response = client.put(
+        "/ajax-api/3.0/mlflow/assistant/config",
+        json={"providers": {"openai": {"model": "text-embedding-3-large"}}},
+    )
+
+    assert response.status_code == 400
+    assert "Supported models" in response.json()["detail"]
+
+
+def test_update_config_rejects_api_key_for_non_saas_provider(client):
+    response = client.put(
+        "/ajax-api/3.0/mlflow/assistant/config",
+        json={"providers": {"claude_code": {"api_key": "sk-nope"}}},
+    )
+    assert response.status_code == 400
+    assert "does not accept an API key" in response.json()["detail"]
+
+
+def test_update_config_saas_api_key_gateway_unsupported_returns_400(client):
+    from mlflow.assistant.gateway_connection import GatewayUnsupportedError
+
+    with patch(
+        "mlflow.server.assistant.api.ensure_vendor_connection",
+        side_effect=GatewayUnsupportedError("no gateway on this backend"),
+    ):
+        response = client.put(
+            "/ajax-api/3.0/mlflow/assistant/config",
+            json={"providers": {"openai": {"api_key": "sk-secret"}}},
+        )
+    assert response.status_code == 400
+    assert "no gateway on this backend" in response.json()["detail"]
+
+
 def test_update_config_sets_project(client, tmp_path):
     project_dir = tmp_path / "my_project"
     project_dir.mkdir()
@@ -623,6 +701,7 @@ async def test_stream_pauses_then_resumes(decision, expected_text):
 
     mock_request = MagicMock()
     mock_request.base_url = "http://localhost:5000/"
+    mock_request.client.host = "127.0.0.1"
     provider = _DeferredProvider()
 
     # First turn: the stream completes immediately at the prompt (no await).
@@ -681,6 +760,7 @@ async def test_stream_prefers_new_message_over_stale_tool_decision():
 
     mock_request = MagicMock()
     mock_request.base_url = "http://localhost:5000/"
+    mock_request.client.host = "127.0.0.1"
     provider = _CaptureProvider()
 
     with patch("mlflow.server.assistant.api._get_selected_provider", return_value=provider):
@@ -705,6 +785,7 @@ async def test_stream_forwards_tool_decision_when_no_pending_message():
 
     mock_request = MagicMock()
     mock_request.base_url = "http://localhost:5000/"
+    mock_request.client.host = "127.0.0.1"
     provider = _CaptureProvider()
 
     with patch("mlflow.server.assistant.api._get_selected_provider", return_value=provider):
@@ -911,3 +992,193 @@ def test_list_provider_models_returns_404_for_unsupported_provider(client):
 
     assert response.status_code == 404
     assert "not supported" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# GET /providers (discovery)
+# ---------------------------------------------------------------------------
+
+_DISCOVERY_URL = "/ajax-api/3.0/mlflow/assistant/providers"
+
+
+@pytest.fixture
+def discovery_client():
+    """Test client with the real provider registry, treated as a localhost caller."""
+    app = FastAPI()
+    app.include_router(assistant_router)
+    with patch("mlflow.server.assistant.api._is_localhost", return_value=True):
+        yield TestClient(app)
+
+
+@pytest.fixture
+def probed_availability(monkeypatch):
+    """Make every probed provider report unavailable unless listed."""
+    from mlflow.assistant.providers import (
+        ClaudeCodeProvider,
+        CodexProvider,
+        MlflowGatewayProvider,
+        OllamaProvider,
+    )
+
+    probed = {
+        "claude_code": ClaudeCodeProvider,
+        "codex": CodexProvider,
+        "ollama": OllamaProvider,
+        "mlflow_gateway": MlflowGatewayProvider,
+    }
+
+    def set_available(*names: str):
+        for name, cls in probed.items():
+            monkeypatch.setattr(cls, "is_available", lambda self, n=name: n in names)
+
+    return set_available
+
+
+def test_discover_providers_auto_resolves_default(discovery_client, probed_availability):
+    probed_availability("claude_code")
+
+    response = discovery_client.get(_DISCOVERY_URL)
+
+    assert response.status_code == 200
+    data = response.json()
+    by_name = {p["name"]: p for p in data["providers"]}
+    assert set(by_name) == {
+        "claude_code",
+        "codex",
+        "mlflow_gateway",
+        "ollama",
+        "openai",
+        "anthropic",
+        "gemini",
+    }
+    assert by_name["claude_code"]["available"] is True
+    assert by_name["codex"]["available"] is False
+    assert by_name["openai"]["requires_api_key"] is True
+    assert by_name["openai"]["model_options"] == ["gpt-5.5", "gpt-5", "gpt-5-mini"]
+    assert all(p["selected"] is False for p in data["providers"])
+
+    resolved = data["resolved"]
+    assert resolved["name"] == "claude_code"
+    assert resolved["auto_selected"] is True
+    assert resolved["model"] is None
+
+
+def test_discover_providers_explicit_selection_wins(discovery_client, probed_availability):
+    probed_availability("claude_code", "codex")
+    config = AssistantConfig(
+        providers={"codex": AssistantProviderConfig(model="gpt-5-codex", selected=True)}
+    )
+    config.save()
+
+    response = discovery_client.get(_DISCOVERY_URL)
+
+    assert response.status_code == 200
+    data = response.json()
+    by_name = {p["name"]: p for p in data["providers"]}
+    assert by_name["codex"]["selected"] is True
+    resolved = data["resolved"]
+    assert resolved["name"] == "codex"
+    assert resolved["auto_selected"] is False
+    assert resolved["model"] == "gpt-5-codex"
+
+
+def test_discover_providers_reports_gateway_default_endpoint(
+    discovery_client, probed_availability, monkeypatch
+):
+    from mlflow.assistant.providers import MlflowGatewayProvider
+
+    probed_availability("mlflow_gateway")
+    monkeypatch.setattr(
+        MlflowGatewayProvider, "list_models", lambda self, *args, **kwargs: ["chat-endpoint"]
+    )
+    monkeypatch.setattr(
+        MlflowGatewayProvider, "endpoint_llm_provider", lambda self, endpoint_name: "anthropic"
+    )
+
+    response = discovery_client.get(_DISCOVERY_URL)
+
+    assert response.status_code == 200
+    resolved = response.json()["resolved"]
+    assert resolved["name"] == "mlflow_gateway"
+    assert resolved["auto_selected"] is True
+    assert resolved["model"] == "chat-endpoint"
+    # The gateway routes rather than serves models, so the underlying LLM
+    # provider of the endpoint is reported for display.
+    assert resolved["model_provider"] == "anthropic"
+
+
+def test_discover_providers_openai_is_last_resort_with_key_flags(
+    discovery_client, probed_availability
+):
+    probed_availability()
+
+    response = discovery_client.get(_DISCOVERY_URL)
+
+    assert response.status_code == 200
+    resolved = response.json()["resolved"]
+    assert resolved["name"] == "openai"
+    assert resolved["auto_selected"] is True
+    assert resolved["requires_api_key"] is True
+    assert resolved["has_api_key"] is False
+    # The preset ships a default chat model, so the UI can show it up front.
+    assert resolved["model"]
+
+
+def test_discover_providers_remote_without_remote_access(probed_availability, monkeypatch):
+    monkeypatch.setenv("MLFLOW_ENABLE_REMOTE_ASSISTANT", "false")
+    probed_availability("claude_code", "mlflow_gateway")
+    app = FastAPI()
+    app.include_router(assistant_router)
+
+    with patch("mlflow.server.assistant.api._is_localhost", return_value=False):
+        response = TestClient(app).get(_DISCOVERY_URL)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["providers"] == []
+    assert data["resolved"] is None
+
+
+def test_discover_providers_remote_shows_only_remote_safe_providers(
+    probed_availability, monkeypatch
+):
+    from mlflow.assistant.providers import MlflowGatewayProvider
+
+    monkeypatch.setenv("MLFLOW_ENABLE_REMOTE_ASSISTANT", "true")
+    probed_availability("claude_code", "mlflow_gateway")
+    monkeypatch.setattr(
+        MlflowGatewayProvider, "list_models", lambda self, *args, **kwargs: ["chat-endpoint"]
+    )
+    app = FastAPI()
+    app.include_router(assistant_router)
+
+    with patch("mlflow.server.assistant.api._is_localhost", return_value=False):
+        response = TestClient(app).get(_DISCOVERY_URL)
+
+    assert response.status_code == 200
+    data = response.json()
+    names = {p["name"] for p in data["providers"]}
+    assert names == {"mlflow_gateway", "openai", "anthropic", "gemini"}
+    assert data["resolved"]["name"] == "mlflow_gateway"
+
+
+@pytest.mark.asyncio
+async def test_stream_no_provider_error_carries_error_code(probed_availability, monkeypatch):
+    from mlflow.server.assistant.api import stream_response
+
+    monkeypatch.setenv("MLFLOW_ENABLE_REMOTE_ASSISTANT", "false")
+    probed_availability()
+    session_id = "f5f28c66-5ec6-46a1-9a2e-ca55fb64bf47"
+    session = SessionManager.create()
+    session.set_pending_message(role="user", content="hi")
+    SessionManager.save(session_id, session)
+
+    mock_request = MagicMock()
+    mock_request.base_url = "http://example.com:5000/"
+    mock_request.client.host = "192.168.1.100"
+
+    response = await stream_response(mock_request, session_id)
+    body = "".join([c async for c in response.body_iterator])
+
+    assert "No assistant provider" in body
+    assert '"error_code": "no_provider"' in body

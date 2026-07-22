@@ -13,7 +13,18 @@ from starlette.responses import Response
 
 from mlflow.assistant import clear_project_path_cache, get_project_path
 from mlflow.assistant.config import AssistantConfig, PermissionsConfig, ProjectConfig
-from mlflow.assistant.providers import list_providers
+from mlflow.assistant.gateway_connection import (
+    SAAS_VENDORS,
+    GatewayUnsupportedError,
+    ensure_vendor_connection,
+    resolve_vendor_model,
+    update_vendor_connection_model,
+)
+from mlflow.assistant.providers import (
+    MlflowGatewayProvider,
+    list_providers,
+    resolve_default_provider,
+)
 from mlflow.assistant.providers.base import (
     AssistantProvider,
     CLINotInstalledError,
@@ -22,7 +33,7 @@ from mlflow.assistant.providers.base import (
     clear_config_cache,
 )
 from mlflow.assistant.skill_installer import install_skills, list_installed_skills
-from mlflow.assistant.types import EventType
+from mlflow.assistant.types import ErrorCode, Event, EventType
 from mlflow.environment_variables import MLFLOW_ENABLE_REMOTE_ASSISTANT
 from mlflow.server.assistant.session import SessionManager, terminate_session_process
 
@@ -41,6 +52,21 @@ def _get_selected_provider(config: AssistantConfig | None = None):
         if provider_config.selected:
             return _get_provider(provider_name)
     return None
+
+
+def _resolve_provider(remote: bool = False) -> AssistantProvider | None:
+    """The provider that will serve a chat from this client.
+
+    The explicitly selected provider when it is usable from this client,
+    otherwise the best available default (so the assistant works with zero
+    setup). None when nothing is usable.
+    """
+    if remote and not MLFLOW_ENABLE_REMOTE_ASSISTANT.get():
+        return None
+    selected = _get_selected_provider()
+    if selected is not None and (not remote or selected.allows_remote_access):
+        return selected
+    return resolve_default_provider(remote=remote)
 
 
 _BLOCK_REMOTE_ACCESS_ERROR_MSG = (
@@ -97,10 +123,27 @@ def _remote_access_policy(policy: _RemoteAccessPolicy):
     return decorator
 
 
+def _provider_has_api_key(provider: AssistantProvider) -> bool:
+    """Whether a SaaS provider already has a gateway connection (secret+endpoint).
+
+    Non-SaaS providers (CLIs, gateway, ollama) don't take an assistant-managed
+    key, so they report False.
+    """
+    has_connection = getattr(provider, "has_connection", None)
+    if has_connection is None:
+        return False
+    try:
+        return bool(has_connection())
+    except Exception:
+        return False
+
+
 def _get_route_provider(request: Request) -> AssistantProvider | None:
     if provider_name := request.path_params.get("provider"):
         return _get_provider(provider_name)
-    return _get_selected_provider()
+    # Gate on the provider that will actually serve this request, which may be
+    # an auto-resolved default when nothing is explicitly selected.
+    return _resolve_provider(remote=not _is_localhost(request))
 
 
 class _AssistantAPIRoute(APIRoute):
@@ -265,14 +308,15 @@ async def stream_response(request: Request, session_id: str) -> StreamingRespons
     # TODO: Extend this to support remote/proxy scenarios where the tracking URI may differ.
     tracking_uri = str(request.base_url).rstrip("/")
 
+    is_remote = not _is_localhost(request)
+
     async def event_generator() -> AsyncGenerator[str, None]:
         nonlocal session
-        provider = _get_selected_provider()
+        provider = _resolve_provider(remote=is_remote)
         if provider is None:
-            from mlflow.assistant.types import Event
-
             yield Event.from_error(
-                "No assistant provider is configured or available."
+                "No assistant provider is configured or available.",
+                code=ErrorCode.NO_PROVIDER,
             ).to_sse_event()
             return
         async for event in provider.astream(
@@ -397,9 +441,8 @@ async def get_config(request: Request) -> ConfigResponse:
         Current configuration including providers and projects.
     """
     config = AssistantConfig.load()
+    # API keys are never stored in the config, so there is nothing to redact here.
     providers = {name: p.model_dump() for name, p in config.providers.items()}
-    for provider_data in providers.values():
-        provider_data.pop("api_key", None)
 
     projects = {exp_id: p.model_dump() for exp_id, p in config.projects.items()}
     if not _is_localhost(request):
@@ -409,7 +452,9 @@ async def get_config(request: Request) -> ConfigResponse:
     return ConfigResponse(
         providers=providers,
         projects=projects,
-        remote_access_allowed=_provider_allows_remote_access(_get_selected_provider(config)),
+        remote_access_allowed=_provider_allows_remote_access(
+            _resolve_provider(remote=not _is_localhost(request))
+        ),
     )
 
 
@@ -432,8 +477,31 @@ async def update_config(request: ConfigUpdateRequest) -> ConfigResponse:
         for name, provider_data in request.providers.items():
             existing = config.providers.get(name)
             model = provider_data.get("model") or (existing.model if existing else "default")
+            gateway_model = None
+            if name in SAAS_VENDORS and ("model" in provider_data or provider_data.get("api_key")):
+                try:
+                    gateway_model = resolve_vendor_model(name, model)
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+
+            # API keys are never written to the config file. For a SaaS vendor,
+            # divert the key into the AI Gateway secret store (surfaced in
+            # LLM Connections) and create/rotate its endpoint; the assistant then
+            # chats through the gateway.
+            if api_key := provider_data.get("api_key"):
+                if name not in SAAS_VENDORS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Provider '{name}' does not accept an API key.",
+                    )
+                try:
+                    ensure_vendor_connection(name, api_key, model=gateway_model)
+                except GatewayUnsupportedError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+            elif name in SAAS_VENDORS and "model" in provider_data:
+                update_vendor_connection_model(name, gateway_model)
+
             base_url = provider_data.get("base_url")
-            api_key = provider_data.get("api_key")
             permissions = None
             if "permissions" in provider_data:
                 perm_data = provider_data["permissions"]
@@ -444,14 +512,13 @@ async def update_config(request: ConfigUpdateRequest) -> ConfigResponse:
                 )
             selected = provider_data.get("selected", False)
             if selected:
-                config.set_provider(name, model, permissions, base_url=base_url, api_key=api_key)
+                config.set_provider(name, model, permissions, base_url=base_url)
             else:
                 config.update_provider(
                     name,
                     model=model,
                     permissions=permissions,
                     base_url=base_url,
-                    api_key=api_key,
                 )
 
     # Update projects
@@ -480,14 +547,120 @@ async def update_config(request: ConfigUpdateRequest) -> ConfigResponse:
     clear_project_path_cache()
 
     providers = {name: p.model_dump() for name, p in config.providers.items()}
-    for provider_data in providers.values():
-        provider_data.pop("api_key", None)
 
     return ConfigResponse(
         providers=providers,
         projects={exp_id: p.model_dump() for exp_id, p in config.projects.items()},
         remote_access_allowed=_provider_allows_remote_access(_get_selected_provider(config)),
     )
+
+
+class ProviderInfo(BaseModel):
+    name: str
+    display_name: str
+    description: str
+    available: bool
+    selected: bool
+    requires_api_key: bool
+    has_api_key: bool
+    allows_remote_access: bool
+    model_options: list[str] = Field(default_factory=list)
+
+
+class ResolvedProviderInfo(BaseModel):
+    name: str
+    # Model/endpoint that will serve the chat; None when the provider decides
+    # (e.g. the CLI's own default model).
+    model: str | None = None
+    # True when the provider was picked by default resolution rather than an
+    # explicit selection stored in config.
+    auto_selected: bool = False
+    requires_api_key: bool = False
+    has_api_key: bool = False
+    # For the gateway (which routes rather than serves models), the LLM provider
+    # behind the resolved endpoint (e.g. "openai", "anthropic") so the UI can
+    # display the actual model vendor.
+    model_provider: str | None = None
+
+
+class ProvidersResponse(BaseModel):
+    providers: list[ProviderInfo] = Field(default_factory=list)
+    resolved: ResolvedProviderInfo | None = None
+
+
+@assistant_router.get("/providers")
+@_remote_access_policy(_RemoteAccessPolicy.NONE)
+async def discover_providers(request: Request) -> ProvidersResponse:
+    """
+    Discover assistant providers and the one that would serve a chat from this client.
+
+    `resolved` is the provider the next chat will use: the explicitly selected
+    one when usable from this client, otherwise the best available default
+    (`auto_selected=True`). None when nothing is usable. Availability flags are
+    cheap probes (CLI on PATH, server responding, endpoint configured), not
+    full auth checks: the first chat is the real connection test.
+    """
+    config = AssistantConfig.load()
+    remote = not _is_localhost(request)
+
+    infos = []
+    for provider in list_providers():
+        # Providers a remote client can never use are omitted rather than
+        # shown as unavailable.
+        if remote and not _provider_allows_remote_access(provider):
+            continue
+        provider_config = config.providers.get(provider.name)
+        try:
+            available = provider.is_available()
+        except Exception:
+            available = False
+        infos.append(
+            ProviderInfo(
+                name=provider.name,
+                display_name=provider.display_name,
+                description=provider.description,
+                available=available,
+                selected=bool(provider_config and provider_config.selected),
+                requires_api_key=provider.requires_api_key,
+                has_api_key=_provider_has_api_key(provider),
+                allows_remote_access=provider.allows_remote_access,
+                model_options=provider.model_options,
+            )
+        )
+
+    resolved = None
+    if (provider := _resolve_provider(remote=remote)) is not None:
+        provider_config = config.providers.get(provider.name)
+        model = (
+            provider_config.model
+            if provider_config and provider_config.model and provider_config.model != "default"
+            else None
+        )
+        if model is None:
+            model = provider.default_model
+        if model is None:
+            # e.g. the first gateway endpoint / Ollama model; best-effort only.
+            try:
+                models = provider.list_models()
+                model = models[0] if models else None
+            except Exception:
+                model = None
+        model_provider = None
+        if isinstance(provider, MlflowGatewayProvider) and model:
+            try:
+                model_provider = provider.endpoint_llm_provider(model)
+            except Exception:
+                model_provider = None
+        resolved = ResolvedProviderInfo(
+            name=provider.name,
+            model=model,
+            auto_selected=not (provider_config and provider_config.selected),
+            requires_api_key=provider.requires_api_key,
+            has_api_key=_provider_has_api_key(provider),
+            model_provider=model_provider,
+        )
+
+    return ProvidersResponse(providers=infos, resolved=resolved)
 
 
 @assistant_router.post("/skills/install")
@@ -520,7 +693,7 @@ async def install_skills_endpoint(request: SkillsInstallRequest) -> SkillsInstal
             )
         project_path = Path(project_location)
 
-    provider = _get_selected_provider()
+    provider = _resolve_provider()
     if provider is None:
         raise HTTPException(
             status_code=412,

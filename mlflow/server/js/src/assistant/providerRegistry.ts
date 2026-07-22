@@ -5,6 +5,7 @@
  * payload uses (see `GATEWAY_PROVIDER_ID` and the server-side provider names).
  */
 import AnthropicLogo from '@mlflow/mlflow/src/common/static/logos/anthropic.svg';
+import GeminiLogo from '@mlflow/mlflow/src/common/static/logos/gemini.png';
 import OpenAiLogo from '@mlflow/mlflow/src/common/static/logos/openai.svg';
 import MLflowGatewayLogo from '@mlflow/mlflow/src/common/static/logos/mlflow-gateway.svg';
 import OllamaLogo from '@mlflow/mlflow/src/common/static/logos/ollama.png';
@@ -48,8 +49,47 @@ export const ASSISTANT_PROVIDERS: AssistantProvider[] = [
     logo: OpenAiLogo,
     available: true,
   },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    description: 'AI assistant using an OpenAI model via your API key. No local CLI required.',
+    logo: OpenAiLogo,
+    available: true,
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    description: 'AI assistant using an Anthropic Claude model via your API key. No local CLI required.',
+    logo: AnthropicLogo,
+    available: true,
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    description: 'AI assistant using a Google Gemini model via your API key. No local CLI required.',
+    logo: GeminiLogo,
+    available: true,
+  },
 ];
 
 /** Look up a provider's display metadata by id; undefined for unknown ids. */
 export const getAssistantProvider = (id: string): AssistantProvider | undefined =>
   ASSISTANT_PROVIDERS.find((provider) => provider.id === id);
+
+/**
+ * Display metadata for the LLM vendor behind a gateway endpoint, keyed by the
+ * gateway's provider ids (see `Provider` in `mlflow/gateway/config.py`). The
+ * gateway itself routes rather than serves models, so the composer shows the
+ * endpoint's actual vendor. Vendors without an entry fall back to the
+ * MLflow AI Gateway branding.
+ */
+export const LLM_PROVIDER_DISPLAY = {
+  openai: { name: 'OpenAI', logo: OpenAiLogo },
+  anthropic: { name: 'Anthropic', logo: AnthropicLogo },
+  gemini: { name: 'Gemini', logo: GeminiLogo },
+  ollama: { name: 'Ollama', logo: OllamaLogo },
+} satisfies Record<string, { name: string; logo: string }>;
+
+/** Display metadata for a gateway endpoint's LLM vendor; undefined when we have no branding for it. */
+export const getLlmProviderDisplay = (provider: string): { name: string; logo: string } | undefined =>
+  (LLM_PROVIDER_DISPLAY as Record<string, { name: string; logo: string } | undefined>)[provider];

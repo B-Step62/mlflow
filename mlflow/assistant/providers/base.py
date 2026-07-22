@@ -20,6 +20,16 @@ def clear_config_cache() -> None:
     load_config.cache_clear()
 
 
+def load_config_or_default(name: str) -> ProviderConfig:
+    """Config entry for `name`, falling back to defaults when the provider was
+    never explicitly configured (e.g. auto-resolved as the default provider).
+    """
+    try:
+        return load_config(name)
+    except RuntimeError:
+        return ProviderConfig()
+
+
 class ProviderNotConfiguredError(Exception):
     """Raised when a provider is not properly configured."""
 
@@ -58,6 +68,21 @@ class AssistantProvider(ABC):
     def allows_remote_access(self) -> bool:
         """Whether this provider can serve requests from remote clients."""
         return False
+
+    @property
+    def requires_api_key(self) -> bool:
+        """Whether this provider cannot chat without an API key in its config."""
+        return False
+
+    @property
+    def default_model(self) -> str | None:
+        """Model used when config doesn't pin one (None = provider decides)."""
+        return None
+
+    @property
+    def model_options(self) -> list[str]:
+        """Curated model choices to show in simple assistant UI controls."""
+        return []
 
     @abstractmethod
     def check_connection(self, echo: Callable[[str], None] | None = None) -> None:

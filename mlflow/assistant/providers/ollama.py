@@ -15,7 +15,7 @@ class OllamaProvider(OpenAICompatibleProvider):
     OLLAMA_PROVIDER_NAME: ClassVar[str] = "ollama"
 
     @staticmethod
-    def _list_models(base_url: str, api_key: str | None = None) -> list[str]:
+    def _list_models(base_url: str, api_key: str | None = None, timeout: float = 10) -> list[str]:
         """List models from a local Ollama server via `GET /api/tags`.
 
         Vanilla Ollama is auth-free, but the api_key is forwarded as a
@@ -23,9 +23,26 @@ class OllamaProvider(OpenAICompatibleProvider):
         auth layer can still list models.
         """
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        response = requests.get(f"{base_url.rstrip('/')}/api/tags", headers=headers, timeout=10)
+        response = requests.get(
+            f"{base_url.rstrip('/')}/api/tags", headers=headers, timeout=timeout
+        )
         response.raise_for_status()
         return [m["model"] for m in response.json().get("models", []) if m.get("model")]
+
+    def is_available(self) -> bool:
+        """Whether an Ollama server is reachable and has at least one model pulled.
+
+        Used for default-provider resolution on panel open, so the probe uses a
+        short timeout: a non-running server refuses instantly, and anything
+        slower than this shouldn't win the default-provider pick anyway.
+        """
+        base_url = self._resolve_base_url()
+        if not base_url:
+            return False
+        try:
+            return bool(self._list_models(base_url, None, timeout=2))
+        except requests.RequestException:
+            return False
 
     def __init__(self) -> None:
         super().__init__(

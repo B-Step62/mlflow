@@ -332,7 +332,10 @@ async def test_astream_strips_think_blocks_from_stream(provider):
 
 
 @pytest.mark.asyncio
-async def test_astream_uses_api_key_header(tmp_path):
+async def test_astream_sends_no_authorization_header(tmp_path):
+    # API keys are no longer stored in the assistant config (SaaS credentials
+    # live in the AI Gateway secret store). A plain OpenAI-compatible provider
+    # therefore dials its base URL with no Authorization header.
     cfg = tmp_path / "config.json"
     cfg.write_text(
         json.dumps({
@@ -340,7 +343,6 @@ async def test_astream_uses_api_key_header(tmp_path):
                 "oai_test": {
                     "model": "model-a",
                     "base_url": "http://gateway.example",
-                    "api_key": "sk-abc",
                 }
             }
         })
@@ -364,7 +366,7 @@ async def test_astream_uses_api_key_header(tmp_path):
     ):
         _ = [e async for e in provider.astream("hi", "http://localhost:5000")]
     assert calls[0]["url"] == "http://gateway.example/v1/chat/completions"
-    assert calls[0]["headers"] == {"Authorization": "Bearer sk-abc"}
+    assert "Authorization" not in calls[0]["headers"]
     clear_config_cache()
 
 
