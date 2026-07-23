@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { FormattedMessage } from 'react-intl';
 import {
@@ -17,10 +17,15 @@ import {
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
+import { createTraceLocationForExperiment, useSearchMlflowTraces } from '@databricks/web-shared/genai-traces-table';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAssistant } from '../../../assistant/AssistantContext';
 import { Link, useNavigate, useParams } from '../../../common/utils/RoutingUtils';
+import { useEndpointsQuery } from '../../../gateway/hooks/useEndpointsQuery';
 import { ExperimentPageTabName } from '../../constants';
+import { ALL_ISSUE_CATEGORIES } from '../../components/experiment-page/components/traces-v3/IssueDetectionCategories';
+import { recordSubmittedIssueDetectionJob } from '../../components/experiment-page/components/traces-v3/IssueDetectionJobNotifications';
+import { useInvokeIssueDetection } from '../../components/experiment-page/components/traces-v3/hooks/useInvokeIssueDetection';
 import Routes from '../../routes';
 import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
 import {
@@ -47,6 +52,19 @@ type SuggestedAction = {
 const ANALYSIS_DELAY_MS = 1400;
 const COMPACT_TRACE_CHART_HEIGHT = 132;
 const OVERVIEW_PANEL_HEIGHT = 260;
+const RECENT_TRACE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const ISSUE_DETECTION_DEFAULT_PROVIDER = 'openai';
+const ISSUE_DETECTION_DEFAULT_MODEL = 'gpt-5.4';
+
+type AnalysisState = 'idle' | 'preparing' | 'submitted' | 'complete';
+
+const getRecentTraceTimeRange = () => {
+  const endTimeMs = Date.now();
+  return {
+    startTime: String(endTimeMs - RECENT_TRACE_WINDOW_MS),
+    endTime: String(endTimeMs),
+  };
+};
 
 const getActionRowCss = (theme: ReturnType<typeof useDesignSystemTheme>['theme'], index: number) => ({
   display: 'flex',
@@ -273,7 +291,10 @@ const ExperimentGenAIOverviewPage = () => {
   const navigate = useNavigate();
   const { setHeaderHidden } = useHeaderVisibility();
   const { closePanel } = useAssistant();
-  const [analysisState, setAnalysisState] = useState<'idle' | 'running' | 'complete'>('idle');
+  const [analysisState, setAnalysisState] = useState<AnalysisState>('idle');
+  const [isIssueDetectionQueued, setIsIssueDetectionQueued] = useState(false);
+  const [usesMockAnalysis, setUsesMockAnalysis] = useState(false);
+  const [analysisTraceCount, setAnalysisTraceCount] = useState(FAILURE_ANALYSIS_TOTAL_CONVERSATIONS);
 
   const safeExperimentId = experimentId ?? '';
   const tracesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Traces);
@@ -281,8 +302,32 @@ const ExperimentGenAIOverviewPage = () => {
   const evaluationRunsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.EvaluationRuns);
   const playgroundRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Playground);
   const analysisRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, MOCK_FAILURE_ANALYSIS_RUN_ID);
+  const [submittedAnalysisRoute, setSubmittedAnalysisRoute] = useState(analysisRoute);
+  const recentTraceTimeRange = useMemo(getRecentTraceTimeRange, []);
+  const traceSearchLocations = useMemo(
+    () => (safeExperimentId ? [createTraceLocationForExperiment(safeExperimentId)] : []),
+    [safeExperimentId],
+  );
   const totalTraceCount = useMemo(() => TRACE_ACTIVITY_HOURS.reduce((total, hour) => total + hour.count, 0), []);
   const hasTraceActivity = totalTraceCount > 0;
+  const { data: endpoints, isLoading: isLoadingEndpoints } = useEndpointsQuery();
+  const {
+    data: recentTraces,
+    isLoading: isLoadingRecentTraces,
+    isFetching: isFetchingRecentTraces,
+    refetchMlflowTraces,
+  } = useSearchMlflowTraces({
+    locations: traceSearchLocations,
+    timeRange: recentTraceTimeRange,
+    disabled: !safeExperimentId,
+    enablePagination: false,
+  });
+  const { mutate: invokeIssueDetection, isLoading: isInvokingIssueDetection } = useInvokeIssueDetection();
+  const isAnalysisRunning =
+    analysisState === 'preparing' ||
+    analysisState === 'submitted' ||
+    isIssueDetectionQueued ||
+    isInvokingIssueDetection;
 
   useEffect(() => {
     setHeaderHidden(true);
@@ -294,7 +339,7 @@ const ExperimentGenAIOverviewPage = () => {
   }, [closePanel]);
 
   useEffect(() => {
-    if (analysisState !== 'running') {
+    if (analysisState !== 'preparing' || !usesMockAnalysis) {
       return;
     }
 
@@ -303,10 +348,88 @@ const ExperimentGenAIOverviewPage = () => {
     }, ANALYSIS_DELAY_MS);
 
     return () => window.clearTimeout(timeout);
-  }, [analysisState]);
+  }, [analysisState, usesMockAnalysis]);
+
+  const runMockAnalysis = useCallback(() => {
+    setUsesMockAnalysis(true);
+    setAnalysisTraceCount(FAILURE_ANALYSIS_TOTAL_CONVERSATIONS);
+    setSubmittedAnalysisRoute(analysisRoute);
+    setAnalysisState('preparing');
+  }, [analysisRoute]);
+
+  useEffect(() => {
+    if (
+      !isIssueDetectionQueued ||
+      isLoadingEndpoints ||
+      isLoadingRecentTraces ||
+      isFetchingRecentTraces ||
+      isInvokingIssueDetection
+    ) {
+      return;
+    }
+
+    setIsIssueDetectionQueued(false);
+
+    const endpoint = endpoints[0];
+    const traceIds = (recentTraces ?? [])
+      .map((trace) => trace.trace_id)
+      .filter((traceId): traceId is string => Boolean(traceId));
+
+    if (!safeExperimentId || !endpoint || traceIds.length === 0) {
+      runMockAnalysis();
+      return;
+    }
+
+    setUsesMockAnalysis(false);
+    setAnalysisTraceCount(traceIds.length);
+    setAnalysisState('preparing');
+    invokeIssueDetection(
+      {
+        experimentId: safeExperimentId,
+        traceIds,
+        categories: ALL_ISSUE_CATEGORIES,
+        provider: ISSUE_DETECTION_DEFAULT_PROVIDER,
+        model: ISSUE_DETECTION_DEFAULT_MODEL,
+        endpoint_name: endpoint.name,
+      },
+      {
+        onSuccess: (response) => {
+          const runRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, response.run_id);
+          setSubmittedAnalysisRoute(runRoute);
+          setAnalysisState('submitted');
+          recordSubmittedIssueDetectionJob({
+            experimentId: safeExperimentId,
+            jobId: response.job_id,
+            runId: response.run_id,
+            traceCount: traceIds.length,
+          });
+        },
+        onError: runMockAnalysis,
+      },
+    );
+  }, [
+    endpoints,
+    invokeIssueDetection,
+    isFetchingRecentTraces,
+    isInvokingIssueDetection,
+    isIssueDetectionQueued,
+    isLoadingEndpoints,
+    isLoadingRecentTraces,
+    recentTraces,
+    runMockAnalysis,
+    safeExperimentId,
+  ]);
 
   const runAnalysis = () => {
-    setAnalysisState('running');
+    if (isAnalysisRunning) {
+      return;
+    }
+
+    setUsesMockAnalysis(false);
+    setSubmittedAnalysisRoute(analysisRoute);
+    setAnalysisState('preparing');
+    refetchMlflowTraces?.();
+    setIsIssueDetectionQueued(true);
   };
 
   const suggestedActions: SuggestedAction[] = hasTraceActivity
@@ -315,11 +438,11 @@ const ExperimentGenAIOverviewPage = () => {
           title: <FormattedMessage defaultMessage="Detect issues" description="GenAI overview detect issues action" />,
           description: (
             <FormattedMessage
-              defaultMessage="Cluster recent trace failures"
+              defaultMessage="Analyze traces from the last 7 days"
               description="GenAI overview detect issues action description"
             />
           ),
-          icon: analysisState === 'running' ? <Spinner size="small" /> : <SparkleIcon color="ai" />,
+          icon: isAnalysisRunning ? <Spinner size="small" /> : <SparkleIcon color="ai" />,
           onClick: runAnalysis,
         },
         {
@@ -509,7 +632,7 @@ const ExperimentGenAIOverviewPage = () => {
                   size="small"
                   icon={<SparkleIcon color="ai" />}
                   onClick={runAnalysis}
-                  disabled={analysisState === 'running'}
+                  disabled={isAnalysisRunning}
                 >
                   <FormattedMessage
                     defaultMessage="What should I do next?"
@@ -519,9 +642,9 @@ const ExperimentGenAIOverviewPage = () => {
                 <Button
                   componentId="mlflow.genai-overview.find-common-failure-modes"
                   size="small"
-                  icon={analysisState === 'running' ? <Spinner size="small" /> : <SparkleIcon color="ai" />}
+                  icon={isAnalysisRunning ? <Spinner size="small" /> : <SparkleIcon color="ai" />}
                   onClick={runAnalysis}
-                  disabled={analysisState === 'running'}
+                  disabled={isAnalysisRunning}
                 >
                   <FormattedMessage
                     defaultMessage="Find common failure modes"
@@ -562,14 +685,19 @@ const ExperimentGenAIOverviewPage = () => {
                     flexShrink: 0,
                   }}
                 >
-                  {analysisState === 'running' ? <Spinner size="small" /> : <CheckCircleIcon />}
+                  {analysisState === 'complete' ? <CheckCircleIcon /> : <Spinner size="small" />}
                 </div>
                 <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
                   <Typography.Text bold>
-                    {analysisState === 'running' ? (
+                    {analysisState === 'preparing' ? (
                       <FormattedMessage
-                        defaultMessage="Analyzing recent traces"
-                        description="GenAI overview analysis running status"
+                        defaultMessage="Starting issue detection"
+                        description="GenAI overview issue detection starting status"
+                      />
+                    ) : analysisState === 'submitted' ? (
+                      <FormattedMessage
+                        defaultMessage="Issue detection is running"
+                        description="GenAI overview issue detection submitted status"
                       />
                     ) : (
                       <FormattedMessage
@@ -579,10 +707,16 @@ const ExperimentGenAIOverviewPage = () => {
                     )}
                   </Typography.Text>
                   <Typography.Text color="secondary">
-                    {analysisState === 'running' ? (
+                    {analysisState === 'preparing' ? (
                       <FormattedMessage
-                        defaultMessage="The page stays usable while MLflow groups likely failure modes in the background."
-                        description="GenAI overview analysis running description"
+                        defaultMessage="MLflow is collecting trace IDs from the last 7 days and starting a background job."
+                        description="GenAI overview issue detection starting description"
+                      />
+                    ) : analysisState === 'submitted' ? (
+                      <FormattedMessage
+                        defaultMessage="MLflow is analyzing {traces} recent traces. We'll notify you here when it finishes."
+                        description="GenAI overview issue detection submitted description"
+                        values={{ traces: analysisTraceCount.toLocaleString() }}
                       />
                     ) : (
                       <FormattedMessage
@@ -597,14 +731,21 @@ const ExperimentGenAIOverviewPage = () => {
                   </Typography.Text>
                 </div>
               </div>
-              {analysisState === 'complete' && (
+              {(analysisState === 'submitted' || analysisState === 'complete') && (
                 <Button
                   componentId="mlflow.genai-overview.open-analysis-result"
                   type="primary"
                   endIcon={<ArrowRightIcon />}
-                  onClick={() => navigate(analysisRoute)}
+                  onClick={() => navigate(submittedAnalysisRoute)}
                 >
-                  <FormattedMessage defaultMessage="Open analysis" description="Open analysis result button" />
+                  {analysisState === 'submitted' ? (
+                    <FormattedMessage
+                      defaultMessage="View progress"
+                      description="View issue detection progress button"
+                    />
+                  ) : (
+                    <FormattedMessage defaultMessage="Open analysis" description="Open analysis result button" />
+                  )}
                 </Button>
               )}
             </div>
