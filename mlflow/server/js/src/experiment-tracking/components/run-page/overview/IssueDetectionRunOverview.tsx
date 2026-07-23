@@ -30,6 +30,8 @@ export interface IssueDetectionRunOverviewProps {
   jobId?: string;
   /** Callback when run data is updated (e.g., job completes) */
   onRunDataUpdated?: () => void;
+  /** Mock/prototype override for pages that should not query backend issues. */
+  issuesOverride?: number;
 }
 
 export const IssueDetectionRunOverview = ({
@@ -37,6 +39,7 @@ export const IssueDetectionRunOverview = ({
   tags,
   jobId,
   onRunDataUpdated,
+  issuesOverride,
 }: IssueDetectionRunOverviewProps) => {
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
@@ -236,6 +239,7 @@ export const IssueDetectionRunOverview = ({
         isLoadingJobStatus={jobId ? isLoadingJobStatus : false}
         jobStatusError={jobStatusError}
         jobErrorMessage={jobErrorMessage}
+        issuesOverride={issuesOverride}
       />
     </DetailsPageLayout>
   );

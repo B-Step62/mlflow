@@ -79,9 +79,9 @@ export const ExperimentViewHeader = React.memo(
       const pathSegments = location.pathname.split('/').filter(Boolean);
 
       // Unlike /chat-sessions/:sessionId where popping a segment lands on a
-      // valid list page, /overview/:overviewTab has no /overview landing page.
+      // valid list page, /dashboard/:overviewTab has no /dashboard landing page.
       // Strip the sub-tab so back navigation treats it like other top-level tabs.
-      if (pathSegments[0] === 'experiments' && pathSegments[2] === 'overview') {
+      if (pathSegments[0] === 'experiments' && pathSegments[2] === 'dashboard') {
         pathSegments.splice(3);
       }
 

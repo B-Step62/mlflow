@@ -57,6 +57,17 @@ const ExperimentPageSideNavGenAIConfig = {
       tabName: ExperimentPageTabName.ChatSessions,
       componentId: 'mlflow.experiment-side-nav.genai.sessions',
     },
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Dashboard"
+          description="Label for the dashboard tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <ChartLineIcon />,
+      tabName: ExperimentPageTabName.Dashboard,
+      componentId: 'mlflow.experiment-side-nav.genai.dashboard',
+    },
   ],
   evaluation: [
     {

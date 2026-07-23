@@ -67,8 +67,21 @@ const getExperimentPageRouteDefs = () => {
             getPageTitle: (params) => `Overview - Experiment ${params['experimentId']}`,
             getAssistantPrompts: () => [
               'How do I get started with MLflow GenAI?',
+              'Find common failure modes in recent traces.',
+              'What changed in recent logs?',
+            ],
+          } satisfies RouteHandle,
+        },
+        {
+          path: RoutePaths.experimentPageTabDashboard,
+          pageId: PageId.experimentPageTabDashboard,
+          element: createLazyRouteElement(() => import('./pages/experiment-overview/ExperimentGenAIDashboardPage')),
+          handle: {
+            getPageTitle: (params) => `Dashboard - Experiment ${params['experimentId']}`,
+            getAssistantPrompts: () => [
               'What is the trend of token usage?',
               'Why did the error rate spike?',
+              'Which tools are slowest?',
             ],
           } satisfies RouteHandle,
         },

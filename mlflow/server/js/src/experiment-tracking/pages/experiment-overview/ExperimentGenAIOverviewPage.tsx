@@ -1,392 +1,632 @@
-import { useEffect, useState, useMemo } from 'react';
-import invariant from 'invariant';
-import { useParams } from '../../../common/utils/RoutingUtils';
-import { Alert, Tabs, Typography, useDesignSystemTheme } from '@databricks/design-system';
-import { FormattedMessage, useIntl } from 'react-intl';
-import { shouldEnableIssueDetection } from '../../../common/utils/FeatureUtils';
-import { IssueDetectionModal } from '../../components/experiment-page/components/traces-v3/IssueDetectionModal';
-import { DetectIssuesButton } from '../../../shared/web-shared/genai-traces-table/components/DetectIssuesButton';
-import { useLocalStorage } from '@databricks/web-shared/hooks';
-import { useIsFileStore } from '../../hooks/useServerInfo';
-import { useSqlWarehouseContextSafe } from '../experiment-page-tabs/SqlWarehouseContext';
-import { ExperimentViewTracesStatusLabels } from '@databricks/web-shared/genai-traces-table';
-import { TracesV3DateSelector } from '../../components/experiment-page/components/traces-v3/TracesV3DateSelector';
+import { useEffect, useMemo, useState } from 'react';
+import type React from 'react';
+import { FormattedMessage } from 'react-intl';
 import {
-  useMonitoringFilters,
-  getAbsoluteStartEndTime,
-  DEFAULT_START_TIME_LABEL,
-} from '../../hooks/useMonitoringFilters';
-import { MonitoringConfigProvider, useMonitoringConfig } from '../../hooks/useMonitoringConfig';
-import { useGetExperimentQuery } from '../../hooks/useExperimentQuery';
-import { LazyTraceRequestsChart } from './components/LazyTraceRequestsChart';
-import { LazyTraceLatencyChart } from './components/LazyTraceLatencyChart';
-import { LazyTraceErrorsChart } from './components/LazyTraceErrorsChart';
-import { LazyTraceTokenUsageChart } from './components/LazyTraceTokenUsageChart';
-import { LazyTraceTokenStatsChart } from './components/LazyTraceTokenStatsChart';
-import { LazyTraceCostBreakdownChart } from './components/LazyTraceCostBreakdownChart';
-import { LazyTraceCostOverTimeChart } from './components/LazyTraceCostOverTimeChart';
-import { AssessmentChartsSection } from './components/AssessmentChartsSection';
-import { ToolCallStatistics } from './components/ToolCallStatistics';
-import { ToolCallChartsSection } from './components/ToolCallChartsSection';
-import { LazyToolUsageChart } from './components/LazyToolUsageChart';
-import { LazyToolLatencyChart } from './components/LazyToolLatencyChart';
-import { LazyToolPerformanceSummary } from './components/LazyToolPerformanceSummary';
-import { TabContentContainer, ChartGrid } from './components/OverviewLayoutComponents';
-import { TimeUnitSelector } from './components/TimeUnitSelector';
-import type { TimeUnit } from './utils/timeUtils';
-import { TIME_UNIT_SECONDS, calculateDefaultTimeUnit, isTimeUnitValid } from './utils/timeUtils';
-import { generateTimeBuckets } from './utils/chartUtils';
-import { OverviewChartProvider } from './OverviewChartContext';
-import { useOverviewTab, OverviewTab } from './hooks/useOverviewTab';
-import { MetricsFilter } from '../../../common/components/MetricsFilter';
+  ArrowRightIcon,
+  Button,
+  Card,
+  CheckCircleIcon,
+  DatabaseIcon,
+  GavelIcon,
+  GitCommitIcon,
+  PlayIcon,
+  SparkleIcon,
+  Spinner,
+  TableIcon,
+  TerminalIcon,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useAssistant } from '../../../assistant/AssistantContext';
+import { Link, useNavigate, useParams } from '../../../common/utils/RoutingUtils';
+import { ExperimentPageTabName } from '../../constants';
+import Routes from '../../routes';
+import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
 import {
-  translateToMetricsFilters,
-  translateToTracesPageFilters,
-  TRACE_STATE_VALUES,
-  type MetricFilter,
-  type MetricFilterColumnOption,
-} from '../../../common/components/MetricsFilter.utils';
+  OverviewChartContainer,
+  useChartXAxisProps,
+  useChartYAxisProps,
+} from './components/OverviewChartComponents';
+import {
+  FAILURE_ANALYSIS_CLUSTERS,
+  FAILURE_ANALYSIS_TOTAL_CONVERSATIONS,
+  MOCK_FAILURE_ANALYSIS_RUN_ID,
+  RECENT_ACTIVITY,
+  TRACE_ACTIVITY_HOURS,
+} from './failureAnalysisMock';
 
-const DEMO_START_TIME_TAG = 'mlflow.demo.start_time_ms';
-const DEMO_END_TIME_TAG = 'mlflow.demo.end_time_ms';
+type SuggestedAction = {
+  title: React.ReactNode;
+  description: React.ReactNode;
+  icon: React.ReactNode;
+  to?: string;
+  onClick?: () => void;
+};
 
-const ExperimentGenAIOverviewPageImpl = () => {
-  const intl = useIntl();
-  const { experimentId } = useParams();
+const ANALYSIS_DELAY_MS = 1400;
+const COMPACT_TRACE_CHART_HEIGHT = 132;
+const OVERVIEW_PANEL_HEIGHT = 260;
+
+const getActionRowCss = (theme: ReturnType<typeof useDesignSystemTheme>['theme'], index: number) => ({
+  display: 'flex',
+  width: '100%',
+  alignItems: 'center',
+  gap: theme.spacing.md,
+  padding: theme.spacing.md,
+  border: 0,
+  borderTop: index === 0 ? 0 : `1px solid ${theme.colors.border}`,
+  backgroundColor: 'transparent',
+  color: theme.colors.textPrimary,
+  textAlign: 'left' as const,
+  cursor: 'pointer',
+  ':hover': {
+    backgroundColor: theme.colors.actionDefaultBackgroundHover,
+    textDecoration: 'none',
+  },
+});
+
+const SuggestedActionRow = ({ action, index }: { action: SuggestedAction; index: number }) => {
   const { theme } = useDesignSystemTheme();
-  const [activeTab, setActiveTab] = useOverviewTab();
-  const [selectedTimeUnit, setSelectedTimeUnit] = useState<TimeUnit | null>(null);
-  const [isIssueDetectionModalOpen, setIsIssueDetectionModalOpen] = useState(false);
-  const isFileStore = useIsFileStore();
-  const sqlWarehouseContext = useSqlWarehouseContextSafe();
 
-  // all features should be enabled in OSS
-  const enableAllCharts = true;
+  const content = (
+    <>
+      <span
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: theme.spacing.xl,
+          height: theme.spacing.xl,
+          borderRadius: theme.borders.borderRadiusMd,
+          backgroundColor: theme.colors.actionTertiaryBackgroundHover,
+          color: theme.colors.actionPrimaryBackgroundDefault,
+          flexShrink: 0,
+        }}
+      >
+        {action.icon}
+      </span>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+        <Typography.Text bold ellipsis>
+          {action.title}
+        </Typography.Text>
+        <Typography.Text color="secondary" size="sm" ellipsis>
+          {action.description}
+        </Typography.Text>
+      </div>
+    </>
+  );
 
-  const [isMysqlBannerDismissed, setIsMysqlBannerDismissed] = useLocalStorage({
-    key: 'mlflow.overview.mysqlBannerDismissed',
-    version: 0,
-    initialValue: false,
-  });
+  if (action.to) {
+    return (
+      <Link componentId="mlflow.genai-overview.suggested-action-link" to={action.to} css={{ textDecoration: 'none' }}>
+        <div css={getActionRowCss(theme, index)}>{content}</div>
+      </Link>
+    );
+  }
 
-  invariant(experimentId, 'Experiment ID must be defined');
+  return (
+    <button
+      key={index}
+      type="button"
+      css={{ ...getActionRowCss(theme, index), font: 'inherit' }}
+      onClick={action.onClick}
+    >
+      {content}
+    </button>
+  );
+};
 
-  // Fetch experiment data to check for demo time tags
-  const { data: experiment } = useGetExperimentQuery({ experimentId });
+const TraceActivityChart = () => {
+  const { theme } = useDesignSystemTheme();
+  const xAxisProps = useChartXAxisProps();
+  const yAxisProps = useChartYAxisProps();
+  const traceActivityData = useMemo(
+    () => TRACE_ACTIVITY_HOURS.map((hour) => ({ name: hour.label, count: hour.count })),
+    [],
+  );
+  return (
+    <OverviewChartContainer
+      componentId="mlflow.genai-overview.trace-activity-chart"
+      css={{ padding: theme.spacing.md }}
+    >
+      <div css={{ height: COMPACT_TRACE_CHART_HEIGHT, minWidth: 0, userSelect: 'none' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={traceActivityData} margin={{ top: 4, right: 20, left: 10, bottom: 0 }}>
+            <XAxis dataKey="name" {...xAxisProps} />
+            <YAxis {...yAxisProps} />
+            <Tooltip
+              formatter={(value) => [`${value}`, 'Traces'] as [string, string]}
+              cursor={{ fill: theme.colors.actionTertiaryBackgroundHover }}
+              wrapperStyle={{ pointerEvents: 'auto' }}
+            />
+            <Bar dataKey="count" fill={theme.colors.blue400} radius={[4, 4, 0, 0]} barSize={8} maxBarSize={8} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </OverviewChartContainer>
+  );
+};
 
-  // Get the current time range from monitoring filters
-  const [monitoringFilters, setMonitoringFilters] = useMonitoringFilters();
-  const monitoringConfig = useMonitoringConfig();
+const RecentActivityPanel = ({ tracesRoute }: { tracesRoute: string }) => {
+  const { theme } = useDesignSystemTheme();
 
-  // Initialize with demo time range if this is a demo experiment
+  return (
+    <section css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, minWidth: 0 }}>
+      <Typography.Title level={3} css={{ margin: 0 }}>
+        <FormattedMessage defaultMessage="Recent activity" description="GenAI overview recent activity title" />
+      </Typography.Title>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.lg,
+          padding: theme.spacing.lg,
+          border: `1px solid ${theme.colors.border}`,
+          borderRadius: theme.borders.borderRadiusMd,
+          backgroundColor: theme.colors.backgroundPrimary,
+          boxSizing: 'border-box',
+          height: OVERVIEW_PANEL_HEIGHT,
+        }}
+      >
+        {RECENT_ACTIVITY.map((activityGroup) => (
+          <div
+            key={activityGroup.id}
+            css={{
+              display: 'grid',
+              gridTemplateColumns: '108px minmax(0, 1fr)',
+              gap: theme.spacing.md,
+              alignItems: 'start',
+            }}
+          >
+            <Typography.Text color="secondary" size="sm">
+              {activityGroup.label}
+            </Typography.Text>
+            <div
+              css={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: theme.spacing.sm,
+                borderLeft: `1px solid ${theme.colors.border}`,
+                paddingLeft: theme.spacing.md,
+                minWidth: 0,
+              }}
+            >
+              {activityGroup.items.map((activity) => (
+                <Link
+                  key={activity.id}
+                  componentId="mlflow.genai-overview.recent-activity-traces-link"
+                  to={tracesRoute}
+                  css={{ color: theme.colors.textPrimary, textDecoration: 'none' }}
+                >
+                  <div
+                    css={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: theme.spacing.md,
+                      alignItems: 'center',
+                      minWidth: 0,
+                      margin: -theme.spacing.xs,
+                      padding: theme.spacing.xs,
+                      borderRadius: theme.borders.borderRadiusSm,
+                      ':hover': {
+                        backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                      },
+                    }}
+                  >
+                    <div css={{ display: 'flex', gap: theme.spacing.md, alignItems: 'center', minWidth: 0 }}>
+                      <TableIcon css={{ color: theme.colors.actionPrimaryBackgroundDefault, flexShrink: 0 }} />
+                      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+                        <Typography.Text bold ellipsis>
+                          {activity.title}
+                        </Typography.Text>
+                        <Typography.Text color="secondary" size="sm" ellipsis>
+                          {activity.description}
+                        </Typography.Text>
+                      </div>
+                    </div>
+                    <Typography.Text color="secondary" size="sm" css={{ whiteSpace: 'nowrap' }}>
+                      {activity.age}
+                    </Typography.Text>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const SuggestedActionsPanel = ({ actions }: { actions: SuggestedAction[] }) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <section css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, minWidth: 0 }}>
+      <Typography.Title level={3} css={{ margin: 0 }}>
+        <FormattedMessage defaultMessage="Suggested actions" description="GenAI overview suggested actions title" />
+      </Typography.Title>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          padding: theme.spacing.lg,
+          border: `1px solid ${theme.colors.border}`,
+          borderRadius: theme.borders.borderRadiusMd,
+          backgroundColor: theme.colors.backgroundPrimary,
+          boxSizing: 'border-box',
+          height: OVERVIEW_PANEL_HEIGHT,
+        }}
+      >
+        {actions.map((action, index) => (
+          <SuggestedActionRow key={index} action={action} index={index} />
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const ExperimentGenAIOverviewPage = () => {
+  const { theme } = useDesignSystemTheme();
+  const { experimentId } = useParams<{ experimentId: string }>();
+  const navigate = useNavigate();
+  const { setHeaderHidden } = useHeaderVisibility();
+  const { closePanel } = useAssistant();
+  const [analysisState, setAnalysisState] = useState<'idle' | 'running' | 'complete'>('idle');
+
+  const safeExperimentId = experimentId ?? '';
+  const tracesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Traces);
+  const datasetsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Datasets);
+  const evaluationRunsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.EvaluationRuns);
+  const playgroundRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Playground);
+  const analysisRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, MOCK_FAILURE_ANALYSIS_RUN_ID);
+  const totalTraceCount = useMemo(() => TRACE_ACTIVITY_HOURS.reduce((total, hour) => total + hour.count, 0), []);
+  const hasTraceActivity = totalTraceCount > 0;
+
   useEffect(() => {
-    if (!experiment || monitoringFilters.startTimeLabel !== DEFAULT_START_TIME_LABEL) {
+    setHeaderHidden(true);
+    return () => setHeaderHidden(false);
+  }, [setHeaderHidden]);
+
+  useEffect(() => {
+    closePanel();
+  }, [closePanel]);
+
+  useEffect(() => {
+    if (analysisState !== 'running') {
       return;
     }
 
-    // Check if this is a demo experiment by looking for demo version tags
-    const hasDemoVersionTag = experiment.tags?.some((tag) => tag.key?.startsWith('mlflow.demo.version.'));
+    const timeout = window.setTimeout(() => {
+      setAnalysisState('complete');
+    }, ANALYSIS_DELAY_MS);
 
-    if (hasDemoVersionTag) {
-      const startTimeTag = experiment.tags?.find((tag) => tag.key === DEMO_START_TIME_TAG);
-      const endTimeTag = experiment.tags?.find((tag) => tag.key === DEMO_END_TIME_TAG);
+    return () => window.clearTimeout(timeout);
+  }, [analysisState]);
 
-      if (startTimeTag?.value && endTimeTag?.value) {
-        const startTime = new Date(parseInt(startTimeTag.value, 10)).toISOString();
-        const endTime = new Date(parseInt(endTimeTag.value, 10)).toISOString();
+  const runAnalysis = () => {
+    setAnalysisState('running');
+  };
 
-        setMonitoringFilters(
-          {
-            startTimeLabel: 'CUSTOM',
-            startTime,
-            endTime,
-          },
-          true,
-        );
-      }
-    }
-  }, [experiment, monitoringFilters.startTimeLabel, setMonitoringFilters]);
-
-  // 'ALL' is excluded from the date selector on this page since charts require
-  // start_time_ms and end_time_ms. If the user navigates here with ?startTimeLabel=ALL,
-  // reset to the default time range.
-  useEffect(() => {
-    if (monitoringFilters.startTimeLabel === 'ALL') {
-      setMonitoringFilters({ startTimeLabel: DEFAULT_START_TIME_LABEL }, true);
-    }
-  }, [monitoringFilters.startTimeLabel, setMonitoringFilters]);
-
-  // Use getAbsoluteStartEndTime to properly compute time range from labels
-  const { startTime, endTime } = useMemo(
-    () => getAbsoluteStartEndTime(monitoringConfig.dateNow, monitoringFilters),
-    [monitoringConfig.dateNow, monitoringFilters],
-  );
-
-  // Convert ISO strings to milliseconds for the API
-  const startTimeMs = startTime ? new Date(startTime).getTime() : undefined;
-  const endTimeMs = endTime ? new Date(endTime).getTime() : undefined;
-
-  // Calculate the default time unit for the current time range
-  const defaultTimeUnit = calculateDefaultTimeUnit(startTimeMs, endTimeMs);
-
-  // Auto-clear if selected time unit becomes invalid due to time range change
-  useEffect(() => {
-    if (selectedTimeUnit && !isTimeUnitValid(startTimeMs, endTimeMs, selectedTimeUnit)) {
-      setSelectedTimeUnit(null);
-    }
-  }, [startTimeMs, endTimeMs, selectedTimeUnit]);
-
-  // Use selected if valid, otherwise fall back to default
-  const effectiveTimeUnit = selectedTimeUnit ?? defaultTimeUnit;
-
-  // Use the effective time unit for time interval
-  const timeIntervalSeconds = TIME_UNIT_SECONDS[effectiveTimeUnit];
-
-  // Generate all time buckets once for all charts
-  const timeBuckets = useMemo(
-    () => generateTimeBuckets(startTimeMs, endTimeMs, timeIntervalSeconds),
-    [startTimeMs, endTimeMs, timeIntervalSeconds],
-  );
-
-  // User-driven filter rows captured by MetricsFilter. The MetricsFilter UI is only rendered on
-  // the Usage tab, so we scope both the chart-query filters (metrics-API DSL) and the navigation
-  // filters (Traces page URL format) to that tab; charts on Quality and Tool calls tabs are
-  // unaffected even though they share the same OverviewChartProvider.
-  const [metricFilters, setMetricFilters] = useState<MetricFilter[]>([]);
-  const isUsageTab = activeTab === OverviewTab.Usage;
-  const chartFilters = useMemo(
-    () => (isUsageTab ? translateToMetricsFilters(metricFilters) : undefined),
-    [isUsageTab, metricFilters],
-  );
-  const tracesNavigationFilters = useMemo(
-    () => (isUsageTab ? translateToTracesPageFilters(metricFilters) : undefined),
-    [isUsageTab, metricFilters],
-  );
-  const metricsFilterColumnOptions = useMemo<MetricFilterColumnOption[]>(
-    () => [
-      {
-        value: 'user',
-        label: intl.formatMessage({
-          defaultMessage: 'User',
-          description: 'Usage overview > metrics filter > user column option label',
-        }),
-      },
-      {
-        value: 'session',
-        label: intl.formatMessage({
-          defaultMessage: 'Session',
-          description: 'Usage overview > metrics filter > session column option label',
-        }),
-      },
-      {
-        value: 'state',
-        label: intl.formatMessage({
-          defaultMessage: 'State',
-          description: 'Usage overview > metrics filter > state column option label',
-        }),
-        valueOptions: TRACE_STATE_VALUES.map((value) => ({
-          value,
-          label: intl.formatMessage(ExperimentViewTracesStatusLabels[value]),
-        })),
-      },
-      {
-        value: 'git_branch',
-        label: intl.formatMessage({
-          defaultMessage: 'Git branch',
-          description: 'Usage overview > metrics filter > git branch column option label',
-        }),
-      },
-      {
-        value: 'git_commit',
-        label: intl.formatMessage({
-          defaultMessage: 'Git commit',
-          description: 'Usage overview > metrics filter > git commit column option label',
-        }),
-      },
-    ],
-    [intl],
-  );
+  const suggestedActions: SuggestedAction[] = hasTraceActivity
+    ? [
+        {
+          title: <FormattedMessage defaultMessage="Detect issues" description="GenAI overview detect issues action" />,
+          description: (
+            <FormattedMessage
+              defaultMessage="Cluster recent trace failures"
+              description="GenAI overview detect issues action description"
+            />
+          ),
+          icon: analysisState === 'running' ? <Spinner size="small" /> : <SparkleIcon color="ai" />,
+          onClick: runAnalysis,
+        },
+        {
+          title: (
+            <FormattedMessage defaultMessage="Set up evaluation" description="GenAI overview setup eval action" />
+          ),
+          description: (
+            <FormattedMessage
+              defaultMessage="Turn trace samples into eval runs"
+              description="GenAI overview setup eval action description"
+            />
+          ),
+          icon: <GavelIcon />,
+          to: evaluationRunsRoute,
+        },
+        {
+          title: <FormattedMessage defaultMessage="Connect GitHub" description="GenAI overview connect GitHub action" />,
+          description: (
+            <FormattedMessage
+              defaultMessage="Correlate regressions with commits"
+              description="GenAI overview connect GitHub action description"
+            />
+          ),
+          icon: <GitCommitIcon />,
+        },
+      ]
+    : [
+        {
+          title: <FormattedMessage defaultMessage="Log traces" description="GenAI overview log traces action" />,
+          description: (
+            <FormattedMessage
+              defaultMessage="Instrument your app with MLflow"
+              description="GenAI overview log traces action description"
+            />
+          ),
+          icon: <TerminalIcon />,
+          to: tracesRoute,
+        },
+        {
+          title: <FormattedMessage defaultMessage="Try playground" description="GenAI overview playground action" />,
+          description: (
+            <FormattedMessage
+              defaultMessage="Create traces from prompt experiments"
+              description="GenAI overview playground action description"
+            />
+          ),
+          icon: <PlayIcon />,
+          to: playgroundRoute,
+        },
+        {
+          title: (
+            <FormattedMessage defaultMessage="Upload a dataset" description="GenAI overview upload dataset action" />
+          ),
+          description: (
+            <FormattedMessage
+              defaultMessage="Start an evaluation baseline"
+              description="GenAI overview upload dataset action description"
+            />
+          ),
+          icon: <DatabaseIcon />,
+          to: datasetsRoute,
+        },
+      ];
 
   return (
     <div
       css={{
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
         flex: 1,
-        overflow: 'hidden',
+        overflowY: 'auto',
+        padding: `${theme.spacing.xl}px ${theme.spacing.lg}px`,
       }}
     >
-      {isFileStore && (
-        <Alert
-          componentId="mlflow.experiment.overview.filestore-warning"
-          type="warning"
-          css={{ marginBottom: theme.spacing.sm }}
-          message={
-            <FormattedMessage
-              defaultMessage="The Overview tab requires a SQL-based tracking store for full functionality, file-based backend is not supported."
-              description="Warning banner shown on the Overview tab when using FileStore backend"
-            />
-          }
-        />
-      )}
-      <Tabs.Root
-        componentId="mlflow.experiment.overview.tabs"
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as OverviewTab)}
-        valueHasNoPii
-        css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
-      >
-        <Tabs.List>
-          <Tabs.Trigger value={OverviewTab.Usage}>
-            <FormattedMessage
-              defaultMessage="Usage"
-              description="Label for the usage tab in the experiment overview page"
-            />
-          </Tabs.Trigger>
-          <Tabs.Trigger value={OverviewTab.Quality}>
-            <FormattedMessage
-              defaultMessage="Quality"
-              description="Label for the quality tab in the experiment overview page"
-            />
-          </Tabs.Trigger>
-          <Tabs.Trigger value={OverviewTab.ToolCalls}>
-            <FormattedMessage
-              defaultMessage="Tool calls"
-              description="Label for the tool calls tab in the experiment overview page"
-            />
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        {/* Control bar with time range */}
-        <div
+      <div css={{ width: '100%', maxWidth: 1120, display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
+        <section
           css={{
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            gap: theme.spacing.sm,
+            gap: theme.spacing.lg,
+            paddingTop: theme.spacing.lg,
           }}
         >
-          {activeTab === OverviewTab.Usage && (
-            <MetricsFilter
-              filters={metricFilters}
-              setFilters={setMetricFilters}
-              columnOptions={metricsFilterColumnOptions}
+          <div
+            css={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 18px)',
+              gap: theme.spacing.xs,
+              color: theme.colors.border,
+            }}
+            aria-hidden="true"
+          >
+            {[...Array(6)].map((_, index) => (
+              <div
+                key={index}
+                css={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: theme.borders.borderRadiusMd,
+                  backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                }}
+              />
+            ))}
+          </div>
+          <Typography.Title level={1} css={{ margin: 0, textAlign: 'center' }}>
+            <FormattedMessage
+              defaultMessage="Let's improve your agent"
+              description="GenAI overview main prompt title"
             />
-          )}
-
-          {/* Time unit selector for chart grouping */}
-          <TimeUnitSelector
-            value={effectiveTimeUnit}
-            onChange={setSelectedTimeUnit}
-            startTimeMs={startTimeMs}
-            endTimeMs={endTimeMs}
-            allowClear={selectedTimeUnit !== null && selectedTimeUnit !== defaultTimeUnit}
-            onClear={() => setSelectedTimeUnit(null)}
-          />
-
-          {/*
-           * Time range selector - exclude 'ALL' since charts require start_time_ms and end_time_ms
-           * TODO: remove this once this is supported in backend
-           */}
-          <TracesV3DateSelector excludeOptions={['ALL']} componentId="mlflow.experiment.overview" />
-
-          {shouldEnableIssueDetection() && (
-            <div css={{ marginLeft: 'auto' }}>
-              <DetectIssuesButton
-                componentId="mlflow.experiment.overview.detect-issues-button"
-                onClick={() => setIsIssueDetectionModalOpen(true)}
+          </Typography.Title>
+          <div
+            css={{
+              width: 'min(100%, 760px)',
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.colors.backgroundPrimary,
+              overflow: 'hidden',
+              boxShadow: '0 8px 24px rgba(31, 39, 51, 0.06)',
+              ':focus-within': {
+                borderColor: theme.colors.actionPrimaryBackgroundDefault,
+              },
+            }}
+          >
+            <div
+              css={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: theme.spacing.md,
+                padding: `${theme.spacing.lg}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
+              }}
+            >
+              <span
+                css={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: theme.spacing.xl,
+                  height: theme.spacing.xl,
+                  borderRadius: theme.borders.borderRadiusMd,
+                  backgroundColor: theme.colors.actionTertiaryBackgroundHover,
+                  color: theme.colors.actionPrimaryBackgroundDefault,
+                  flexShrink: 0,
+                }}
+              >
+                <SparkleIcon color="ai" />
+              </span>
+              <textarea
+                aria-label="Ask MLflow about this agent"
+                placeholder="Ask MLflow about traces, evaluations, or quality"
+                rows={2}
+                css={{
+                  minWidth: 0,
+                  flex: 1,
+                  border: 0,
+                  outline: 0,
+                  resize: 'none',
+                  color: theme.colors.textPrimary,
+                  backgroundColor: 'transparent',
+                  font: 'inherit',
+                  fontSize: theme.typography.fontSizeLg,
+                  lineHeight: theme.typography.lineHeightLg,
+                }}
               />
             </div>
-          )}
-        </div>
-
-        <OverviewChartProvider
-          experimentIds={[experimentId]}
-          startTimeMs={startTimeMs}
-          endTimeMs={endTimeMs}
-          timeIntervalSeconds={timeIntervalSeconds}
-          timeBuckets={timeBuckets}
-          filters={chartFilters}
-          tracesNavigationFilters={tracesNavigationFilters}
-        >
-          <Tabs.Content value={OverviewTab.Usage} css={{ flex: 1, overflowY: 'auto' }}>
-            <TabContentContainer>
-              {/* Requests chart - full width */}
-              <LazyTraceRequestsChart />
-
-              {/* Latency and Errors charts - side by side (latency requires UC) */}
-              <ChartGrid>
-                {enableAllCharts && <LazyTraceLatencyChart />}
-                <LazyTraceErrorsChart enableTraceNavigation={enableAllCharts} />
-              </ChartGrid>
-
-              {/* Token Usage and Token Stats charts - side by side (requires UC) */}
-              {enableAllCharts && (
-                <ChartGrid>
-                  <LazyTraceTokenUsageChart />
-                  <LazyTraceTokenStatsChart />
-                </ChartGrid>
-              )}
-
-              {/* Cost Breakdown and Cost Over Time charts - side by side (requires UC) */}
-              {enableAllCharts && (
-                <ChartGrid>
-                  <LazyTraceCostBreakdownChart />
-                  <LazyTraceCostOverTimeChart />
-                </ChartGrid>
-              )}
-            </TabContentContainer>
-          </Tabs.Content>
-
-          <Tabs.Content value={OverviewTab.Quality} css={{ flex: 1, overflowY: 'auto' }}>
-            <TabContentContainer>
-              {/* Assessment charts - dynamically rendered based on available assessments */}
-              <AssessmentChartsSection enableTraceNavigation={enableAllCharts} />
-            </TabContentContainer>
-          </Tabs.Content>
-
-          <Tabs.Content value={OverviewTab.ToolCalls} css={{ flex: 1, overflowY: 'auto' }}>
-            <TabContentContainer>
-              {enableAllCharts ? (
-                <>
-                  {/* Tool call statistics */}
-                  <ToolCallStatistics />
-
-                  {/* Tool performance summary */}
-                  <LazyToolPerformanceSummary />
-
-                  {/* Tool usage and latency charts - side by side */}
-                  <ChartGrid>
-                    <LazyToolUsageChart />
-                    <LazyToolLatencyChart />
-                  </ChartGrid>
-
-                  {/* Tool error rate charts - dynamically rendered based on available tools */}
-                  <ToolCallChartsSection />
-                </>
-              ) : (
-                <Typography.Text color="secondary">
+            <div
+              css={{
+                display: 'flex',
+                gap: theme.spacing.sm,
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                padding: `${theme.spacing.sm}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
+              }}
+            >
+              <div
+                css={{
+                  display: 'flex',
+                  gap: theme.spacing.sm,
+                  flexWrap: 'wrap',
+                  minWidth: 0,
+                }}
+              >
+                <Button
+                  componentId="mlflow.genai-overview.what-should-i-do-next"
+                  size="small"
+                  icon={<SparkleIcon color="ai" />}
+                  onClick={runAnalysis}
+                  disabled={analysisState === 'running'}
+                >
                   <FormattedMessage
-                    defaultMessage="Tool call metrics require Unity Catalog trace storage."
-                    description="Message shown on Tool Calls tab when experiment uses MySQL trace storage"
+                    defaultMessage="What should I do next?"
+                    description="GenAI overview suggested query"
                   />
-                </Typography.Text>
+                </Button>
+                <Button
+                  componentId="mlflow.genai-overview.find-common-failure-modes"
+                  size="small"
+                  icon={analysisState === 'running' ? <Spinner size="small" /> : <SparkleIcon color="ai" />}
+                  onClick={runAnalysis}
+                  disabled={analysisState === 'running'}
+                >
+                  <FormattedMessage
+                    defaultMessage="Find common failure modes"
+                    description="GenAI overview suggested query"
+                  />
+                </Button>
+              </div>
+              <Button
+                componentId="mlflow.genai-overview.submit-prompt"
+                type="primary"
+                icon={<ArrowRightIcon />}
+                aria-label="Submit prompt"
+              />
+            </div>
+          </div>
+        </section>
+
+        {analysisState !== 'idle' && (
+          <Card
+            componentId="mlflow.genai-overview.analysis-status-card"
+            disableHover
+            css={{ padding: theme.spacing.lg, width: '100%' }}
+          >
+            <div
+              css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.md, alignItems: 'center' }}
+            >
+              <div css={{ display: 'flex', gap: theme.spacing.md, alignItems: 'flex-start' }}>
+                <div
+                  css={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: theme.spacing.xl,
+                    height: theme.spacing.xl,
+                    borderRadius: theme.borders.borderRadiusMd,
+                    backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                    color: theme.colors.actionPrimaryBackgroundDefault,
+                    flexShrink: 0,
+                  }}
+                >
+                  {analysisState === 'running' ? <Spinner size="small" /> : <CheckCircleIcon />}
+                </div>
+                <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                  <Typography.Text bold>
+                    {analysisState === 'running' ? (
+                      <FormattedMessage
+                        defaultMessage="Analyzing recent traces"
+                        description="GenAI overview analysis running status"
+                      />
+                    ) : (
+                      <FormattedMessage
+                        defaultMessage="Failure analysis completed"
+                        description="GenAI overview analysis complete status"
+                      />
+                    )}
+                  </Typography.Text>
+                  <Typography.Text color="secondary">
+                    {analysisState === 'running' ? (
+                      <FormattedMessage
+                        defaultMessage="The page stays usable while MLflow groups likely failure modes in the background."
+                        description="GenAI overview analysis running description"
+                      />
+                    ) : (
+                      <FormattedMessage
+                        defaultMessage="{clusters} candidate clusters found across {traces} recent conversations."
+                        description="GenAI overview analysis complete description"
+                        values={{
+                          clusters: FAILURE_ANALYSIS_CLUSTERS.length,
+                          traces: FAILURE_ANALYSIS_TOTAL_CONVERSATIONS.toLocaleString(),
+                        }}
+                      />
+                    )}
+                  </Typography.Text>
+                </div>
+              </div>
+              {analysisState === 'complete' && (
+                <Button
+                  componentId="mlflow.genai-overview.open-analysis-result"
+                  type="primary"
+                  endIcon={<ArrowRightIcon />}
+                  onClick={() => navigate(analysisRoute)}
+                >
+                  <FormattedMessage defaultMessage="Open analysis" description="Open analysis result button" />
+                </Button>
               )}
-            </TabContentContainer>
-          </Tabs.Content>
-        </OverviewChartProvider>
-      </Tabs.Root>
-      {isIssueDetectionModalOpen && (
-        <IssueDetectionModal onClose={() => setIsIssueDetectionModalOpen(false)} experimentId={experimentId} />
-      )}
+            </div>
+          </Card>
+        )}
+
+        <TraceActivityChart />
+
+        <section
+          css={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: theme.spacing.xl,
+            alignItems: 'start',
+          }}
+        >
+          <RecentActivityPanel tracesRoute={tracesRoute} />
+          <SuggestedActionsPanel actions={suggestedActions} />
+        </section>
+      </div>
     </div>
   );
 };
-
-// Wrap in MonitoringConfigProvider so refresh button updates are received
-const ExperimentGenAIOverviewPage = () => (
-  <MonitoringConfigProvider>
-    <ExperimentGenAIOverviewPageImpl />
-  </MonitoringConfigProvider>
-);
 
 export default ExperimentGenAIOverviewPage;

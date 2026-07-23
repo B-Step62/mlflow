@@ -44,6 +44,8 @@ export interface IssueDetectionProgressProps {
   jobStatusError?: Error | null;
   /** Error message from backend when job failed */
   jobErrorMessage?: string;
+  /** Mock/prototype override for pages that should not query backend issues. */
+  issuesOverride?: number;
 }
 
 export const IssueDetectionProgress = ({
@@ -55,6 +57,7 @@ export const IssueDetectionProgress = ({
   isLoadingJobStatus,
   jobStatusError,
   jobErrorMessage,
+  issuesOverride,
 }: IssueDetectionProgressProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -103,11 +106,11 @@ export const IssueDetectionProgress = ({
   const { issues } = useSearchIssuesQuery({
     experimentId: experimentId ?? '',
     sourceRunId: runUuid ?? '',
-    enabled: Boolean(experimentId) && Boolean(runUuid),
+    enabled: Boolean(experimentId) && Boolean(runUuid) && issuesOverride === undefined,
     pollingEnabled: !jobComplete,
   });
 
-  const identifiedIssues = issues.length;
+  const identifiedIssues = issuesOverride ?? issues.length;
 
   useEffect(() => {
     if (isJobSucceeded && runUuid) {
