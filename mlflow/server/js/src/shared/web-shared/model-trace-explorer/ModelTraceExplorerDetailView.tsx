@@ -11,6 +11,7 @@ import { useModelTraceExplorerContext } from './ModelTraceExplorerContext';
 import type { ModelTraceExplorerResizablePaneRef } from './ModelTraceExplorerResizablePane';
 import ModelTraceExplorerResizablePane from './ModelTraceExplorerResizablePane';
 import ModelTraceExplorerSearchBox from './ModelTraceExplorerSearchBox';
+import { isV3ModelTraceInfo } from './ModelTraceExplorer.utils';
 import { useModelTraceExplorerViewState } from './ModelTraceExplorerViewStateContext';
 import { useModelTraceSearch } from './hooks/useModelTraceSearch';
 import { ModelTraceExplorerRightPaneTabs, RIGHT_PANE_MIN_WIDTH } from './right-pane/ModelTraceExplorerRightPaneTabs';
@@ -93,6 +94,7 @@ export const ModelTraceExplorerDetailView = ({
   const [isGraphExpanded, setIsGraphExpanded] = useState(false);
   const preExpandPaneRatioRef = useRef<number | null>(null);
   const { isSearchVisible } = useModelTraceExplorerContext();
+  const traceId = isV3ModelTraceInfo(modelTraceInfo) ? modelTraceInfo.trace_id : modelTraceInfo.request_id;
 
   // Ratio-based graph height: same pattern as ModelTraceExplorerResizablePane.
   // Store the ratio in a ref so it persists across container resizes without
@@ -410,7 +412,7 @@ export const ModelTraceExplorerDetailView = ({
                 setSpanFilterState={setSpanFilterState}
                 showGraph={showGraph && graphAvailable}
                 onToggleGraph={graphAvailable ? handleToggleGraph : undefined}
-                traceId={modelTraceInfo.trace_id}
+                traceId={traceId}
               />
             </div>
 
