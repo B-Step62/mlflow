@@ -10,7 +10,7 @@ import {
   ModelsIcon,
   PlayIcon,
   PlusMinusSquareIcon,
-  SpeechBubbleIcon,
+  TargetIcon,
   TextBoxIcon,
   UserGroupIcon,
 } from '@databricks/design-system';
@@ -49,17 +49,6 @@ const ExperimentPageSideNavGenAIConfig = {
     {
       label: (
         <FormattedMessage
-          defaultMessage="Sessions"
-          description="Label for the chat sessions tab in the MLflow experiment navbar"
-        />
-      ),
-      icon: <SpeechBubbleIcon />,
-      tabName: ExperimentPageTabName.ChatSessions,
-      componentId: 'mlflow.experiment-side-nav.genai.sessions',
-    },
-    {
-      label: (
-        <FormattedMessage
           defaultMessage="Dashboard"
           description="Label for the dashboard tab in the MLflow experiment navbar"
         />
@@ -68,8 +57,30 @@ const ExperimentPageSideNavGenAIConfig = {
       tabName: ExperimentPageTabName.Dashboard,
       componentId: 'mlflow.experiment-side-nav.genai.dashboard',
     },
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Issues"
+          description="Label for the issues tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <TargetIcon />,
+      tabName: ExperimentPageTabName.Issues,
+      componentId: 'mlflow.experiment-side-nav.genai.issues',
+    },
   ],
   evaluation: [
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Evaluation"
+          description="Label for the evaluation tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <PlusMinusSquareIcon />,
+      tabName: ExperimentPageTabName.EvaluationRuns,
+      componentId: 'mlflow.experiment-side-nav.genai.evaluation-runs',
+    },
     {
       label: (
         <FormattedMessage
@@ -91,17 +102,6 @@ const ExperimentPageSideNavGenAIConfig = {
       icon: <DatabaseIcon />,
       tabName: ExperimentPageTabName.Datasets,
       componentId: 'mlflow.experiment-side-nav.genai.datasets',
-    },
-    {
-      label: (
-        <FormattedMessage
-          defaultMessage="Evaluation runs"
-          description="Label for the evaluation runs tab in the MLflow experiment navbar"
-        />
-      ),
-      icon: <PlusMinusSquareIcon />,
-      tabName: ExperimentPageTabName.EvaluationRuns,
-      componentId: 'mlflow.experiment-side-nav.genai.evaluation-runs',
     },
   ],
   'prompts-versions': [
@@ -191,8 +191,8 @@ export const getExperimentPageSideNavSectionLabel = (
     case 'evaluation':
       return (
         <FormattedMessage
-          defaultMessage="Evaluation"
-          description="Label for the evaluation section in the MLflow experiment navbar"
+          defaultMessage="Quality"
+          description="Label for the quality section in the MLflow experiment navbar"
         />
       );
     case 'prompts-versions':
@@ -257,6 +257,7 @@ export const useExperimentPageSideNavConfig = ({
       ...ExperimentPageSideNavGenAIConfig,
       evaluation: enableScorersUI()
         ? [
+            ...ExperimentPageSideNavGenAIConfig.evaluation.slice(0, 1),
             {
               label: (
                 <FormattedMessage
@@ -268,7 +269,7 @@ export const useExperimentPageSideNavConfig = ({
               tabName: ExperimentPageTabName.Judges,
               componentId: 'mlflow.experiment-side-nav.genai.judges',
             },
-            ...ExperimentPageSideNavGenAIConfig.evaluation,
+            ...ExperimentPageSideNavGenAIConfig.evaluation.slice(1),
           ]
         : ExperimentPageSideNavGenAIConfig.evaluation,
     };

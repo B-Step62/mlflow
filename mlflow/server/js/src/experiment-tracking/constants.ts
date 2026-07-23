@@ -153,6 +153,7 @@ export enum ExperimentPageTabName {
   Dashboard = 'dashboard',
   Runs = 'runs',
   Traces = 'traces',
+  Issues = 'issues',
   Models = 'models',
   EvaluationMonitoring = 'evaluation-monitoring',
   Judges = 'judges',

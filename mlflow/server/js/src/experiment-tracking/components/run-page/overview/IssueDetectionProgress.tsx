@@ -12,7 +12,7 @@ import {
 } from '@databricks/design-system';
 import { GenAIMarkdownRenderer } from '../../../../shared/web-shared/genai-markdown-renderer/GenAIMarkdownRenderer';
 import { useNavigate, useParams } from '../../../../common/utils/RoutingUtils';
-import { RunPageTabName } from '../../../constants';
+import { ExperimentPageTabName, RunPageTabName } from '../../../constants';
 import Routes from '../../../routes';
 import Utils from '../../../../common/utils/Utils';
 import { useSearchIssuesQuery } from '../hooks/useSearchIssuesQuery';
@@ -73,8 +73,8 @@ export const IssueDetectionProgress = ({
   };
 
   const handleViewIssues = () => {
-    if (experimentId && runUuid) {
-      navigate(Routes.getIssueDetectionRunDetailsTabRoute(experimentId, runUuid, RunPageTabName.ISSUES));
+    if (experimentId) {
+      navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Issues));
     }
   };
 

@@ -1,9 +1,11 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import type { TagColors } from '@databricks/design-system';
 import { TableSkeleton, useDesignSystemTheme } from '@databricks/design-system';
 import { IssuesTabEmptyState } from './IssuesTabEmptyState';
 import { IssueCard } from './IssueCard';
-import { IssueTracesPanel } from './IssueTracesPanel';
+import { IssueDetailsPanel } from './IssueDetailsPanel';
 import { IssueStatusFilter, type IssueStatusFilterValue } from './IssueStatusFilter';
+import { IssueTracesPanel } from './IssueTracesPanel';
 import { useSearchIssuesQuery, type Issue } from './hooks/useSearchIssuesQuery';
 import { useSelectedIssueId } from './hooks/useSelectedIssueId';
 
@@ -12,15 +14,33 @@ export interface RunViewIssuesTabProps {
   experimentId: string;
 }
 
-export const RunViewIssuesTab = ({ runUuid, experimentId }: RunViewIssuesTabProps) => {
+export const RunViewIssuesContent = ({
+  issues,
+  isLoading,
+  experimentId,
+  hideIssueActions = false,
+  getIssueSourceLabel,
+  getIssueSourceTagColor,
+  compactCards = false,
+  defaultSelectFirstIssue = false,
+  detailsPanel = 'traces',
+  onIssueStatusChange,
+}: {
+  issues: Issue[];
+  isLoading?: boolean;
+  experimentId: string;
+  hideIssueActions?: boolean;
+  getIssueSourceLabel?: (issue: Issue) => ReactNode;
+  getIssueSourceTagColor?: (issue: Issue) => TagColors;
+  compactCards?: boolean;
+  defaultSelectFirstIssue?: boolean;
+  detailsPanel?: 'traces' | 'details';
+  onIssueStatusChange?: (issueId: string, status: Issue['status']) => void;
+}) => {
   const { theme } = useDesignSystemTheme();
   const [statusFilter, setStatusFilter] = useState<IssueStatusFilterValue>('pending');
   const issueCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const autoSwitchedForIssueRef = useRef<string | null>(null);
-  const { issues, isLoading } = useSearchIssuesQuery({
-    experimentId,
-    sourceRunId: runUuid,
-  });
 
   const filteredIssues = useMemo(() => {
     if (statusFilter === 'all') {
@@ -74,8 +94,8 @@ export const RunViewIssuesTab = ({ runUuid, experimentId }: RunViewIssuesTabProp
   };
 
   const selectedIssue = useMemo(
-    () => issues.find((i) => i.issue_id === selectedIssueId) || null,
-    [issues, selectedIssueId],
+    () => issues.find((i) => i.issue_id === selectedIssueId) || (defaultSelectFirstIssue ? filteredIssues[0] : null),
+    [defaultSelectFirstIssue, filteredIssues, issues, selectedIssueId],
   );
 
   if (isLoading) {
@@ -111,34 +131,49 @@ export const RunViewIssuesTab = ({ runUuid, experimentId }: RunViewIssuesTabProp
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'auto',
+        overflow: 'hidden',
         minWidth: 320,
+        backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />
+      {!compactCards && <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />}
       <div
         css={{
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: selectedIssue ? 'minmax(280px, 1fr) 2fr' : '1fr',
+          gridTemplateColumns: selectedIssue
+            ? compactCards
+              ? 'minmax(300px, 360px) minmax(0, 1fr)'
+              : 'minmax(280px, 1fr) 2fr'
+            : '1fr',
           overflow: 'hidden',
+          minHeight: 0,
         }}
       >
         <div
           css={{
             display: 'flex',
             flexDirection: 'column',
-            gap: theme.spacing.sm,
-            padding: theme.spacing.md,
+            gap: compactCards ? theme.spacing.xs : theme.spacing.sm,
+            padding: compactCards
+              ? `${theme.spacing.xs}px ${theme.spacing.sm}px ${theme.spacing.sm}px`
+              : theme.spacing.md,
+            borderRight: compactCards && selectedIssue ? `1px solid ${theme.colors.border}` : undefined,
             overflow: 'auto',
+            minHeight: 0,
           }}
         >
+          {compactCards && <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />}
           {filteredIssues.map((issue) => (
             <div key={issue.issue_id} ref={(el) => (issueCardRefs.current[issue.issue_id] = el)}>
               <IssueCard
                 issue={issue}
                 isSelected={selectedIssue?.issue_id === issue.issue_id}
                 onSelect={() => handleSelect(issue)}
+                hideActions={hideIssueActions}
+                sourceLabel={getIssueSourceLabel?.(issue)}
+                sourceTagColor={getIssueSourceTagColor?.(issue)}
+                compact={compactCards}
               />
             </div>
           ))}
@@ -148,16 +183,33 @@ export const RunViewIssuesTab = ({ runUuid, experimentId }: RunViewIssuesTabProp
             css={{
               flex: 1,
               display: 'flex',
-              borderLeft: `1px solid ${theme.colors.border}`,
+              borderLeft: compactCards ? undefined : `1px solid ${theme.colors.border}`,
               minHeight: 0,
               minWidth: 0,
               overflowY: 'auto',
             }}
           >
-            <IssueTracesPanel issue={selectedIssue} experimentId={experimentId} />
+            {detailsPanel === 'details' ? (
+              <IssueDetailsPanel
+                issue={selectedIssue}
+                experimentId={experimentId}
+                onStatusChange={onIssueStatusChange}
+              />
+            ) : (
+              <IssueTracesPanel issue={selectedIssue} experimentId={experimentId} />
+            )}
           </div>
         )}
       </div>
     </div>
   );
+};
+
+export const RunViewIssuesTab = ({ runUuid, experimentId }: RunViewIssuesTabProps) => {
+  const { issues, isLoading } = useSearchIssuesQuery({
+    experimentId,
+    sourceRunId: runUuid,
+  });
+
+  return <RunViewIssuesContent issues={issues} isLoading={isLoading} experimentId={experimentId} />;
 };

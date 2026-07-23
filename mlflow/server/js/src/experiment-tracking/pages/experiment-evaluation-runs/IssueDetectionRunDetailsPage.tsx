@@ -1,8 +1,18 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
-import { Button, Typography, useDesignSystemTheme } from '@databricks/design-system';
-import { Link, useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
+import { Button, Empty, ForkHorizontalIcon, Spinner, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  isV3ModelTraceInfo,
+  ModelTraceExplorer,
+  ModelTraceExplorerDrawer,
+  useGetTracesById,
+} from '@databricks/web-shared/model-trace-explorer';
+import { useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
 import { RunPage } from '../../components/run-page/RunPage';
+import { RunViewModeSwitch } from '../../components/run-page/RunViewModeSwitch';
+import { useRunViewActiveTab } from '../../components/run-page/useRunViewActiveTab';
+import { RunViewIssuesContent } from '../../components/run-page/RunViewIssuesTab';
+import type { Issue, IssueStatus } from '../../components/run-page/hooks/useSearchIssuesQuery';
 import {
   ExperimentPageTabName,
   RunPageTabName,
@@ -22,6 +32,7 @@ import {
   FAILURE_ANALYSIS_SUMMARY,
   FAILURE_ANALYSIS_TOTAL_CONVERSATIONS,
   MOCK_FAILURE_ANALYSIS_RUN_ID,
+  MOCK_FAILURE_ANALYSIS_ISSUES,
 } from '../experiment-overview/failureAnalysisMock';
 
 const createMockIssueDetectionTags = (): Record<string, KeyValueEntity> => ({
@@ -51,9 +62,205 @@ const createMockIssueDetectionTags = (): Record<string, KeyValueEntity> => ({
   },
 });
 
+const truncateSourceJobId = (sourceRunId?: string) => {
+  if (!sourceRunId) {
+    return '';
+  }
+  const displayId = sourceRunId.replace(/^job_/, '');
+  return displayId.length > 8 ? `${displayId.slice(0, 7)}...` : displayId;
+};
+
+const MockIssueDetectionIssuesTab = ({ experimentId }: { experimentId: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, IssueStatus>>({});
+  const issues = useMemo<Issue[]>(
+    () =>
+      MOCK_FAILURE_ANALYSIS_ISSUES.map(
+        ({
+          issue_id,
+          experiment_id,
+          name,
+          description,
+          severity,
+          status,
+          source_run_id,
+          created_by,
+          created_timestamp,
+          last_updated_timestamp,
+          categories,
+          trace_count,
+          recommendation,
+          example_trace_ids,
+        }) => ({
+          issue_id,
+          experiment_id: experimentId || experiment_id,
+          name,
+          description,
+          severity,
+          status: statusOverrides[issue_id] ?? status,
+          source_run_id,
+          created_by,
+          created_timestamp,
+          last_updated_timestamp,
+          categories: [...categories],
+          trace_count,
+          recommendation,
+          example_trace_ids: [...example_trace_ids],
+        }),
+      ),
+    [experimentId, statusOverrides],
+  );
+
+  return (
+    <div
+      css={{
+        minHeight: 520,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        overflow: 'hidden',
+      }}
+    >
+      <RunViewIssuesContent
+        issues={issues}
+        experimentId={experimentId}
+        hideIssueActions
+        compactCards
+        defaultSelectFirstIssue
+        detailsPanel="details"
+        getIssueSourceLabel={(issue) => truncateSourceJobId(issue.source_run_id)}
+        getIssueSourceTagColor={() => 'charcoal'}
+        onIssueStatusChange={(issueId, status) =>
+          setStatusOverrides((current) => ({
+            ...current,
+            [issueId]: status,
+          }))
+        }
+      />
+    </div>
+  );
+};
+
+const MockIssueDetectionTracesTab = ({ experimentId }: { experimentId: string }) => {
+  const { theme } = useDesignSystemTheme();
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const selectedTraceIds = selectedTraceId ? [selectedTraceId] : [];
+  const { data: selectedTraces, isLoading: isLoadingSelectedTrace } = useGetTracesById(selectedTraceIds);
+  const selectedTrace = selectedTraces?.[0];
+  const traces = MOCK_FAILURE_ANALYSIS_ISSUES.flatMap((issue) =>
+    issue.example_trace_ids.map((traceId) => ({
+      traceId,
+      issueName: issue.name,
+    })),
+  );
+
+  return (
+    <>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.md,
+          border: `1px solid ${theme.colors.border}`,
+          borderRadius: theme.borders.borderRadiusMd,
+          padding: theme.spacing.lg,
+        }}
+      >
+        <Typography.Title level={4} css={{ margin: 0 }}>
+          <FormattedMessage defaultMessage="Linked traces" description="Mock issue detection linked traces title" />
+        </Typography.Title>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+          {traces.map(({ traceId, issueName }) => (
+            <button
+              key={traceId}
+              type="button"
+              onClick={() => setSelectedTraceId(traceId)}
+              css={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(140px, 220px) minmax(0, 1fr)',
+                alignItems: 'center',
+                gap: theme.spacing.md,
+                width: '100%',
+                padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusSm,
+                background: theme.colors.backgroundPrimary,
+                color: theme.colors.textPrimary,
+                textAlign: 'left',
+                cursor: 'pointer',
+                font: 'inherit',
+                ':hover': {
+                  backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                },
+                ':focus-visible': {
+                  outline: `2px solid ${theme.colors.actionPrimaryBackgroundDefault}`,
+                  outlineOffset: 1,
+                },
+              }}
+            >
+              <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, minWidth: 0 }}>
+                <ForkHorizontalIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+                <Typography.Text bold css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {traceId}
+                </Typography.Text>
+              </span>
+              <Typography.Text color="secondary" css={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {issueName}
+              </Typography.Text>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedTraceId && (
+        <ModelTraceExplorerDrawer
+          handleClose={() => setSelectedTraceId(null)}
+          selectPreviousEval={() => undefined}
+          selectNextEval={() => undefined}
+          isPreviousAvailable={false}
+          isNextAvailable={false}
+          renderModalTitle={() => selectedTraceId}
+          isLoading={isLoadingSelectedTrace}
+          experimentId={experimentId}
+          traceInfo={selectedTrace?.info && isV3ModelTraceInfo(selectedTrace.info) ? selectedTrace.info : undefined}
+        >
+          {isLoadingSelectedTrace ? (
+            <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Spinner />
+            </div>
+          ) : selectedTrace ? (
+            <div
+              css={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                marginLeft: -theme.spacing.lg,
+                marginRight: -theme.spacing.lg,
+                marginBottom: -theme.spacing.lg,
+              }}
+            >
+              <ModelTraceExplorer modelTrace={selectedTrace} />
+            </div>
+          ) : (
+            <Empty
+              description={null}
+              title={
+                <FormattedMessage
+                  defaultMessage="No trace data recorded"
+                  description="Empty state in issue detection trace drawer when trace has no data"
+                />
+              }
+            />
+          )}
+        </ModelTraceExplorerDrawer>
+      )}
+    </>
+  );
+};
+
 const MockIssueDetectionRunDetailsPage = ({ experimentId, runUuid }: { experimentId: string; runUuid: string }) => {
   const { theme } = useDesignSystemTheme();
   const navigate = useNavigate();
+  const activeTab = useRunViewActiveTab();
   const now = Date.now();
   const runInfo: RunInfoEntity = {
     artifactUri: '',
@@ -88,7 +295,7 @@ const MockIssueDetectionRunDetailsPage = ({ experimentId, runUuid }: { experimen
           </Typography.Title>
           <Typography.Text color="secondary">
             <FormattedMessage
-              defaultMessage="Mock issue detection run generated from recent traces."
+              defaultMessage="Issue detection run generated from recent traces."
               description="Mock issue detection result page subtitle"
             />
           </Typography.Text>
@@ -100,11 +307,22 @@ const MockIssueDetectionRunDetailsPage = ({ experimentId, runUuid }: { experimen
           <FormattedMessage defaultMessage="Back to Overview" description="Back to overview button" />
         </Button>
       </div>
-      <IssueDetectionRunOverview
-        runInfo={runInfo}
-        tags={createMockIssueDetectionTags()}
-        issuesOverride={FAILURE_ANALYSIS_CLUSTERS.length}
+      <RunViewModeSwitch
+        getBaseRoute={Routes.getIssueDetectionRunDetailsRoute}
+        getTabRoute={Routes.getIssueDetectionRunDetailsTabRoute}
+        visibleTabs={[RunPageTabName.OVERVIEW, RunPageTabName.ISSUES, RunPageTabName.TRACES]}
       />
+      {activeTab === RunPageTabName.ISSUES ? (
+        <MockIssueDetectionIssuesTab experimentId={experimentId} />
+      ) : activeTab === RunPageTabName.TRACES ? (
+        <MockIssueDetectionTracesTab experimentId={experimentId} />
+      ) : (
+        <IssueDetectionRunOverview
+          runInfo={runInfo}
+          tags={createMockIssueDetectionTags()}
+          issuesOverride={FAILURE_ANALYSIS_CLUSTERS.length}
+        />
+      )}
     </div>
   );
 };

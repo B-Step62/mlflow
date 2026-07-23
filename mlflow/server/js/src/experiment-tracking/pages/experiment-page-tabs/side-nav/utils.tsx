@@ -7,6 +7,7 @@ export const isTracesRelatedTab = (tabName: ExperimentPageTabName) => {
     tabName === ExperimentPageTabName.Overview ||
     tabName === ExperimentPageTabName.Dashboard ||
     tabName === ExperimentPageTabName.Traces ||
+    tabName === ExperimentPageTabName.Issues ||
     tabName === ExperimentPageTabName.SingleChatSession ||
     tabName === ExperimentPageTabName.ChatSessions
   );

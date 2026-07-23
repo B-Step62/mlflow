@@ -11,6 +11,7 @@ const ExperimentPageRoutePathToTabNameMap = map(
     [RoutePaths.experimentPageTabDashboard]: ExperimentPageTabName.Dashboard,
     [RoutePaths.experimentPageTabRuns]: ExperimentPageTabName.Runs,
     [RoutePaths.experimentPageTabTraces]: ExperimentPageTabName.Traces,
+    [RoutePaths.experimentPageTabIssues]: ExperimentPageTabName.Issues,
     [RoutePaths.experimentPageTabModels]: ExperimentPageTabName.Models,
     [RoutePaths.experimentPageTabEvaluationRuns]: ExperimentPageTabName.EvaluationRuns,
     [RoutePaths.experimentPageTabDatasets]: ExperimentPageTabName.Datasets,

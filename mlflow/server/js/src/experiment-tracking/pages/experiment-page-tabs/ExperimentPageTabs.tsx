@@ -1,5 +1,13 @@
-import React, { useEffect, useMemo } from 'react';
-import { Button, PageWrapper, ParagraphSkeleton, useDesignSystemTheme } from '@databricks/design-system';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  CheckCircleIcon,
+  ClockIcon,
+  ParagraphSkeleton,
+  useDesignSystemTheme,
+  useLegacyNotification,
+} from '@databricks/design-system';
+import { FormattedMessage } from 'react-intl';
 import { PredefinedError } from '@databricks/web-shared/errors';
 import invariant from 'invariant';
 import { useNavigate, useParams, Outlet, useLocation, matchPath } from '../../../common/utils/RoutingUtils';
@@ -33,6 +41,53 @@ import { HeaderVisibilityProvider, useHeaderVisibility } from './ExperimentPageH
 import { ExperimentViewSavedViewsButton } from '../../components/experiment-page/components/header/ExperimentViewSavedViewsButton';
 import { ExperimentViewShareButton } from '../../components/experiment-page/components/header/ExperimentViewShareButton';
 import type { ExperimentEntity } from '../../types';
+
+const ExperimentIssuesHeaderActions = ({ experimentId }: { experimentId: string }) => {
+  const [notification, notificationContextHolder] = useLegacyNotification();
+  const [isScheduled, setIsScheduled] = useState(false);
+
+  return (
+    <>
+      {notificationContextHolder}
+      <Button
+        componentId="mlflow.experiment-issues.schedule-detection"
+        icon={isScheduled ? <CheckCircleIcon /> : <ClockIcon />}
+        disabled={isScheduled}
+        onClick={() => {
+          setIsScheduled(true);
+          notification.info({
+            placement: 'topRight',
+            message: (
+              <FormattedMessage
+                defaultMessage="Issue detection scheduled"
+                description="Notification title shown after scheduling issue detection"
+              />
+            ),
+            description: (
+              <FormattedMessage
+                defaultMessage="MLflow will analyze traces from the last 7 days for experiment {experimentId} on a recurring schedule."
+                description="Notification description shown after scheduling issue detection"
+                values={{ experimentId }}
+              />
+            ),
+          });
+        }}
+      >
+        {isScheduled ? (
+          <FormattedMessage
+            defaultMessage="Detection scheduled"
+            description="Issues page header action after detection schedule is enabled"
+          />
+        ) : (
+          <FormattedMessage
+            defaultMessage="Schedule detection"
+            description="Issues page header action to schedule issue detection"
+          />
+        )}
+      </Button>
+    </>
+  );
+};
 
 const ExperimentPageTabsImpl = () => {
   const { experimentId, tabName } = useParams();
@@ -195,12 +250,14 @@ const ExperimentPageTabsImpl = () => {
   // dropdown reads saved-view tags and the active-view URL param only, and the Save modal
   // reconstructs the current view from its localStorage persistKey — so no live uiState needs to be
   // plumbed up here. Runs-only for now; traces parity fills the same slot separately.
-  const headerSavedViewsSlot =
+  const headerActionsSlot =
     activeTab === ExperimentPageTabName.Runs && experiment ? (
       <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
         <ExperimentViewSavedViewsButton experiment={experiment as unknown as ExperimentEntity} />
         <ExperimentViewShareButton experimentId={experimentId} />
       </div>
+    ) : activeTab === ExperimentPageTabName.Issues ? (
+      <ExperimentIssuesHeaderActions experimentId={experimentId} />
     ) : undefined;
 
   return (
@@ -212,7 +269,7 @@ const ExperimentPageTabsImpl = () => {
           onNoteUpdated={refetchExperiment}
           error={experimentError}
           inferredExperimentKind={inferredExperimentKind}
-          savedViewsSlot={headerSavedViewsSlot}
+          savedViewsSlot={headerActionsSlot}
           experimentKindSelector={
             !enableWorkflowBasedNavigation ? (
               <ExperimentViewHeaderKindSelector

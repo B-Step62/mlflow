@@ -16,6 +16,7 @@ import {
   PlayIcon,
   PlusMinusSquareIcon,
   SpeechBubbleIcon,
+  TargetIcon,
   TextBoxIcon,
   UserGroupIcon,
 } from '@databricks/design-system';
@@ -47,6 +48,8 @@ export const getTabDisplayIcon = (tabName: ExperimentPageTabName | undefined) =>
       return <ListIcon />;
     case ExperimentPageTabName.Traces:
       return <ForkHorizontalIcon />;
+    case ExperimentPageTabName.Issues:
+      return <TargetIcon />;
     case ExperimentPageTabName.Models:
       return <ModelsIcon />;
     case ExperimentPageTabName.ChatSessions:
@@ -129,6 +132,13 @@ const getMLTabDisplayName = (tabName: ExperimentPageTabName) => {
         <FormattedMessage
           defaultMessage="Traces"
           description="Label for the traces tab in the MLflow experiment navbar"
+        />
+      );
+    case ExperimentPageTabName.Issues:
+      return (
+        <FormattedMessage
+          defaultMessage="Issues"
+          description="Label for the issues tab in the MLflow experiment navbar"
         />
       );
     case ExperimentPageTabName.SingleChatSession:

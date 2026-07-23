@@ -302,6 +302,7 @@ const ExperimentGenAIOverviewPage = () => {
   const evaluationRunsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.EvaluationRuns);
   const playgroundRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Playground);
   const analysisRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, MOCK_FAILURE_ANALYSIS_RUN_ID);
+  const analysisIssuesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Issues);
   const [submittedAnalysisRoute, setSubmittedAnalysisRoute] = useState(analysisRoute);
   const recentTraceTimeRange = useMemo(getRecentTraceTimeRange, []);
   const traceSearchLocations = useMemo(
@@ -353,9 +354,9 @@ const ExperimentGenAIOverviewPage = () => {
   const runMockAnalysis = useCallback(() => {
     setUsesMockAnalysis(true);
     setAnalysisTraceCount(FAILURE_ANALYSIS_TOTAL_CONVERSATIONS);
-    setSubmittedAnalysisRoute(analysisRoute);
+    setSubmittedAnalysisRoute(analysisIssuesRoute);
     setAnalysisState('preparing');
-  }, [analysisRoute]);
+  }, [analysisIssuesRoute]);
 
   useEffect(() => {
     if (
@@ -744,7 +745,7 @@ const ExperimentGenAIOverviewPage = () => {
                       description="View issue detection progress button"
                     />
                   ) : (
-                    <FormattedMessage defaultMessage="Open analysis" description="Open analysis result button" />
+                    <FormattedMessage defaultMessage="View 3 issues" description="Open detected issues button" />
                   )}
                 </Button>
               )}

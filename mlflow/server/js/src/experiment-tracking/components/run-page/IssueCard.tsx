@@ -16,7 +16,7 @@ import {
 import type { TagColors } from '@databricks/design-system';
 import { defineMessage, FormattedMessage, useIntl } from 'react-intl';
 import type { MessageDescriptor } from 'react-intl';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import Utils from '../../../common/utils/Utils';
 import { type Issue, type IssueStatus, type IssueSeverity } from './hooks/useSearchIssuesQuery';
 import { useUpdateIssue } from './hooks/useUpdateIssue';
@@ -28,6 +28,10 @@ interface IssueCardProps {
   issue: Issue;
   isSelected: boolean;
   onSelect: () => void;
+  hideActions?: boolean;
+  sourceLabel?: ReactNode;
+  sourceTagColor?: TagColors;
+  compact?: boolean;
 }
 
 const STATUS_TAG_CONFIG: Record<IssueStatus, { color: TagColors; label: MessageDescriptor }> = {
@@ -76,7 +80,15 @@ const getCategoryLabel = (categoryId: string): React.ReactNode => {
   return definition?.title ?? categoryId;
 };
 
-export const IssueCard = ({ issue, isSelected, onSelect }: IssueCardProps) => {
+export const IssueCard = ({
+  issue,
+  isSelected,
+  onSelect,
+  hideActions = false,
+  sourceLabel,
+  sourceTagColor = 'charcoal',
+  compact = false,
+}: IssueCardProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const { updateIssueAsync, isUpdating } = useUpdateIssue();
@@ -184,6 +196,51 @@ export const IssueCard = ({ issue, isSelected, onSelect }: IssueCardProps) => {
   const statusConfig = STATUS_TAG_CONFIG[issue.status];
   const severityConfig = issue.severity ? SEVERITY_TAG_CONFIG[issue.severity] : undefined;
 
+  if (compact) {
+    return (
+      <Card
+        componentId="mlflow.issues.issue-card"
+        css={{
+          padding: theme.spacing.md,
+          width: '100%',
+          boxSizing: 'border-box',
+          cursor: 'pointer',
+          transition: 'box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.3s ease',
+          border: isSelected ? `1px solid ${theme.colors.actionPrimaryBackgroundDefault}` : undefined,
+          backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : undefined,
+        }}
+        onClick={onSelect}
+      >
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+            {severityConfig && (
+              <Tag componentId="mlflow.issues.severity-tag" color={severityConfig.color} css={{ flexShrink: 0 }}>
+                {intl.formatMessage(severityConfig.label)}
+              </Tag>
+            )}
+            {sourceLabel && (
+              <Tag componentId="mlflow.issues.source-job-tag" color={sourceTagColor} css={{ flexShrink: 0 }}>
+                {sourceLabel}
+              </Tag>
+            )}
+          </div>
+          <Typography.Title level={4} css={{ margin: 0, marginBottom: '0 !important' }}>
+            {issue.name}
+          </Typography.Title>
+          {issue.trace_count !== undefined && (
+            <Typography.Text color="secondary" css={{ fontSize: theme.typography.fontSizeSm }}>
+              <FormattedMessage
+                defaultMessage="{count} impacted {count, plural, one {trace} other {traces}}"
+                description="Compact issue card impacted trace count"
+                values={{ count: issue.trace_count }}
+              />
+            </Typography.Text>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card
       componentId="mlflow.issues.issue-card"
@@ -227,6 +284,11 @@ export const IssueCard = ({ issue, isSelected, onSelect }: IssueCardProps) => {
                   {intl.formatMessage(severityConfig.label)}
                 </Tag>
               )
+            )}
+            {sourceLabel && (
+              <Tag componentId="mlflow.issues.source-tag" color={sourceTagColor} css={{ flexShrink: 0 }}>
+                {sourceLabel}
+              </Tag>
             )}
             <Typography.Title level={4} css={{ margin: 0, marginBottom: '0 !important' }}>
               {issue.name}
@@ -339,90 +401,92 @@ export const IssueCard = ({ issue, isSelected, onSelect }: IssueCardProps) => {
               })}
             </div>
           )}
-          <div
-            css={{
-              display: 'flex',
-              gap: theme.spacing.xs,
-              flexWrap: 'wrap',
-              marginLeft: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {isEditing ? (
-              <>
-                <Button
-                  componentId="mlflow.issues.save-button"
-                  type="primary"
-                  size="small"
-                  onClick={handleSave}
-                  loading={isUpdating}
-                >
-                  <FormattedMessage defaultMessage="Save" description="Button to save issue changes" />
-                </Button>
-                <Button
-                  componentId="mlflow.issues.cancel-button"
-                  type="tertiary"
-                  size="small"
-                  onClick={handleCancel}
-                  disabled={isUpdating}
-                >
-                  <FormattedMessage defaultMessage="Cancel" description="Button to cancel editing" />
-                </Button>
-              </>
-            ) : (
-              <>
-                {issue.status === 'pending' && (
+          {!hideActions && (
+            <div
+              css={{
+                display: 'flex',
+                gap: theme.spacing.xs,
+                flexWrap: 'wrap',
+                marginLeft: 'auto',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isEditing ? (
+                <>
                   <Button
-                    componentId="mlflow.issues.edit-button"
-                    type="tertiary"
+                    componentId="mlflow.issues.save-button"
+                    type="primary"
                     size="small"
-                    icon={<PencilIcon />}
-                    onClick={handleEditClick}
-                  >
-                    <FormattedMessage defaultMessage="Edit" description="Button to edit an issue" />
-                  </Button>
-                )}
-                {issue.status === 'pending' && (
-                  <Button
-                    componentId="mlflow.issues.resolve-button"
-                    type="tertiary"
-                    size="small"
-                    icon={<CheckCircleIcon />}
-                    onClick={handleStatusChange('resolved')}
+                    onClick={handleSave}
                     loading={isUpdating}
                   >
-                    <FormattedMessage defaultMessage="Resolve" description="Button to resolve an issue" />
+                    <FormattedMessage defaultMessage="Save" description="Button to save issue changes" />
                   </Button>
-                )}
-                {issue.status === 'pending' && (
                   <Button
-                    componentId="mlflow.issues.reject-button"
+                    componentId="mlflow.issues.cancel-button"
                     type="tertiary"
                     size="small"
-                    icon={<CloseIcon />}
-                    onClick={handleStatusChange('rejected')}
-                    loading={isUpdating}
+                    onClick={handleCancel}
+                    disabled={isUpdating}
                   >
-                    <FormattedMessage defaultMessage="Reject" description="Button to reject an issue" />
+                    <FormattedMessage defaultMessage="Cancel" description="Button to cancel editing" />
                   </Button>
-                )}
-                {(issue.status === 'resolved' || issue.status === 'rejected') && (
-                  <Button
-                    componentId="mlflow.issues.move-to-pending-button"
-                    type="tertiary"
-                    size="small"
-                    onClick={handleStatusChange('pending')}
-                    loading={isUpdating}
-                  >
-                    <FormattedMessage
-                      defaultMessage="Move to pending"
-                      description="Button to move an issue back to pending status"
-                    />
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
+                </>
+              ) : (
+                <>
+                  {issue.status === 'pending' && (
+                    <Button
+                      componentId="mlflow.issues.edit-button"
+                      type="tertiary"
+                      size="small"
+                      icon={<PencilIcon />}
+                      onClick={handleEditClick}
+                    >
+                      <FormattedMessage defaultMessage="Edit" description="Button to edit an issue" />
+                    </Button>
+                  )}
+                  {issue.status === 'pending' && (
+                    <Button
+                      componentId="mlflow.issues.resolve-button"
+                      type="tertiary"
+                      size="small"
+                      icon={<CheckCircleIcon />}
+                      onClick={handleStatusChange('resolved')}
+                      loading={isUpdating}
+                    >
+                      <FormattedMessage defaultMessage="Resolve" description="Button to resolve an issue" />
+                    </Button>
+                  )}
+                  {issue.status === 'pending' && (
+                    <Button
+                      componentId="mlflow.issues.reject-button"
+                      type="tertiary"
+                      size="small"
+                      icon={<CloseIcon />}
+                      onClick={handleStatusChange('rejected')}
+                      loading={isUpdating}
+                    >
+                      <FormattedMessage defaultMessage="Reject" description="Button to reject an issue" />
+                    </Button>
+                  )}
+                  {(issue.status === 'resolved' || issue.status === 'rejected') && (
+                    <Button
+                      componentId="mlflow.issues.move-to-pending-button"
+                      type="tertiary"
+                      size="small"
+                      onClick={handleStatusChange('pending')}
+                      loading={isUpdating}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Move to pending"
+                        description="Button to move an issue back to pending status"
+                      />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Card>

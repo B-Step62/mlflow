@@ -20,6 +20,8 @@ export interface Issue {
   last_updated_timestamp: number;
   categories?: string[];
   trace_count?: number;
+  recommendation?: string;
+  example_trace_ids?: string[];
 }
 
 type SearchIssuesResponse = {

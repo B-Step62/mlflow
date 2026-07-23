@@ -117,6 +117,19 @@ const getExperimentPageRouteDefs = () => {
           } satisfies RouteHandle,
         },
         {
+          path: RoutePaths.experimentPageTabIssues,
+          pageId: PageId.experimentPageTabIssues,
+          element: createLazyRouteElement(() => import('./pages/experiment-issues/ExperimentIssuesPage')),
+          handle: {
+            getPageTitle: (params) => `Issues - Experiment ${params['experimentId']}`,
+            getAssistantPrompts: () => [
+              'Prioritize the newly detected issues.',
+              'Draft evaluation checks for these failure modes.',
+              'Show traces that best explain the top issue.',
+            ],
+          } satisfies RouteHandle,
+        },
+        {
           path: RoutePaths.experimentPageTabChatSessions,
           pageId: PageId.experimentPageTabChatSessions,
           element: createLazyRouteElement(() => import('./pages/experiment-chat-sessions/ExperimentChatSessionsPage')),

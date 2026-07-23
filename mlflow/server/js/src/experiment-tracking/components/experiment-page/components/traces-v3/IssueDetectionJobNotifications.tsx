@@ -4,7 +4,7 @@ import { FormattedMessage } from '@databricks/i18n';
 import { useNavigate, useSearchParams } from '../../../../../common/utils/RoutingUtils';
 import LocalStorageUtils from '../../../../../common/utils/LocalStorageUtils';
 import Routes from '../../../../routes';
-import { RunPageTabName } from '../../../../constants';
+import { ExperimentPageTabName } from '../../../../constants';
 import { JobStatus, isJobComplete, useFetchJobStatus } from '../../../run-page/hooks/useFetchJobStatus';
 import { getPreservedQueryString } from '../../../../pages/experiment-page-tabs/side-nav/utils';
 
@@ -173,13 +173,8 @@ export const recordSubmittedIssueDetectionJob = (
   window.dispatchEvent(new CustomEvent(ISSUE_DETECTION_JOB_SUBMITTED_EVENT, { detail: submittedJob }));
 };
 
-const getIssueDetectionRunRoute = (experimentId: string, runId: string, issueCount?: number) => {
-  if (issueCount === undefined || issueCount <= 1) {
-    return Routes.getIssueDetectionRunDetailsRoute(experimentId, runId);
-  }
-
-  return Routes.getIssueDetectionRunDetailsTabRoute(experimentId, runId, RunPageTabName.ISSUES);
-};
+const getIssueDetectionResultRoute = (experimentId: string) =>
+  Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Issues);
 
 const TrackedIssueDetectionJobNotification = ({
   job,
@@ -336,20 +331,13 @@ export const IssueDetectionJobNotifications = () => {
                   componentId="mlflow.traces.issue-detection.completed-toast.view-results"
                   onClick={() => {
                     notification.close(completedKey);
-                    navigate(withPreservedQueryString(getIssueDetectionRunRoute(experimentId, runId, issueCount)));
+                    navigate(withPreservedQueryString(getIssueDetectionResultRoute(experimentId)));
                   }}
                 >
-                  {issueCount <= 1 ? (
-                    <FormattedMessage
-                      defaultMessage="View details"
-                      description="Link to the issue detection run overview from the completion notification"
-                    />
-                  ) : (
-                    <FormattedMessage
-                      defaultMessage="View issues"
-                      description="Link to the detected issues from the completion notification"
-                    />
-                  )}
+                  <FormattedMessage
+                    defaultMessage="View issues"
+                    description="Link to the detected issues from the completion notification"
+                  />
                 </Typography.Link>
               </div>
             ),
