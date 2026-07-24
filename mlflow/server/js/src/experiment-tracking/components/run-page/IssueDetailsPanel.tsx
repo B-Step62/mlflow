@@ -16,7 +16,6 @@ import {
   Typography,
   type TagColors,
   useDesignSystemTheme,
-  WrenchSparkleIcon,
 } from '@databricks/design-system';
 import {
   isV3ModelTraceInfo,
@@ -89,7 +88,7 @@ export const IssueDetailsPanel = ({
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const navigate = useNavigate();
-  const { openPanel, prefillPrompt, startMockEvalSetup, startMockIssueResolution } = useAssistant();
+  const { startMockEvalSetup, startMockIssueResolution } = useAssistant();
   const { updateIssueAsync, isUpdating } = useUpdateIssue();
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [linkedArtifactDrawer, setLinkedArtifactDrawer] = useState<LinkedArtifactDrawer | null>(null);
@@ -140,35 +139,6 @@ export const IssueDetailsPanel = ({
   const setupEvalComplete = evalSetupStatus === 'complete';
   const nextSteps = [
     {
-      key: 'fix-issue',
-      componentId: 'mlflow.issues.details.fix-issue',
-      title: <FormattedMessage defaultMessage="Fix issue" description="Issue detail next step to fix issue" />,
-      onClick: () => {
-        openPanel();
-        prefillPrompt(
-          [
-            `Fix issue: ${issue.name}`,
-            `Use the impacted traces from issue ${issue.issue_id} and verify the fix with a local scorer and eval script.`,
-            sourceJobId ? `Source job: ${sourceJobId}` : undefined,
-          ]
-            .filter(Boolean)
-            .join('\n'),
-        );
-      },
-      loading: false,
-      disabled: false,
-      icon: <WrenchSparkleIcon color="ai" />,
-    },
-    {
-      key: 'ask-review',
-      componentId: 'mlflow.issues.details.ask-review',
-      title: <FormattedMessage defaultMessage="Ask review" description="Issue detail next step to ask review" />,
-      onClick: () => navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.ReviewQueue)),
-      loading: false,
-      disabled: false,
-      icon: <SparkleIcon color="ai" />,
-    },
-    {
       key: 'setup-eval',
       componentId: 'mlflow.issues.details.setup-eval',
       title: <FormattedMessage defaultMessage="Setup eval" description="Issue detail next step to set up eval" />,
@@ -180,6 +150,15 @@ export const IssueDetailsPanel = ({
       ) : (
         <SparkleIcon color="ai" />
       ),
+    },
+    {
+      key: 'ask-review',
+      componentId: 'mlflow.issues.details.ask-review',
+      title: <FormattedMessage defaultMessage="Ask review" description="Issue detail next step to ask review" />,
+      onClick: () => navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.ReviewQueue)),
+      loading: false,
+      disabled: false,
+      icon: <SparkleIcon color="ai" />,
     },
   ];
 
