@@ -3,7 +3,7 @@ import type { TagColors } from '@databricks/design-system';
 import { TableSkeleton, useDesignSystemTheme } from '@databricks/design-system';
 import { IssuesTabEmptyState } from './IssuesTabEmptyState';
 import { IssueCard } from './IssueCard';
-import { IssueDetailsPanel } from './IssueDetailsPanel';
+import { IssueDetailsPanel, type IssueEvalSetupStatus } from './IssueDetailsPanel';
 import { IssueStatusFilter, type IssueStatusFilterValue } from './IssueStatusFilter';
 import { IssueTracesPanel } from './IssueTracesPanel';
 import { useSearchIssuesQuery, type Issue } from './hooks/useSearchIssuesQuery';
@@ -25,6 +25,13 @@ export const RunViewIssuesContent = ({
   defaultSelectFirstIssue = false,
   detailsPanel = 'traces',
   onIssueStatusChange,
+  getIssueEvalSetupStatus,
+  onIssueEvalSetupStatusChange,
+  getIssueEvalSetupDatasetMode,
+  onIssueEvalSetupDatasetModeChange,
+  statusFilter: controlledStatusFilter,
+  onStatusFilterChange,
+  hideStatusFilter = false,
 }: {
   issues: Issue[];
   isLoading?: boolean;
@@ -36,9 +43,18 @@ export const RunViewIssuesContent = ({
   defaultSelectFirstIssue?: boolean;
   detailsPanel?: 'traces' | 'details';
   onIssueStatusChange?: (issueId: string, status: Issue['status']) => void;
+  getIssueEvalSetupStatus?: (issue: Issue) => IssueEvalSetupStatus;
+  onIssueEvalSetupStatusChange?: (issueId: string, status: IssueEvalSetupStatus) => void;
+  getIssueEvalSetupDatasetMode?: (issue: Issue) => 'new' | 'golden';
+  onIssueEvalSetupDatasetModeChange?: (issueId: string, mode: 'new' | 'golden') => void;
+  statusFilter?: IssueStatusFilterValue;
+  onStatusFilterChange?: (value: IssueStatusFilterValue) => void;
+  hideStatusFilter?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
-  const [statusFilter, setStatusFilter] = useState<IssueStatusFilterValue>('pending');
+  const [uncontrolledStatusFilter, setUncontrolledStatusFilter] = useState<IssueStatusFilterValue>('pending');
+  const statusFilter = controlledStatusFilter ?? uncontrolledStatusFilter;
+  const setStatusFilter = onStatusFilterChange ?? setUncontrolledStatusFilter;
   const issueCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const autoSwitchedForIssueRef = useRef<string | null>(null);
 
@@ -86,7 +102,7 @@ export const RunViewIssuesContent = ({
         scrollToSelectedIssue(selectedIssueId);
       }
     }
-  }, [selectedIssueId, issues, scrollToSelectedIssue, statusFilter]);
+  }, [selectedIssueId, issues, scrollToSelectedIssue, statusFilter, setStatusFilter]);
 
   const handleSelect = (issue: Issue) => {
     const isDeselecting = selectedIssueId === issue.issue_id;
@@ -136,7 +152,9 @@ export const RunViewIssuesContent = ({
         backgroundColor: theme.colors.backgroundPrimary,
       }}
     >
-      {!compactCards && <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />}
+      {!compactCards && !hideStatusFilter && (
+        <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />
+      )}
       <div
         css={{
           flex: 1,
@@ -163,7 +181,9 @@ export const RunViewIssuesContent = ({
             minHeight: 0,
           }}
         >
-          {compactCards && <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />}
+          {compactCards && !hideStatusFilter && (
+            <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />
+          )}
           {filteredIssues.map((issue) => (
             <div key={issue.issue_id} ref={(el) => (issueCardRefs.current[issue.issue_id] = el)}>
               <IssueCard
@@ -194,6 +214,10 @@ export const RunViewIssuesContent = ({
                 issue={selectedIssue}
                 experimentId={experimentId}
                 onStatusChange={onIssueStatusChange}
+                evalSetupStatus={getIssueEvalSetupStatus?.(selectedIssue)}
+                evalSetupDatasetMode={getIssueEvalSetupDatasetMode?.(selectedIssue)}
+                onEvalSetupStatusChange={onIssueEvalSetupStatusChange}
+                onEvalSetupDatasetModeChange={onIssueEvalSetupDatasetModeChange}
               />
             ) : (
               <IssueTracesPanel issue={selectedIssue} experimentId={experimentId} />

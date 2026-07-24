@@ -54,7 +54,10 @@ const DOTS_ANIMATION = {
   '100%': { content: '"..."' },
 };
 
-export type MessagePartGroup = { kind: 'text'; text: string } | { kind: 'tools'; calls: ToolCallPart[] };
+export type MessagePartGroup =
+  | { kind: 'text'; text: string }
+  | { kind: 'selection'; prompt: Extract<AssistantPart, { type: 'selectionPrompt' }> }
+  | { kind: 'tools'; calls: ToolCallPart[] };
 
 /**
  * Coalesces an ordered part list into render groups, collapsing each maximal run of
@@ -67,6 +70,10 @@ export const groupParts = (parts: AssistantPart[]): MessagePartGroup[] => {
       groups.push({ kind: 'text', text: part.text });
       continue;
     }
+    if (part.type === 'selectionPrompt') {
+      groups.push({ kind: 'selection', prompt: part });
+      continue;
+    }
     const last = groups[groups.length - 1];
     if (last?.kind === 'tools') {
       groups[groups.length - 1] = { kind: 'tools', calls: [...last.calls, part] };
@@ -75,6 +82,125 @@ export const groupParts = (parts: AssistantPart[]): MessagePartGroup[] => {
     }
   }
   return groups;
+};
+
+const AssistantSelectionPrompt = ({ prompt }: { prompt: Extract<AssistantPart, { type: 'selectionPrompt' }> }) => {
+  const { theme } = useDesignSystemTheme();
+  const { sendMessage, isStreaming } = useAssistant();
+  const [selectedValue, setSelectedValue] = useState(prompt.defaultValue);
+  const [submittedValue, setSubmittedValue] = useState<string | null>(null);
+  const selectedOption = prompt.options.find((option) => option.value === selectedValue) ?? prompt.options[0];
+  const disabled = isStreaming || submittedValue !== null;
+
+  const handleContinue = () => {
+    if (!selectedOption || disabled) {
+      return;
+    }
+    setSubmittedValue(selectedOption.value);
+    sendMessage(selectedOption.prompt ?? selectedOption.label);
+  };
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.sm,
+        marginTop: theme.spacing.md,
+        marginBottom: theme.spacing.md,
+        padding: theme.spacing.md,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundColor: theme.colors.backgroundSecondary,
+      }}
+    >
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        <Typography.Text bold>{prompt.title}</Typography.Text>
+        {prompt.description && (
+          <Typography.Text color="secondary" size="sm">
+            {prompt.description}
+          </Typography.Text>
+        )}
+      </div>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        {prompt.options.map((option) => {
+          const selected = selectedValue === option.value;
+          const submitted = submittedValue === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              disabled={disabled}
+              onClick={() => setSelectedValue(option.value)}
+              css={{
+                display: 'grid',
+                gridTemplateColumns: '16px minmax(0, 1fr)',
+                gap: theme.spacing.sm,
+                width: '100%',
+                padding: theme.spacing.sm,
+                border: `1px solid ${selected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.border}`,
+                borderRadius: theme.borders.borderRadiusSm,
+                backgroundColor: selected ? theme.colors.backgroundPrimary : 'transparent',
+                color: theme.colors.textPrimary,
+                cursor: disabled ? 'default' : 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                css={{
+                  width: 12,
+                  height: 12,
+                  marginTop: 3,
+                  borderRadius: '50%',
+                  border: `1px solid ${
+                    selected ? theme.colors.actionPrimaryBackgroundDefault : theme.colors.textSecondary
+                  }`,
+                  backgroundColor: selected ? theme.colors.actionPrimaryBackgroundDefault : 'transparent',
+                  boxShadow: selected ? `inset 0 0 0 3px ${theme.colors.backgroundPrimary}` : undefined,
+                }}
+              />
+              <span css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+                <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+                  <Typography.Text bold={selected || submitted}>{option.label}</Typography.Text>
+                  {option.recommended && (
+                    <Tag componentId="mlflow.assistant.selection_prompt.recommended" color="turquoise">
+                      <FormattedMessage
+                        defaultMessage="Recommended"
+                        description="Recommended option label in Assistant selection prompt"
+                      />
+                    </Tag>
+                  )}
+                </span>
+                {option.description && (
+                  <Typography.Text color="secondary" size="sm">
+                    {option.description}
+                  </Typography.Text>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div css={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          componentId="mlflow.assistant.selection_prompt.continue"
+          size="small"
+          type="primary"
+          disabled={disabled || !selectedOption}
+          onClick={handleContinue}
+        >
+          {submittedValue ? (
+            <FormattedMessage defaultMessage="Selected" description="Submitted selection prompt button label" />
+          ) : (
+            prompt.continueLabel ?? (
+              <FormattedMessage defaultMessage="Continue" description="Selection prompt continue button label" />
+            )
+          )}
+        </Button>
+      </div>
+    </div>
+  );
 };
 
 /**
@@ -104,6 +230,8 @@ export const AssistantMessageBody = ({ message }: { message: ChatMessage }) => {
               <GenAIMarkdownRenderer>{group.text}</GenAIMarkdownRenderer>
             </div>
           ) : null
+        ) : group.kind === 'selection' ? (
+          <AssistantSelectionPrompt key={group.prompt.selectionId} prompt={group.prompt} />
         ) : (
           <ToolCallGroup key={group.calls[0].toolUseId} parts={group.calls} />
         ),
@@ -333,6 +461,7 @@ const ChatPanelContent = () => {
     regenerateLastMessage,
     cancelSession,
     pendingPrompt,
+    contextualSuggestedPrompts,
     clearPendingPrompt,
     pendingPermission,
     respondToPermission,
@@ -449,6 +578,30 @@ const ChatPanelContent = () => {
         }}
       >
         {pendingPermission && <ToolPermissionPrompt request={pendingPermission} onRespond={respondToPermission} />}
+        {contextualSuggestedPrompts.length > 0 && (
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              flexWrap: 'wrap',
+              marginBottom: theme.spacing.sm,
+            }}
+          >
+            {contextualSuggestedPrompts.map((prompt) => (
+              <Button
+                key={prompt}
+                componentId="mlflow.assistant.chat_panel.contextual_suggestion"
+                size="small"
+                icon={<SparkleIcon color="ai" />}
+                disabled={isStreaming}
+                onClick={() => handleSuggestionSelect(prompt)}
+              >
+                {prompt}
+              </Button>
+            ))}
+          </div>
+        )}
         <div
           css={{
             display: 'flex',

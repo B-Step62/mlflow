@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { SegmentedControlButton, SegmentedControlGroup, useDesignSystemTheme } from '@databricks/design-system';
-import { FormattedMessage } from 'react-intl';
+import { Button, DropdownMenu, FilterIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { FormattedMessage, useIntl } from 'react-intl';
 import { type Issue, type IssueStatus } from './hooks/useSearchIssuesQuery';
 
 export type IssueStatusFilterValue = IssueStatus | 'all';
@@ -9,10 +9,27 @@ interface IssueStatusFilterProps {
   issues: Issue[];
   value: IssueStatusFilterValue;
   onChange: (value: IssueStatusFilterValue) => void;
+  showLabel?: boolean;
 }
 
-export const IssueStatusFilter = ({ issues, value, onChange }: IssueStatusFilterProps) => {
+const STATUS_FILTER_OPTIONS: IssueStatusFilterValue[] = ['all', 'pending', 'rejected', 'resolved'];
+
+const IssueStatusFilterLabel = ({ value }: { value: IssueStatusFilterValue }) => {
+  if (value === 'all') {
+    return <FormattedMessage defaultMessage="All" description="Issue status filter option > All label" />;
+  }
+  if (value === 'pending') {
+    return <FormattedMessage defaultMessage="Pending" description="Issue status filter option > Pending label" />;
+  }
+  if (value === 'rejected') {
+    return <FormattedMessage defaultMessage="Rejected" description="Issue status filter option > Rejected label" />;
+  }
+  return <FormattedMessage defaultMessage="Resolved" description="Issue status filter option > Resolved label" />;
+};
+
+export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }: IssueStatusFilterProps) => {
   const { theme } = useDesignSystemTheme();
+  const intl = useIntl();
 
   const counts = useMemo(() => {
     const result = {
@@ -27,31 +44,70 @@ export const IssueStatusFilter = ({ issues, value, onChange }: IssueStatusFilter
     return result;
   }, [issues]);
 
+  const activeCount = counts[value];
+  const hasCustomFilter = value !== 'pending';
+
   return (
-    <div css={{ padding: `${theme.spacing.sm}px ${theme.spacing.md}px` }}>
-      <SegmentedControlGroup name="mlflow.issues.status-filter" componentId="mlflow.issues.status-filter" value={value}>
-        <SegmentedControlButton value="pending" onClick={() => onChange('pending')}>
-          <FormattedMessage
-            defaultMessage="Pending ({count})"
-            description="Issue status filter > Pending button label"
-            values={{ count: counts.pending }}
-          />
-        </SegmentedControlButton>
-        <SegmentedControlButton value="rejected" onClick={() => onChange('rejected')}>
-          <FormattedMessage
-            defaultMessage="Rejected ({count})"
-            description="Issue status filter > Rejected button label"
-            values={{ count: counts.rejected }}
-          />
-        </SegmentedControlButton>
-        <SegmentedControlButton value="resolved" onClick={() => onChange('resolved')}>
-          <FormattedMessage
-            defaultMessage="Resolved ({count})"
-            description="Issue status filter > Resolved button label"
-            values={{ count: counts.resolved }}
-          />
-        </SegmentedControlButton>
-      </SegmentedControlGroup>
+    <div
+      css={{
+        padding: showLabel ? `${theme.spacing.sm}px ${theme.spacing.md}px` : 0,
+        display: 'flex',
+        justifyContent: showLabel ? 'flex-start' : 'center',
+      }}
+    >
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <Button
+            componentId="mlflow.issues.status-filter.trigger"
+            size="small"
+            type="tertiary"
+            icon={<FilterIcon />}
+            aria-label={intl.formatMessage({
+              defaultMessage: 'Filter issues by status',
+              description: 'Aria label for issue status filter trigger',
+            })}
+            css={
+              hasCustomFilter
+                ? {
+                    borderColor: theme.colors.actionDefaultBorderFocus,
+                    backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                  }
+                : undefined
+            }
+          >
+            {showLabel && (
+              <FormattedMessage
+                defaultMessage="Status: {status} ({count})"
+                description="Issue status filter trigger label"
+                values={{ status: <IssueStatusFilterLabel value={value} />, count: activeCount }}
+              />
+            )}
+          </Button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end">
+          <DropdownMenu.RadioGroup
+            componentId="mlflow.issues.status-filter"
+            value={value}
+            onValueChange={(nextValue) => onChange(nextValue as IssueStatusFilterValue)}
+          >
+            <DropdownMenu.Label>
+              <Typography.Text color="secondary">
+                <FormattedMessage defaultMessage="Issue status" description="Issue status filter menu label" />
+              </Typography.Text>
+            </DropdownMenu.Label>
+            {STATUS_FILTER_OPTIONS.map((option) => (
+              <DropdownMenu.RadioItem key={option} value={option}>
+                <DropdownMenu.ItemIndicator />
+                <FormattedMessage
+                  defaultMessage="{status} ({count})"
+                  description="Issue status filter menu item"
+                  values={{ status: <IssueStatusFilterLabel value={option} />, count: counts[option] }}
+                />
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
     </div>
   );
 };

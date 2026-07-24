@@ -1,18 +1,27 @@
 import { useCallback, useMemo, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
-import { Button, Empty, ForkHorizontalIcon, Spinner, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  Button,
+  Empty,
+  ForkHorizontalIcon,
+  Spinner,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import {
   isV3ModelTraceInfo,
   ModelTraceExplorer,
   ModelTraceExplorerDrawer,
   useGetTracesById,
 } from '@databricks/web-shared/model-trace-explorer';
-import { useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
+import { Link, useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
 import { RunPage } from '../../components/run-page/RunPage';
 import { RunViewModeSwitch } from '../../components/run-page/RunViewModeSwitch';
 import { useRunViewActiveTab } from '../../components/run-page/useRunViewActiveTab';
 import { RunViewIssuesContent } from '../../components/run-page/RunViewIssuesTab';
+import type { IssueEvalSetupStatus } from '../../components/run-page/IssueDetailsPanel';
 import type { Issue, IssueStatus } from '../../components/run-page/hooks/useSearchIssuesQuery';
+import type { MockEvalDatasetMode } from '../../mockEvalArtifacts';
 import {
   ExperimentPageTabName,
   RunPageTabName,
@@ -73,6 +82,8 @@ const truncateSourceJobId = (sourceRunId?: string) => {
 const MockIssueDetectionIssuesTab = ({ experimentId }: { experimentId: string }) => {
   const { theme } = useDesignSystemTheme();
   const [statusOverrides, setStatusOverrides] = useState<Record<string, IssueStatus>>({});
+  const [evalSetupStatuses, setEvalSetupStatuses] = useState<Record<string, IssueEvalSetupStatus>>({});
+  const [evalSetupDatasetModes, setEvalSetupDatasetModes] = useState<Record<string, MockEvalDatasetMode>>({});
   const issues = useMemo<Issue[]>(
     () =>
       MOCK_FAILURE_ANALYSIS_ISSUES.map(
@@ -133,6 +144,20 @@ const MockIssueDetectionIssuesTab = ({ experimentId }: { experimentId: string })
           setStatusOverrides((current) => ({
             ...current,
             [issueId]: status,
+          }))
+        }
+        getIssueEvalSetupStatus={(issue) => evalSetupStatuses[issue.issue_id] ?? 'idle'}
+        onIssueEvalSetupStatusChange={(issueId, status) =>
+          setEvalSetupStatuses((current) => ({
+            ...current,
+            [issueId]: status,
+          }))
+        }
+        getIssueEvalSetupDatasetMode={(issue) => evalSetupDatasetModes[issue.issue_id] ?? 'new'}
+        onIssueEvalSetupDatasetModeChange={(issueId, mode) =>
+          setEvalSetupDatasetModes((current) => ({
+            ...current,
+            [issueId]: mode,
           }))
         }
       />
@@ -342,10 +367,6 @@ export const IssueDetectionRunDetailsPage = () => {
   // Fetch experiment data for breadcrumb
   const { data: experiment } = useGetExperimentQuery({ experimentId: safeExperimentId });
 
-  if (runUuid === MOCK_FAILURE_ANALYSIS_RUN_ID) {
-    return <MockIssueDetectionRunDetailsPage experimentId={safeExperimentId} runUuid={runUuid} />;
-  }
-
   // Helper to append time-range search params to a route
   const withSearchParams = useCallback(
     (route: string) => (timeRangeSearch ? `${route}${timeRangeSearch}` : route),
@@ -392,6 +413,10 @@ export const IssueDetectionRunDetailsPage = () => {
     },
     [navigate, withSearchParams],
   );
+
+  if (runUuid === MOCK_FAILURE_ANALYSIS_RUN_ID) {
+    return <MockIssueDetectionRunDetailsPage experimentId={safeExperimentId} runUuid={runUuid} />;
+  }
 
   return (
     <RunPage

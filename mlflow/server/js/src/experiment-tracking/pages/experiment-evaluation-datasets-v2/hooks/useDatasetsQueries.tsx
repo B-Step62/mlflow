@@ -10,6 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from '@databricks/web-shared/query-client';
 import { fetchAPI, getAjaxUrl } from '@mlflow/mlflow/src/common/utils/FetchUtils';
 import { parseJSONSafe } from '@mlflow/mlflow/src/common/utils/TagUtils';
+import { getMockEvalDataset, getMockEvalDatasetRecords } from '../../../mockEvalArtifacts';
 
 export const listDatasetRecordsQueryKey = (datasetId: string) => ['listDatasetRecords', datasetId] as const;
 const getDatasetQueryKey = (datasetId: string | undefined) => ['getDataset', datasetId] as const;
@@ -188,6 +189,10 @@ export function useGetDatasetQuery(datasetId?: string, options: UseGetDatasetQue
   return useQuery({
     queryKey: getDatasetQueryKey(datasetId),
     queryFn: async (): Promise<Dataset> => {
+      const mockDataset = getMockEvalDataset(datasetId);
+      if (mockDataset) {
+        return mockDataset;
+      }
       const response = (await fetchAPI(getAjaxUrl(`ajax-api/3.0/mlflow/datasets/${datasetId}`))) as {
         dataset?: OssDataset;
       };
@@ -214,6 +219,10 @@ export function useListDatasetRecordsQuery(datasetId: string) {
   return useQuery({
     queryKey: listDatasetRecordsQueryKey(datasetId),
     queryFn: async (): Promise<DatasetRecord[]> => {
+      const mockRecords = getMockEvalDatasetRecords(datasetId);
+      if (mockRecords) {
+        return mockRecords;
+      }
       const out: DatasetRecord[] = [];
       let pageToken: string | undefined;
       do {

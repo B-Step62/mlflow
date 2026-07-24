@@ -219,9 +219,24 @@ export const IssueCard = ({
               </Tag>
             )}
             {sourceLabel && (
-              <Tag componentId="mlflow.issues.source-job-tag" color={sourceTagColor} css={{ flexShrink: 0 }}>
+              <span
+                css={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  maxWidth: '100%',
+                  height: 20,
+                  padding: `0 ${theme.spacing.xs}px`,
+                  borderRadius: theme.borders.borderRadiusSm,
+                  border: `1px solid ${theme.colors.border}`,
+                  backgroundColor: theme.colors.backgroundSecondary,
+                  color: theme.colors.textSecondary,
+                  fontSize: theme.typography.fontSizeSm,
+                  lineHeight: '18px',
+                }}
+              >
                 {sourceLabel}
-              </Tag>
+              </span>
             )}
           </div>
           <Typography.Title level={4} css={{ margin: 0, marginBottom: '0 !important' }}>

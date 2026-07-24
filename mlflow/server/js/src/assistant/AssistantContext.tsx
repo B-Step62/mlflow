@@ -10,7 +10,9 @@ import {
   type AssistantAgentContextType,
   type AssistantConfig,
   type AssistantPart,
+  type AssistantSelectionPromptOption,
   type ChatMessage,
+  type MockEvalSetupRequest,
   type PermissionRequest,
   type ToolUseInfo,
   type ToolResultInfo,
@@ -48,6 +50,16 @@ interface PersistedChat {
   messages: ChatMessage[];
   tokenUsage: TokenUsage;
 }
+
+type MockEvalDatasetChoice = 'new' | 'golden';
+
+type ActiveMockEvalSetup = {
+  request: MockEvalSetupRequest;
+  traceCount: number;
+  traceSummary: string;
+  primaryScorer: string;
+  secondaryScorer: string;
+};
 
 /** `timestamp` round-trips through JSON as a string; restore it to a Date on load. */
 export const reviveMessages = (messages: ChatMessage[]): ChatMessage[] =>
@@ -154,6 +166,7 @@ export const applyToolResult = (parts: AssistantPart[], result: ToolResultInfo):
 /** The kinds of new information the stream delivers, each changing the open message's parts. */
 const PartsUpdateKind = {
   Text: 'text',
+  SelectionPrompt: 'selectionPrompt',
   ToolCalls: 'toolCalls',
   ToolResult: 'toolResult',
 } as const;
@@ -161,6 +174,15 @@ const PartsUpdateKind = {
 /** A piece of new information from the stream that changes the open message's parts. */
 type PartsUpdate =
   | { kind: typeof PartsUpdateKind.Text; text: string }
+  | {
+      kind: typeof PartsUpdateKind.SelectionPrompt;
+      selectionId: string;
+      title: string;
+      description?: string;
+      options: AssistantSelectionPromptOption[];
+      defaultValue: string;
+      continueLabel?: string;
+    }
   | { kind: typeof PartsUpdateKind.ToolCalls; tools: ToolUseInfo[] }
   | { kind: typeof PartsUpdateKind.ToolResult; result: ToolResultInfo };
 
@@ -169,6 +191,19 @@ const reduceParts = (parts: AssistantPart[], update: PartsUpdate): AssistantPart
   switch (update.kind) {
     case PartsUpdateKind.Text:
       return update.text ? setOpenTextPart(parts, update.text) : parts;
+    case PartsUpdateKind.SelectionPrompt:
+      return [
+        ...parts,
+        {
+          type: 'selectionPrompt',
+          selectionId: update.selectionId,
+          title: update.title,
+          description: update.description,
+          options: update.options,
+          defaultValue: update.defaultValue,
+          continueLabel: update.continueLabel,
+        },
+      ];
     case PartsUpdateKind.ToolCalls:
       return upsertToolCalls(parts, update.tools);
     case PartsUpdateKind.ToolResult:
@@ -226,6 +261,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   const [activeTools, setActiveTools] = useState<ToolUseInfo[]>([]);
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [contextualSuggestedPrompts, setContextualSuggestedPrompts] = useState<string[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage>(() => persistedChat.tokenUsage ?? EMPTY_TOKEN_USAGE);
 
   // Setup state
@@ -242,6 +278,13 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
   // Use ref to track active EventSource for cancellation
   const eventSourceRef = useRef<EventSource | null>(null);
+  const mockStreamTimeoutsRef = useRef<number[]>([]);
+  const activeMockEvalSetupRef = useRef<ActiveMockEvalSetup | null>(null);
+  const lastMockEvalSetupRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(null);
+  const pendingMockJudgeAlignmentRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
+    null,
+  );
+  const pendingMockIssueResolutionRef = useRef<MockEvalSetupRequest | null>(null);
 
   // Token identifying the in-flight send; reset/cancel invalidates it so a late POST's
   // guarded callbacks no-op and its stream is closed instead of leaking into new state.
@@ -249,6 +292,13 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
   // Throttle streaming updates to avoid overwhelming React with re-renders
   const rafPendingRef = useRef<number | null>(null);
+
+  const clearMockStreamTimers = useCallback(() => {
+    for (const timeoutId of mockStreamTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    mockStreamTimeoutsRef.current = [];
+  }, []);
 
   // Fold stream updates into the open (streaming) assistant message's parts, keeping
   // `content` mirrored to the text parts. No-op if the last message isn't an open turn.
@@ -365,6 +415,36 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     [applyToOpenParts],
   );
 
+  const addSelectionPrompt = useCallback(
+    ({
+      selectionId,
+      title,
+      description,
+      options,
+      defaultValue,
+      continueLabel,
+    }: {
+      selectionId: string;
+      title: string;
+      description?: string;
+      options: AssistantSelectionPromptOption[];
+      defaultValue: string;
+      continueLabel?: string;
+    }) => {
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+      const buffered = openTextBufferRef.current;
+      openTextBufferRef.current = '';
+      applyToOpenParts(
+        { kind: PartsUpdateKind.Text, text: buffered },
+        { kind: PartsUpdateKind.SelectionPrompt, selectionId, title, description, options, defaultValue, continueLabel },
+      );
+    },
+    [applyToOpenParts],
+  );
+
   const resolveToolCall = useCallback(
     (result: ToolResultInfo) => {
       applyToOpenParts({ kind: PartsUpdateKind.ToolResult, result });
@@ -430,6 +510,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   // Cancel pending RAF and close EventSource on unmount
   useEffect(() => {
     return () => {
+      clearMockStreamTimers();
       // Invalidate any in-flight send so any POST cleans up the stream on unmount
       activeRequestRef.current = null;
       if (rafPendingRef.current !== null) {
@@ -441,7 +522,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         eventSourceRef.current = null;
       }
     };
-  }, []);
+  }, [clearMockStreamTimers]);
 
   // Persist the conversation only once a turn has settled (never on the streaming
   // hot path, which would write to storage on every frame). `reset()` flips back to
@@ -522,12 +603,14 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     // Drop any queued prompt — closing the panel is an abandon, so a stale seed shouldn't
     // inject into an unrelated chat opened later.
     setPendingPrompt(null);
+    setContextualSuggestedPrompts([]);
   }, [setIsPanelOpen]);
 
   const prefillPrompt = useCallback((prompt: string) => setPendingPrompt(prompt), []);
   const clearPendingPrompt = useCallback(() => setPendingPrompt(null), []);
 
   const reset = useCallback(() => {
+    clearMockStreamTimers();
     // Invalidate any in-flight send still awaiting its POST: its captured token no longer matches,
     // so its guarded callbacks no-op and its EventSource is closed when the await resolves.
     activeRequestRef.current = null;
@@ -549,7 +632,12 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     setTokenUsage({ promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: null });
     openTextBufferRef.current = '';
     setPendingPermission(null);
-  }, []);
+    setContextualSuggestedPrompts([]);
+    activeMockEvalSetupRef.current = null;
+    lastMockEvalSetupRef.current = null;
+    pendingMockJudgeAlignmentRef.current = null;
+    pendingMockIssueResolutionRef.current = null;
+  }, [clearMockStreamTimers]);
 
   // Begin a new in-flight send: stamp a fresh token in closure,
   // return a checker for whether this send is
@@ -573,10 +661,12 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
   const startChat = useCallback(
     async (prompt?: string) => {
+      clearMockStreamTimers();
       const isCurrent = beginRequest();
 
       setError(null);
       setIsStreaming(true);
+      setContextualSuggestedPrompts([]);
       // A new message supersedes any prompt the user was deciding on. Clearing it
       // here drops the stale Allow/Deny so it can't resume the abandoned turn; the
       // backend closes the orphaned tool call out as cancelled.
@@ -629,7 +719,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         failStreamingTurn(err instanceof Error ? err.message : 'Failed to start chat');
       }
     },
-    [sessionId, beginRequest, attachStreamIfCurrent, getPageContext, streamCallbacks, failStreamingTurn],
+    [
+      clearMockStreamTimers,
+      sessionId,
+      beginRequest,
+      attachStreamIfCurrent,
+      getPageContext,
+      streamCallbacks,
+      failStreamingTurn,
+    ],
   );
 
   const respondToPermission = useCallback(
@@ -660,8 +758,729 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     [pendingPermission, beginRequest, attachStreamIfCurrent, streamCallbacks, failStreamingTurn],
   );
 
+  const scheduleMockStreamAction = useCallback((delayMs: number, action: () => void) => {
+    const timeoutId = window.setTimeout(() => {
+      mockStreamTimeoutsRef.current = mockStreamTimeoutsRef.current.filter((id) => id !== timeoutId);
+      action();
+    }, delayMs);
+    mockStreamTimeoutsRef.current.push(timeoutId);
+  }, []);
+
+  const startMockEvalArtifactCreation = useCallback(
+    (setup: ActiveMockEvalSetup, datasetChoice: MockEvalDatasetChoice) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      setup.request.onChoice?.(datasetChoice);
+      activeMockEvalSetupRef.current = null;
+      pendingMockJudgeAlignmentRef.current = null;
+
+      const { request, traceCount, traceSummary, primaryScorer, secondaryScorer } = setup;
+      const addToGolden = datasetChoice === 'golden';
+      const targetDatasetName = addToGolden ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+      const datasetAction = addToGolden ? 'add_records_to_dataset' : 'create_dataset';
+      const datasetResult = addToGolden
+        ? `Added ${traceCount || 0} records to ${targetDatasetName}.`
+        : `Created dataset ${targetDatasetName}.`;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus(addToGolden ? 'Adding records to golden dataset' : 'Creating regression dataset');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: addToGolden ? 'Add to golden dataset' : 'Create new dataset',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          addToGolden
+            ? `I'll add the ${traceCount || 0} issue records to \`${targetDatasetName}\` and create judges for this failure mode.`
+            : `I'll create a dedicated regression dataset \`${targetDatasetName}\` and create judges for this failure mode.`,
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        setCurrentStatus('Selecting representative traces');
+        addToolCalls([
+          {
+            id: `mock-select-traces-${request.issueId}`,
+            name: 'select_impacted_traces',
+            input: { issue_id: request.issueId, traces: traceSummary, trace_count: traceCount },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1150, () => {
+        resolveToolCall({
+          toolUseId: `mock-select-traces-${request.issueId}`,
+          content: `Selected ${traceCount || 0} traces for the regression set.`,
+          isError: false,
+        });
+        writeStreamedText(`\n\nSelected ${traceCount || 0} traces that reproduce the issue.`);
+      });
+      scheduleMockStreamAction(1600, () => {
+        setCurrentStatus(addToGolden ? 'Adding records to golden dataset' : 'Creating regression dataset');
+        addToolCalls([
+          {
+            id: `mock-upsert-dataset-${request.issueId}`,
+            name: datasetAction,
+            input: {
+              name: targetDatasetName,
+              source: request.sourceJobId,
+              trace_count: traceCount,
+              mode: datasetChoice,
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(2200, () => {
+        resolveToolCall({
+          toolUseId: `mock-upsert-dataset-${request.issueId}`,
+          content: datasetResult,
+          isError: false,
+        });
+        writeStreamedText(
+          addToGolden
+            ? `\n\nAdded those traces as new records in \`${targetDatasetName}\`.`
+            : `\n\nCreated dataset \`${targetDatasetName}\` with those traces.`,
+        );
+      });
+      scheduleMockStreamAction(2700, () => {
+        setCurrentStatus('Creating LLM judge scorers');
+        addToolCalls([
+          {
+            id: `mock-create-primary-scorer-${request.issueId}`,
+            name: 'create_scorer',
+            input: { name: primaryScorer, type: 'llm_judge', dataset: targetDatasetName },
+          },
+          {
+            id: `mock-create-secondary-scorer-${request.issueId}`,
+            name: 'create_scorer',
+            input: { name: secondaryScorer, type: 'llm_judge', dataset: targetDatasetName },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(3450, () => {
+        resolveToolCall({
+          toolUseId: `mock-create-primary-scorer-${request.issueId}`,
+          content: `Created scorer ${primaryScorer}.`,
+          isError: false,
+        });
+        resolveToolCall({
+          toolUseId: `mock-create-secondary-scorer-${request.issueId}`,
+          content: `Created scorer ${secondaryScorer}.`,
+          isError: false,
+        });
+        writeStreamedText(
+          `\n\nCreated scorers \`${primaryScorer}\` and \`${secondaryScorer}\` to catch this class of regression.`,
+        );
+      });
+      scheduleMockStreamAction(4050, () => {
+        setCurrentStatus('Linking eval artifacts');
+        writeStreamedText(
+          `\n\nDone. I linked \`${targetDatasetName}\` and the judges back to the issue. Open the linked items in the issue detail to inspect the records and judge criteria.`,
+        );
+      });
+      scheduleMockStreamAction(4450, () => {
+        request.onComplete?.(datasetChoice);
+        lastMockEvalSetupRef.current = { ...setup, datasetChoice };
+        pendingMockJudgeAlignmentRef.current = { ...setup, datasetChoice };
+        addSelectionPrompt({
+          selectionId: `mock-align-judge-${request.issueId}`,
+          title: 'Do you want me to fine-tune the judge so it aligns with human judgement?',
+          description:
+            'Judge alignment can improve agreement with reviewers, but it may take longer and use additional model calls.',
+          defaultValue: 'align',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'align',
+              label: 'Yes, align the judge',
+              description: 'Use reviewed traces and fix-verification outcomes to tune the judge rubric.',
+              recommended: true,
+            },
+            {
+              value: 'skip',
+              label: 'Skip for now',
+              description: 'Keep the generated judge as-is and run evaluations with the draft rubric.',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [
+      addToolCalls,
+      addSelectionPrompt,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockRunEvaluation = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+
+      const { request, datasetChoice, primaryScorer, secondaryScorer } = setup;
+      const targetDatasetName =
+        datasetChoice === 'golden' ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Starting evaluation');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Run evaluation',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(`I'll run the evaluation on \`${targetDatasetName}\` with the two linked judges.`);
+      });
+      scheduleMockStreamAction(700, () => {
+        addToolCalls([
+          {
+            id: `mock-run-evaluation-${request.issueId}`,
+            name: 'run_evaluation',
+            input: {
+              dataset: targetDatasetName,
+              scorers: [primaryScorer, secondaryScorer],
+              issue_id: request.issueId,
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1550, () => {
+        resolveToolCall({
+          toolUseId: `mock-run-evaluation-${request.issueId}`,
+          content: 'Started evaluation run eval_run_20260723_1718.',
+          isError: false,
+        });
+        writeStreamedText(
+          '\n\nEvaluation run `eval_run_20260723_1718` is running. I will attach the result to this issue when it finishes.',
+        );
+      });
+      scheduleMockStreamAction(1900, () => {
+        endStreamingTurn();
+      });
+    },
+    [
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockJudgeAlignment = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockJudgeAlignmentRef.current = null;
+
+      const { request, datasetChoice, primaryScorer } = setup;
+      const targetDatasetName =
+        datasetChoice === 'golden' ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Aligning judge');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Yes, align the judge',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `I'll align \`${primaryScorer}\` against reviewed traces and the fix-verification outcomes before we run the golden eval.`,
+        );
+      });
+      scheduleMockStreamAction(700, () => {
+        setCurrentStatus('Building alignment set');
+        addToolCalls([
+          {
+            id: `mock-build-alignment-set-${request.issueId}`,
+            name: 'build_judge_alignment_set',
+            input: {
+              dataset: targetDatasetName,
+              issue_id: request.issueId,
+              include_reviewed_traces: true,
+              include_fix_verification: true,
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1450, () => {
+        resolveToolCall({
+          toolUseId: `mock-build-alignment-set-${request.issueId}`,
+          content: 'Built alignment set with reviewed examples, repaired traces, and edge cases.',
+          isError: false,
+        });
+        writeStreamedText('\n\nBuilt an alignment set from reviewed examples, repaired traces, and edge cases.');
+      });
+      scheduleMockStreamAction(1900, () => {
+        setCurrentStatus('Tuning judge rubric');
+        addToolCalls([
+          {
+            id: `mock-align-judge-${request.issueId}`,
+            name: 'align_judge',
+            input: {
+              scorer: primaryScorer,
+              objective: 'match human judgement on this failure mode',
+              cost_confirmation: 'approved',
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(2850, () => {
+        resolveToolCall({
+          toolUseId: `mock-align-judge-${request.issueId}`,
+          content: 'Aligned judge rubric. Agreement improved from 82% to 94% on reviewed traces.',
+          isError: false,
+        });
+        writeStreamedText(
+          `\n\nJudge alignment completed. Agreement improved from 82% to 94% on reviewed traces. \`${primaryScorer}\` is ready to use in the golden eval.`,
+        );
+      });
+      scheduleMockStreamAction(3200, () => {
+        request.onResolve?.();
+        endStreamingTurn();
+        setContextualSuggestedPrompts(['Run evaluation']);
+      });
+    },
+    [
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockSkipJudgeAlignment = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockJudgeAlignmentRef.current = null;
+
+      const { request, datasetChoice, primaryScorer } = setup;
+      const targetDatasetName =
+        datasetChoice === 'golden' ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Keeping draft judge');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Skip judge alignment',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `Got it. I'll keep \`${primaryScorer}\` as a draft judge for \`${targetDatasetName}\`. You can align it later from the judge detail page.`,
+        );
+      });
+      scheduleMockStreamAction(700, () => {
+        request.onResolve?.();
+        endStreamingTurn();
+        setContextualSuggestedPrompts(['Run evaluation']);
+      });
+    },
+    [clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const beginMockEvalSetup = useCallback(
+    (request: MockEvalSetupRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+
+      const traceCount = request.traceCount ?? request.traceIds?.length ?? 0;
+      const traceSummary =
+        request.traceIds && request.traceIds.length > 0 ? request.traceIds.slice(0, 3).join(', ') : 'impacted traces';
+      const primaryScorer = request.scorerNames[0] ?? 'issue_regression_judge';
+      const secondaryScorer = request.scorerNames[1] ?? 'source_alignment_judge';
+      const activeSetup = { request, traceCount, traceSummary, primaryScorer, secondaryScorer };
+      const userPrompt = [
+        `Set up an evaluation for "${request.issueName}".`,
+        `Use ${traceCount || 'the'} impacted traces to create or update a regression dataset and scorer(s).`,
+        request.sourceJobId ? `Source job: ${request.sourceJobId}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      request.onStart?.();
+      activeMockEvalSetupRef.current = activeSetup;
+      lastMockEvalSetupRef.current = null;
+      pendingMockJudgeAlignmentRef.current = null;
+      pendingMockIssueResolutionRef.current = null;
+      setIsPanelOpen(true);
+      setSetupComplete(true);
+      setIsLoadingConfig(false);
+      setSessionId(`mock-eval-setup-${request.issueId}`);
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing eval setup');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      const setupMessages: ChatMessage[] = [
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: userPrompt,
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ];
+      if (request.appendToCurrentThread) {
+        setMessages((prev) => [...prev, ...setupMessages]);
+      } else {
+        setMessages(setupMessages);
+      }
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          [
+            "I'll turn this issue into an evaluation package:",
+            'dataset records from the impacted traces and judges that detect the same failure mode.',
+          ].join(' '),
+        );
+      });
+      scheduleMockStreamAction(700, () => {
+        setCurrentStatus('Checking existing datasets');
+        addToolCalls([
+          {
+            id: `mock-find-golden-dataset-${request.issueId}`,
+            name: 'find_golden_datasets',
+            input: { experiment_id: getPageContext()['experimentId'], issue_id: request.issueId },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1350, () => {
+        resolveToolCall({
+          toolUseId: `mock-find-golden-dataset-${request.issueId}`,
+          content: request.goldenDatasetName
+            ? `Found ${request.goldenDatasetName} with ${request.goldenDatasetRecordCount ?? 'existing'} records.`
+            : 'No existing golden dataset found.',
+          isError: false,
+        });
+        writeStreamedText(
+          request.goldenDatasetName
+            ? `\n\nI found an existing golden dataset, \`${request.goldenDatasetName}\`. Do you want to add the ${
+                traceCount || 0
+              } new records there, or create a dedicated dataset \`${request.datasetName}\` for this issue?`
+            : `\n\nI did not find a golden dataset, so I can create \`${request.datasetName}\` for this issue.`,
+        );
+      });
+      scheduleMockStreamAction(1750, () => {
+        addSelectionPrompt({
+          selectionId: `mock-select-eval-target-${request.issueId}`,
+          title: 'Where should I put these examples?',
+          description: request.goldenDatasetName
+            ? `I found ${request.goldenDatasetName} with ${
+                request.goldenDatasetRecordCount ?? 'existing'
+              } records.`
+            : 'No matching golden dataset was found, so I can create a dedicated regression dataset.',
+          defaultValue: request.goldenDatasetName ? 'golden' : 'new',
+          continueLabel: 'Continue',
+          options: request.goldenDatasetName
+            ? [
+                {
+                  value: 'golden',
+                  label: 'Add to golden dataset',
+                  description: `Add ${traceCount || 0} issue records to ${request.goldenDatasetName}.`,
+                  recommended: true,
+                },
+                {
+                  value: 'new',
+                  label: 'Create new dataset',
+                  description: `Create ${request.datasetName} for this issue.`,
+                },
+              ]
+            : [
+                {
+                  value: 'new',
+                  label: 'Create new dataset',
+                  description: `Create ${request.datasetName} for this issue.`,
+                  recommended: true,
+                },
+              ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [
+      addToolCalls,
+      addSelectionPrompt,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      getPageContext,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockResolveWithoutEval = useCallback(
+    (request: MockEvalSetupRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockIssueResolutionRef.current = null;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Resolving issue');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Resolve without eval',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText('Got it. I marked the issue as resolved without creating a golden eval.');
+      });
+      scheduleMockStreamAction(650, () => {
+        request.onResolve?.();
+        endStreamingTurn();
+      });
+    },
+    [clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockIssueResolution = useCallback(
+    (request: MockEvalSetupRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+
+      pendingMockIssueResolutionRef.current = request;
+      activeMockEvalSetupRef.current = null;
+      lastMockEvalSetupRef.current = null;
+      pendingMockJudgeAlignmentRef.current = null;
+      setIsPanelOpen(true);
+      setSetupComplete(true);
+      setIsLoadingConfig(false);
+      setSessionId(`mock-resolve-issue-${request.issueId}`);
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing resolution');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages([
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: `Mark issue as resolved: ${request.issueName}`,
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          'Before I resolve this, I can create a golden eval from the issue traces so the same failure does not regress.',
+        );
+      });
+      scheduleMockStreamAction(600, () => {
+        addSelectionPrompt({
+          selectionId: `mock-resolve-create-eval-${request.issueId}`,
+          title: 'Create a golden eval before resolving?',
+          description:
+            'I can use the impacted traces and generated judges to create or update a golden test suite. This is recommended for fixed issues.',
+          defaultValue: 'create',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'create',
+              label: 'Yes, create eval',
+              description: 'Create or update a golden dataset and judges, then resolve the issue.',
+              recommended: true,
+            },
+            {
+              value: 'skip',
+              label: 'Resolve without eval',
+              description: 'Mark this issue resolved without adding regression coverage.',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [addSelectionPrompt, clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, setIsPanelOpen, writeStreamedText],
+  );
+
   const handleSendMessage = useCallback(
     async (message: string) => {
+      clearMockStreamTimers();
+      const normalizedMessage = message.trim().toLowerCase();
+      const pendingMockIssueResolution = pendingMockIssueResolutionRef.current;
+      if (pendingMockIssueResolution) {
+        if (normalizedMessage.includes('without') || normalizedMessage.includes('skip') || normalizedMessage.includes('no')) {
+          startMockResolveWithoutEval(pendingMockIssueResolution);
+          return;
+        }
+        if (normalizedMessage.includes('yes') || normalizedMessage.includes('create') || normalizedMessage.includes('eval')) {
+          beginMockEvalSetup({ ...pendingMockIssueResolution, appendToCurrentThread: true });
+          return;
+        }
+      }
+      const activeMockEvalSetup = activeMockEvalSetupRef.current;
+      if (activeMockEvalSetup) {
+        if (normalizedMessage.includes('golden') || normalizedMessage.includes('existing')) {
+          startMockEvalArtifactCreation(activeMockEvalSetup, 'golden');
+          return;
+        }
+        if (normalizedMessage.includes('new') || normalizedMessage.includes('dedicated') || normalizedMessage.includes('create')) {
+          startMockEvalArtifactCreation(activeMockEvalSetup, 'new');
+          return;
+        }
+      }
+      const pendingMockJudgeAlignment = pendingMockJudgeAlignmentRef.current;
+      if (pendingMockJudgeAlignment) {
+        if (normalizedMessage.includes('skip') || normalizedMessage.includes('no')) {
+          startMockSkipJudgeAlignment(pendingMockJudgeAlignment);
+          return;
+        }
+        if (
+          normalizedMessage.includes('align') ||
+          normalizedMessage.includes('fine-tune') ||
+          normalizedMessage.includes('yes')
+        ) {
+          startMockJudgeAlignment(pendingMockJudgeAlignment);
+          return;
+        }
+      }
+      if (lastMockEvalSetupRef.current && normalizedMessage === 'run evaluation') {
+        startMockRunEvaluation(lastMockEvalSetupRef.current);
+        return;
+      }
       if (!sessionId) {
         startChat(message);
         return;
@@ -671,6 +1490,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
       setError(null);
       setIsStreaming(true);
+      setContextualSuggestedPrompts([]);
       setPendingPermission(null);
 
       // Add user message
@@ -710,10 +1530,25 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       );
       attachStreamIfCurrent(isCurrent, result);
     },
-    [sessionId, startChat, beginRequest, attachStreamIfCurrent, getPageContext, streamCallbacks],
+    [
+      clearMockStreamTimers,
+      sessionId,
+      startChat,
+      beginRequest,
+      attachStreamIfCurrent,
+      getPageContext,
+      streamCallbacks,
+      beginMockEvalSetup,
+      startMockEvalArtifactCreation,
+      startMockJudgeAlignment,
+      startMockResolveWithoutEval,
+      startMockSkipJudgeAlignment,
+      startMockRunEvaluation,
+    ],
   );
 
   const handleCancelSession = useCallback(() => {
+    clearMockStreamTimers();
     if (!sessionId || !isStreaming) return;
 
     // Invalidate any in-flight send so a late POST can't reopen a stream after cancel
@@ -745,7 +1580,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     setCurrentStatus(null);
     setActiveTools([]);
     setPendingPermission(null);
-  }, [sessionId, isStreaming, closeStreamingMessage]);
+    setContextualSuggestedPrompts([]);
+  }, [clearMockStreamTimers, sessionId, isStreaming, closeStreamingMessage]);
+
+  const startMockEvalSetup = useCallback(
+    (request: MockEvalSetupRequest) => {
+      beginMockEvalSetup(request);
+    },
+    [beginMockEvalSetup],
+  );
 
   const regenerateLastMessage = useCallback(async () => {
     // Prevent regeneration while already streaming
@@ -759,6 +1602,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       return; // No user message to regenerate from
     }
 
+    clearMockStreamTimers();
     const isCurrent = beginRequest();
 
     const userMessageContent = messages[lastUserMessageIndex].content;
@@ -804,7 +1648,16 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       withGuard(isCurrent, streamCallbacks),
     );
     attachStreamIfCurrent(isCurrent, result);
-  }, [messages, sessionId, isStreaming, beginRequest, attachStreamIfCurrent, getPageContext, streamCallbacks]);
+  }, [
+    messages,
+    sessionId,
+    isStreaming,
+    clearMockStreamTimers,
+    beginRequest,
+    attachStreamIfCurrent,
+    getPageContext,
+    streamCallbacks,
+  ]);
 
   const value: AssistantAgentContextType = {
     // State
@@ -819,6 +1672,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     isLoadingConfig,
     isLocalServer,
     pendingPrompt,
+    contextualSuggestedPrompts,
     pendingPermission,
     canUseAssistant,
     tokenUsage,
@@ -834,6 +1688,8 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     refreshConfig,
     completeSetup,
     respondToPermission,
+    startMockEvalSetup,
+    startMockIssueResolution,
   };
 
   return <AssistantReactContext.Provider value={value}>{children}</AssistantReactContext.Provider>;
@@ -852,6 +1708,7 @@ const disabledAssistantContext: AssistantAgentContextType = {
   isLoadingConfig: false,
   isLocalServer: false,
   pendingPrompt: null,
+  contextualSuggestedPrompts: [],
   pendingPermission: null,
   canUseAssistant: false,
   tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: null },
@@ -866,6 +1723,8 @@ const disabledAssistantContext: AssistantAgentContextType = {
   refreshConfig: () => Promise.resolve(),
   completeSetup: () => {},
   respondToPermission: () => {},
+  startMockEvalSetup: () => {},
+  startMockIssueResolution: () => {},
 };
 
 /**

@@ -17,20 +17,32 @@ import { shouldPaginateScorers } from '../../../common/utils/FeatureUtils';
 import { useGetScheduledScorers } from './hooks/useGetScheduledScorers';
 import { SCORER_FORM_MODE } from './constants';
 import type { ScorerFormData } from './utils/scorerTransformUtils';
+import { getMockEvalScorers } from '../../mockEvalArtifacts';
 
 interface ExperimentScorersContentContainerProps {
   experimentId: string;
+  mockScorerNames?: string[];
+  selectedScorerName?: string | null;
 }
 
-const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContainerProps> = ({ experimentId }) => {
+const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContainerProps> = ({
+  experimentId,
+  mockScorerNames,
+  selectedScorerName,
+}) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [initialScorerType, setInitialScorerType] = useState<ScorerFormData['scorerType']>('llm');
-  const scheduledScorersResult = useGetScheduledScorers(experimentId);
-  const scorers = scheduledScorersResult.data?.scheduledScorers || [];
-  const isLoading = scheduledScorersResult.isLoading;
-  const isError = scheduledScorersResult.isError;
+  const shouldUseMockScorers = Boolean(mockScorerNames?.length);
+  const scheduledScorersResult = useGetScheduledScorers(experimentId, { enabled: !shouldUseMockScorers });
+  const scorers = shouldUseMockScorers
+    ? getMockEvalScorers(mockScorerNames ?? []).sort((a, b) =>
+        a.name === selectedScorerName ? -1 : b.name === selectedScorerName ? 1 : 0,
+      )
+    : scheduledScorersResult.data?.scheduledScorers || [];
+  const isLoading = shouldUseMockScorers ? false : scheduledScorersResult.isLoading;
+  const isError = shouldUseMockScorers ? false : scheduledScorersResult.isError;
   const error = scheduledScorersResult.error;
 
   const handleNewLLMScorerClick = () => {

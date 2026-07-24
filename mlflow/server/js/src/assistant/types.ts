@@ -17,8 +17,25 @@ export type ToolCallStatus = (typeof ToolCallStatus)[keyof typeof ToolCallStatus
  * can show tool calls interleaved with the narration, and so tool results/status
  * (filled in later) render where they happened.
  */
+export interface AssistantSelectionPromptOption {
+  value: string;
+  label: string;
+  description?: string;
+  recommended?: boolean;
+  prompt?: string;
+}
+
 export type AssistantPart =
   | { type: 'text'; text: string }
+  | {
+      type: 'selectionPrompt';
+      selectionId: string;
+      title: string;
+      description?: string;
+      options: AssistantSelectionPromptOption[];
+      defaultValue: string;
+      continueLabel?: string;
+    }
   | {
       type: 'toolCall';
       toolUseId: string;
@@ -74,6 +91,23 @@ export interface PermissionRequest {
   requestId: string;
   toolName: string;
   toolInput: Record<string, any>;
+}
+
+export interface MockEvalSetupRequest {
+  issueId: string;
+  issueName: string;
+  sourceJobId?: string;
+  traceCount?: number;
+  traceIds?: string[];
+  datasetName: string;
+  scorerNames: string[];
+  goldenDatasetName?: string;
+  goldenDatasetRecordCount?: number;
+  appendToCurrentThread?: boolean;
+  onStart?: () => void;
+  onChoice?: (datasetMode: 'new' | 'golden') => void;
+  onComplete?: (datasetMode: 'new' | 'golden') => void;
+  onResolve?: () => void;
 }
 
 /**
@@ -147,6 +181,8 @@ export interface AssistantAgentState {
   isLocalServer: boolean;
   /** A prompt queued to seed the chat input the next time it becomes visible (null when none) */
   pendingPrompt: string | null;
+  /** Contextual prompt chips shown above the chat input for the current assistant turn */
+  contextualSuggestedPrompts: string[];
   /** A tool call awaiting the user's Yes/No decision, or null */
   pendingPermission: PermissionRequest | null;
   /** Whether the Assistant can be used from this client, considering server-side remote-access settings */
@@ -178,6 +214,10 @@ export interface AssistantAgentActions {
   completeSetup: () => void;
   /** Answer the pending tool-call permission prompt */
   respondToPermission: (allow: boolean) => void;
+  /** Start a frontend-only assistant demo stream for setting up eval artifacts from an issue */
+  startMockEvalSetup: (request: MockEvalSetupRequest) => void;
+  /** Start a frontend-only assistant demo prompt before resolving an issue */
+  startMockIssueResolution: (request: MockEvalSetupRequest) => void;
 }
 
 export type AssistantAgentContextType = AssistantAgentState & AssistantAgentActions;

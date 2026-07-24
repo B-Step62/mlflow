@@ -2,10 +2,12 @@ import type React from 'react';
 import { useMemo, useState } from 'react';
 import {
   Button,
-  Input,
+  ForkHorizontalIcon,
+  ClockIcon,
   PlusIcon,
   SparkleIcon,
   Tabs,
+  TargetIcon,
   Typography,
   useDesignSystemTheme,
   useLegacyNotification,
@@ -14,10 +16,10 @@ import { FormattedMessage } from 'react-intl';
 
 import { useParams } from '../../../common/utils/RoutingUtils';
 import { RunViewIssuesContent } from '../../components/run-page/RunViewIssuesTab';
-import type { IssueEvalSetupStatus } from '../../components/run-page/IssueDetailsPanel';
+import { IssueStatusFilter, type IssueStatusFilterValue } from '../../components/run-page/IssueStatusFilter';
 import type { Issue, IssueStatus } from '../../components/run-page/hooks/useSearchIssuesQuery';
 import { MOCK_FAILURE_ANALYSIS_ISSUES } from '../experiment-overview/failureAnalysisMock';
-import type { MockEvalDatasetMode } from '../../mockEvalArtifacts';
+import { getAiGradientBorderStyle } from '../../../shared/web-shared/design-system/aiGradientBorderStyle';
 
 const MOCK_EXISTING_ISSUES: Issue[] = [
   {
@@ -187,13 +189,6 @@ const MOCK_TOPICS = [
   },
 ];
 
-const CUSTOM_ANALYSIS_ROWS = [
-  { tool: 'activityPlanningTool', calls: '231', p95: '4.8s', failures: '7.2%' },
-  { tool: 'weatherLookup', calls: '120', p95: '3.1s', failures: '11.0%' },
-  { tool: 'agent.stream', calls: '390', p95: '1.4s', failures: '2.1%' },
-  { tool: 'policyRetriever', calls: '84', p95: '2.2s', failures: '4.8%' },
-];
-
 const truncateSourceJobId = (sourceRunId?: string) => {
   if (!sourceRunId) {
     return '';
@@ -234,6 +229,13 @@ const WidgetShell = ({
         borderRadius: theme.borders.borderRadiusMd,
         backgroundColor: theme.colors.backgroundPrimary,
         boxSizing: 'border-box',
+        '& .analysis-widget-promote': {
+          opacity: 0,
+          transition: 'opacity 120ms ease-in-out',
+        },
+        '&:hover .analysis-widget-promote, &:focus-within .analysis-widget-promote': {
+          opacity: 1,
+        },
       }}
     >
       <div
@@ -254,6 +256,7 @@ const WidgetShell = ({
           type="tertiary"
           icon={<PlusIcon />}
           onClick={() => onPromote(title)}
+          className="analysis-widget-promote"
         >
           <FormattedMessage
             defaultMessage="Dashboard"
@@ -472,6 +475,13 @@ const TopicsTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
         borderRadius: theme.borders.borderRadiusMd,
         backgroundColor: theme.colors.backgroundPrimary,
         overflow: 'hidden',
+        '& .analysis-widget-promote': {
+          opacity: 0,
+          transition: 'opacity 120ms ease-in-out',
+        },
+        '&:hover .analysis-widget-promote, &:focus-within .analysis-widget-promote': {
+          opacity: 1,
+        },
       }}
     >
       <div
@@ -557,6 +567,7 @@ const TopicsTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
             type="tertiary"
             icon={<PlusIcon />}
             onClick={() => onPromote('Topic scatterplot')}
+            className="analysis-widget-promote"
           >
             <FormattedMessage defaultMessage="Dashboard" description="Promote topic scatterplot button label" />
           </Button>
@@ -766,213 +777,96 @@ const TopicsTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
   );
 };
 
-const CustomAnalysisChartWidget = ({ onPromote }: { onPromote: (title: string) => void }) => {
+const AnalysisModeTabs = () => {
   const { theme } = useDesignSystemTheme();
+  const modes: { value: AnalysisTab; label: React.ReactNode; icon: React.ReactNode }[] = [
+    {
+      value: 'failure-patterns',
+      label: <FormattedMessage defaultMessage="Common failures" description="Analysis tab label for common failures" />,
+      icon: <TargetIcon />,
+    },
+    {
+      value: 'topics',
+      label: <FormattedMessage defaultMessage="Topics" description="Analysis tab label for topics" />,
+      icon: <ForkHorizontalIcon />,
+    },
+    {
+      value: 'custom',
+      label: <FormattedMessage defaultMessage="Custom" description="Analysis tab label for custom analysis" />,
+      icon: <SparkleIcon color="ai" />,
+    },
+  ];
 
   return (
-    <WidgetShell
-      title="P95 latency by tool"
-      componentId="mlflow.experiment-analysis.custom.promote-latency-chart"
-      onPromote={onPromote}
+    <Tabs.List
+      css={{
+        marginBottom: theme.spacing.md,
+      }}
     >
-      <div
-        css={{
-          display: 'grid',
-          gridTemplateColumns: '40px minmax(0, 1fr)',
-          gridTemplateRows: '1fr 28px',
-          gap: theme.spacing.sm,
-          minHeight: 220,
-        }}
-      >
-        <div
+      {modes.map((mode) => (
+        <Tabs.Trigger
+          key={mode.value}
+          value={mode.value}
           css={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            color: theme.colors.textSecondary,
+            minHeight: 44,
+            paddingLeft: theme.spacing.md,
+            paddingRight: theme.spacing.md,
           }}
         >
-          {['5s', '3s', '1s'].map((tick) => (
-            <Typography.Text key={tick} size="sm" color="secondary">
-              {tick}
-            </Typography.Text>
-          ))}
-        </div>
-        <div
-          css={{
-            position: 'relative',
-            borderLeft: `1px solid ${theme.colors.border}`,
-            borderBottom: `1px solid ${theme.colors.border}`,
-            backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px)`,
-            backgroundSize: '100% 33%',
-          }}
-        >
-          <svg
-            viewBox="0 0 420 190"
-            preserveAspectRatio="none"
-            css={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-          >
-            <polyline
-              points="0,130 52,118 104,56 156,96 208,42 260,76 312,64 364,122 420,104"
-              fill="none"
-              stroke={theme.colors.blue500}
-              strokeWidth="3"
-            />
-            <polyline
-              points="0,154 52,148 104,132 156,142 208,118 260,126 312,110 364,134 420,126"
-              fill="none"
-              stroke={theme.colors.green500}
-              strokeWidth="3"
-            />
-          </svg>
-        </div>
-        <div />
-        <div
-          css={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            color: theme.colors.textSecondary,
-          }}
-        >
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((label) => (
-            <Typography.Text key={label} size="sm" color="secondary">
-              {label}
-            </Typography.Text>
-          ))}
-        </div>
-      </div>
-    </WidgetShell>
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            {mode.icon}
+            <span>{mode.label}</span>
+          </span>
+        </Tabs.Trigger>
+      ))}
+    </Tabs.List>
   );
 };
 
-const CustomAnalysisTableWidget = ({ onPromote }: { onPromote: (title: string) => void }) => {
+const CustomAnalysisTab = () => {
   const { theme } = useDesignSystemTheme();
 
   return (
-    <WidgetShell
-      title="Tool summary"
-      componentId="mlflow.experiment-analysis.custom.promote-tool-summary"
-      onPromote={onPromote}
+    <div
+      css={{
+        minHeight: 520,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: `1px dashed ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundColor: theme.colors.backgroundPrimary,
+      }}
     >
       <div
         css={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(160px, 1fr) 80px 80px 96px',
+          display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          rowGap: theme.spacing.sm,
-          columnGap: theme.spacing.md,
-          minHeight: 220,
-        }}
-      >
-        {['Tool', 'Calls', 'P95', 'Failure rate'].map((header) => (
-          <Typography.Text key={header} color="secondary" size="sm" bold>
-            {header}
-          </Typography.Text>
-        ))}
-        {CUSTOM_ANALYSIS_ROWS.map((row) => (
-          <div key={row.tool} css={{ display: 'contents' }}>
-            <Typography.Text ellipsis>{row.tool}</Typography.Text>
-            <Typography.Text>{row.calls}</Typography.Text>
-            <Typography.Text>{row.p95}</Typography.Text>
-            <Typography.Text>{row.failures}</Typography.Text>
-          </div>
-        ))}
-      </div>
-    </WidgetShell>
-  );
-};
-
-const CustomAnalysisTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
-  const { theme } = useDesignSystemTheme();
-
-  return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-      <section
-        css={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)',
           gap: theme.spacing.md,
+          maxWidth: 420,
+          textAlign: 'center',
+          padding: theme.spacing.xl,
         }}
       >
-        <div
-          css={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: theme.spacing.md,
-            padding: theme.spacing.md,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: theme.borders.borderRadiusMd,
-            backgroundColor: theme.colors.backgroundPrimary,
-          }}
-        >
-          <div css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.sm }}>
-            <Typography.Title level={4} css={{ margin: 0 }}>
-              <FormattedMessage
-                defaultMessage="Ask a question about traces"
-                description="Custom analysis prompt panel title"
-              />
-            </Typography.Title>
-            <Button
-              componentId="mlflow.experiment-analysis.custom.run"
-              type="primary"
-              icon={<SparkleIcon color="ai" />}
-            >
-              <FormattedMessage defaultMessage="Run analysis" description="Run custom trace analysis button" />
-            </Button>
-          </div>
-          <Input.TextArea
-            componentId="mlflow.experiment-analysis.custom.prompt"
-            readOnly
-            rows={4}
-            value="Show high-latency tool calls grouped by tool and render p95 latency over time."
+        <SparkleIcon color="ai" css={{ fontSize: 32 }} />
+        <Typography.Title level={3} css={{ margin: 0 }}>
+          <FormattedMessage defaultMessage="Custom analysis" description="Custom analysis empty state title" />
+        </Typography.Title>
+        <Typography.Text color="secondary">
+          <FormattedMessage
+            defaultMessage="Ask MLflow to generate a SQL-like analysis over traces. This prototype will be connected in a later demo."
+            description="Custom analysis empty state description"
           />
-        </div>
-        <div
-          css={{
-            padding: theme.spacing.md,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: theme.borders.borderRadiusMd,
-            backgroundColor: theme.colors.backgroundPrimary,
-            minWidth: 0,
-          }}
+        </Typography.Text>
+        <Button
+          componentId="mlflow.experiment-analysis.custom.empty-state"
+          type="primary"
+          icon={<SparkleIcon color="ai" />}
         >
-          <Typography.Title level={4} css={{ marginTop: 0 }}>
-            <FormattedMessage defaultMessage="Generated analysis" description="Generated custom analysis panel title" />
-          </Typography.Title>
-          <pre
-            css={{
-              margin: 0,
-              padding: theme.spacing.md,
-              borderRadius: theme.borders.borderRadiusMd,
-              border: `1px solid ${theme.colors.border}`,
-              backgroundColor: theme.colors.backgroundSecondary,
-              color: theme.colors.textPrimary,
-              overflow: 'auto',
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >{`SELECT tool_name,
-       date_trunc('hour', timestamp) AS hour,
-       count(*) AS calls,
-       p95(latency_ms) AS p95_latency,
-       avg(error IS NOT NULL) AS failure_rate
-FROM traces
-WHERE timestamp >= now() - interval '7 days'
-GROUP BY tool_name, hour
-ORDER BY p95_latency DESC`}</pre>
-        </div>
-      </section>
-      <section
-        css={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-          gap: theme.spacing.md,
-        }}
-      >
-        <CustomAnalysisChartWidget onPromote={onPromote} />
-        <CustomAnalysisTableWidget onPromote={onPromote} />
-      </section>
+          <FormattedMessage defaultMessage="Start custom analysis" description="Custom analysis empty state action" />
+        </Button>
+      </div>
     </div>
   );
 };
@@ -982,9 +876,9 @@ const ExperimentIssuesPage = () => {
   const { experimentId } = useParams<{ experimentId: string }>();
   const [notification, notificationContextHolder] = useLegacyNotification();
   const [activeTab, setActiveTab] = useState<AnalysisTab>('failure-patterns');
+  const [isDetectionScheduled, setIsDetectionScheduled] = useState(false);
+  const [issueStatusFilter, setIssueStatusFilter] = useState<IssueStatusFilterValue>('pending');
   const [statusOverrides, setStatusOverrides] = useState<Record<string, IssueStatus>>({});
-  const [evalSetupStatuses, setEvalSetupStatuses] = useState<Record<string, IssueEvalSetupStatus>>({});
-  const [evalSetupDatasetModes, setEvalSetupDatasetModes] = useState<Record<string, MockEvalDatasetMode>>({});
   const safeExperimentId = experimentId ?? '';
 
   const baseIssues = useMemo<Issue[]>(
@@ -1059,6 +953,43 @@ const ExperimentIssuesPage = () => {
     });
   };
 
+  const handleScheduleDetection = () => {
+    setIsDetectionScheduled(true);
+    notification.info({
+      placement: 'topRight',
+      message: (
+        <FormattedMessage
+          defaultMessage="Detection scheduled"
+          description="Notification title after scheduling common failure detection"
+        />
+      ),
+      description: (
+        <FormattedMessage
+          defaultMessage="MLflow will analyze recent traces for common failures on a recurring schedule."
+          description="Notification description after scheduling common failure detection"
+        />
+      ),
+    });
+  };
+
+  const handleRunDetection = () => {
+    notification.info({
+      placement: 'topRight',
+      message: (
+        <FormattedMessage
+          defaultMessage="Detection started"
+          description="Notification title after running common failure detection"
+        />
+      ),
+      description: (
+        <FormattedMessage
+          defaultMessage="MLflow is analyzing recent traces for common failures."
+          description="Notification description after running common failure detection"
+        />
+      ),
+    });
+  };
+
   return (
     <div
       css={{
@@ -1078,20 +1009,54 @@ const ExperimentIssuesPage = () => {
         valueHasNoPii
         css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
       >
-        <Tabs.List>
-          <Tabs.Trigger value="failure-patterns">
-            <FormattedMessage defaultMessage="Failure patterns" description="Analysis tab label for failure patterns" />
-          </Tabs.Trigger>
-          <Tabs.Trigger value="topics">
-            <FormattedMessage defaultMessage="Topics" description="Analysis tab label for topics" />
-          </Tabs.Trigger>
-          <Tabs.Trigger value="custom">
-            <FormattedMessage defaultMessage="Custom" description="Analysis tab label for custom analysis" />
-          </Tabs.Trigger>
-        </Tabs.List>
+        <AnalysisModeTabs />
 
         <Tabs.Content value="failure-patterns" css={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md, minHeight: 0 }}>
+            <div
+              css={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: theme.spacing.md,
+              }}
+            >
+              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                <Typography.Title level={3} css={{ margin: 0 }}>
+                  <FormattedMessage defaultMessage="Common failures" description="Common failures section title" />
+                </Typography.Title>
+                <Typography.Text color="secondary">
+                  <FormattedMessage
+                    defaultMessage="Recurring failure modes detected across recent traces."
+                    description="Common failures section subtitle"
+                  />
+                </Typography.Text>
+              </div>
+              <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Button
+                  componentId="mlflow.experiment-analysis.common-failures.run-detection"
+                  icon={<SparkleIcon color="ai" />}
+                  onClick={handleRunDetection}
+                  css={getAiGradientBorderStyle(theme)}
+                >
+                  <FormattedMessage defaultMessage="Run detection" description="Run common failure detection button" />
+                </Button>
+                <IssueStatusFilter
+                  issues={issues}
+                  value={issueStatusFilter}
+                  onChange={setIssueStatusFilter}
+                  showLabel={false}
+                />
+                <Button
+                  componentId="mlflow.experiment-analysis.common-failures.schedule-detection"
+                  icon={<ClockIcon />}
+                  disabled={isDetectionScheduled}
+                  onClick={handleScheduleDetection}
+                >
+                  <FormattedMessage defaultMessage="Schedule" description="Schedule common failure detection button" />
+                </Button>
+              </div>
+            </div>
             <div
               css={{
                 display: 'grid',
@@ -1121,26 +1086,15 @@ const ExperimentIssuesPage = () => {
                 compactCards
                 defaultSelectFirstIssue
                 detailsPanel="details"
+                statusFilter={issueStatusFilter}
+                onStatusFilterChange={setIssueStatusFilter}
+                hideStatusFilter
                 getIssueSourceLabel={(issue) => truncateSourceJobId(issue.source_run_id)}
                 getIssueSourceTagColor={() => 'charcoal'}
                 onIssueStatusChange={(issueId, status) =>
                   setStatusOverrides((current) => ({
                     ...current,
                     [issueId]: status,
-                  }))
-                }
-                getIssueEvalSetupStatus={(issue) => evalSetupStatuses[issue.issue_id] ?? 'idle'}
-                onIssueEvalSetupStatusChange={(issueId, status) =>
-                  setEvalSetupStatuses((current) => ({
-                    ...current,
-                    [issueId]: status,
-                  }))
-                }
-                getIssueEvalSetupDatasetMode={(issue) => evalSetupDatasetModes[issue.issue_id] ?? 'new'}
-                onIssueEvalSetupDatasetModeChange={(issueId, mode) =>
-                  setEvalSetupDatasetModes((current) => ({
-                    ...current,
-                    [issueId]: mode,
                   }))
                 }
               />
@@ -1151,7 +1105,7 @@ const ExperimentIssuesPage = () => {
           <TopicsTab onPromote={handlePromoteWidget} />
         </Tabs.Content>
         <Tabs.Content value="custom" css={{ flex: 1, minHeight: 0, overflow: 'auto', paddingTop: theme.spacing.md }}>
-          <CustomAnalysisTab onPromote={handlePromoteWidget} />
+          <CustomAnalysisTab />
         </Tabs.Content>
       </Tabs.Root>
     </div>

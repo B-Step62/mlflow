@@ -1,18 +1,21 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   Button,
   CheckCircleIcon,
   CloseIcon,
   CopyIcon,
+  Drawer,
   Empty,
   ForkHorizontalIcon,
   InfoPopover,
   Spinner,
   SparkleIcon,
   Tag,
+  TableIcon,
   Typography,
   useDesignSystemTheme,
+  WrenchSparkleIcon,
 } from '@databricks/design-system';
 import {
   isV3ModelTraceInfo,
@@ -27,42 +30,132 @@ import Routes from '../../routes';
 import { type Issue, type IssueStatus } from './hooks/useSearchIssuesQuery';
 import { useUpdateIssue } from './hooks/useUpdateIssue';
 import Utils from '../../../common/utils/Utils';
+import { useAssistant } from '../../../assistant/AssistantContext';
+import type { MockEvalSetupRequest } from '../../../assistant/types';
+import {
+  getEvalLinkedItems,
+  getMockEvalDatasetRecords,
+  getMockEvalScorers,
+  type MockEvalDatasetMode,
+} from '../../mockEvalArtifacts';
+
+export type IssueEvalSetupStatus = 'idle' | 'choosing' | 'running' | 'complete';
 
 interface IssueDetailsPanelProps {
   issue: Issue;
   experimentId: string;
   onStatusChange?: (issueId: string, status: IssueStatus) => void;
+  evalSetupStatus?: IssueEvalSetupStatus;
+  evalSetupDatasetMode?: MockEvalDatasetMode;
+  onEvalSetupStatusChange?: (issueId: string, status: IssueEvalSetupStatus) => void;
+  onEvalSetupDatasetModeChange?: (issueId: string, mode: MockEvalDatasetMode) => void;
 }
 
-export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: IssueDetailsPanelProps) => {
+type LinkedArtifactDrawer = { type: 'dataset' } | { type: 'scorer'; scorerName: string };
+
+export const IssueDetailsPanel = ({
+  issue,
+  experimentId,
+  onStatusChange,
+  evalSetupStatus = 'idle',
+  evalSetupDatasetMode = 'new',
+  onEvalSetupStatusChange,
+  onEvalSetupDatasetModeChange,
+}: IssueDetailsPanelProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const navigate = useNavigate();
+  const { openPanel, prefillPrompt, startMockEvalSetup, startMockIssueResolution } = useAssistant();
   const { updateIssueAsync, isUpdating } = useUpdateIssue();
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [linkedArtifactDrawer, setLinkedArtifactDrawer] = useState<LinkedArtifactDrawer | null>(null);
   const tracesRoute = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Traces);
   const selectedTraceIds = selectedTraceId ? [selectedTraceId] : [];
   const { data: selectedTraces, isLoading: isLoadingSelectedTrace } = useGetTracesById(selectedTraceIds);
   const selectedTrace = selectedTraces?.[0];
   const sourceJobId = issue.source_run_id;
+  const dedicatedEvalLinkedItems = getEvalLinkedItems(issue, 'new');
+  const goldenEvalLinkedItems = getEvalLinkedItems(issue, 'golden');
+  const evalLinkedItems = getEvalLinkedItems(issue, evalSetupDatasetMode);
+  const datasetRecords = getMockEvalDatasetRecords(evalLinkedItems.dataset.datasetId) ?? [];
+  const scorerDetails = getMockEvalScorers(evalLinkedItems.scorers.map((scorer) => scorer.name));
+  const selectedScorer =
+    linkedArtifactDrawer?.type === 'scorer'
+      ? scorerDetails.find((scorer) => scorer.name === linkedArtifactDrawer.scorerName)
+      : undefined;
 
+  const createEvalSetupRequest = (overrides: Partial<MockEvalSetupRequest> = {}): MockEvalSetupRequest => ({
+    issueId: issue.issue_id,
+    issueName: issue.name,
+    sourceJobId,
+    traceCount: dedicatedEvalLinkedItems.dataset.traceCount,
+    traceIds: issue.example_trace_ids,
+    datasetName: dedicatedEvalLinkedItems.dataset.name,
+    scorerNames: dedicatedEvalLinkedItems.scorers.map((scorer) => scorer.name),
+    goldenDatasetName: goldenEvalLinkedItems.dataset.name,
+    goldenDatasetRecordCount: goldenEvalLinkedItems.dataset.existingRecordCount,
+    onStart: () => onEvalSetupStatusChange?.(issue.issue_id, 'choosing'),
+    onChoice: (mode: MockEvalDatasetMode) => {
+      onEvalSetupDatasetModeChange?.(issue.issue_id, mode);
+      onEvalSetupStatusChange?.(issue.issue_id, 'running');
+    },
+    onComplete: (mode: MockEvalDatasetMode) => {
+      onEvalSetupDatasetModeChange?.(issue.issue_id, mode);
+      onEvalSetupStatusChange?.(issue.issue_id, 'complete');
+    },
+    ...overrides,
+  });
+
+  const handleSetupEval = () => {
+    if (evalSetupStatus === 'choosing' || evalSetupStatus === 'running' || evalSetupStatus === 'complete') {
+      return;
+    }
+    startMockEvalSetup(createEvalSetupRequest());
+  };
+
+  const setupEvalComplete = evalSetupStatus === 'complete';
   const nextSteps = [
     {
-      key: 'setup-eval',
-      title: <FormattedMessage defaultMessage="Setup eval" description="Issue detail next step to set up eval" />,
-      onClick: () => navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.EvaluationRuns)),
+      key: 'fix-issue',
+      componentId: 'mlflow.issues.details.fix-issue',
+      title: <FormattedMessage defaultMessage="Fix issue" description="Issue detail next step to fix issue" />,
+      onClick: () => {
+        openPanel();
+        prefillPrompt(
+          [
+            `Fix issue: ${issue.name}`,
+            `Use the impacted traces from issue ${issue.issue_id} and verify the fix with a local scorer and eval script.`,
+            sourceJobId ? `Source job: ${sourceJobId}` : undefined,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
+      },
+      loading: false,
+      disabled: false,
+      icon: <WrenchSparkleIcon color="ai" />,
     },
     {
       key: 'ask-review',
+      componentId: 'mlflow.issues.details.ask-review',
       title: <FormattedMessage defaultMessage="Ask review" description="Issue detail next step to ask review" />,
       onClick: () => navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.ReviewQueue)),
+      loading: false,
+      disabled: false,
+      icon: <SparkleIcon color="ai" />,
     },
     {
-      key: 'create-dataset',
-      title: (
-        <FormattedMessage defaultMessage="Create dataset" description="Issue detail next step to create dataset" />
+      key: 'setup-eval',
+      componentId: 'mlflow.issues.details.setup-eval',
+      title: <FormattedMessage defaultMessage="Setup eval" description="Issue detail next step to set up eval" />,
+      onClick: handleSetupEval,
+      loading: evalSetupStatus === 'running',
+      disabled: evalSetupStatus === 'choosing' || setupEvalComplete,
+      icon: setupEvalComplete ? (
+        <CheckCircleIcon css={{ color: theme.colors.textValidationSuccess }} />
+      ) : (
+        <SparkleIcon color="ai" />
       ),
-      onClick: () => navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Datasets)),
     },
   ];
 
@@ -83,6 +176,100 @@ export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: Issue
         ),
       );
     });
+  };
+
+  const handleResolveIssue = () => {
+    if (evalSetupStatus === 'complete') {
+      handleStatusChange('resolved');
+      return;
+    }
+    startMockIssueResolution(createEvalSetupRequest({ onResolve: () => handleStatusChange('resolved') }));
+  };
+
+  const evalArtifactsVisible = evalSetupStatus !== 'idle';
+  const evalArtifactsClickable = evalSetupStatus === 'complete';
+  const evalArtifactActionLabel =
+    evalSetupStatus === 'complete' ? (
+      <FormattedMessage defaultMessage="View" description="View linked eval artifact action" />
+    ) : evalSetupStatus === 'running' ? (
+      <FormattedMessage defaultMessage="Creating" description="Creating eval artifact status label" />
+    ) : (
+      <FormattedMessage defaultMessage="Pending" description="Pending eval artifact status label" />
+    );
+  const datasetDisplayName =
+    evalSetupStatus === 'choosing' ? (
+      <FormattedMessage defaultMessage="Dataset target" description="Pending generated eval dataset row title" />
+    ) : (
+      evalLinkedItems.dataset.name
+    );
+
+  const renderArtifactRow = ({
+    key,
+    icon,
+    title,
+    metadata,
+    onClick,
+  }: {
+    key: string;
+    icon: ReactNode;
+    title: ReactNode;
+    metadata: ReactNode;
+    onClick?: () => void;
+  }) => {
+    const clickable = Boolean(onClick);
+    return (
+      <div
+        key={key}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onClick={onClick}
+        onKeyDown={
+          clickable
+            ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onClick?.();
+                }
+              }
+            : undefined
+        }
+        css={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
+          gap: theme.spacing.md,
+          alignItems: 'center',
+          padding: `${theme.spacing.sm}px 0`,
+          borderBottom: `1px solid ${theme.colors.border}`,
+          cursor: clickable ? 'pointer' : 'default',
+          ':hover': clickable
+            ? {
+                backgroundColor: theme.colors.actionDefaultBackgroundHover,
+              }
+            : undefined,
+        }}
+      >
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
+          {icon}
+          <div css={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <Typography.Text bold css={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {title}
+            </Typography.Text>
+            <Typography.Text color="secondary" size="sm">
+              {metadata}
+            </Typography.Text>
+          </div>
+        </div>
+        <Typography.Text
+          size="sm"
+          css={{
+            color: clickable ? theme.colors.actionPrimaryTextDefault : theme.colors.textSecondary,
+            fontWeight: clickable ? theme.typography.typographyBoldFontWeight : undefined,
+          }}
+        >
+          {evalArtifactActionLabel}
+        </Typography.Text>
+      </div>
+    );
   };
 
   return (
@@ -122,13 +309,7 @@ export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: Issue
                 {issue.severity && (
                   <Tag
                     componentId="mlflow.issues.details.severity"
-                    color={
-                      issue.severity === 'high'
-                        ? 'coral'
-                        : issue.severity === 'medium'
-                        ? 'lemon'
-                        : 'charcoal'
-                    }
+                    color={issue.severity === 'high' ? 'coral' : issue.severity === 'medium' ? 'lemon' : 'charcoal'}
                   >
                     {issue.severity === 'not_an_issue' ? (
                       <FormattedMessage defaultMessage="Not an issue" description="Not an issue severity label" />
@@ -213,9 +394,8 @@ export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: Issue
               </Button>
               <Button
                 componentId="mlflow.issues.details.resolve"
-                type="primary"
                 icon={<CheckCircleIcon />}
-                onClick={() => handleStatusChange('resolved')}
+                onClick={handleResolveIssue}
                 loading={isUpdating}
               >
                 <FormattedMessage defaultMessage="Mark as resolved" description="Button to resolve issue" />
@@ -231,10 +411,12 @@ export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: Issue
               {nextSteps.map((step) => (
                 <Button
                   key={step.key}
-                  componentId={`mlflow.issues.details.${step.key}`}
+                  componentId={step.componentId}
                   size="small"
-                  icon={<SparkleIcon color="ai" />}
+                  icon={step.icon}
                   onClick={step.onClick}
+                  loading={step.loading}
+                  disabled={step.disabled}
                 >
                   {step.title}
                 </Button>
@@ -257,6 +439,86 @@ export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: Issue
             </Typography.Title>
             <Typography.Text>{issue.description}</Typography.Text>
           </div>
+
+          {evalArtifactsVisible && (
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+              <Typography.Title level={4} css={{ margin: 0 }}>
+                {evalSetupStatus === 'complete' ? (
+                  <FormattedMessage
+                    defaultMessage="Linked items"
+                    description="Issue details linked eval items heading"
+                  />
+                ) : (
+                  <FormattedMessage
+                    defaultMessage="Generated eval artifacts"
+                    description="Issue details generated eval artifacts heading"
+                  />
+                )}
+              </Typography.Title>
+              {evalSetupStatus === 'choosing' && (
+                <Typography.Text color="secondary" size="sm">
+                  <FormattedMessage
+                    defaultMessage="Assistant is waiting for a dataset target. Draft judges are ready to create."
+                    description="Issue detail generated eval artifacts waiting text"
+                  />
+                </Typography.Text>
+              )}
+              {evalSetupStatus === 'running' && (
+                <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                  <Spinner size="small" />
+                  <Typography.Text color="secondary" size="sm">
+                    <FormattedMessage
+                      defaultMessage="Assistant is creating the dataset and judges."
+                      description="Issue detail linked items pending text"
+                    />
+                  </Typography.Text>
+                </div>
+              )}
+              <div css={{ display: 'flex', flexDirection: 'column', borderTop: `1px solid ${theme.colors.border}` }}>
+                {renderArtifactRow({
+                  key: 'dataset',
+                  icon: <TableIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />,
+                  title: datasetDisplayName,
+                  metadata:
+                    evalSetupStatus === 'choosing' ? (
+                      <FormattedMessage
+                        defaultMessage="Choose existing golden or new dataset in Assistant"
+                        description="Issue detail pending dataset metadata"
+                      />
+                    ) : evalSetupDatasetMode === 'golden' ? (
+                      <FormattedMessage
+                        defaultMessage="Golden dataset · {count} added records"
+                        description="Issue detail linked golden dataset metadata"
+                        values={{ count: evalLinkedItems.dataset.traceCount }}
+                      />
+                    ) : (
+                      <FormattedMessage
+                        defaultMessage="Dataset · {count} traces"
+                        description="Issue detail linked dataset metadata"
+                        values={{ count: evalLinkedItems.dataset.traceCount }}
+                      />
+                    ),
+                  onClick: evalArtifactsClickable ? () => setLinkedArtifactDrawer({ type: 'dataset' }) : undefined,
+                })}
+                {evalLinkedItems.scorers.map((scorer) =>
+                  renderArtifactRow({
+                    key: scorer.name,
+                    icon: <SparkleIcon color="ai" css={{ flexShrink: 0 }} />,
+                    title: scorer.name,
+                    metadata:
+                      evalSetupStatus === 'complete' ? (
+                        scorer.type
+                      ) : (
+                        <FormattedMessage defaultMessage="Draft LLM judge" description="Draft generated judge label" />
+                      ),
+                    onClick: evalArtifactsClickable
+                      ? () => setLinkedArtifactDrawer({ type: 'scorer', scorerName: scorer.name })
+                      : undefined,
+                  }),
+                )}
+              </div>
+            </div>
+          )}
 
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
             <Typography.Title level={4} css={{ margin: 0 }}>
@@ -323,6 +585,115 @@ export const IssueDetailsPanel = ({ issue, experimentId, onStatusChange }: Issue
           </div>
         </div>
       </div>
+
+      <Drawer.Root open={linkedArtifactDrawer !== null} onOpenChange={(open) => !open && setLinkedArtifactDrawer(null)}>
+        <Drawer.Content
+          componentId="mlflow.issues.details.linked-artifact-drawer"
+          width="560px"
+          title={
+            <Typography.Title level={3} withoutMargins>
+              {linkedArtifactDrawer?.type === 'scorer' ? selectedScorer?.name : evalLinkedItems.dataset.name}
+            </Typography.Title>
+          }
+        >
+          {linkedArtifactDrawer?.type === 'dataset' ? (
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
+                <Tag componentId="mlflow.issues.details.dataset-drawer-type" color="charcoal">
+                  {evalSetupDatasetMode === 'golden' ? (
+                    <FormattedMessage defaultMessage="Golden dataset" description="Golden dataset drawer type label" />
+                  ) : (
+                    <FormattedMessage defaultMessage="Dataset" description="Dataset drawer type label" />
+                  )}
+                </Tag>
+                <Typography.Text color="secondary" size="sm">
+                  {evalSetupDatasetMode === 'golden' ? (
+                    <FormattedMessage
+                      defaultMessage="{count} new issue records"
+                      description="Golden dataset drawer added records label"
+                      values={{ count: evalLinkedItems.dataset.traceCount }}
+                    />
+                  ) : (
+                    <FormattedMessage
+                      defaultMessage="{count} issue records"
+                      description="Dataset drawer records label"
+                      values={{ count: evalLinkedItems.dataset.traceCount }}
+                    />
+                  )}
+                </Typography.Text>
+              </div>
+              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+                {datasetRecords.map((record) => (
+                  <div
+                    key={record.dataset_record_id}
+                    css={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: theme.spacing.xs,
+                      padding: theme.spacing.md,
+                      border: `1px solid ${theme.colors.border}`,
+                      borderRadius: theme.borders.borderRadiusMd,
+                      backgroundColor: theme.colors.backgroundPrimary,
+                    }}
+                  >
+                    <Typography.Text bold>{record.inputs['question']}</Typography.Text>
+                    <Typography.Text color="secondary" size="sm">
+                      {record.inputs['retrieved_evidence']}
+                    </Typography.Text>
+                    <div
+                      css={{
+                        marginTop: theme.spacing.xs,
+                        padding: theme.spacing.sm,
+                        borderRadius: theme.borders.borderRadiusSm,
+                        backgroundColor: theme.colors.backgroundSecondary,
+                      }}
+                    >
+                      <Typography.Text size="sm">{record.expectations?.['expected_response']}</Typography.Text>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
+                <Tag componentId="mlflow.issues.details.scorer-drawer-type" color="purple">
+                  <FormattedMessage defaultMessage="LLM judge" description="Scorer drawer type label" />
+                </Tag>
+                {selectedScorer?.type === 'llm' && selectedScorer.model && (
+                  <Typography.Text color="secondary" size="sm">
+                    {selectedScorer.model}
+                  </Typography.Text>
+                )}
+              </div>
+              {selectedScorer?.type === 'llm' && (
+                <>
+                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                    <Typography.Text bold>
+                      <FormattedMessage defaultMessage="Guidelines" description="Scorer drawer guidelines heading" />
+                    </Typography.Text>
+                    <ul css={{ margin: 0, paddingLeft: theme.spacing.lg }}>
+                      {(selectedScorer.guidelines ?? []).map((guideline) => (
+                        <li key={guideline} css={{ marginBottom: theme.spacing.xs }}>
+                          <Typography.Text>{guideline}</Typography.Text>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {selectedScorer.filterString && (
+                    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                      <Typography.Text bold>
+                        <FormattedMessage defaultMessage="Filter" description="Scorer drawer filter heading" />
+                      </Typography.Text>
+                      <Typography.Text code>{selectedScorer.filterString}</Typography.Text>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </Drawer.Content>
+      </Drawer.Root>
 
       {selectedTraceId && (
         <ModelTraceExplorerDrawer
