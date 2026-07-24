@@ -2,8 +2,9 @@ import type React from 'react';
 import { useMemo, useState } from 'react';
 import {
   Button,
+  ChevronDownIcon,
   ForkHorizontalIcon,
-  ClockIcon,
+  DropdownMenu,
   PlusIcon,
   SparkleIcon,
   Tabs,
@@ -206,11 +207,13 @@ const getIssueEntityCounts = (issues: Issue[]) =>
 
 const WidgetShell = ({
   title,
+  showTitle = true,
   componentId,
   onPromote,
   children,
 }: {
   title: string;
+  showTitle?: boolean;
   componentId: string;
   onPromote: (title: string) => void;
   children: React.ReactNode;
@@ -244,12 +247,16 @@ const WidgetShell = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: theme.spacing.sm,
-          marginBottom: theme.spacing.md,
+          marginBottom: showTitle ? theme.spacing.md : theme.spacing.xs,
         }}
       >
-        <Typography.Title level={4} css={{ margin: 0 }}>
-          {title}
-        </Typography.Title>
+        {showTitle ? (
+          <Typography.Title level={4} css={{ margin: 0 }}>
+            {title}
+          </Typography.Title>
+        ) : (
+          <span />
+        )}
         <Button
           componentId={componentId}
           size="small"
@@ -282,6 +289,7 @@ const IssuesFoundWidget = ({ issues, onPromote }: { issues: Issue[]; onPromote: 
   return (
     <WidgetShell
       title="Issues Found"
+      showTitle={false}
       componentId="mlflow.experiment-analysis.failure-patterns.promote-issues-found"
       onPromote={onPromote}
     >
@@ -386,6 +394,7 @@ const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => voi
   return (
     <WidgetShell
       title="Issues Over Time"
+      showTitle={false}
       componentId="mlflow.experiment-analysis.failure-patterns.promote-issues-over-time"
       onPromote={onPromote}
     >
@@ -1008,45 +1017,48 @@ const ExperimentIssuesPage = () => {
             <div
               css={{
                 display: 'flex',
-                justifyContent: 'space-between',
+                justifyContent: 'flex-end',
                 alignItems: 'center',
                 gap: theme.spacing.md,
               }}
             >
-              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-                <Typography.Title level={3} css={{ margin: 0 }}>
-                  <FormattedMessage defaultMessage="Common failures" description="Common failures section title" />
-                </Typography.Title>
-                <Typography.Text color="secondary">
-                  <FormattedMessage
-                    defaultMessage="Recurring failure modes detected across recent traces."
-                    description="Common failures section subtitle"
-                  />
-                </Typography.Text>
-              </div>
               <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Button
-                  componentId="mlflow.experiment-analysis.common-failures.run-detection"
-                  icon={<SparkleIcon color="ai" />}
-                  onClick={handleRunDetection}
-                  css={getAiGradientBorderStyle(theme)}
-                >
-                  <FormattedMessage defaultMessage="Run detection" description="Run common failure detection button" />
-                </Button>
-                <IssueStatusFilter
-                  issues={issues}
-                  value={issueStatusFilter}
-                  onChange={setIssueStatusFilter}
-                  showLabel={false}
-                />
-                <Button
-                  componentId="mlflow.experiment-analysis.common-failures.schedule-detection"
-                  icon={<ClockIcon />}
-                  disabled={isDetectionScheduled}
-                  onClick={handleScheduleDetection}
-                >
-                  <FormattedMessage defaultMessage="Schedule" description="Schedule common failure detection button" />
-                </Button>
+                <DropdownMenu.Root modal={false}>
+                  <DropdownMenu.Trigger asChild>
+                    <Button
+                      componentId="mlflow.experiment-analysis.common-failures.run-detection"
+                      icon={<SparkleIcon color="ai" />}
+                      endIcon={<ChevronDownIcon />}
+                      css={getAiGradientBorderStyle(theme)}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Run detection"
+                        description="Run common failure detection button"
+                      />
+                    </Button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="end">
+                    <DropdownMenu.Item
+                      componentId="mlflow.experiment-analysis.common-failures.run-one-time-detection"
+                      onClick={handleRunDetection}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Run one-time detection"
+                        description="Run one-time common failure detection menu item"
+                      />
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      componentId="mlflow.experiment-analysis.common-failures.schedule-detection-job"
+                      disabled={isDetectionScheduled}
+                      onClick={handleScheduleDetection}
+                    >
+                      <FormattedMessage
+                        defaultMessage="Schedule detection job"
+                        description="Schedule common failure detection job menu item"
+                      />
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
               </div>
             </div>
             <div
@@ -1059,9 +1071,17 @@ const ExperimentIssuesPage = () => {
               <IssuesFoundWidget issues={issues} onPromote={handlePromoteWidget} />
               <IssuesOverTimeWidget onPromote={handlePromoteWidget} />
             </div>
-            <Typography.Title level={3} css={{ margin: 0 }}>
-              <FormattedMessage defaultMessage="Detected Issues" description="Detected issues section title" />
-            </Typography.Title>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <Typography.Title level={3} css={{ margin: 0 }}>
+                <FormattedMessage defaultMessage="Detected Issues" description="Detected issues section title" />
+              </Typography.Title>
+              <IssueStatusFilter
+                issues={issues}
+                value={issueStatusFilter}
+                onChange={setIssueStatusFilter}
+                showLabel={false}
+              />
+            </div>
             <div
               css={{
                 flex: 1,

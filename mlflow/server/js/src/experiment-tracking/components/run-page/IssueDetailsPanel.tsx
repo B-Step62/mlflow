@@ -394,6 +394,7 @@ export const IssueDetailsPanel = ({
               </Button>
               <Button
                 componentId="mlflow.issues.details.resolve"
+                type="primary"
                 icon={<CheckCircleIcon />}
                 onClick={handleResolveIssue}
                 loading={isUpdating}
