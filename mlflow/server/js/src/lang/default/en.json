@@ -5023,6 +5023,10 @@
     "defaultMessage": "Expectation (ground truth)",
     "description": "Review question answer type: expectation"
   },
+  "MsRov0": {
+    "defaultMessage": "Issues",
+    "description": "Analysis tab label for issues"
+  },
   "Mtj9Ay": {
     "defaultMessage": "Edit description",
     "description": "Run page > Overview > Description section > Edit button label"

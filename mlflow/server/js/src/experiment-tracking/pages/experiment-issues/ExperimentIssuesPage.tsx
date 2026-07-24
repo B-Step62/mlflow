@@ -519,7 +519,7 @@ const AnalysisModeTabs = () => {
   const modes: { value: AnalysisTab; label: React.ReactNode; icon: React.ReactNode }[] = [
     {
       value: 'failure-patterns',
-      label: <FormattedMessage defaultMessage="Common failures" description="Analysis tab label for common failures" />,
+      label: <FormattedMessage defaultMessage="Issues" description="Analysis tab label for issues" />,
       icon: <TargetIcon css={{ fontSize: 14 }} />,
     },
     {
