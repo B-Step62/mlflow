@@ -270,7 +270,7 @@ const IssuesFoundWidget = ({ issues, onPromote }: { issues: Issue[]; onPromote: 
   const { theme } = useDesignSystemTheme();
   const entityCounts = useMemo(() => getIssueEntityCounts(issues), [issues]);
   const totalIssues = issues.length;
-  const activityPlanningCount = entityCounts.activityPlanningTool ?? 0;
+  const activityPlanningCount = entityCounts['activityPlanningTool'] ?? 0;
   const agentStreamCount = entityCounts['agent.stream'] ?? 0;
   const activityPlanningPercent = totalIssues ? Math.round((activityPlanningCount / totalIssues) * 100) : 0;
   const activityPlanningColor = theme.colors.blue500;
