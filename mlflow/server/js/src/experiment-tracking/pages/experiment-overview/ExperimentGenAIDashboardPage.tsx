@@ -12,9 +12,11 @@ import {
   Input,
   PlusIcon,
   RangePicker,
+  RefreshIcon,
   SearchIcon,
   Tabs,
   Tag,
+  Tooltip,
   TerminalIcon,
   Typography,
   useDesignSystemTheme,
@@ -131,56 +133,18 @@ const DashboardSelector = ({
       <DropdownMenu.Trigger asChild>
         <Button
           componentId="mlflow.experiment.dashboard.selector.trigger"
-          type="tertiary"
+          icon={selectedOption.icon}
+          endIcon={<ChevronDownIcon />}
           aria-label={intl.formatMessage({
             defaultMessage: 'Select dashboard',
             description: 'Aria label for the dashboard selector',
           })}
           css={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-            alignSelf: 'flex-start',
-            minWidth: 280,
+            minWidth: 220,
             maxWidth: '100%',
-            padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: theme.borders.borderRadiusMd,
-            backgroundColor: theme.colors.backgroundPrimary,
-            color: theme.colors.textPrimary,
-            cursor: 'pointer',
-            textAlign: 'left',
-            boxShadow: theme.shadows.sm,
-            ':hover': {
-              backgroundColor: theme.colors.actionDefaultBackgroundHover,
-            },
-            ':focus-visible': {
-              outline: `2px solid ${theme.colors.actionPrimaryBackgroundDefault}`,
-              outlineOffset: 2,
-            },
           }}
         >
-          <span
-            css={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 32,
-              height: 32,
-              borderRadius: theme.borders.borderRadiusMd,
-              backgroundColor: theme.colors.actionTertiaryBackgroundHover,
-              color: theme.colors.actionPrimaryBackgroundDefault,
-              flexShrink: 0,
-            }}
-          >
-            {selectedOption.icon}
-          </span>
-          <span css={{ display: 'flex', minWidth: 0, flex: 1 }}>
-            <Typography.Text bold ellipsis>
-              {selectedOption.title}
-            </Typography.Text>
-          </span>
-          <ChevronDownIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+          {selectedOption.title}
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="start" css={{ width: 360, padding: theme.spacing.xs }}>
@@ -668,6 +632,17 @@ const ExperimentGenAIDashboardPageImpl = () => {
               flexWrap: 'wrap',
             }}
           >
+            <Tooltip componentId="mlflow.experiment.dashboard.refresh-button.tooltip" content="Refresh dashboard">
+              <Button
+                componentId="mlflow.experiment.dashboard.refresh-button"
+                icon={<RefreshIcon />}
+                onClick={() => {
+                  monitoringConfig.refresh();
+                }}
+                css={{ flexShrink: 0 }}
+                aria-label="Refresh dashboard"
+              />
+            </Tooltip>
             {activeTab === OverviewTab.Usage && (
               <MetricsFilter
                 filters={metricFilters}
