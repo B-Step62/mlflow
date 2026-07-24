@@ -2,7 +2,9 @@ import type React from 'react';
 import { useMemo, useState } from 'react';
 import {
   Button,
+  Input,
   PlusIcon,
+  SparkleIcon,
   Tabs,
   Typography,
   useDesignSystemTheme,
@@ -183,6 +185,13 @@ const MOCK_TOPICS = [
       { x: 89, y: 62 },
     ],
   },
+];
+
+const CUSTOM_ANALYSIS_ROWS = [
+  { tool: 'activityPlanningTool', calls: '231', p95: '4.8s', failures: '7.2%' },
+  { tool: 'weatherLookup', calls: '120', p95: '3.1s', failures: '11.0%' },
+  { tool: 'agent.stream', calls: '390', p95: '1.4s', failures: '2.1%' },
+  { tool: 'policyRetriever', calls: '84', p95: '2.2s', failures: '4.8%' },
 ];
 
 const truncateSourceJobId = (sourceRunId?: string) => {
@@ -446,26 +455,6 @@ const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => voi
         </div>
       </div>
     </WidgetShell>
-  );
-};
-
-const AnalysisPlaceholderTab = ({ label }: { label: string }) => {
-  const { theme } = useDesignSystemTheme();
-
-  return (
-    <div
-      css={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 360,
-        border: `1px dashed ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusMd,
-        backgroundColor: theme.colors.backgroundPrimary,
-      }}
-    >
-      <Typography.Text color="secondary">{label}</Typography.Text>
-    </div>
   );
 };
 
@@ -777,6 +766,217 @@ const TopicsTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
   );
 };
 
+const CustomAnalysisChartWidget = ({ onPromote }: { onPromote: (title: string) => void }) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <WidgetShell
+      title="P95 latency by tool"
+      componentId="mlflow.experiment-analysis.custom.promote-latency-chart"
+      onPromote={onPromote}
+    >
+      <div
+        css={{
+          display: 'grid',
+          gridTemplateColumns: '40px minmax(0, 1fr)',
+          gridTemplateRows: '1fr 28px',
+          gap: theme.spacing.sm,
+          minHeight: 220,
+        }}
+      >
+        <div
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            color: theme.colors.textSecondary,
+          }}
+        >
+          {['5s', '3s', '1s'].map((tick) => (
+            <Typography.Text key={tick} size="sm" color="secondary">
+              {tick}
+            </Typography.Text>
+          ))}
+        </div>
+        <div
+          css={{
+            position: 'relative',
+            borderLeft: `1px solid ${theme.colors.border}`,
+            borderBottom: `1px solid ${theme.colors.border}`,
+            backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px)`,
+            backgroundSize: '100% 33%',
+          }}
+        >
+          <svg
+            viewBox="0 0 420 190"
+            preserveAspectRatio="none"
+            css={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+          >
+            <polyline
+              points="0,130 52,118 104,56 156,96 208,42 260,76 312,64 364,122 420,104"
+              fill="none"
+              stroke={theme.colors.blue500}
+              strokeWidth="3"
+            />
+            <polyline
+              points="0,154 52,148 104,132 156,142 208,118 260,126 312,110 364,134 420,126"
+              fill="none"
+              stroke={theme.colors.green500}
+              strokeWidth="3"
+            />
+          </svg>
+        </div>
+        <div />
+        <div
+          css={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            color: theme.colors.textSecondary,
+          }}
+        >
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((label) => (
+            <Typography.Text key={label} size="sm" color="secondary">
+              {label}
+            </Typography.Text>
+          ))}
+        </div>
+      </div>
+    </WidgetShell>
+  );
+};
+
+const CustomAnalysisTableWidget = ({ onPromote }: { onPromote: (title: string) => void }) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <WidgetShell
+      title="Tool summary"
+      componentId="mlflow.experiment-analysis.custom.promote-tool-summary"
+      onPromote={onPromote}
+    >
+      <div
+        css={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(160px, 1fr) 80px 80px 96px',
+          alignItems: 'center',
+          rowGap: theme.spacing.sm,
+          columnGap: theme.spacing.md,
+          minHeight: 220,
+        }}
+      >
+        {['Tool', 'Calls', 'P95', 'Failure rate'].map((header) => (
+          <Typography.Text key={header} color="secondary" size="sm" bold>
+            {header}
+          </Typography.Text>
+        ))}
+        {CUSTOM_ANALYSIS_ROWS.map((row) => (
+          <div key={row.tool} css={{ display: 'contents' }}>
+            <Typography.Text ellipsis>{row.tool}</Typography.Text>
+            <Typography.Text>{row.calls}</Typography.Text>
+            <Typography.Text>{row.p95}</Typography.Text>
+            <Typography.Text>{row.failures}</Typography.Text>
+          </div>
+        ))}
+      </div>
+    </WidgetShell>
+  );
+};
+
+const CustomAnalysisTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+      <section
+        css={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)',
+          gap: theme.spacing.md,
+        }}
+      >
+        <div
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing.md,
+            padding: theme.spacing.md,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            backgroundColor: theme.colors.backgroundPrimary,
+          }}
+        >
+          <div css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.sm }}>
+            <Typography.Title level={4} css={{ margin: 0 }}>
+              <FormattedMessage
+                defaultMessage="Ask a question about traces"
+                description="Custom analysis prompt panel title"
+              />
+            </Typography.Title>
+            <Button
+              componentId="mlflow.experiment-analysis.custom.run"
+              type="primary"
+              icon={<SparkleIcon color="ai" />}
+            >
+              <FormattedMessage defaultMessage="Run analysis" description="Run custom trace analysis button" />
+            </Button>
+          </div>
+          <Input.TextArea
+            componentId="mlflow.experiment-analysis.custom.prompt"
+            readOnly
+            rows={4}
+            value="Show high-latency tool calls grouped by tool and render p95 latency over time."
+          />
+        </div>
+        <div
+          css={{
+            padding: theme.spacing.md,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            backgroundColor: theme.colors.backgroundPrimary,
+            minWidth: 0,
+          }}
+        >
+          <Typography.Title level={4} css={{ marginTop: 0 }}>
+            <FormattedMessage defaultMessage="Generated analysis" description="Generated custom analysis panel title" />
+          </Typography.Title>
+          <pre
+            css={{
+              margin: 0,
+              padding: theme.spacing.md,
+              borderRadius: theme.borders.borderRadiusMd,
+              border: `1px solid ${theme.colors.border}`,
+              backgroundColor: theme.colors.backgroundSecondary,
+              color: theme.colors.textPrimary,
+              overflow: 'auto',
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >{`SELECT tool_name,
+       date_trunc('hour', timestamp) AS hour,
+       count(*) AS calls,
+       p95(latency_ms) AS p95_latency,
+       avg(error IS NOT NULL) AS failure_rate
+FROM traces
+WHERE timestamp >= now() - interval '7 days'
+GROUP BY tool_name, hour
+ORDER BY p95_latency DESC`}</pre>
+        </div>
+      </section>
+      <section
+        css={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+          gap: theme.spacing.md,
+        }}
+      >
+        <CustomAnalysisChartWidget onPromote={onPromote} />
+        <CustomAnalysisTableWidget onPromote={onPromote} />
+      </section>
+    </div>
+  );
+};
+
 const ExperimentIssuesPage = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
@@ -951,7 +1151,7 @@ const ExperimentIssuesPage = () => {
           <TopicsTab onPromote={handlePromoteWidget} />
         </Tabs.Content>
         <Tabs.Content value="custom" css={{ flex: 1, minHeight: 0, overflow: 'auto', paddingTop: theme.spacing.md }}>
-          <AnalysisPlaceholderTab label="Custom SQL-like analysis prototype coming next." />
+          <CustomAnalysisTab onPromote={handlePromoteWidget} />
         </Tabs.Content>
       </Tabs.Root>
     </div>
