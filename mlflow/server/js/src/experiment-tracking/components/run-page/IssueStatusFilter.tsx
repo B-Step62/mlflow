@@ -73,13 +73,37 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    width: showLabel ? undefined : 28,
+                    minWidth: showLabel ? undefined : 28,
+                    height: showLabel ? undefined : 28,
+                    padding: showLabel ? undefined : 0,
+                    lineHeight: 0,
                     borderColor: theme.colors.actionDefaultBorderFocus,
                     backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                    '& .anticon': {
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    },
+                    '& .anticon svg': {
+                      display: 'block',
+                    },
                   }
                 : {
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    width: showLabel ? undefined : 28,
+                    minWidth: showLabel ? undefined : 28,
+                    height: showLabel ? undefined : 28,
+                    padding: showLabel ? undefined : 0,
+                    lineHeight: 0,
+                    '& .anticon': {
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    },
+                    '& .anticon svg': {
+                      display: 'block',
+                    },
                   }
             }
           >

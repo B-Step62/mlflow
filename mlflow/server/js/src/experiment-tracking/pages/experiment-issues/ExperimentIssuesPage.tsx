@@ -190,220 +190,12 @@ const MOCK_TOPICS = [
   },
 ];
 
-const MOCK_ISSUES_BY_TIME = [
-  { date: 'Jul 18', high: 1, medium: 1, low: 0 },
-  { date: 'Jul 19', high: 0, medium: 2, low: 1 },
-  { date: 'Jul 20', high: 2, medium: 1, low: 1 },
-  { date: 'Jul 21', high: 1, medium: 3, low: 0 },
-  { date: 'Jul 22', high: 2, medium: 2, low: 1 },
-  { date: 'Jul 23', high: 1, medium: 2, low: 2 },
-];
-
 const truncateSourceJobId = (sourceRunId?: string) => {
   if (!sourceRunId) {
     return '';
   }
   const displayId = sourceRunId.replace(/^job_/, '');
   return displayId.length > 8 ? `${displayId.slice(0, 7)}...` : displayId;
-};
-
-const WidgetShell = ({
-  title,
-  description,
-  componentId,
-  onPromote,
-  children,
-}: {
-  title: string;
-  description?: React.ReactNode;
-  componentId: string;
-  onPromote: (title: string) => void;
-  children: React.ReactNode;
-}) => {
-  const { theme } = useDesignSystemTheme();
-
-  return (
-    <section
-      css={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 220,
-        minWidth: 0,
-        padding: theme.spacing.md,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusMd,
-        backgroundColor: theme.colors.backgroundPrimary,
-        boxSizing: 'border-box',
-        '& .analysis-widget-promote': {
-          opacity: 0,
-          transition: 'opacity 120ms ease-in-out',
-        },
-        '&:hover .analysis-widget-promote, &:focus-within .analysis-widget-promote': {
-          opacity: 1,
-        },
-      }}
-    >
-      <div
-        css={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: theme.spacing.sm,
-          marginBottom: description ? theme.spacing.xs : theme.spacing.md,
-        }}
-      >
-        <Typography.Title level={4} css={{ margin: 0 }}>
-          {title}
-        </Typography.Title>
-        <Button
-          componentId={componentId}
-          size="small"
-          type="tertiary"
-          icon={<PlusIcon />}
-          onClick={() => onPromote(title)}
-          className="analysis-widget-promote"
-        >
-          <FormattedMessage
-            defaultMessage="Dashboard"
-            description="Button label to promote an analysis widget to a dashboard"
-          />
-        </Button>
-      </div>
-      {description && (
-        <Typography.Text color="secondary" css={{ marginBottom: theme.spacing.lg }}>
-          {description}
-        </Typography.Text>
-      )}
-      {children}
-    </section>
-  );
-};
-
-const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => void }) => {
-  const { theme } = useDesignSystemTheme();
-  const maxIssueCount = Math.max(...MOCK_ISSUES_BY_TIME.map(({ high, medium, low }) => high + medium + low), 1);
-  const severitySegments = [
-    { key: 'low', label: 'Low', color: theme.colors.green500 },
-    { key: 'medium', label: 'Medium', color: theme.colors.yellow500 },
-    { key: 'high', label: 'High', color: theme.colors.red500 },
-  ] as const;
-
-  return (
-    <WidgetShell
-      title="Issues by time"
-      description={
-        <FormattedMessage
-          defaultMessage="Detected issues from recent analysis runs, broken down by severity. Schedule detection to keep this trend fresh for demos and ongoing monitoring."
-          description="Issues by time chart description"
-        />
-      }
-      componentId="mlflow.experiment-analysis.failure-patterns.promote-issues-over-time"
-      onPromote={onPromote}
-    >
-      <div
-        css={{
-          flex: 1,
-          minHeight: 0,
-          display: 'grid',
-          gridTemplateColumns: '32px minmax(0, 1fr)',
-          gridTemplateRows: '160px 28px auto',
-          columnGap: theme.spacing.sm,
-          rowGap: theme.spacing.sm,
-          color: theme.colors.textSecondary,
-        }}
-      >
-        <div
-          css={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            paddingBottom: 4,
-          }}
-        >
-          {[maxIssueCount, Math.ceil(maxIssueCount / 2), 0].map((tick) => (
-            <Typography.Text key={tick} color="secondary" size="sm">
-              {tick}
-            </Typography.Text>
-          ))}
-        </div>
-        <div
-          css={{
-            position: 'relative',
-            borderBottom: `1px solid ${theme.colors.border}`,
-            backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px)`,
-            backgroundSize: '100% 33%',
-            display: 'grid',
-            gridTemplateColumns: `repeat(${MOCK_ISSUES_BY_TIME.length}, minmax(28px, 1fr))`,
-            gap: theme.spacing.md,
-            alignItems: 'end',
-            padding: `0 ${theme.spacing.md}px`,
-          }}
-        >
-          {MOCK_ISSUES_BY_TIME.map((day) => {
-            const total = day.high + day.medium + day.low;
-            return (
-              <div
-                key={day.date}
-                css={{
-                  height: `${(total / maxIssueCount) * 100}%`,
-                  minHeight: total ? 12 : 0,
-                  width: 34,
-                  justifySelf: 'center',
-                  display: 'flex',
-                  flexDirection: 'column-reverse',
-                  borderRadius: `${theme.borders.borderRadiusSm} ${theme.borders.borderRadiusSm} 0 0`,
-                  overflow: 'hidden',
-                }}
-              >
-                {severitySegments.map(({ key, color }) =>
-                  day[key] ? (
-                    <span key={key} css={{ height: `${(day[key] / total) * 100}%`, backgroundColor: color }} />
-                  ) : null,
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div />
-        <div
-          css={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${MOCK_ISSUES_BY_TIME.length}, minmax(28px, 1fr))`,
-            gap: theme.spacing.md,
-            padding: `0 ${theme.spacing.md}px`,
-          }}
-        >
-          {MOCK_ISSUES_BY_TIME.map((day) => (
-            <Typography.Text key={day.date} color="secondary" size="sm" css={{ textAlign: 'center' }}>
-              {day.date}
-            </Typography.Text>
-          ))}
-        </div>
-        <div />
-        <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.md, flexWrap: 'wrap' }}>
-          {severitySegments
-            .slice()
-            .reverse()
-            .map(({ key, label, color }) => (
-              <Typography.Text key={key} color="secondary" size="sm">
-                <span
-                  css={{
-                    display: 'inline-block',
-                    width: 9,
-                    height: 9,
-                    borderRadius: theme.borders.borderRadiusSm,
-                    backgroundColor: color,
-                    marginRight: theme.spacing.xs,
-                  }}
-                />
-                {label}
-              </Typography.Text>
-            ))}
-        </div>
-      </div>
-    </WidgetShell>
-  );
 };
 
 const TopicsTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
@@ -953,11 +745,23 @@ const ExperimentIssuesPage = () => {
             <div
               css={{
                 display: 'flex',
-                justifyContent: 'flex-end',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: theme.spacing.md,
+                flexWrap: 'wrap',
               }}
             >
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <Typography.Title level={3} css={{ margin: 0 }}>
+                  <FormattedMessage defaultMessage="Detected Issues" description="Detected issues section title" />
+                </Typography.Title>
+                <IssueStatusFilter
+                  issues={issues}
+                  value={issueStatusFilter}
+                  onChange={setIssueStatusFilter}
+                  showLabel={false}
+                />
+              </div>
               <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', flexWrap: 'wrap' }}>
                 <DropdownMenu.Root modal={false}>
                   <DropdownMenu.Trigger asChild>
@@ -996,18 +800,6 @@ const ExperimentIssuesPage = () => {
                   </DropdownMenu.Content>
                 </DropdownMenu.Root>
               </div>
-            </div>
-            <IssuesOverTimeWidget onPromote={handlePromoteWidget} />
-            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-              <Typography.Title level={3} css={{ margin: 0 }}>
-                <FormattedMessage defaultMessage="Detected Issues" description="Detected issues section title" />
-              </Typography.Title>
-              <IssueStatusFilter
-                issues={issues}
-                value={issueStatusFilter}
-                onChange={setIssueStatusFilter}
-                showLabel={false}
-              />
             </div>
             <div
               css={{
