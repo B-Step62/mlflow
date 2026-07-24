@@ -1503,6 +1503,10 @@
     "defaultMessage": "Validate the model before deployment",
     "description": "Heading text for validating the model before deploying it for serving"
   },
+  "5ETvE+": {
+    "defaultMessage": "Select dashboard",
+    "description": "Aria label for the dashboard selector"
+  },
   "5GCYzy": {
     "defaultMessage": "Experiment Runs - Databricks",
     "description": "Title on a page used to manage MLflow experiments runs"
@@ -2911,6 +2915,10 @@
     "defaultMessage": "Instructions",
     "description": "Label for guardrail judge instructions"
   },
+  "Bk2res": {
+    "defaultMessage": "Tool calls, skill usage, failures, and latency breakdowns.",
+    "description": "Dashboard selector description for the tools, skills, and MCP dashboard"
+  },
   "BkDhmT": {
     "defaultMessage": "Chat",
     "description": "Label for the chat tab of the model trace explorer."
@@ -3531,6 +3539,10 @@
     "defaultMessage": "Request",
     "description": "Column label for request"
   },
+  "EzHi6B": {
+    "defaultMessage": "Tools / Skills / MCP",
+    "description": "Dashboard selector option for the tools, skills, and MCP dashboard"
+  },
   "F16DNA": {
     "defaultMessage": "Version {versionNum}",
     "description": "Title text for model version page"
@@ -3602,6 +3614,10 @@
   "FWEOg2": {
     "defaultMessage": "Relevance to Query",
     "description": "LLM template option"
+  },
+  "FWFHEM": {
+    "defaultMessage": "Add new",
+    "description": "Add new dashboard menu item"
   },
   "FWtUH2": {
     "defaultMessage": "Load more",
@@ -5423,6 +5439,10 @@
     "defaultMessage": "Running",
     "description": "Run page > Overview > Run status cell > Value for running state"
   },
+  "OnNQeY": {
+    "defaultMessage": "Evaluation scores, judge results, and quality trends.",
+    "description": "Dashboard selector description for the eval and quality dashboard"
+  },
   "OnZkIA": {
     "defaultMessage": "{count, plural, =1 {API key} other {API keys}}",
     "description": "Label for endpoint API key(s)"
@@ -5938,6 +5958,10 @@
   "RXpnec": {
     "defaultMessage": "Queue settings",
     "description": "Review queue header: queue settings gear button aria label"
+  },
+  "RYgPwG": {
+    "defaultMessage": "Project overview",
+    "description": "Dashboard selector option for the project overview dashboard"
   },
   "RZvsu5": {
     "defaultMessage": "No pre-built LLM-as-a-judge scorers found",
@@ -6530,6 +6554,10 @@
   "UScoKM": {
     "defaultMessage": "No questions defined for this experiment yet.",
     "description": "Manage review questions: empty state"
+  },
+  "UU/82H": {
+    "defaultMessage": "Usage, errors, latency, cost, and trace volume.",
+    "description": "Dashboard selector description for the project overview dashboard"
   },
   "UWHfmZ": {
     "defaultMessage": "Group:",
@@ -8591,6 +8619,10 @@
     "defaultMessage": "Zoom in",
     "description": "Tooltip for the button that zooms in on the graph"
   },
+  "e0i8R9": {
+    "defaultMessage": "Eval & Quality",
+    "description": "Dashboard selector option for the eval and quality dashboard"
+  },
   "e2AObB": {
     "defaultMessage": "Value",
     "description": "Field label for assessment value in an edit form"
@@ -9594,6 +9626,10 @@
   "iCdWsS": {
     "defaultMessage": "Adheres to guidelines",
     "description": "Evaluation results > conversational guidelines assessment > positive value label. Displayed if the assistant adheres to guidelines throughout the conversation."
+  },
+  "iDMI/Z": {
+    "defaultMessage": "Built-in",
+    "description": "Built-in dashboard tag label"
   },
   "iDpAK8": {
     "defaultMessage": "Add tags",
@@ -11359,6 +11395,10 @@
     "defaultMessage": "Show less",
     "description": "Button to close alert description"
   },
+  "qWNWjA": {
+    "defaultMessage": "Search dashboards",
+    "description": "Placeholder for the dashboard selector search input"
+  },
   "qXEKTi": {
     "defaultMessage": "Configure questions and reviewers",
     "description": "Review queue: empty state step 2"
@@ -12254,6 +12294,10 @@
   "utyagz": {
     "defaultMessage": "Feedback",
     "description": "Label for the feedback section in the assessments pane"
+  },
+  "uuEmLk": {
+    "defaultMessage": "Search dashboards",
+    "description": "Aria label for the dashboard selector search input"
   },
   "uyx2Bd": {
     "defaultMessage": "search_traces syntax",
