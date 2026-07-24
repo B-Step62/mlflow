@@ -19,6 +19,8 @@ import {
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl, type IntlShape } from '@databricks/i18n';
 import type { ModelTraceInfoV3 } from '../../model-trace-explorer/ModelTrace.types';
+import { formatCostUSDCompact } from '../../model-trace-explorer/CostUtils';
+import { getTraceCost } from '../../model-trace-explorer/ModelTraceExplorer.utils';
 import { ExpectationValuePreview } from '../../model-trace-explorer/assessments-pane/ExpectationValuePreview';
 import { useModelTraceExplorerRunJudgesContext } from '../../model-trace-explorer/contexts/RunJudgesContext';
 
@@ -50,6 +52,7 @@ import {
 import { RunColorCircle } from '../components/RunColorCircle';
 import {
   CUSTOM_METADATA_COLUMN_ID,
+  COST_COLUMN_ID,
   EXECUTION_DURATION_COLUMN_ID,
   ISSUES_COLUMN_ID,
   LINKED_PROMPTS_COLUMN_ID,
@@ -82,6 +85,44 @@ import {
 } from '../utils/TraceUtils';
 
 type timestampType = number | string | Date | null;
+
+const getRequestResponseTextStyles = (maxLines: number) =>
+  maxLines > 1
+    ? {
+        display: '-webkit-box',
+        WebkitLineClamp: maxLines,
+        WebkitBoxOrient: 'vertical' as const,
+        overflow: 'hidden',
+        whiteSpace: 'normal' as const,
+        wordBreak: 'break-word' as const,
+      }
+    : {
+        display: 'block',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap' as const,
+        textOverflow: 'ellipsis',
+      };
+
+const getTraceTotalCost = (traceInfo?: ModelTraceInfoV3) => {
+  const totalCost = traceInfo ? getTraceCost(traceInfo).total_cost : undefined;
+  return !isNil(totalCost) && Number.isFinite(totalCost) ? totalCost : undefined;
+};
+
+const CostText = ({ value }: { value: number }) => (
+  <Typography.Text
+    css={{
+      display: 'block',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      width: 'fit-content',
+      maxWidth: '100%',
+    }}
+    title={formatCostUSDCompact(value)}
+  >
+    {formatCostUSDCompact(value)}
+  </Typography.Text>
+);
 
 /**
  * Formats a timestamp into a date and time string.
@@ -458,6 +499,7 @@ export const inputColumnCellRenderer = (
   theme: ThemeType,
   inputColumn: string,
   getRunColor?: (runUuid: string) => string,
+  textCellMaxLines = 1,
 ) => {
   const value = row.getValue() as EvalTraceComparisonEntry;
 
@@ -499,10 +541,7 @@ export const inputColumnCellRenderer = (
     >
       <Typography.Link
         css={{
-          display: 'block',
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
+          ...getRequestResponseTextStyles(textCellMaxLines),
         }}
         componentId="mlflow.evaluations_review.table_ui.evaluation_id_link"
         onClick={() => onChangeEvaluationId(evalId, value.currentRunValue?.traceInfo)}
@@ -559,6 +598,7 @@ export const traceInfoCellRenderer = (
   onTraceTagsEdit?: (trace: ModelTraceInfoV3) => void,
   traceIdToTurnMap?: Record<string, number>,
   searchQuery?: string,
+  textCellMaxLines = 1,
 ) => {
   const currentTraceInfo = comparisonEntry.currentRunValue?.traceInfo;
   const otherTraceInfo = isComparing ? comparisonEntry.otherRunValue?.traceInfo : undefined;
@@ -971,7 +1011,7 @@ export const traceInfoCellRenderer = (
       <StackedComponents
         first={
           displayValue ? (
-            <div css={{ overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>
+            <div css={getRequestResponseTextStyles(textCellMaxLines)} title={value}>
               {displayValue}
             </div>
           ) : (
@@ -991,7 +1031,7 @@ export const traceInfoCellRenderer = (
         second={
           isComparing &&
           (displayOtherValue ? (
-            <div css={{ overflow: 'hidden', textOverflow: 'ellipsis' }} title={otherValue}>
+            <div css={getRequestResponseTextStyles(textCellMaxLines)} title={otherValue}>
               {displayOtherValue}
             </div>
           ) : (
@@ -1021,6 +1061,16 @@ export const traceInfoCellRenderer = (
     );
   } else if (colId === TOKENS_COLUMN_ID) {
     return <TokensCell currentTraceInfo={currentTraceInfo} otherTraceInfo={otherTraceInfo} isComparing={isComparing} />;
+  } else if (colId === COST_COLUMN_ID) {
+    const value = getTraceTotalCost(currentTraceInfo);
+    const otherValue = getTraceTotalCost(otherTraceInfo);
+
+    return (
+      <StackedComponents
+        first={!isNil(value) ? <CostText value={value} /> : <NullCell isComparing={isComparing} />}
+        second={isComparing && (!isNil(otherValue) ? <CostText value={otherValue} /> : <NullCell isComparing />)}
+      />
+    );
   } else if (colId === ISSUES_COLUMN_ID) {
     const issues = comparisonEntry.currentRunValue?.issues;
     const otherIssues = comparisonEntry.otherRunValue?.issues;

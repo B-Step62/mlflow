@@ -30,6 +30,7 @@ export enum PageId {
   experimentPageTabChatSessions = 'mlflow.experiment.tab.chat-sessions',
   experimentPageTabSingleChatSession = 'mlflow.experiment.tab.single-chat-session',
   experimentPageTabScorers = 'mlflow.experiment.tab.scorers',
+  experimentPageTabScorerAlignment = 'mlflow.experiment.tab.scorers.alignment',
   experimentPageTabReviewQueue = 'mlflow.experiment.tab.review-queue',
   experimentPageTabPlayground = 'mlflow.experiment.tab.playground',
   experimentPageTabPrompts = 'mlflow.experiment.prompts.list',
@@ -101,6 +102,9 @@ export class RoutePaths {
   }
   static get experimentPageTabScorers() {
     return createMLflowRoutePath('/experiments/:experimentId/judges');
+  }
+  static get experimentPageTabScorerAlignment() {
+    return createMLflowRoutePath('/experiments/:experimentId/judges/alignment');
   }
   static get experimentPageTabReviewQueue() {
     return createMLflowRoutePath('/experiments/:experimentId/review-queue');
@@ -227,6 +231,10 @@ class Routes {
       });
     }
     return generatePath(RoutePaths.experimentPageTabbed, { experimentId, tabName });
+  }
+
+  static getExperimentPageTabScorerAlignmentRoute(experimentId: string) {
+    return generatePath(RoutePaths.experimentPageTabScorerAlignment, { experimentId });
   }
 
   static getExperimentPageTabSingleChatSessionRoute(experimentId: string, sessionId: string) {

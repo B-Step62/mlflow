@@ -16,8 +16,8 @@ import {
   EXECUTION_DURATION_COLUMN_ID,
   GenAiTracesTableDeprecated,
   GenAiTracesMarkdownConverterProvider,
-  STATE_COLUMN_ID,
   TAGS_COLUMN_ID,
+  TOKENS_COLUMN_ID,
   TracesTableColumnType,
   useGenAiTraceEvaluationArtifacts,
 } from '@databricks/web-shared/genai-traces-table';
@@ -69,7 +69,7 @@ export const RunViewEvaluationsTabArtifacts = ({
         col.type === TracesTableColumnType.ASSESSMENT ||
         col.type === TracesTableColumnType.INPUT ||
         (col.type === TracesTableColumnType.TRACE_INFO &&
-          [EXECUTION_DURATION_COLUMN_ID, STATE_COLUMN_ID, TAGS_COLUMN_ID].includes(col.id)),
+          [EXECUTION_DURATION_COLUMN_ID, TOKENS_COLUMN_ID, TAGS_COLUMN_ID].includes(col.id)),
     );
   };
 

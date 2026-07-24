@@ -13,3 +13,7 @@ export const getExperimentPageRoute = (experimentId: string) => {
 export const getExperimentPageTracesTabRoute = (experimentId: string) => {
   return `${getExperimentPageRoute(experimentId)}/traces`;
 };
+
+export const getExperimentPageJudgesAlignmentRoute = (experimentId: string) => {
+  return `${getExperimentPageRoute(experimentId)}/judges/alignment`;
+};

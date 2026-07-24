@@ -188,6 +188,19 @@ const getExperimentPageRouteDefs = () => {
           } satisfies RouteHandle,
         },
         {
+          path: RoutePaths.experimentPageTabScorerAlignment,
+          pageId: PageId.experimentPageTabScorerAlignment,
+          element: createLazyRouteElement(() => import('./pages/experiment-scorers/JudgeAlignmentPrototypePage')),
+          handle: {
+            getPageTitle: (params) => `Align Judge - Experiment ${params['experimentId']}`,
+            getAssistantPrompts: () => [
+              'How should I align this judge with reviewer feedback?',
+              'What examples should I add before saving this judge?',
+              'How do I compare judge results with human feedback?',
+            ],
+          } satisfies RouteHandle,
+        },
+        {
           path: RoutePaths.experimentPageTabScorers,
           pageId: PageId.experimentPageTabScorers,
           element: createLazyRouteElement(() => import('./pages/experiment-scorers/ExperimentScorersPage')),

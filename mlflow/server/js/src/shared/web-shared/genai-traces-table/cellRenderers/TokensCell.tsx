@@ -1,4 +1,4 @@
-import { HoverCard, Tag, Typography } from '@databricks/design-system';
+import { HoverCard, Typography } from '@databricks/design-system';
 import { useIntl } from '@databricks/i18n';
 import { getTraceTokenUsage } from '../../model-trace-explorer/ModelTraceExplorer.utils';
 import type { ModelTraceInfoV3 } from '../../model-trace-explorer/ModelTrace.types';
@@ -68,18 +68,18 @@ export const TokenComponent = ({
   return (
     <HoverCard
       trigger={
-        <Tag css={{ width: 'fit-content', maxWidth: '100%' }} componentId="mlflow.genai-traces-table.tokens">
-          <span
-            css={{
-              display: 'block',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {totalTokens}
-          </span>
-        </Tag>
+        <Typography.Text
+          css={{
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            width: 'fit-content',
+            maxWidth: '100%',
+          }}
+        >
+          {totalTokens}
+        </Typography.Text>
       }
       content={
         <div

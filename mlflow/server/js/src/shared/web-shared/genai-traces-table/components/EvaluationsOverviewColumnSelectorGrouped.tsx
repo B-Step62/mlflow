@@ -13,7 +13,6 @@ import {
   useDesignSystemTheme,
   DialogComboboxOptionListSearch,
   DangerIcon,
-  Tag,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
 
@@ -133,9 +132,15 @@ export const EvaluationsOverviewColumnSelectorGrouped: React.FC<React.PropsWithC
               defaultMessage: 'Columns',
               description: 'Evaluation review > evaluations list > column selector button',
             })}
-            <Tag componentId="mlflow.evaluations_review.column_count">
+            <span
+              css={{
+                color: theme.colors.textSecondary,
+                fontSize: theme.typography.fontSizeSm,
+                lineHeight: theme.typography.lineHeightSm,
+              }}
+            >
               {selectedColumns.length}/{columns.length}
-            </Tag>
+            </span>
           </div>
         </Button>
       </DialogComboboxCustomButtonTriggerWrapper>

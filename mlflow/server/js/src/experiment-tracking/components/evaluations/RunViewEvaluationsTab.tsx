@@ -1,6 +1,6 @@
 import type { RowSelectionState } from '@tanstack/react-table';
 import { isNil } from 'lodash';
-import { ParagraphSkeleton, Typography, Empty, Drawer } from '@databricks/design-system';
+import { ParagraphSkeleton, Typography } from '@databricks/design-system';
 import { type KeyValueEntity } from '../../../common/types';
 import { useDesignSystemTheme } from '@databricks/design-system';
 import { useCompareToRunUuid } from './hooks/useCompareToRunUuid';
@@ -32,6 +32,7 @@ import {
   useGenAiTraceEvaluationArtifacts,
   useFilters,
   useTableSort,
+  COST_COLUMN_ID,
   TOKENS_COLUMN_ID,
   invalidateMlflowSearchTracesCache,
   TRACE_ID_COLUMN_ID,
@@ -40,9 +41,6 @@ import {
   createTraceLocationForDestinationPath,
   useFetchTraceV4LazyQuery,
   doesTraceSupportV4API,
-  SESSION_COLUMN_ID,
-  SIMULATION_GOAL_COLUMN_ID,
-  SIMULATION_PERSONA_COLUMN_ID,
   createAssessmentColumnId,
   RESULT_ASSESSMENT_NAME,
 } from '@databricks/web-shared/genai-traces-table';
@@ -51,16 +49,16 @@ import { useRegisterSelectedIds } from '@mlflow/mlflow/src/assistant';
 import { useRunLoggedTraceTableArtifacts } from './hooks/useRunLoggedTraceTableArtifacts';
 import { useMarkdownConverter } from '../../../common/utils/MarkdownUtils';
 import { useEditExperimentTraceTags } from '../traces/hooks/useEditExperimentTraceTags';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { RunViewEvaluationsTabArtifacts } from './RunViewEvaluationsTabArtifacts';
 import { useGetExperimentRunColor } from '../experiment-page/hooks/useExperimentRunColor';
 import { useQueryClient } from '@databricks/web-shared/query-client';
 import { checkColumnContents } from '../experiment-page/components/traces-v3/utils/columnUtils';
 import type { ModelTraceSearchLocation } from '@databricks/web-shared/model-trace-explorer';
 import {
+  getTraceCost,
   isV3ModelTraceInfo,
   ModelTraceExplorerContextProvider,
-  SESSION_ID_METADATA_KEY,
   type ModelTraceInfoV3,
 } from '@databricks/web-shared/model-trace-explorer';
 import type { UseGetRunQueryResponseExperiment } from '../run-page/hooks/useGetRunQuery';
@@ -120,6 +118,7 @@ const RunViewEvaluationsTabInner = ({
   // and hide the compare selector below.
   const compareToRunUuid = isRegressionTest ? undefined : compareToRunUuidParam;
   const [isGroupedBySession, setIsGroupedBySession] = useState(false);
+  const [textCellMaxLines, setTextCellMaxLines] = useState(5);
 
   const traceLocations = useMemo(() => [createTraceLocationForExperiment(experimentId)], [experimentId]);
   const getTrace = getTraceV3;
@@ -178,8 +177,11 @@ const RunViewEvaluationsTabInner = ({
   const defaultSelectedColumns = useCallback(
     (columns: TracesTableColumn[]) => {
       const allTraces = evaluatedTraces.concat(otherEvaluatedTraces);
-      const { responseHasContent, inputHasContent, tokensHasContent } = checkColumnContents(allTraces);
-      const hasSessionIds = allTraces.some((t) => Boolean(t.traceInfo?.trace_metadata?.[SESSION_ID_METADATA_KEY]));
+      const { responseHasContent, inputHasContent } = checkColumnContents(allTraces);
+      const costHasContent = allTraces.some((trace) => {
+        const totalCost = trace.traceInfo ? getTraceCost(trace.traceInfo).total_cost : undefined;
+        return !isNil(totalCost) && Number.isFinite(totalCost);
+      });
 
       // Regression-test view: show the test name, input/output, and the single
       // consolidated "Result" column; per-scorer columns stay hidden by default.
@@ -201,11 +203,9 @@ const RunViewEvaluationsTabInner = ({
           col.type === TracesTableColumnType.EXPECTATION ||
           (inputHasContent && col.type === TracesTableColumnType.INPUT) ||
           (responseHasContent && col.type === TracesTableColumnType.TRACE_INFO && col.id === RESPONSE_COLUMN_ID) ||
-          (tokensHasContent && col.type === TracesTableColumnType.TRACE_INFO && col.id === TOKENS_COLUMN_ID) ||
-          (col.type === TracesTableColumnType.TRACE_INFO &&
-            [TRACE_ID_COLUMN_ID, EXECUTION_DURATION_COLUMN_ID, STATE_COLUMN_ID].includes(col.id)) ||
-          (hasSessionIds &&
-            [SESSION_COLUMN_ID, SIMULATION_GOAL_COLUMN_ID, SIMULATION_PERSONA_COLUMN_ID].includes(col.id)),
+          col.id === TOKENS_COLUMN_ID ||
+          (costHasContent && col.type === TracesTableColumnType.TRACE_INFO && col.id === COST_COLUMN_ID) ||
+          (col.type === TracesTableColumnType.TRACE_INFO && [EXECUTION_DURATION_COLUMN_ID].includes(col.id)),
       );
     },
     [evaluatedTraces, otherEvaluatedTraces, isRegressionTest],
@@ -258,17 +258,6 @@ const RunViewEvaluationsTabInner = ({
   const onToggleSessionGrouping = useCallback(() => {
     setIsGroupedBySession((prev) => !prev);
   }, []);
-
-  const hasSetInitialGrouping = useRef(false);
-  useEffect(() => {
-    if (!hasSetInitialGrouping.current && traceInfos && traceInfos.length > 0) {
-      const hasSessionIds = traceInfos.some((trace) => Boolean(trace.trace_metadata?.[SESSION_ID_METADATA_KEY]));
-      if (hasSessionIds) {
-        setIsGroupedBySession(true);
-      }
-      hasSetInitialGrouping.current = true;
-    }
-  }, [traceInfos]);
 
   const experimentIds = useMemo(() => [experimentId], [experimentId]);
 
@@ -418,6 +407,7 @@ const RunViewEvaluationsTabInner = ({
                 traceActions={traceActions}
                 tableSort={tableSort}
                 setTableSort={setTableSort}
+                hideSortDropdown
                 allColumns={displayColumns}
                 selectedColumns={selectedColumns}
                 setSelectedColumns={setSelectedColumns}
@@ -428,6 +418,9 @@ const RunViewEvaluationsTabInner = ({
                 isRefreshing={showRefreshButton ? traceInfosFetching : undefined}
                 isGroupedBySession={isGroupedBySession}
                 onToggleSessionGrouping={onToggleSessionGrouping}
+                hideGroupBySessionToggle
+                textCellMaxLines={textCellMaxLines}
+                setTextCellMaxLines={setTextCellMaxLines}
               />
               {
                 // prettier-ignore
@@ -464,6 +457,8 @@ const RunViewEvaluationsTabInner = ({
                     assessmentCountMetrics={assessmentCountMetrics}
                     compareAssessmentCountMetrics={compareAssessmentCountMetrics}
                     runType={runType}
+                    enableGrouping={false}
+                    textCellMaxLines={textCellMaxLines}
                   />
                 </ContextProviders>
               )

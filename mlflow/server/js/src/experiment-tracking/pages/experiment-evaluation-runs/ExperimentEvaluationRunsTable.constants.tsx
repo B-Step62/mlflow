@@ -62,7 +62,7 @@ export const EVAL_RUNS_TABLE_BASE_SELECTION_STATE: { [key: string]: boolean } = 
   [EvalRunsTableColumnId.visibility]: true,
   [EvalRunsTableColumnId.runName]: true,
   [EvalRunsTableColumnId.status]: true,
-  [EvalRunsTableColumnId.type]: true,
+  [EvalRunsTableColumnId.type]: false,
   [EvalRunsTableColumnId.createdAt]: true,
   [EvalRunsTableColumnId.dataset]: true,
   [EvalRunsTableColumnId.modelVersion]: false,

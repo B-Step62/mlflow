@@ -110,6 +110,19 @@ def start_frontend(backend_port: int, frontend_port: int) -> subprocess.Popen[by
     return proc
 
 
+def seed_evaluation_runs(backend_port: int, refresh: bool) -> None:
+    cmd = [
+        sys.executable,
+        "dev/seed_evaluation_runs.py",
+        "--tracking-uri",
+        f"http://localhost:{backend_port}",
+    ]
+    if refresh:
+        cmd.append("--refresh")
+    print(f"Seeding evaluation runs: {shlex.join(cmd)}")
+    subprocess.check_call(cmd, cwd=REPO_ROOT)
+
+
 def wait_ready(url: str, label: str, timeout: float = 60.0) -> None:
     print(f"Waiting for {label} to be ready...")
     deadline = time.monotonic() + timeout
@@ -138,6 +151,16 @@ def main() -> None:
             "provider-gated UI renders without real keys (for CI review / local dev). "
             f"Available: {', '.join(dev_stubs.AVAILABLE_STUBS)}."
         ),
+    )
+    parser.add_argument(
+        "--seed-eval-runs",
+        action="store_true",
+        help="Seed sample evaluation runs into the Default experiment for UI development.",
+    )
+    parser.add_argument(
+        "--refresh-seed-eval-runs",
+        action="store_true",
+        help="Delete and recreate seeded evaluation runs when used with --seed-eval-runs.",
     )
     args = parser.parse_args()
     stub_names = [s.strip() for s in args.stub_providers.split(",") if s.strip()]
@@ -168,6 +191,14 @@ def main() -> None:
     backend_proc, backend_tmp = start_backend(backend_port)
     children.append(backend_proc)
     tmp_paths.extend(backend_tmp)
+    if args.seed_eval_runs:
+        if backend_tmp:
+            seed_evaluation_runs(backend_port, refresh=args.refresh_seed_eval_runs)
+        else:
+            print(
+                "Skipping --seed-eval-runs because the dev server is using a configured "
+                "backend store."
+            )
     children.append(start_frontend(backend_port, frontend_port))
 
     # Block until any child exits; atexit reaps the rest.

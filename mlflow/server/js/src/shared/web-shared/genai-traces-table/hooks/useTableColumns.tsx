@@ -29,6 +29,7 @@ export const INPUTS_COLUMN_ID = 'request';
 export const RUN_NAME_COLUMN_ID = 'run_name';
 export const LOGGED_MODEL_COLUMN_ID = 'logged_model';
 export const TOKENS_COLUMN_ID = 'tokens';
+export const COST_COLUMN_ID = 'cost';
 export const CUSTOM_METADATA_COLUMN_ID = 'custom_metadata';
 export const SPAN_NAME_COLUMN_ID = 'span.name';
 export const SPAN_TYPE_COLUMN_ID = 'span.type';
@@ -265,6 +266,15 @@ export const useTableColumns = (
           label: intl.formatMessage({
             defaultMessage: 'Tokens',
             description: 'Column label for tokens',
+          }),
+          type: TracesTableColumnType.TRACE_INFO,
+          group: TracesTableColumnGroup.INFO,
+        },
+        {
+          id: COST_COLUMN_ID,
+          label: intl.formatMessage({
+            defaultMessage: 'Cost',
+            description: 'Column label for cost',
           }),
           type: TracesTableColumnType.TRACE_INFO,
           group: TracesTableColumnGroup.INFO,

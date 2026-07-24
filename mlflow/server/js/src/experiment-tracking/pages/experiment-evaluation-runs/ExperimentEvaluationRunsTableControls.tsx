@@ -1,29 +1,25 @@
 import {
   useDesignSystemTheme,
   Button,
+  ChevronDownIcon,
+  ColumnsIcon,
   DialogCombobox,
-  DialogComboboxTrigger,
   DialogComboboxContent,
+  DialogComboboxCustomButtonTriggerWrapper,
   DialogComboboxOptionList,
   DialogComboboxOptionListCheckboxItem,
-  RefreshIcon,
+  DialogComboboxOptionListSelectItem,
+  FilterIcon,
+  PlusMinusSquareIcon,
   DialogComboboxSectionHeader,
   Spacer,
-  SegmentedControlGroup,
-  SegmentedControlButton,
-  TableIcon,
-  ChartLineIcon,
-  ListBorderIcon,
   Tooltip,
+  XCircleFillIcon,
 } from '@databricks/design-system';
 import type { RowSelectionState } from '@tanstack/react-table';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { RunsSearchAutoComplete } from '../../components/experiment-page/components/runs/RunsSearchAutoComplete';
 import type { RunEntity } from '../../types';
-import type { ExperimentRunsSelectorResult } from '../../components/experiment-page/utils/experimentRuns.selector';
-import type { KeyValueEntity } from '../../../common/types';
-import type { ErrorWrapper } from '@mlflow/mlflow/src/common/utils/ErrorWrapper';
-import { useCallback, useMemo } from 'react';
+import { Fragment, useCallback, useMemo } from 'react';
 import type { EvalRunsTableColumnId } from './ExperimentEvaluationRunsTable.constants';
 import {
   EVAL_RUNS_COLUMN_LABELS,
@@ -33,84 +29,75 @@ import {
 } from './ExperimentEvaluationRunsTable.constants';
 import { parseEvalRunsTableKeyedColumnKey } from './ExperimentEvaluationRunsTable.utils';
 import { groupBy } from 'lodash';
-import { ExperimentEvaluationRunsTableGroupBySelector } from './ExperimentEvaluationRunsTableGroupBySelector';
-import type { RunsGroupByConfig } from '../../components/experiment-page/utils/experimentPage.group-row-utils';
-import { ExperimentEvaluationRunsPageMode } from './hooks/useExperimentEvaluationRunsPageMode';
 import { ExperimentEvaluationRunsTableActions } from './ExperimentEvaluationRunsTableActions';
-import { MLFLOW_RUN_TYPE_TAG, MLFLOW_RUN_TYPE_VALUE_TEST } from '../../constants';
+import {
+  MLFLOW_RUN_TYPE_TAG,
+  MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION,
+  MLFLOW_RUN_TYPE_VALUE_TEST,
+} from '../../constants';
 
-// function to mimic the data structure of the legacy runs response
-// so we can reuse the RunsSearchAutoComplete component
-const getRunTableMetadata = (runsData: RunEntity[]): ExperimentRunsSelectorResult => {
-  const metricKeys = new Set<string>();
-  const paramKeys = new Set<string>();
-  const tags: Record<string, KeyValueEntity>[] = [];
+const ALL_RUNS_FILTER_VALUE = '__all__';
 
-  runsData.forEach((run) => {
-    run.data.metrics?.forEach((metric) => {
-      metricKeys.add(metric.key);
-    });
-    run.data.params?.forEach((param) => {
-      paramKeys.add(param.key);
-    });
-
-    const runTags: Record<string, KeyValueEntity> = {};
-    run.data.tags?.forEach((tag) => {
-      runTags[tag.key] = { key: tag.key, value: tag.value };
-    });
-
-    tags.push(runTags);
-  });
-
-  return {
-    metricKeyList: Array.from(metricKeys),
-    paramKeyList: Array.from(paramKeys),
-    tagsList: tags,
-  } as ExperimentRunsSelectorResult;
-};
+const RUN_FILTER_OPTIONS = [
+  {
+    value: ALL_RUNS_FILTER_VALUE,
+    filter: '',
+    label: <FormattedMessage defaultMessage="All runs" description="Filter option for all evaluation runs" />,
+  },
+  {
+    value: "attributes.status = 'FINISHED'",
+    filter: "attributes.status = 'FINISHED'",
+    label: <FormattedMessage defaultMessage="Finished" description="Filter option for finished evaluation runs" />,
+  },
+  {
+    value: "attributes.status = 'FAILED'",
+    filter: "attributes.status = 'FAILED'",
+    label: <FormattedMessage defaultMessage="Failed" description="Filter option for failed evaluation runs" />,
+  },
+  {
+    value: "attributes.status = 'RUNNING'",
+    filter: "attributes.status = 'RUNNING'",
+    label: <FormattedMessage defaultMessage="Running" description="Filter option for running evaluation runs" />,
+  },
+  {
+    value: `tags.\`${MLFLOW_RUN_TYPE_TAG}\` = '${MLFLOW_RUN_TYPE_VALUE_TEST}'`,
+    filter: `tags.\`${MLFLOW_RUN_TYPE_TAG}\` = '${MLFLOW_RUN_TYPE_VALUE_TEST}'`,
+    label: <FormattedMessage defaultMessage="Test runs" description="Filter option for test evaluation runs" />,
+  },
+  {
+    value: `tags.\`${MLFLOW_RUN_TYPE_TAG}\` = '${MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION}'`,
+    filter: `tags.\`${MLFLOW_RUN_TYPE_TAG}\` = '${MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION}'`,
+    label: (
+      <FormattedMessage
+        defaultMessage="Issue detection"
+        description="Filter option for issue-detection evaluation runs"
+      />
+    ),
+  },
+];
 
 export const ExperimentEvaluationRunsTableControls = ({
   rowSelection,
   setRowSelection,
   refetchRuns,
-  isFetching,
   runs,
-  searchRunsError,
   searchFilter,
   setSearchFilter,
   selectedColumns,
   setSelectedColumns,
-  groupByConfig,
-  setGroupByConfig,
-  viewMode,
-  setViewMode,
   onCompare,
-  selectedRunUuid,
-  compareToRunUuid,
-  isComparisonMode,
   setIsComparisonMode,
-  enableImprovedComparison,
 }: {
   rowSelection: RowSelectionState;
   setRowSelection: (selection: RowSelectionState) => void;
   runs: RunEntity[];
   refetchRuns: () => void;
-  isFetching: boolean;
-  searchRunsError: ErrorWrapper | Error | null;
   searchFilter: string;
   setSearchFilter: (filter: string) => void;
   selectedColumns: { [key: string]: boolean };
   setSelectedColumns: (columns: { [key: string]: boolean }) => void;
-  groupByConfig: RunsGroupByConfig | null;
-  setGroupByConfig: (groupBy: RunsGroupByConfig | null) => void;
-  viewMode?: ExperimentEvaluationRunsPageMode;
-  setViewMode?: (mode: ExperimentEvaluationRunsPageMode) => void;
-  onCompare: (runUuid1: string, runUuid2: string) => void;
-  selectedRunUuid?: string;
-  compareToRunUuid?: string;
-  isComparisonMode: boolean;
+  onCompare: (runUuids: string[]) => void;
   setIsComparisonMode: (isComparisonMode: boolean) => void;
-  enableImprovedComparison?: boolean;
 }) => {
   const intl = useIntl();
   const { theme } = useDesignSystemTheme();
@@ -137,93 +124,117 @@ export const ExperimentEvaluationRunsTableControls = ({
       selectedRunUuids.includes(run.info.runUuid) &&
       (run.data?.tags ?? []).some((tag) => tag.key === MLFLOW_RUN_TYPE_TAG && tag.value === MLFLOW_RUN_TYPE_VALUE_TEST),
   );
-  const isCompareEnabled = selectedRunUuids.length === 2 && !hasRegressionTestRunSelected;
+  const isCompareEnabled = selectedRunUuids.length >= 2 && !hasRegressionTestRunSelected;
+  const activeFilterOption =
+    RUN_FILTER_OPTIONS.find((option) => option.filter === searchFilter) ?? RUN_FILTER_OPTIONS[0];
+  const hasActiveFilter = Boolean(searchFilter);
+  const selectedColumnCount = Object.values(selectedColumns).filter(Boolean).length;
 
   const handleCompareClick = useCallback(() => {
-    if (selectedRunUuids.length === 2) {
-      onCompare(selectedRunUuids[0], selectedRunUuids[1]);
+    if (selectedRunUuids.length >= 2) {
+      onCompare(selectedRunUuids);
       setIsComparisonMode(true);
     }
   }, [selectedRunUuids, onCompare, setIsComparisonMode]);
 
   return (
-    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-      <div css={{ display: 'flex', gap: theme.spacing.sm }}>
-        <SegmentedControlGroup
-          name="mlflow.eval-runs.page-mode-selector"
-          componentId="mlflow.eval-runs.page-mode-selector"
-          value={viewMode}
-          css={{ flexShrink: 0 }}
+    <div
+      css={{
+        display: 'flex',
+        gap: theme.spacing.sm,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'nowrap',
+        minWidth: 0,
+      }}
+    >
+      <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', minWidth: 0 }}>
+        <DialogCombobox
+          componentId="mlflow.eval-runs.filter-by"
+          value={[searchFilter || ALL_RUNS_FILTER_VALUE]}
+          label={
+            <FormattedMessage defaultMessage="Filter by" description="Label for evaluation runs filter-by dropdown" />
+          }
         >
-          <SegmentedControlButton
-            value={ExperimentEvaluationRunsPageMode.TRACES}
-            icon={
-              <Tooltip
-                componentId="mlflow.eval-runs.traces-mode-toggle-tooltip"
-                content={
+          <DialogComboboxCustomButtonTriggerWrapper>
+            <Button
+              componentId="mlflow.eval-runs.filter-by-trigger"
+              endIcon={<ChevronDownIcon />}
+              css={{
+                flexShrink: 0,
+                border: hasActiveFilter ? `1px solid ${theme.colors.actionDefaultBorderFocus} !important` : undefined,
+                backgroundColor: hasActiveFilter
+                  ? `${theme.colors.actionDefaultBackgroundHover} !important`
+                  : undefined,
+              }}
+            >
+              <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <FilterIcon />
+                {hasActiveFilter ? (
+                  activeFilterOption.label
+                ) : (
                   <FormattedMessage
-                    defaultMessage="Trace view"
-                    description="Tooltip for traces preview mode toggle in evaluation runs table controls"
+                    defaultMessage="Filter by"
+                    description="Button label for evaluation runs filter-by dropdown"
                   />
-                }
-                delayDuration={0}
-              >
-                <ListBorderIcon />
-              </Tooltip>
-            }
-            onClick={() => setViewMode?.(ExperimentEvaluationRunsPageMode.TRACES)}
-          />
-          <SegmentedControlButton
-            value={ExperimentEvaluationRunsPageMode.CHARTS}
-            icon={
-              <Tooltip
-                componentId="mlflow.eval-runs.charts-mode-toggle-tooltip"
-                content={
-                  <FormattedMessage
-                    defaultMessage="Charts"
-                    description="Tooltip for charts page mode toggle in evaluation runs table controls"
+                )}
+                {hasActiveFilter && (
+                  <XCircleFillIcon
+                    css={{
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      color: theme.colors.grey400,
+                      '&:hover': {
+                        color: theme.colors.grey600,
+                      },
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setSearchFilter('');
+                    }}
                   />
-                }
-                delayDuration={0}
-              >
-                <ChartLineIcon />
-              </Tooltip>
-            }
-            onClick={() => setViewMode?.(ExperimentEvaluationRunsPageMode.CHARTS)}
-          />
-        </SegmentedControlGroup>
-        <RunsSearchAutoComplete
-          css={{ minWidth: 0 }}
-          runsData={getRunTableMetadata(runs)}
-          searchFilter={searchFilter}
-          onSearchFilterChange={setSearchFilter}
-          onClear={() => setSearchFilter('')}
-          requestError={searchRunsError}
-        />
-        <Tooltip
-          componentId="mlflow.eval-runs.table-refresh-button.tooltip"
-          content={intl.formatMessage({
-            defaultMessage: 'Refresh evaluation runs',
-            description: 'Tooltip for the refresh evaluation runs button in the evaluation runs table controls',
-          })}
-        >
-          <Button
-            componentId="mlflow.eval-runs.table-refresh-button"
-            icon={<RefreshIcon />}
-            onClick={refetchRuns}
-            loading={isFetching}
-            css={{ flexShrink: 0 }}
-            disabled={isFetching}
-            aria-label={intl.formatMessage({
-              defaultMessage: 'Refresh evaluation runs',
-              description: 'Aria label for the refresh evaluation runs button in the evaluation runs table controls',
-            })}
-          />
-        </Tooltip>
-      </div>
-      <div css={{ display: 'flex', gap: theme.spacing.sm }}>
+                )}
+              </span>
+            </Button>
+          </DialogComboboxCustomButtonTriggerWrapper>
+          <DialogComboboxContent>
+            <DialogComboboxOptionList>
+              {RUN_FILTER_OPTIONS.map((option) => (
+                <DialogComboboxOptionListSelectItem
+                  key={option.value}
+                  value={option.value}
+                  checked={(searchFilter || ALL_RUNS_FILTER_VALUE) === option.value}
+                  onChange={() => setSearchFilter(option.filter)}
+                >
+                  {option.label}
+                </DialogComboboxOptionListSelectItem>
+              ))}
+            </DialogComboboxOptionList>
+          </DialogComboboxContent>
+        </DialogCombobox>
         <DialogCombobox componentId="mlflow.eval-runs.table-column-selector" label="Columns" multiSelect>
-          <DialogComboboxTrigger />
+          <DialogComboboxCustomButtonTriggerWrapper>
+            <Button
+              componentId="mlflow.eval-runs.table-column-selector-trigger"
+              endIcon={<ChevronDownIcon />}
+              css={{ flexShrink: 0 }}
+            >
+              <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <ColumnsIcon />
+                <FormattedMessage defaultMessage="Columns" description="Evaluation runs columns dropdown label" />
+                <span
+                  css={{
+                    color: theme.colors.textSecondary,
+                    fontSize: theme.typography.fontSizeSm,
+                    lineHeight: theme.typography.lineHeightSm,
+                  }}
+                >
+                  {selectedColumnCount}
+                </span>
+              </span>
+            </Button>
+          </DialogComboboxCustomButtonTriggerWrapper>
           <DialogComboboxContent>
             <DialogComboboxOptionList>
               {Object.entries(columnPartitions).map(([columnType, columns]) => {
@@ -233,8 +244,7 @@ export const ExperimentEvaluationRunsTableControls = ({
                 const headerLabelDescriptor =
                   EVAL_RUNS_COLUMN_TYPE_LABELS[columnType as EvalRunsTableKeyedColumnPrefix];
                 return (
-                  // eslint-disable-next-line react/jsx-key
-                  <>
+                  <Fragment key={columnType}>
                     <Spacer size="xs" />
                     <DialogComboboxSectionHeader>
                       {headerLabelDescriptor ? intl.formatMessage(headerLabelDescriptor) : columnType}
@@ -264,60 +274,54 @@ export const ExperimentEvaluationRunsTableControls = ({
                         </DialogComboboxOptionListCheckboxItem>
                       );
                     })}
-                  </>
+                  </Fragment>
                 );
               })}
             </DialogComboboxOptionList>
           </DialogComboboxContent>
         </DialogCombobox>
-        <ExperimentEvaluationRunsTableGroupBySelector
-          groupByConfig={groupByConfig}
-          setGroupByConfig={setGroupByConfig}
-          runs={runs}
-        />
-
-        {/* Compare button - only enabled when feature flag is on, hidden in charts mode */}
-        {enableImprovedComparison && viewMode !== ExperimentEvaluationRunsPageMode.CHARTS && (
-          <Tooltip
-            componentId="mlflow.eval-runs.compare-button.tooltip"
-            content={
-              isCompareEnabled ? (
-                <FormattedMessage
-                  defaultMessage="Compare selected runs"
-                  description="Tooltip for the compare button when enabled"
-                />
-              ) : hasRegressionTestRunSelected ? (
-                <FormattedMessage
-                  defaultMessage="Comparison isn't available for regression-test runs"
-                  description="Tooltip for the compare button when a regression-test run is selected"
-                />
-              ) : (
-                <FormattedMessage
-                  defaultMessage="Select up to 2 runs to compare"
-                  description="Tooltip for the compare button when disabled"
-                />
-              )
-            }
+      </div>
+      <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', flexShrink: 0 }}>
+        <Tooltip
+          componentId="mlflow.eval-runs.compare-button.tooltip"
+          content={
+            isCompareEnabled ? (
+              <FormattedMessage
+                defaultMessage="Compare selected runs"
+                description="Tooltip for the compare button when enabled"
+              />
+            ) : selectedRunUuids.length === 0 ? (
+              <FormattedMessage
+                defaultMessage="Select runs"
+                description="Tooltip for the compare button when no evaluation runs are selected"
+              />
+            ) : hasRegressionTestRunSelected ? (
+              <FormattedMessage
+                defaultMessage="Comparison isn't available for regression-test runs"
+                description="Tooltip for the compare button when a regression-test run is selected"
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="Select at least 2 runs"
+                description="Tooltip for the compare button when fewer than two evaluation runs are selected"
+              />
+            )
+          }
+        >
+          <Button
+            componentId="mlflow.eval-runs.compare-button"
+            onClick={handleCompareClick}
+            disabled={!isCompareEnabled}
+            icon={<PlusMinusSquareIcon />}
           >
-            <Button
-              componentId="mlflow.eval-runs.compare-button"
-              onClick={handleCompareClick}
-              disabled={!isCompareEnabled}
-            >
-              <FormattedMessage defaultMessage="Compare" description="Compare runs button label" />
-            </Button>
-          </Tooltip>
-        )}
+            <FormattedMessage defaultMessage="Compare" description="Compare runs button label" />
+          </Button>
+        </Tooltip>
 
         <ExperimentEvaluationRunsTableActions
           rowSelection={rowSelection}
           setRowSelection={setRowSelection}
           refetchRuns={refetchRuns}
-          onCompare={onCompare}
-          selectedRunUuid={selectedRunUuid}
-          compareToRunUuid={compareToRunUuid}
-          enableImprovedComparison={enableImprovedComparison}
-          setIsComparisonMode={setIsComparisonMode}
         />
       </div>
     </div>

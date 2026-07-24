@@ -29,6 +29,8 @@ import {
   RESPONSE_COLUMN_ID,
   SESSION_COLUMN_ID,
   SERVER_SORTABLE_INFO_COLUMNS,
+  COST_COLUMN_ID,
+  TOKENS_COLUMN_ID,
   TRACE_ID_COLUMN_ID,
 } from './hooks/useTableColumns';
 import {
@@ -45,10 +47,15 @@ import {
   type TracesTableColumn,
   TracesTableColumnGroup,
 } from './types';
-import { getAssessmentAggregates, buildAggregatesFromCountMetrics } from './utils/AggregationUtils';
+import {
+  buildAggregatesFromCountMetrics,
+  getAssessmentAggregates,
+  getNumericAggregate,
+} from './utils/AggregationUtils';
 import { escapeCssSpecialCharacters } from './utils/DisplayUtils';
 import { getExperimentIdFromTraceLocation, getRowIdFromEvaluation, RESULT_ASSESSMENT_NAME } from './utils/TraceUtils';
 import { TestCaseDetail } from './TestCaseDetail';
+import { getTraceCost, getTraceTokenUsage } from '../model-trace-explorer/ModelTraceExplorer.utils';
 
 const GenAITraceComparisonModal = React.lazy(() =>
   import('./components/GenAITraceComparisonModal').then((m) => ({ default: m.GenAITraceComparisonModal })),
@@ -58,6 +65,35 @@ const GenAiEvaluationTracesReviewModal = React.lazy(() =>
     default: m.GenAiEvaluationTracesReviewModal,
   })),
 );
+
+const parseDurationToMilliseconds = (duration?: string) => {
+  if (!duration) {
+    return undefined;
+  }
+  const value = parseFloat(duration);
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+  const unit = duration
+    .replace(/\u00b5|\u03bc/g, 'u')
+    .replace(/[0-9.]/g, '')
+    .trim()
+    .toLowerCase();
+
+  if (unit === 's') {
+    return value * 1000;
+  }
+  if (unit === 'us') {
+    return value / 1000;
+  }
+  if (unit === 'ns') {
+    return value / 1_000_000;
+  }
+  if (unit === 'm' || unit === 'min') {
+    return value * 60_000;
+  }
+  return value;
+};
 
 export const GenAiTracesTableBody = React.memo(
   // eslint-disable-next-line react-component-name/react-component-name -- TODO(FEINF-4716)
@@ -96,6 +132,7 @@ export const GenAiTracesTableBody = React.memo(
     assessmentCountMetrics,
     compareAssessmentCountMetrics,
     regressionTestMode = false,
+    textCellMaxLines = 1,
   }: {
     experimentId?: string;
     selectedColumns: TracesTableColumn[];
@@ -143,6 +180,7 @@ export const GenAiTracesTableBody = React.memo(
     // Regression-test mode: open the test-case detail drawer instead of the
     // trace review. Defaults to false so ordinary evaluation runs are unaffected.
     regressionTestMode?: boolean;
+    textCellMaxLines?: number;
   }) => {
     const intl = useIntl();
     const { theme } = useDesignSystemTheme();
@@ -189,6 +227,7 @@ export const GenAiTracesTableBody = React.memo(
             onChangeEvaluationId,
             onTraceTagsEdit,
             regressionTestMode,
+            textCellMaxLines,
           }),
         );
 
@@ -239,6 +278,7 @@ export const GenAiTracesTableBody = React.memo(
             onChangeEvaluationId,
             onTraceTagsEdit,
             regressionTestMode,
+            textCellMaxLines,
           }),
         );
       });
@@ -272,6 +312,7 @@ export const GenAiTracesTableBody = React.memo(
       enableGrouping,
       allColumns,
       regressionTestMode,
+      textCellMaxLines,
     ]);
 
     const { setTable, setSelectedRowIds } = React.useContext(GenAITracesTableContext);
@@ -303,6 +344,7 @@ export const GenAiTracesTableBody = React.memo(
           getRunColor,
           traceIdToTurnMap,
           searchQuery,
+          textCellMaxLines,
         },
         onRowSelectionChange: setRowSelection,
         getRowId: (row) => getRowIdFromEvaluation(row.currentRunValue),
@@ -572,6 +614,60 @@ export const GenAiTracesTableBody = React.memo(
       compareAssessmentCountMetrics,
     ]);
 
+    const traceMetricColumnToAggregate = useMemo(() => {
+      const currentTokenValues: number[] = [];
+      const otherTokenValues: number[] = [];
+      const currentCostValues: number[] = [];
+      const otherCostValues: number[] = [];
+      const currentDurationValues: number[] = [];
+      const otherDurationValues: number[] = [];
+
+      evaluations.forEach((entry) => {
+        const currentTraceInfo = entry.currentRunValue?.traceInfo;
+        const otherTraceInfo = entry.otherRunValue?.traceInfo;
+        const currentTokens = currentTraceInfo ? getTraceTokenUsage(currentTraceInfo)?.total_tokens : undefined;
+        const otherTokens = otherTraceInfo ? getTraceTokenUsage(otherTraceInfo)?.total_tokens : undefined;
+        const currentCost = currentTraceInfo ? getTraceCost(currentTraceInfo)?.total_cost : undefined;
+        const otherCost = otherTraceInfo ? getTraceCost(otherTraceInfo)?.total_cost : undefined;
+        const currentDuration = parseDurationToMilliseconds(currentTraceInfo?.[EXECUTION_DURATION_COLUMN_ID]);
+        const otherDuration = parseDurationToMilliseconds(otherTraceInfo?.[EXECUTION_DURATION_COLUMN_ID]);
+
+        if (!isNil(currentTokens)) {
+          currentTokenValues.push(currentTokens);
+        }
+        if (!isNil(otherTokens)) {
+          otherTokenValues.push(otherTokens);
+        }
+        if (!isNil(currentCost)) {
+          currentCostValues.push(currentCost);
+        }
+        if (!isNil(otherCost)) {
+          otherCostValues.push(otherCost);
+        }
+        if (!isNil(currentDuration)) {
+          currentDurationValues.push(currentDuration);
+        }
+        if (!isNil(otherDuration)) {
+          otherDurationValues.push(otherDuration);
+        }
+      });
+
+      return {
+        [TOKENS_COLUMN_ID]: {
+          currentAggregate: getNumericAggregate(currentTokenValues),
+          otherAggregate: getNumericAggregate(otherTokenValues),
+        },
+        [COST_COLUMN_ID]: {
+          currentAggregate: getNumericAggregate(currentCostValues),
+          otherAggregate: getNumericAggregate(otherCostValues),
+        },
+        [EXECUTION_DURATION_COLUMN_ID]: {
+          currentAggregate: getNumericAggregate(currentDurationValues),
+          otherAggregate: getNumericAggregate(otherDurationValues),
+        },
+      };
+    }, [evaluations]);
+
     const evalEntryMatchesEvaluationId = useCallback((evaluationId: string, entry?: RunEvaluationTracesDataEntry) => {
       if (isV4TraceId(evaluationId) && entry?.fullTraceId === evaluationId) {
         return true;
@@ -661,6 +757,7 @@ export const GenAiTracesTableBody = React.memo(
               enableGrouping={enableGrouping}
               selectedAssessmentInfos={selectedAssessmentInfos}
               assessmentNameToAggregates={assessmentNameToAggregates}
+              traceMetricColumnToAggregate={traceMetricColumnToAggregate}
               assessmentFilters={assessmentFilters}
               toggleAssessmentFilter={toggleAssessmentFilter}
               runDisplayName={runDisplayName}

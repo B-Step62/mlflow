@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { createContext, useContext, useMemo, useState } from 'react';
 
 type HeaderVisibilityContextValue = {
@@ -7,6 +8,8 @@ type HeaderVisibilityContextValue = {
    *  are hidden so the active tab page can provide its own controls without duplication. */
   headerActionsHidden: boolean;
   setHeaderActionsHidden: (hidden: boolean) => void;
+  breadcrumbChild: ReactNode;
+  setBreadcrumbChild: (breadcrumbChild: ReactNode) => void;
 };
 
 const HeaderVisibilityContext = createContext<HeaderVisibilityContextValue>({
@@ -14,14 +17,24 @@ const HeaderVisibilityContext = createContext<HeaderVisibilityContextValue>({
   setHeaderHidden: () => {},
   headerActionsHidden: false,
   setHeaderActionsHidden: () => {},
+  breadcrumbChild: undefined,
+  setBreadcrumbChild: () => {},
 });
 
-export const HeaderVisibilityProvider = ({ children }: { children: React.ReactNode }) => {
+export const HeaderVisibilityProvider = ({ children }: { children: ReactNode }) => {
   const [headerHidden, setHeaderHidden] = useState(false);
   const [headerActionsHidden, setHeaderActionsHidden] = useState(false);
+  const [breadcrumbChild, setBreadcrumbChild] = useState<ReactNode>();
   const value = useMemo(
-    () => ({ headerHidden, setHeaderHidden, headerActionsHidden, setHeaderActionsHidden }),
-    [headerHidden, headerActionsHidden],
+    () => ({
+      headerHidden,
+      setHeaderHidden,
+      headerActionsHidden,
+      setHeaderActionsHidden,
+      breadcrumbChild,
+      setBreadcrumbChild,
+    }),
+    [headerHidden, headerActionsHidden, breadcrumbChild],
   );
   return <HeaderVisibilityContext.Provider value={value}>{children}</HeaderVisibilityContext.Provider>;
 };

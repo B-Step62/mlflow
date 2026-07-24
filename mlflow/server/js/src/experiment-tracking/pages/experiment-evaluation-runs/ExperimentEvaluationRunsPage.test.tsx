@@ -11,17 +11,9 @@ import { IntlProvider } from 'react-intl';
 import { DesignSystemProvider } from '@databricks/design-system';
 
 import { QueryClient, QueryClientProvider } from '@mlflow/mlflow/src/common/utils/reactQueryHooks';
-import { invalidateMlflowSearchTracesCache } from '@databricks/web-shared/genai-traces-table';
 
 jest.mock('../../hooks/useExperimentQuery', () => ({
   useGetExperimentQuery: jest.fn(() => ({})),
-}));
-
-jest.mock('@databricks/web-shared/genai-traces-table', () => ({
-  ...(jest.requireActual<typeof import('@databricks/web-shared/genai-traces-table')>(
-    '@databricks/web-shared/genai-traces-table',
-  ) as Record<string, unknown>),
-  invalidateMlflowSearchTracesCache: jest.fn(),
 }));
 
 // eslint-disable-next-line no-restricted-syntax -- TODO(FEINF-4392)
@@ -144,14 +136,11 @@ describe('ExperimentEvaluationRunsPage', () => {
     });
   });
 
-  test('should invalidate traces cache when refresh button is clicked', async () => {
+  test('should not render a refresh button', async () => {
     await waitFor(() => {
       expect(screen.getByText('Test Run 0')).toBeInTheDocument();
     });
 
-    const refreshButton = screen.getByRole('button', { name: 'Refresh evaluation runs' });
-    fireEvent.click(refreshButton);
-
-    expect(invalidateMlflowSearchTracesCache).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Refresh evaluation runs' })).not.toBeInTheDocument();
   });
 });

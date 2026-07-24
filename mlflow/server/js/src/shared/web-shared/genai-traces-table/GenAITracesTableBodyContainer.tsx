@@ -56,6 +56,8 @@ interface GenAITracesTableBodyContainerProps {
 
   // Configuration
   enableRowSelection?: boolean;
+  enableGrouping?: boolean;
+  textCellMaxLines?: number;
 
   /**
    * Whether to display a loading overlay over the table
@@ -106,6 +108,8 @@ const GenAITracesTableBodyContainerImpl: React.FC<React.PropsWithChildren<GenAIT
       allColumns,
       getRunColor,
       enableRowSelection = true,
+      enableGrouping = shouldEnableTagGrouping(),
+      textCellMaxLines = 1,
       isTableLoading = false,
       isGroupedBySession,
       searchQuery,
@@ -282,7 +286,8 @@ const GenAITracesTableBodyContainerImpl: React.FC<React.PropsWithChildren<GenAIT
                 tableSort={tableSort}
                 getTrace={getTrace}
                 onTraceTagsEdit={onTraceTagsEdit}
-                enableGrouping={shouldEnableTagGrouping()}
+                enableGrouping={enableGrouping}
+                textCellMaxLines={textCellMaxLines}
                 isTableLoading={isTableLoading}
                 isGroupedBySession={isGroupedBySession}
                 searchQuery={searchQuery}

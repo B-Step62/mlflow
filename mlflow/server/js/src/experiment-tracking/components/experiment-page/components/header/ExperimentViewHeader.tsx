@@ -74,7 +74,7 @@ export const ExperimentViewHeader = React.memo(
     const intl = useIntl();
     const navigate = useNavigate();
     const location = useLocation();
-    const { headerActionsHidden } = useHeaderVisibility();
+    const { headerActionsHidden, breadcrumbChild } = useHeaderVisibility();
     const handleBack = useCallback(() => {
       const pathSegments = location.pathname.split('/').filter(Boolean);
 
@@ -112,8 +112,8 @@ export const ExperimentViewHeader = React.memo(
     const experimentTitle =
       shouldEnableWorkflowBasedNavigation() && tabDisplayName ? tabDisplayName : normalizedExperimentName;
 
-    const breadcrumbs: React.ReactNode[] = useMemo(
-      () => [
+    const breadcrumbs: React.ReactNode[] = useMemo(() => {
+      const items: React.ReactNode[] = [
         // eslint-disable-next-line react/jsx-key
         <Link
           key="observatory"
@@ -134,9 +134,30 @@ export const ExperimentViewHeader = React.memo(
         >
           {normalizedExperimentName}
         </Link>,
-      ],
-      [experiment.experimentId, normalizedExperimentName],
-    );
+      ];
+
+      if (activeTabByRoute === ExperimentPageTabName.EvaluationRuns) {
+        items.push(
+          <Link
+            key="evaluation-runs"
+            componentId="mlflow.experiment_tracking.header.evaluation_runs_breadcrumb_link"
+            to={Routes.getExperimentPageTabRoute(experiment.experimentId ?? '', ExperimentPageTabName.EvaluationRuns)}
+            data-testid="evaluation-runs-link"
+          >
+            <FormattedMessage
+              defaultMessage="Evaluation runs"
+              description="Breadcrumb nav item for the evaluation runs tab on an experiment"
+            />
+          </Link>,
+        );
+      }
+
+      if (activeTabByRoute === ExperimentPageTabName.EvaluationRuns && breadcrumbChild) {
+        items.push(breadcrumbChild);
+      }
+
+      return items;
+    }, [activeTabByRoute, breadcrumbChild, experiment.experimentId, normalizedExperimentName]);
 
     const getInfoTooltip = () => {
       return (

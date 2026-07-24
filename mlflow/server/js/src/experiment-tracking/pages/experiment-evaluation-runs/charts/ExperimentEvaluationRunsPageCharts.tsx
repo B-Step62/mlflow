@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import type { ReactElement } from 'react';
 import type { RunEntity } from '../../../types';
 import { ChartSectionConfig } from '../../../types';
 import type { RunsChartsRunData } from '../../../components/runs-charts/components/RunsCharts.common';
@@ -38,12 +39,16 @@ const SUPPORTED_CHART_TYPES = [
   RunsChartType.SCATTER,
 ];
 
-const ExperimentEvaluationRunsPageChartsImpl = ({
+export const ExperimentEvaluationRunsPageChartsImpl = ({
   runs = [],
   chartUIState,
+  hideEmptyCharts = false,
+  noRunsSelectedEmptyState,
 }: {
   runs?: RunEntity[];
   chartUIState: ExperimentEvaluationRunsChartsUIConfiguration;
+  hideEmptyCharts?: boolean;
+  noRunsSelectedEmptyState?: ReactElement;
 }) => {
   const getRunColor = useGetExperimentRunColor();
   const { isRowHidden } = useExperimentEvaluationRunsRowVisibility();
@@ -110,8 +115,9 @@ const ExperimentEvaluationRunsPageChartsImpl = ({
             groupBy={null}
             setFullScreenChart={() => {}}
             autoRefreshEnabled={chartUIState.autoRefreshEnabled}
-            hideEmptyCharts={false}
+            hideEmptyCharts={hideEmptyCharts}
             globalLineChartConfig={chartUIState.globalLineChartConfig}
+            noRunsSelectedEmptyState={noRunsSelectedEmptyState}
           />
           {configuredCardConfig && (
             <RunsChartsConfigureModal

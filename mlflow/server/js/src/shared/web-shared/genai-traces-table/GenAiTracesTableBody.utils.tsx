@@ -129,6 +129,7 @@ export const getColumnConfig = (
     onChangeEvaluationId,
     onTraceTagsEdit,
     regressionTestMode,
+    textCellMaxLines = 1,
   }: {
     evaluationInputs: TracesTableColumn[];
     isComparing: boolean;
@@ -138,6 +139,7 @@ export const getColumnConfig = (
     onChangeEvaluationId: (evaluationId: string | undefined, traceInfo?: ModelTraceInfoV3) => void;
     onTraceTagsEdit?: (trace: ModelTraceInfoV3) => void;
     regressionTestMode?: boolean;
+    textCellMaxLines?: number;
   },
 ): ColumnDef<EvalTraceComparisonEntry> => {
   const baseColConfig: ColumnDef<EvalTraceComparisonEntry> = {
@@ -174,6 +176,7 @@ export const getColumnConfig = (
             theme,
             col.id,
             (cell?.table?.options?.meta as any)?.getRunColor,
+            textCellMaxLines,
           ),
       };
     case TracesTableColumnType.ASSESSMENT:
@@ -276,6 +279,7 @@ export const getColumnConfig = (
             onTraceTagsEdit,
             traceIdToTurnMap,
             searchQuery,
+            textCellMaxLines,
           );
         },
       };

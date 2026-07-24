@@ -17,6 +17,7 @@ import {
   USER_COLUMN_ID,
   LOGGED_MODEL_COLUMN_ID,
   TOKENS_COLUMN_ID,
+  COST_COLUMN_ID,
   SIMULATION_GOAL_COLUMN_ID,
   SIMULATION_PERSONA_COLUMN_ID,
   LINKED_PROMPTS_COLUMN_ID,
@@ -30,6 +31,7 @@ import { TracesTableColumnGroup, TracesTableColumnType } from './types';
 import { getTraceInfoInputs, shouldUseTraceInfoV3 } from './utils/TraceUtils';
 import { SIMULATION_GOAL_KEY, SIMULATION_PERSONA_KEY } from './utils/SessionGroupingUtils';
 import type { ModelTraceInfoV3 } from '../model-trace-explorer/ModelTrace.types';
+import { getTraceCost } from '../model-trace-explorer/ModelTraceExplorer.utils';
 
 const GROUP_PRIORITY = [
   TracesTableColumnGroup.BASE,
@@ -49,6 +51,7 @@ const INFO_COLUMN_PRIORITY = [
   TRACE_NAME_COLUMN_ID,
   LOGGED_MODEL_COLUMN_ID,
   TOKENS_COLUMN_ID,
+  COST_COLUMN_ID,
 ] as const;
 
 /** Columns that should always appear at the end of the INFO group */
@@ -203,6 +206,8 @@ export const getTraceInfoValueWithColId = (traceInfo: ModelTraceInfoV3, colId: s
     case TAGS_COLUMN_ID:
     case STATE_COLUMN_ID:
       return traceInfo[colId];
+    case COST_COLUMN_ID:
+      return getTraceCost(traceInfo).total_cost;
     case SOURCE_COLUMN_ID:
       return traceInfo.tags;
     case TRACE_ID_COLUMN_ID:

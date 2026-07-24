@@ -410,7 +410,7 @@ export const ModelTraceExplorerDetailView = ({
                 setSpanFilterState={setSpanFilterState}
                 showGraph={showGraph && graphAvailable}
                 onToggleGraph={graphAvailable ? handleToggleGraph : undefined}
-                traceId={modelTraceInfo.trace_id}
+                traceId={rootNode?.traceId}
               />
             </div>
 

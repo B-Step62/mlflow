@@ -6,8 +6,13 @@ import { useIntl } from '@databricks/i18n';
 import type { NumericAggregate } from '../../types';
 import { displayFloat } from '../../utils/DisplayUtils';
 
-// eslint-disable-next-line react-component-name/react-component-name -- TODO(FEINF-4716)
-export const NumericAggregateChart = React.memo(({ numericAggregate }: { numericAggregate: NumericAggregate }) => {
+export const NumericAggregateChart = React.memo(function NumericAggregateChart({
+  numericAggregate,
+  formatValue = (value) => displayFloat(value, 2),
+}: {
+  numericAggregate: NumericAggregate;
+  formatValue?: (value: number) => string;
+}) {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   return (
@@ -54,9 +59,9 @@ export const NumericAggregateChart = React.memo(({ numericAggregate }: { numeric
                   </div>
                   <div>
                     <Typography.Text color="secondary">
-                      {displayFloat(count.lower, 2) === displayFloat(count.upper, 2)
-                        ? displayFloat(count.lower, 2)
-                        : `${displayFloat(count.lower, 2)} - ${displayFloat(count.upper, 2)}`}
+                      {formatValue(count.lower) === formatValue(count.upper)
+                        ? formatValue(count.lower)
+                        : `${formatValue(count.lower)} - ${formatValue(count.upper)}`}
                     </Typography.Text>
                   </div>
                 </div>
@@ -125,7 +130,7 @@ export const NumericAggregateChart = React.memo(({ numericAggregate }: { numeric
             color: theme.colors.textSecondary,
           }}
         >
-          {displayFloat(numericAggregate.min, 2)}
+          {formatValue(numericAggregate.min)}
         </div>
       ) : (
         <div
@@ -138,8 +143,8 @@ export const NumericAggregateChart = React.memo(({ numericAggregate }: { numeric
             color: theme.colors.textSecondary,
           }}
         >
-          <div>{displayFloat(numericAggregate.min, 2)}</div>
-          <div>{displayFloat(numericAggregate.max, 2)}</div>
+          <div>{formatValue(numericAggregate.min)}</div>
+          <div>{formatValue(numericAggregate.max)}</div>
         </div>
       )}
     </div>

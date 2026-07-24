@@ -13,9 +13,11 @@ import {
   ChevronDownIcon,
 } from '@databricks/design-system';
 import { defineMessage, useIntl, type MessageDescriptor } from '@databricks/i18n';
+import { formatCostUSDCompact } from '../model-trace-explorer/CostUtils';
 
 import { EvaluationsAssessmentHoverCard } from './components/EvaluationsAssessmentHoverCard';
 import { AssessmentColumnSummary } from './components/charts/AssessmentColumnSummary';
+import { NumericAggregateChart } from './components/charts/NumericAggregateChart';
 import {
   createAssessmentColumnId,
   TRACE_ID_COLUMN_ID,
@@ -34,6 +36,7 @@ import {
   RUN_NAME_COLUMN_ID,
   TAGS_COLUMN_ID,
   ISSUES_COLUMN_ID,
+  COST_COLUMN_ID,
 } from './hooks/useTableColumns';
 import {
   TracesTableColumnGroup,
@@ -42,8 +45,9 @@ import {
   type AssessmentInfo,
   type AssessmentValueType,
   type EvalTraceComparisonEntry,
+  type NumericAggregate,
 } from './types';
-import { escapeCssSpecialCharacters } from './utils/DisplayUtils';
+import { displayFloat, escapeCssSpecialCharacters } from './utils/DisplayUtils';
 import { getDocsLink } from './utils/DocUtils';
 
 const COLUMN_TOOLTIPS = {
@@ -89,6 +93,13 @@ const COLUMN_TOOLTIPS = {
     description: defineMessage({
       defaultMessage: 'Aggregated input/output/total token usage across all spans in the trace',
       description: 'Tooltip description for the Tokens column in the traces table',
+    }),
+    docsUrl: getDocsLink('/genai/tracing/token-usage-cost'),
+  },
+  [COST_COLUMN_ID]: {
+    description: defineMessage({
+      defaultMessage: 'Aggregated cost across all spans in the trace',
+      description: 'Tooltip description for the Cost column in the traces table',
     }),
     docsUrl: getDocsLink('/genai/tracing/token-usage-cost'),
   },
@@ -171,6 +182,10 @@ interface GenAiTracesTableHeaderProps {
   enableGrouping?: boolean;
   selectedAssessmentInfos: AssessmentInfo[];
   assessmentNameToAggregates: Record<string, AssessmentAggregates>;
+  traceMetricColumnToAggregate?: Record<
+    string,
+    { currentAggregate?: NumericAggregate; otherAggregate?: NumericAggregate }
+  >;
   assessmentFilters: AssessmentFilter[];
   toggleAssessmentFilter: (
     assessmentName: string,
@@ -198,6 +213,7 @@ export const GenAiTracesTableHeader = React.memo(
     enableGrouping,
     selectedAssessmentInfos,
     assessmentNameToAggregates,
+    traceMetricColumnToAggregate,
     assessmentFilters,
     toggleAssessmentFilter,
     runDisplayName,
@@ -279,6 +295,7 @@ export const GenAiTracesTableHeader = React.memo(
               const assessmentInfo = selectedAssessmentInfos.find(
                 (info) => createAssessmentColumnId(info.name) === header.id,
               );
+              const traceMetricAggregate = traceMetricColumnToAggregate?.[header.column.id];
 
               const title = header.isPlaceholder ? null : (
                 <div
@@ -387,6 +404,14 @@ export const GenAiTracesTableHeader = React.memo(
                           collapsedHeader={collapsedHeader}
                         />
                       )}
+                      {!assessmentInfo && traceMetricAggregate?.currentAggregate && (
+                        <TraceMetricColumnSummary
+                          metricColumnId={header.column.id}
+                          currentAggregate={traceMetricAggregate.currentAggregate}
+                          otherAggregate={traceMetricAggregate.otherAggregate}
+                          collapsedHeader={collapsedHeader}
+                        />
+                      )}
                     </div>
                   </div>
                 </TableHeader>
@@ -474,3 +499,67 @@ export const GenAiTracesTableHeader = React.memo(
     );
   },
 );
+
+const TraceMetricColumnSummary = ({
+  metricColumnId,
+  currentAggregate,
+  otherAggregate,
+  collapsedHeader,
+}: {
+  metricColumnId: string;
+  currentAggregate: NumericAggregate;
+  otherAggregate?: NumericAggregate;
+  collapsedHeader?: boolean;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const averageChange = !isNil(otherAggregate?.average) ? currentAggregate.average - otherAggregate.average : undefined;
+  const formatValue = (value: number) => {
+    if (metricColumnId === COST_COLUMN_ID) {
+      return formatCostUSDCompact(value);
+    }
+    if (metricColumnId === TOKENS_COLUMN_ID) {
+      return displayFloat(value, 0);
+    }
+    return displayFloat(value, 3);
+  };
+  const formatChange = (value: number) => {
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${formatValue(value)}`;
+  };
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+      <div css={{ display: 'flex', flexDirection: 'column', paddingTop: theme.spacing.xs }}>
+        <div css={{ fontWeight: 400, fontSize: '10px', color: theme.colors.textPlaceholder }}>AVG</div>
+        <div css={{ display: 'flex', gap: theme.spacing.xs }}>
+          <div
+            css={{
+              fontSize: theme.typography.fontSizeLg,
+              color: theme.colors.textPrimary,
+              fontWeight: theme.typography.typographyBoldFontWeight,
+            }}
+          >
+            {formatValue(currentAggregate.average)}
+          </div>
+          {!isNil(averageChange) && (
+            <div
+              css={{
+                display: 'flex',
+                alignItems: 'center',
+                height: 20,
+                padding: `2px ${theme.spacing.xs}px`,
+                fontSize: theme.typography.fontSizeMd,
+                borderRadius: theme.general.borderRadiusBase,
+                color: theme.colors.textSecondary,
+                backgroundColor: theme.colors.backgroundSecondary,
+              }}
+            >
+              {formatChange(averageChange)}
+            </div>
+          )}
+        </div>
+      </div>
+      {!collapsedHeader && <NumericAggregateChart numericAggregate={currentAggregate} formatValue={formatValue} />}
+    </div>
+  );
+};
