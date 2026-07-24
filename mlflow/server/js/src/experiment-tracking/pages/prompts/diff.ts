@@ -1,3 +1,3 @@
-import { diffWords } from 'diff';
+import { diffLines, diffWords } from 'diff';
 
-export { diffWords };
+export { diffLines, diffWords };
