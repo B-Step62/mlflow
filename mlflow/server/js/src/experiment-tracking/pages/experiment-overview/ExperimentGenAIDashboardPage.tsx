@@ -145,7 +145,10 @@ const DashboardSelector = ({
             maxWidth: '100%',
           }}
         >
-          {selectedOption.title}
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <Typography.Text color="secondary">Dashboard:</Typography.Text>
+            <span>{selectedOption.title}</span>
+          </span>
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="start" css={{ width: 400, padding: theme.spacing.sm }}>
