@@ -52,6 +52,7 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
       css={{
         padding: showLabel ? `${theme.spacing.sm}px ${theme.spacing.md}px` : 0,
         display: 'flex',
+        alignItems: 'center',
         justifyContent: showLabel ? 'flex-start' : 'center',
       }}
     >
@@ -69,10 +70,17 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
             css={
               hasCustomFilter
                 ? {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     borderColor: theme.colors.actionDefaultBorderFocus,
                     backgroundColor: theme.colors.actionDefaultBackgroundHover,
                   }
-                : undefined
+                : {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }
             }
           >
             {showLabel && (

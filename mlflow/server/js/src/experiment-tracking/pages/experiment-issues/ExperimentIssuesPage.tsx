@@ -190,6 +190,15 @@ const MOCK_TOPICS = [
   },
 ];
 
+const MOCK_ISSUES_BY_TIME = [
+  { date: 'Jul 18', high: 1, medium: 1, low: 0 },
+  { date: 'Jul 19', high: 0, medium: 2, low: 1 },
+  { date: 'Jul 20', high: 2, medium: 1, low: 1 },
+  { date: 'Jul 21', high: 1, medium: 3, low: 0 },
+  { date: 'Jul 22', high: 2, medium: 2, low: 1 },
+  { date: 'Jul 23', high: 1, medium: 2, low: 2 },
+];
+
 const truncateSourceJobId = (sourceRunId?: string) => {
   if (!sourceRunId) {
     return '';
@@ -198,22 +207,15 @@ const truncateSourceJobId = (sourceRunId?: string) => {
   return displayId.length > 8 ? `${displayId.slice(0, 7)}...` : displayId;
 };
 
-const getIssueEntityCounts = (issues: Issue[]) =>
-  issues.reduce<Record<string, number>>((counts, issue) => {
-    const entity = issue.name.includes('agent.stream') ? 'agent.stream' : 'activityPlanningTool';
-    counts[entity] = (counts[entity] ?? 0) + 1;
-    return counts;
-  }, {});
-
 const WidgetShell = ({
   title,
-  showTitle = true,
+  description,
   componentId,
   onPromote,
   children,
 }: {
   title: string;
-  showTitle?: boolean;
+  description?: React.ReactNode;
   componentId: string;
   onPromote: (title: string) => void;
   children: React.ReactNode;
@@ -247,16 +249,12 @@ const WidgetShell = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: theme.spacing.sm,
-          marginBottom: showTitle ? theme.spacing.md : theme.spacing.xs,
+          marginBottom: description ? theme.spacing.xs : theme.spacing.md,
         }}
       >
-        {showTitle ? (
-          <Typography.Title level={4} css={{ margin: 0 }}>
-            {title}
-          </Typography.Title>
-        ) : (
-          <span />
-        )}
+        <Typography.Title level={4} css={{ margin: 0 }}>
+          {title}
+        </Typography.Title>
         <Button
           componentId={componentId}
           size="small"
@@ -271,130 +269,34 @@ const WidgetShell = ({
           />
         </Button>
       </div>
+      {description && (
+        <Typography.Text color="secondary" css={{ marginBottom: theme.spacing.lg }}>
+          {description}
+        </Typography.Text>
+      )}
       {children}
     </section>
   );
 };
 
-const IssuesFoundWidget = ({ issues, onPromote }: { issues: Issue[]; onPromote: (title: string) => void }) => {
-  const { theme } = useDesignSystemTheme();
-  const entityCounts = useMemo(() => getIssueEntityCounts(issues), [issues]);
-  const totalIssues = issues.length;
-  const activityPlanningCount = entityCounts['activityPlanningTool'] ?? 0;
-  const agentStreamCount = entityCounts['agent.stream'] ?? 0;
-  const activityPlanningPercent = totalIssues ? Math.round((activityPlanningCount / totalIssues) * 100) : 0;
-  const activityPlanningColor = theme.colors.blue500;
-  const agentStreamColor = theme.colors.yellow500;
-
-  return (
-    <WidgetShell
-      title="Issues Found"
-      showTitle={false}
-      componentId="mlflow.experiment-analysis.failure-patterns.promote-issues-found"
-      onPromote={onPromote}
-    >
-      <div
-        css={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(128px, 180px) minmax(0, 1fr)',
-          gap: theme.spacing.lg,
-          alignItems: 'center',
-          flex: 1,
-        }}
-      >
-        <div
-          css={{
-            justifySelf: 'center',
-            width: 128,
-            height: 128,
-            borderRadius: '50%',
-            background: `conic-gradient(${activityPlanningColor} 0 ${activityPlanningPercent}%, ${agentStreamColor} ${activityPlanningPercent}% 100%)`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: `inset 0 0 0 1px ${theme.colors.border}`,
-          }}
-        >
-          <div
-            css={{
-              width: 72,
-              height: 72,
-              borderRadius: '50%',
-              backgroundColor: theme.colors.backgroundPrimary,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: `1px solid ${theme.colors.border}`,
-            }}
-          >
-            <Typography.Text bold size="lg">
-              {totalIssues}
-            </Typography.Text>
-            <Typography.Text color="secondary" size="sm">
-              <FormattedMessage defaultMessage="issues" description="Issues found donut center label" />
-            </Typography.Text>
-          </div>
-        </div>
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, minWidth: 0 }}>
-          <div
-            css={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) 56px',
-              gap: theme.spacing.sm,
-              paddingBottom: theme.spacing.xs,
-              borderBottom: `1px solid ${theme.colors.border}`,
-            }}
-          >
-            <Typography.Text color="secondary" size="sm">
-              <FormattedMessage defaultMessage="Entity" description="Issue entity table header" />
-            </Typography.Text>
-            <Typography.Text color="secondary" size="sm" css={{ textAlign: 'right' }}>
-              <FormattedMessage defaultMessage="Count" description="Issue count table header" />
-            </Typography.Text>
-          </div>
-          {[
-            { entity: 'activityPlanningTool', count: activityPlanningCount, color: activityPlanningColor },
-            { entity: 'agent.stream', count: agentStreamCount, color: agentStreamColor },
-          ].map(({ entity, count, color }) => (
-            <div
-              key={entity}
-              css={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr) 56px',
-                gap: theme.spacing.sm,
-                alignItems: 'center',
-              }}
-            >
-              <Typography.Text ellipsis>
-                <span
-                  css={{
-                    display: 'inline-block',
-                    width: 9,
-                    height: 9,
-                    borderRadius: theme.borders.borderRadiusSm,
-                    backgroundColor: color,
-                    marginRight: theme.spacing.sm,
-                  }}
-                />
-                {entity}
-              </Typography.Text>
-              <Typography.Text css={{ textAlign: 'right' }}>{count}</Typography.Text>
-            </div>
-          ))}
-        </div>
-      </div>
-    </WidgetShell>
-  );
-};
-
 const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => void }) => {
   const { theme } = useDesignSystemTheme();
+  const maxIssueCount = Math.max(...MOCK_ISSUES_BY_TIME.map(({ high, medium, low }) => high + medium + low), 1);
+  const severitySegments = [
+    { key: 'low', label: 'Low', color: theme.colors.green500 },
+    { key: 'medium', label: 'Medium', color: theme.colors.yellow500 },
+    { key: 'high', label: 'High', color: theme.colors.red500 },
+  ] as const;
 
   return (
     <WidgetShell
-      title="Issues Over Time"
-      showTitle={false}
+      title="Issues by time"
+      description={
+        <FormattedMessage
+          defaultMessage="Detected issues from recent analysis runs, broken down by severity. Schedule detection to keep this trend fresh for demos and ongoing monitoring."
+          description="Issues by time chart description"
+        />
+      }
       componentId="mlflow.experiment-analysis.failure-patterns.promote-issues-over-time"
       onPromote={onPromote}
     >
@@ -404,8 +306,9 @@ const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => voi
           minHeight: 0,
           display: 'grid',
           gridTemplateColumns: '32px minmax(0, 1fr)',
-          gridTemplateRows: '1fr 28px',
+          gridTemplateRows: '160px 28px auto',
           columnGap: theme.spacing.sm,
+          rowGap: theme.spacing.sm,
           color: theme.colors.textSecondary,
         }}
       >
@@ -418,7 +321,7 @@ const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => voi
             paddingBottom: 4,
           }}
         >
-          {[4, 2, 0].map((tick) => (
+          {[maxIssueCount, Math.ceil(maxIssueCount / 2), 0].map((tick) => (
             <Typography.Text key={tick} color="secondary" size="sm">
               {tick}
             </Typography.Text>
@@ -430,40 +333,73 @@ const IssuesOverTimeWidget = ({ onPromote }: { onPromote: (title: string) => voi
             borderBottom: `1px solid ${theme.colors.border}`,
             backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px)`,
             backgroundSize: '100% 33%',
+            display: 'grid',
+            gridTemplateColumns: `repeat(${MOCK_ISSUES_BY_TIME.length}, minmax(28px, 1fr))`,
+            gap: theme.spacing.md,
+            alignItems: 'end',
+            padding: `0 ${theme.spacing.md}px`,
           }}
         >
-          <div
-            css={{
-              position: 'absolute',
-              left: '54%',
-              bottom: 0,
-              width: 34,
-              height: '54%',
-              backgroundColor: theme.colors.blue500,
-              borderRadius: `${theme.borders.borderRadiusSm} ${theme.borders.borderRadiusSm} 0 0`,
-            }}
-          />
-          <div
-            css={{
-              position: 'absolute',
-              left: '54%',
-              bottom: '54%',
-              width: 34,
-              height: '28%',
-              backgroundColor: theme.colors.yellow500,
-              borderRadius: `${theme.borders.borderRadiusSm} ${theme.borders.borderRadiusSm} 0 0`,
-            }}
-          />
+          {MOCK_ISSUES_BY_TIME.map((day) => {
+            const total = day.high + day.medium + day.low;
+            return (
+              <div
+                key={day.date}
+                css={{
+                  height: `${(total / maxIssueCount) * 100}%`,
+                  minHeight: total ? 12 : 0,
+                  width: 34,
+                  justifySelf: 'center',
+                  display: 'flex',
+                  flexDirection: 'column-reverse',
+                  borderRadius: `${theme.borders.borderRadiusSm} ${theme.borders.borderRadiusSm} 0 0`,
+                  overflow: 'hidden',
+                }}
+              >
+                {severitySegments.map(({ key, color }) =>
+                  day[key] ? (
+                    <span key={key} css={{ height: `${(day[key] / total) * 100}%`, backgroundColor: color }} />
+                  ) : null,
+                )}
+              </div>
+            );
+          })}
         </div>
         <div />
-        <div css={{ position: 'relative' }}>
-          <Typography.Text
-            color="secondary"
-            size="sm"
-            css={{ position: 'absolute', left: 'calc(54% - 10px)', top: theme.spacing.xs }}
-          >
-            Jun 29
-          </Typography.Text>
+        <div
+          css={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${MOCK_ISSUES_BY_TIME.length}, minmax(28px, 1fr))`,
+            gap: theme.spacing.md,
+            padding: `0 ${theme.spacing.md}px`,
+          }}
+        >
+          {MOCK_ISSUES_BY_TIME.map((day) => (
+            <Typography.Text key={day.date} color="secondary" size="sm" css={{ textAlign: 'center' }}>
+              {day.date}
+            </Typography.Text>
+          ))}
+        </div>
+        <div />
+        <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.md, flexWrap: 'wrap' }}>
+          {severitySegments
+            .slice()
+            .reverse()
+            .map(({ key, label, color }) => (
+              <Typography.Text key={key} color="secondary" size="sm">
+                <span
+                  css={{
+                    display: 'inline-block',
+                    width: 9,
+                    height: 9,
+                    borderRadius: theme.borders.borderRadiusSm,
+                    backgroundColor: color,
+                    marginRight: theme.spacing.xs,
+                  }}
+                />
+                {label}
+              </Typography.Text>
+            ))}
         </div>
       </div>
     </WidgetShell>
@@ -1061,16 +997,7 @@ const ExperimentIssuesPage = () => {
                 </DropdownMenu.Root>
               </div>
             </div>
-            <div
-              css={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-                gap: theme.spacing.md,
-              }}
-            >
-              <IssuesFoundWidget issues={issues} onPromote={handlePromoteWidget} />
-              <IssuesOverTimeWidget onPromote={handlePromoteWidget} />
-            </div>
+            <IssuesOverTimeWidget onPromote={handlePromoteWidget} />
             <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
               <Typography.Title level={3} css={{ margin: 0 }}>
                 <FormattedMessage defaultMessage="Detected Issues" description="Detected issues section title" />
