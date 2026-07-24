@@ -52,6 +52,139 @@ const MOCK_EXISTING_ISSUES: Issue[] = [
 
 type AnalysisTab = 'failure-patterns' | 'topics' | 'custom';
 
+const MOCK_TOPICS = [
+  {
+    id: 'pricing',
+    label: 'Evaluate and select pricing plans',
+    percent: '12.8%',
+    color: '#4466ff',
+    points: [
+      { x: 22, y: 63 },
+      { x: 23, y: 62 },
+      { x: 24, y: 61 },
+      { x: 24, y: 65 },
+      { x: 25, y: 60 },
+    ],
+  },
+  {
+    id: 'upgrade',
+    label: 'Upgrade to higher-tier plans',
+    percent: '8.7%',
+    color: '#f28b20',
+    points: [
+      { x: 78, y: 41 },
+      { x: 79, y: 42 },
+      { x: 80, y: 41 },
+    ],
+  },
+  {
+    id: 'refunds',
+    label: 'Resolve billing errors and refunds',
+    percent: '8.7%',
+    color: '#8f5cf7',
+    points: [
+      { x: 39, y: 54 },
+      { x: 40, y: 53 },
+      { x: 40, y: 55 },
+    ],
+  },
+  {
+    id: 'security',
+    label: 'Assess vendor security compliance',
+    percent: '8.5%',
+    color: '#d83bd2',
+    points: [
+      { x: 66, y: 68 },
+      { x: 67, y: 70 },
+    ],
+  },
+  {
+    id: 'permissions',
+    label: 'Understand role permissions',
+    percent: '7.4%',
+    color: '#16b9ae',
+    points: [
+      { x: 35, y: 50 },
+      { x: 36, y: 50 },
+    ],
+  },
+  {
+    id: 'api',
+    label: 'Implement advanced API features',
+    percent: '6.9%',
+    color: '#e3c400',
+    points: [
+      { x: 37, y: 64 },
+      { x: 38, y: 64 },
+      { x: 41, y: 64 },
+    ],
+  },
+  {
+    id: 'billing',
+    label: 'Investigate unexpected billing increases',
+    percent: '4.8%',
+    color: '#21c7d9',
+    points: [
+      { x: 19, y: 73 },
+      { x: 20, y: 72 },
+      { x: 20, y: 74 },
+    ],
+  },
+  {
+    id: 'embedding',
+    label: 'Fix embedding dimension mismatches',
+    percent: '4.8%',
+    color: '#72cf25',
+    points: [
+      { x: 52, y: 75 },
+      { x: 53, y: 74 },
+    ],
+  },
+  {
+    id: 'gdpr',
+    label: 'Understand GDPR response timeframes',
+    percent: '4.6%',
+    color: '#1918c9',
+    points: [
+      { x: 59, y: 58 },
+      { x: 60, y: 58 },
+      { x: 60, y: 59 },
+    ],
+  },
+  {
+    id: 'tone',
+    label: 'Achieve consistent bot response tone',
+    percent: '4.1%',
+    color: '#b53a00',
+    points: [
+      { x: 23, y: 83 },
+      { x: 24, y: 84 },
+      { x: 25, y: 84 },
+    ],
+  },
+  {
+    id: 'crm',
+    label: 'Automate CRM workflows with Zapier',
+    percent: '4.1%',
+    color: '#7113d4',
+    points: [
+      { x: 50, y: 91 },
+      { x: 51, y: 92 },
+      { x: 52, y: 92 },
+    ],
+  },
+  {
+    id: 'credentials',
+    label: 'Secure accounts after credential exposure',
+    percent: '3.9%',
+    color: '#b600b8',
+    points: [
+      { x: 88, y: 62 },
+      { x: 89, y: 62 },
+    ],
+  },
+];
+
 const truncateSourceJobId = (sourceRunId?: string) => {
   if (!sourceRunId) {
     return '';
@@ -336,6 +469,314 @@ const AnalysisPlaceholderTab = ({ label }: { label: string }) => {
   );
 };
 
+const TopicsTab = ({ onPromote }: { onPromote: (title: string) => void }) => {
+  const { theme } = useDesignSystemTheme();
+  const selectedTopic = MOCK_TOPICS[0];
+
+  return (
+    <section
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 680,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundColor: theme.colors.backgroundPrimary,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: theme.spacing.md,
+          padding: theme.spacing.md,
+          borderBottom: `1px solid ${theme.colors.border}`,
+        }}
+      >
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, minWidth: 0 }}>
+          <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
+            <Button
+              componentId="mlflow.experiment-analysis.topics.all-topics"
+              size="small"
+              type="tertiary"
+              css={{ flexShrink: 0 }}
+            >
+              <FormattedMessage defaultMessage="All topics" description="Topics analysis back button" />
+            </Button>
+            <Typography.Title level={3} css={{ margin: 0 }}>
+              <FormattedMessage defaultMessage="Task" description="Topic facet name in analysis topics tab" />
+            </Typography.Title>
+          </div>
+          <Typography.Text color="secondary">
+            <FormattedMessage defaultMessage="User intent or goal" description="Topic facet description" />
+          </Typography.Text>
+          <div css={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }}>
+            <Button componentId="mlflow.experiment-analysis.topics.scatterplot" size="small" type="primary">
+              <FormattedMessage defaultMessage="Scatterplot" description="Topics scatterplot view mode" />
+            </Button>
+            <Button componentId="mlflow.experiment-analysis.topics.list" size="small" type="tertiary">
+              <FormattedMessage defaultMessage="List" description="Topics list view mode" />
+            </Button>
+          </div>
+        </div>
+        <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+              height: 32,
+              padding: `0 ${theme.spacing.sm}px`,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.colors.backgroundSecondary,
+            }}
+          >
+            <span
+              css={{
+                width: 28,
+                height: 16,
+                borderRadius: 999,
+                backgroundColor: theme.colors.green500,
+                position: 'relative',
+              }}
+            >
+              <span
+                css={{
+                  position: 'absolute',
+                  right: 2,
+                  top: 2,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  backgroundColor: theme.colors.white,
+                }}
+              />
+            </span>
+            <Typography.Text>
+              <FormattedMessage defaultMessage="Active" description="Topics automation active status" />
+            </Typography.Text>
+          </div>
+          <Button componentId="mlflow.experiment-analysis.topics.latest" size="small" type="tertiary">
+            <FormattedMessage defaultMessage="Latest May 17" description="Topics latest generation selector" />
+          </Button>
+          <Button
+            componentId="mlflow.experiment-analysis.topics.promote-map"
+            size="small"
+            type="tertiary"
+            icon={<PlusIcon />}
+            onClick={() => onPromote('Topic scatterplot')}
+          >
+            <FormattedMessage defaultMessage="Dashboard" description="Promote topic scatterplot button label" />
+          </Button>
+        </div>
+      </div>
+      <div
+        css={{
+          display: 'grid',
+          gridTemplateColumns: '276px minmax(420px, 1fr) 300px',
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <aside
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            borderRight: `1px solid ${theme.colors.border}`,
+            overflow: 'auto',
+          }}
+        >
+          <div css={{ padding: theme.spacing.md, borderBottom: `1px solid ${theme.colors.border}` }}>
+            <Typography.Text bold>
+              <FormattedMessage
+                defaultMessage="{count} Topics"
+                description="Count of topics in analysis topic sidebar"
+                values={{ count: MOCK_TOPICS.length + 6 }}
+              />
+            </Typography.Text>
+          </div>
+          <div css={{ display: 'flex', flexDirection: 'column' }}>
+            {MOCK_TOPICS.map((topic) => (
+              <div
+                key={topic.id}
+                css={{
+                  display: 'grid',
+                  gridTemplateColumns: '12px minmax(0, 1fr) 14px',
+                  gap: theme.spacing.sm,
+                  padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+                  alignItems: 'start',
+                  backgroundColor:
+                    topic.id === selectedTopic.id ? theme.colors.actionDefaultBackgroundHover : 'transparent',
+                }}
+              >
+                <span
+                  css={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    marginTop: 4,
+                    backgroundColor: topic.color,
+                  }}
+                />
+                <div css={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  <Typography.Text color="secondary" size="sm">
+                    {topic.percent}
+                  </Typography.Text>
+                  <Typography.Text css={{ lineHeight: 1.35 }}>{topic.label}</Typography.Text>
+                </div>
+                <Typography.Text color="secondary">ok</Typography.Text>
+              </div>
+            ))}
+          </div>
+        </aside>
+        <div
+          css={{
+            position: 'relative',
+            minHeight: 0,
+            overflow: 'hidden',
+            backgroundColor: theme.colors.backgroundPrimary,
+            backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px), linear-gradient(90deg, ${theme.colors.border} 1px, transparent 1px)`,
+            backgroundSize: '72px 72px',
+          }}
+        >
+          <div
+            css={{
+              position: 'absolute',
+              right: theme.spacing.md,
+              top: theme.spacing.md,
+              padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.colors.backgroundPrimary,
+            }}
+          >
+            <Typography.Text color="secondary" size="sm">
+              <FormattedMessage defaultMessage="3D view" description="Topics 3D view toggle label" />
+            </Typography.Text>
+          </div>
+          {MOCK_TOPICS.flatMap((topic) =>
+            topic.points.map((point, index) => (
+              <span
+                key={`${topic.id}-${index}`}
+                css={{
+                  position: 'absolute',
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  backgroundColor: topic.color,
+                  border: `2px solid ${theme.colors.backgroundPrimary}`,
+                  boxShadow: `0 0 0 1px ${topic.color}66`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+            )),
+          )}
+          <div
+            css={{
+              position: 'absolute',
+              left: '26%',
+              top: '12%',
+              width: 430,
+              maxWidth: '52%',
+              padding: theme.spacing.md,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.colors.backgroundPrimary,
+              boxShadow: theme.shadows.lg,
+            }}
+          >
+            <Typography.Text bold>
+              <FormattedMessage
+                defaultMessage="Select models for legal document summarization"
+                description="Topics scatterplot hover card title"
+              />
+            </Typography.Text>
+            <div
+              css={{
+                marginTop: theme.spacing.sm,
+                paddingTop: theme.spacing.sm,
+                borderTop: `1px solid ${theme.colors.border}`,
+              }}
+            >
+              <Typography.Text color="secondary">
+                <FormattedMessage
+                  defaultMessage="User wants to select an appropriate model for summarizing long legal documents with a focus on maintaining accuracy and acceptable speed."
+                  description="Topics scatterplot hover card body"
+                />
+              </Typography.Text>
+            </div>
+            <Typography.Text color="secondary" size="sm" css={{ marginTop: theme.spacing.sm, display: 'block' }}>
+              2fe4c816
+            </Typography.Text>
+          </div>
+        </div>
+        <aside
+          css={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing.md,
+            padding: theme.spacing.md,
+            borderLeft: `1px solid ${theme.colors.border}`,
+            backgroundColor: theme.colors.backgroundSecondary,
+            overflow: 'auto',
+          }}
+        >
+          <div css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.sm }}>
+            <Typography.Title level={4} css={{ margin: 0 }}>
+              <FormattedMessage defaultMessage="Topics automation" description="Topics automation side panel title" />
+            </Typography.Title>
+            <Button componentId="mlflow.experiment-analysis.topics.regenerate" size="small" type="tertiary">
+              <FormattedMessage defaultMessage="Re-generate topics" description="Regenerate topics button" />
+            </Button>
+          </div>
+          <Typography.Text color="secondary">
+            <FormattedMessage
+              defaultMessage="Topics generation is an automated daily process. When enough traces are processed, topics will be generated daily."
+              description="Topics automation explanatory copy"
+            />
+          </Typography.Text>
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+            <Typography.Text bold>
+              <FormattedMessage defaultMessage="Status" description="Topics automation status heading" />
+            </Typography.Text>
+            <Typography.Text>
+              <strong>idle</strong> May 17 12:56 AM
+            </Typography.Text>
+            <Typography.Text color="secondary">
+              <FormattedMessage
+                defaultMessage="Idle until the next run time. Recompute topics to start a new generation cycle now."
+                description="Topics automation idle description"
+              />
+            </Typography.Text>
+          </div>
+          {['Active facets', 'Facet coverage in the last 90 days', 'Last error'].map((item) => (
+            <div
+              key={item}
+              css={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: theme.spacing.sm,
+                borderRadius: theme.borders.borderRadiusMd,
+                backgroundColor: theme.colors.backgroundPrimary,
+                border: `1px solid ${theme.colors.border}`,
+              }}
+            >
+              <Typography.Text>{item}</Typography.Text>
+              <Typography.Text color="secondary">&gt;</Typography.Text>
+            </div>
+          ))}
+        </aside>
+      </div>
+    </section>
+  );
+};
+
 const ExperimentIssuesPage = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
@@ -507,7 +948,7 @@ const ExperimentIssuesPage = () => {
           </div>
         </Tabs.Content>
         <Tabs.Content value="topics" css={{ flex: 1, minHeight: 0, overflow: 'auto', paddingTop: theme.spacing.md }}>
-          <AnalysisPlaceholderTab label="Topic classification prototype coming next." />
+          <TopicsTab onPromote={handlePromoteWidget} />
         </Tabs.Content>
         <Tabs.Content value="custom" css={{ flex: 1, minHeight: 0, overflow: 'auto', paddingTop: theme.spacing.md }}>
           <AnalysisPlaceholderTab label="Custom SQL-like analysis prototype coming next." />
