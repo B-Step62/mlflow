@@ -3,7 +3,7 @@ import { FormattedMessage } from 'react-intl';
 
 type DashboardThumbnailKind = 'traces' | 'quality' | 'tools' | 'failure-patterns' | 'topics' | 'custom';
 
-type DashboardCardDefinition = {
+type DashboardListItemDefinition = {
   id: string;
   title: string;
   subtitle: string;
@@ -13,7 +13,7 @@ type DashboardCardDefinition = {
   thumbnail: DashboardThumbnailKind;
 };
 
-const DASHBOARD_CARDS: DashboardCardDefinition[] = [
+const DASHBOARD_LIST_ITEMS: DashboardListItemDefinition[] = [
   {
     id: 'traces',
     title: 'Traces',
@@ -40,7 +40,7 @@ const DASHBOARD_CARDS: DashboardCardDefinition[] = [
   },
   {
     id: 'failure-patterns',
-    title: 'Failure Pattern Overview',
+    title: 'Common failures overview',
     subtitle: 'Issues Found, Issues Over Time, and detected issue detail',
     source: 'Custom from Analysis',
     widgets: 2,
@@ -66,10 +66,10 @@ const DASHBOARD_CARDS: DashboardCardDefinition[] = [
 ];
 
 const MiniBars = ({ color }: { color: string }) => {
-  const heights = [34, 62, 48, 72, 52, 84, 42, 68, 58, 76, 44, 64];
+  const heights = [24, 44, 34, 52, 38, 60, 30, 48, 40, 54, 32, 46];
 
   return (
-    <div css={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 88, minWidth: 0 }}>
+    <div css={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60, minWidth: 0 }}>
       {heights.map((height, index) => (
         <span
           key={index}
@@ -87,9 +87,9 @@ const MiniBars = ({ color }: { color: string }) => {
 };
 
 const MiniLine = ({ color }: { color: string }) => (
-  <svg viewBox="0 0 220 86" preserveAspectRatio="none" css={{ width: '100%', height: 86 }}>
+  <svg viewBox="0 0 220 64" preserveAspectRatio="none" css={{ width: '100%', height: 60 }}>
     <polyline
-      points="0,62 24,46 48,58 72,32 96,48 120,22 144,36 168,30 192,50 220,18"
+      points="0,48 24,34 48,44 72,24 96,36 120,16 144,26 168,22 192,38 220,14"
       fill="none"
       stroke={color}
       strokeWidth="4"
@@ -101,11 +101,11 @@ const FailurePatternThumbnail = () => {
   const { theme } = useDesignSystemTheme();
 
   return (
-    <div css={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: theme.spacing.md, alignItems: 'center' }}>
+    <div css={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: theme.spacing.sm, alignItems: 'center' }}>
       <div
         css={{
-          width: 76,
-          height: 76,
+          width: 50,
+          height: 50,
           borderRadius: '50%',
           background: `conic-gradient(${theme.colors.blue500} 0 66%, ${theme.colors.yellow500} 66% 100%)`,
           display: 'flex',
@@ -115,19 +115,19 @@ const FailurePatternThumbnail = () => {
       >
         <div
           css={{
-            width: 42,
-            height: 42,
+            width: 28,
+            height: 28,
             borderRadius: '50%',
             backgroundColor: theme.colors.backgroundPrimary,
           }}
         />
       </div>
-      <div css={{ display: 'flex', alignItems: 'flex-end', gap: theme.spacing.sm, height: 92 }}>
-        {[46, 70, 32, 88].map((height, index) => (
+      <div css={{ display: 'flex', alignItems: 'flex-end', gap: theme.spacing.xs, height: 60 }}>
+        {[34, 52, 24, 58].map((height, index) => (
           <span
             key={index}
             css={{
-              width: 26,
+              width: 18,
               height,
               borderRadius: `${theme.borders.borderRadiusSm} ${theme.borders.borderRadiusSm} 0 0`,
               backgroundColor: index === 1 ? theme.colors.yellow500 : theme.colors.blue500,
@@ -155,11 +155,11 @@ const TopicsThumbnail = () => {
     <div
       css={{
         position: 'relative',
-        height: 120,
+        height: 64,
         border: `1px solid ${theme.colors.border}`,
         borderRadius: theme.borders.borderRadiusMd,
         backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px), linear-gradient(90deg, ${theme.colors.border} 1px, transparent 1px)`,
-        backgroundSize: '34px 34px',
+        backgroundSize: '24px 24px',
       }}
     >
       {points.map((point, index) => (
@@ -169,8 +169,8 @@ const TopicsThumbnail = () => {
             position: 'absolute',
             left: `${point.x}%`,
             top: `${point.y}%`,
-            width: 12,
-            height: 12,
+            width: 8,
+            height: 8,
             borderRadius: '50%',
             backgroundColor: point.color,
             border: `2px solid ${theme.colors.backgroundPrimary}`,
@@ -185,7 +185,7 @@ const CustomThumbnail = () => {
   const { theme } = useDesignSystemTheme();
 
   return (
-    <div css={{ display: 'grid', gridTemplateColumns: '1fr 108px', gap: theme.spacing.md, alignItems: 'center' }}>
+    <div css={{ display: 'grid', gridTemplateColumns: '1fr 72px', gap: theme.spacing.sm, alignItems: 'center' }}>
       <MiniLine color={theme.colors.blue500} />
       <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
         {[82, 64, 92, 54].map((width, index) => (
@@ -241,73 +241,88 @@ const DashboardThumbnail = ({ kind }: { kind: DashboardThumbnailKind }) => {
   );
 };
 
-const DashboardCard = ({ dashboard }: { dashboard: DashboardCardDefinition }) => {
+const DashboardRow = ({ dashboard }: { dashboard: DashboardListItemDefinition }) => {
   const { theme } = useDesignSystemTheme();
 
   return (
     <article
       css={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 330,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusMd,
+        display: 'grid',
+        gridTemplateColumns: '132px minmax(0, 1fr) 160px 96px 72px',
+        gap: theme.spacing.lg,
+        alignItems: 'center',
+        padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+        borderBottom: `1px solid ${theme.colors.border}`,
         backgroundColor: theme.colors.backgroundPrimary,
-        overflow: 'hidden',
+        minWidth: 0,
       }}
     >
-      <div css={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.md }}>
-        <div
-          css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.sm, alignItems: 'flex-start' }}
-        >
-          <div css={{ minWidth: 0 }}>
-            <Typography.Title level={3} css={{ margin: 0 }} ellipsis>
-              {dashboard.title}
-            </Typography.Title>
-            <Typography.Text color="secondary" size="lg">
-              {dashboard.source}
-            </Typography.Text>
-          </div>
-          {dashboard.verified && <CheckCircleIcon css={{ color: theme.colors.blue500, flexShrink: 0 }} />}
-        </div>
-      </div>
       <div
         css={{
-          margin: `0 ${theme.spacing.lg}px`,
-          padding: theme.spacing.md,
-          minHeight: 142,
+          height: 76,
+          padding: theme.spacing.sm,
           borderRadius: theme.borders.borderRadiusMd,
           backgroundColor: theme.colors.backgroundSecondary,
           border: `1px solid ${theme.colors.border}`,
+          overflow: 'hidden',
         }}
       >
         <DashboardThumbnail kind={dashboard.thumbnail} />
       </div>
-      <div
-        css={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: theme.spacing.sm,
-          padding: theme.spacing.lg,
-          paddingTop: theme.spacing.md,
-          flex: 1,
-        }}
-      >
-        <Typography.Text color="secondary">{dashboard.subtitle}</Typography.Text>
-        <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-          <Typography.Text color="secondary" size="sm">
-            <FormattedMessage
-              defaultMessage="{count} widgets"
-              description="Dashboard card widget count"
-              values={{ count: dashboard.widgets }}
-            />
-          </Typography.Text>
-          <Button componentId="mlflow.experiment-dashboard.open" size="small" type="tertiary">
-            <FormattedMessage defaultMessage="Open" description="Open dashboard card button" />
-          </Button>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0 }}>
+          <Typography.Title level={4} css={{ margin: 0 }} ellipsis>
+            {dashboard.title}
+          </Typography.Title>
+          {dashboard.verified && <CheckCircleIcon css={{ color: theme.colors.blue500, flexShrink: 0 }} />}
         </div>
+        <Typography.Text color="secondary" ellipsis>
+          {dashboard.subtitle}
+        </Typography.Text>
       </div>
+      <Typography.Text color="secondary">{dashboard.source}</Typography.Text>
+      <Typography.Text color="secondary" size="sm">
+        <FormattedMessage
+          defaultMessage="{count} widgets"
+          description="Dashboard list widget count"
+          values={{ count: dashboard.widgets }}
+        />
+      </Typography.Text>
+      <Button componentId="mlflow.experiment-dashboard.open" size="small" type="tertiary">
+        <FormattedMessage defaultMessage="Open" description="Open dashboard list item button" />
+      </Button>
     </article>
+  );
+};
+
+const DashboardListHeader = () => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div
+      css={{
+        display: 'grid',
+        gridTemplateColumns: '132px minmax(0, 1fr) 160px 96px 72px',
+        gap: theme.spacing.lg,
+        padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+        borderBottom: `1px solid ${theme.colors.border}`,
+        backgroundColor: theme.colors.backgroundSecondary,
+      }}
+    >
+      <Typography.Text color="secondary" size="sm" bold>
+        <FormattedMessage defaultMessage="Preview" description="Dashboard list preview column heading" />
+      </Typography.Text>
+      <Typography.Text color="secondary" size="sm" bold>
+        <FormattedMessage defaultMessage="Name" description="Dashboard list name column heading" />
+      </Typography.Text>
+      <Typography.Text color="secondary" size="sm" bold>
+        <FormattedMessage defaultMessage="Source" description="Dashboard list source column heading" />
+      </Typography.Text>
+      <Typography.Text color="secondary" size="sm" bold>
+        <FormattedMessage defaultMessage="Widgets" description="Dashboard list widgets column heading" />
+      </Typography.Text>
+      <span />
+    </div>
   );
 };
 
@@ -319,39 +334,36 @@ const ExperimentGenAIDashboardPage = () => {
       css={{
         display: 'flex',
         flexDirection: 'column',
-        gap: theme.spacing.lg,
+        gap: theme.spacing.md,
         flex: 1,
         minHeight: 0,
         overflow: 'auto',
         padding: theme.spacing.md,
       }}
     >
-      <div css={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: theme.spacing.md }}>
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-          <Typography.Title level={2} css={{ margin: 0 }}>
-            <FormattedMessage defaultMessage="Dashboard" description="Dashboard gallery page title" />
-          </Typography.Title>
-          <Typography.Text color="secondary">
-            <FormattedMessage
-              defaultMessage="Preconfigured dashboards appear first. Widgets promoted from Analysis create custom dashboards next."
-              description="Dashboard gallery page description"
-            />
-          </Typography.Text>
-        </div>
+      <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md }}>
+        <Typography.Text color="secondary">
+          <FormattedMessage
+            defaultMessage="Preconfigured dashboards appear first. Widgets promoted from Analysis create custom dashboards next."
+            description="Dashboard list page description"
+          />
+        </Typography.Text>
         <Button componentId="mlflow.experiment-dashboard.new" type="primary" icon={<PlusIcon />}>
           <FormattedMessage defaultMessage="New" description="Create new dashboard button" />
         </Button>
       </div>
       <div
         css={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: theme.spacing.lg,
-          paddingBottom: theme.spacing.lg,
+          border: `1px solid ${theme.colors.border}`,
+          borderRadius: theme.borders.borderRadiusMd,
+          backgroundColor: theme.colors.backgroundPrimary,
+          overflow: 'hidden',
+          minWidth: 760,
         }}
       >
-        {DASHBOARD_CARDS.map((dashboard) => (
-          <DashboardCard key={dashboard.id} dashboard={dashboard} />
+        <DashboardListHeader />
+        {DASHBOARD_LIST_ITEMS.map((dashboard) => (
+          <DashboardRow key={dashboard.id} dashboard={dashboard} />
         ))}
       </div>
     </div>
