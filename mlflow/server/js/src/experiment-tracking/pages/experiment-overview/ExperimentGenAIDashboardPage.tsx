@@ -1,392 +1,361 @@
-import { useEffect, useState, useMemo } from 'react';
-import invariant from 'invariant';
-import { useParams } from '../../../common/utils/RoutingUtils';
-import { Alert, Tabs, Typography, useDesignSystemTheme } from '@databricks/design-system';
-import { FormattedMessage, useIntl } from 'react-intl';
-import { shouldEnableIssueDetection } from '../../../common/utils/FeatureUtils';
-import { IssueDetectionModal } from '../../components/experiment-page/components/traces-v3/IssueDetectionModal';
-import { DetectIssuesButton } from '../../../shared/web-shared/genai-traces-table/components/DetectIssuesButton';
-import { useLocalStorage } from '@databricks/web-shared/hooks';
-import { useIsFileStore } from '../../hooks/useServerInfo';
-import { useSqlWarehouseContextSafe } from '../experiment-page-tabs/SqlWarehouseContext';
-import { ExperimentViewTracesStatusLabels } from '@databricks/web-shared/genai-traces-table';
-import { TracesV3DateSelector } from '../../components/experiment-page/components/traces-v3/TracesV3DateSelector';
-import {
-  useMonitoringFilters,
-  getAbsoluteStartEndTime,
-  DEFAULT_START_TIME_LABEL,
-} from '../../hooks/useMonitoringFilters';
-import { MonitoringConfigProvider, useMonitoringConfig } from '../../hooks/useMonitoringConfig';
-import { useGetExperimentQuery } from '../../hooks/useExperimentQuery';
-import { LazyTraceRequestsChart } from './components/LazyTraceRequestsChart';
-import { LazyTraceLatencyChart } from './components/LazyTraceLatencyChart';
-import { LazyTraceErrorsChart } from './components/LazyTraceErrorsChart';
-import { LazyTraceTokenUsageChart } from './components/LazyTraceTokenUsageChart';
-import { LazyTraceTokenStatsChart } from './components/LazyTraceTokenStatsChart';
-import { LazyTraceCostBreakdownChart } from './components/LazyTraceCostBreakdownChart';
-import { LazyTraceCostOverTimeChart } from './components/LazyTraceCostOverTimeChart';
-import { AssessmentChartsSection } from './components/AssessmentChartsSection';
-import { ToolCallStatistics } from './components/ToolCallStatistics';
-import { ToolCallChartsSection } from './components/ToolCallChartsSection';
-import { LazyToolUsageChart } from './components/LazyToolUsageChart';
-import { LazyToolLatencyChart } from './components/LazyToolLatencyChart';
-import { LazyToolPerformanceSummary } from './components/LazyToolPerformanceSummary';
-import { TabContentContainer, ChartGrid } from './components/OverviewLayoutComponents';
-import { TimeUnitSelector } from './components/TimeUnitSelector';
-import type { TimeUnit } from './utils/timeUtils';
-import { TIME_UNIT_SECONDS, calculateDefaultTimeUnit, isTimeUnitValid } from './utils/timeUtils';
-import { generateTimeBuckets } from './utils/chartUtils';
-import { OverviewChartProvider } from './OverviewChartContext';
-import { useOverviewTab, OverviewTab } from './hooks/useOverviewTab';
-import { MetricsFilter } from '../../../common/components/MetricsFilter';
-import {
-  translateToMetricsFilters,
-  translateToTracesPageFilters,
-  TRACE_STATE_VALUES,
-  type MetricFilter,
-  type MetricFilterColumnOption,
-} from '../../../common/components/MetricsFilter.utils';
+import { Button, CheckCircleIcon, PlusIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { FormattedMessage } from 'react-intl';
 
-const DEMO_START_TIME_TAG = 'mlflow.demo.start_time_ms';
-const DEMO_END_TIME_TAG = 'mlflow.demo.end_time_ms';
+type DashboardThumbnailKind = 'traces' | 'quality' | 'tools' | 'failure-patterns' | 'topics' | 'custom';
 
-const ExperimentGenAIDashboardPageImpl = () => {
-  const intl = useIntl();
-  const { experimentId } = useParams();
+type DashboardCardDefinition = {
+  id: string;
+  title: string;
+  subtitle: string;
+  source: 'Preconfigured' | 'Custom from Analysis';
+  widgets: number;
+  verified?: boolean;
+  thumbnail: DashboardThumbnailKind;
+};
+
+const DASHBOARD_CARDS: DashboardCardDefinition[] = [
+  {
+    id: 'traces',
+    title: 'Traces',
+    subtitle: 'Trace volume, latency, errors, and span activity',
+    source: 'Preconfigured',
+    widgets: 6,
+    thumbnail: 'traces',
+  },
+  {
+    id: 'quality',
+    title: 'Quality',
+    subtitle: 'Assessment scores, pass rates, and quality trends',
+    source: 'Preconfigured',
+    widgets: 5,
+    thumbnail: 'quality',
+  },
+  {
+    id: 'tool-calls',
+    title: 'Tool calls',
+    subtitle: 'Tool usage, latency, errors, and performance summary',
+    source: 'Preconfigured',
+    widgets: 4,
+    thumbnail: 'tools',
+  },
+  {
+    id: 'failure-patterns',
+    title: 'Failure Pattern Overview',
+    subtitle: 'Issues Found, Issues Over Time, and detected issue detail',
+    source: 'Custom from Analysis',
+    widgets: 2,
+    thumbnail: 'failure-patterns',
+  },
+  {
+    id: 'topics',
+    title: 'Topic Explorer',
+    subtitle: 'Topic scatterplot, topic list, and automation status',
+    source: 'Custom from Analysis',
+    widgets: 3,
+    thumbnail: 'topics',
+  },
+  {
+    id: 'tool-p95',
+    title: 'Tool p95 Analysis',
+    subtitle: 'Custom SQL-like analysis with latency chart and tool summary',
+    source: 'Custom from Analysis',
+    widgets: 2,
+    verified: true,
+    thumbnail: 'custom',
+  },
+];
+
+const MiniBars = ({ color }: { color: string }) => {
+  const heights = [34, 62, 48, 72, 52, 84, 42, 68, 58, 76, 44, 64];
+
+  return (
+    <div css={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 88, minWidth: 0 }}>
+      {heights.map((height, index) => (
+        <span
+          key={index}
+          css={{
+            width: 10,
+            height,
+            borderRadius: '3px 3px 0 0',
+            backgroundColor: color,
+            opacity: index % 3 === 0 ? 0.55 : 0.9,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const MiniLine = ({ color }: { color: string }) => (
+  <svg viewBox="0 0 220 86" preserveAspectRatio="none" css={{ width: '100%', height: 86 }}>
+    <polyline
+      points="0,62 24,46 48,58 72,32 96,48 120,22 144,36 168,30 192,50 220,18"
+      fill="none"
+      stroke={color}
+      strokeWidth="4"
+    />
+  </svg>
+);
+
+const FailurePatternThumbnail = () => {
   const { theme } = useDesignSystemTheme();
-  const [activeTab, setActiveTab] = useOverviewTab();
-  const [selectedTimeUnit, setSelectedTimeUnit] = useState<TimeUnit | null>(null);
-  const [isIssueDetectionModalOpen, setIsIssueDetectionModalOpen] = useState(false);
-  const isFileStore = useIsFileStore();
-  const sqlWarehouseContext = useSqlWarehouseContextSafe();
 
-  // all features should be enabled in OSS
-  const enableAllCharts = true;
-
-  const [isMysqlBannerDismissed, setIsMysqlBannerDismissed] = useLocalStorage({
-    key: 'mlflow.overview.mysqlBannerDismissed',
-    version: 0,
-    initialValue: false,
-  });
-
-  invariant(experimentId, 'Experiment ID must be defined');
-
-  // Fetch experiment data to check for demo time tags
-  const { data: experiment } = useGetExperimentQuery({ experimentId });
-
-  // Get the current time range from monitoring filters
-  const [monitoringFilters, setMonitoringFilters] = useMonitoringFilters();
-  const monitoringConfig = useMonitoringConfig();
-
-  // Initialize with demo time range if this is a demo experiment
-  useEffect(() => {
-    if (!experiment || monitoringFilters.startTimeLabel !== DEFAULT_START_TIME_LABEL) {
-      return;
-    }
-
-    // Check if this is a demo experiment by looking for demo version tags
-    const hasDemoVersionTag = experiment.tags?.some((tag) => tag.key?.startsWith('mlflow.demo.version.'));
-
-    if (hasDemoVersionTag) {
-      const startTimeTag = experiment.tags?.find((tag) => tag.key === DEMO_START_TIME_TAG);
-      const endTimeTag = experiment.tags?.find((tag) => tag.key === DEMO_END_TIME_TAG);
-
-      if (startTimeTag?.value && endTimeTag?.value) {
-        const startTime = new Date(parseInt(startTimeTag.value, 10)).toISOString();
-        const endTime = new Date(parseInt(endTimeTag.value, 10)).toISOString();
-
-        setMonitoringFilters(
-          {
-            startTimeLabel: 'CUSTOM',
-            startTime,
-            endTime,
-          },
-          true,
-        );
-      }
-    }
-  }, [experiment, monitoringFilters.startTimeLabel, setMonitoringFilters]);
-
-  // 'ALL' is excluded from the date selector on this page since charts require
-  // start_time_ms and end_time_ms. If the user navigates here with ?startTimeLabel=ALL,
-  // reset to the default time range.
-  useEffect(() => {
-    if (monitoringFilters.startTimeLabel === 'ALL') {
-      setMonitoringFilters({ startTimeLabel: DEFAULT_START_TIME_LABEL }, true);
-    }
-  }, [monitoringFilters.startTimeLabel, setMonitoringFilters]);
-
-  // Use getAbsoluteStartEndTime to properly compute time range from labels
-  const { startTime, endTime } = useMemo(
-    () => getAbsoluteStartEndTime(monitoringConfig.dateNow, monitoringFilters),
-    [monitoringConfig.dateNow, monitoringFilters],
+  return (
+    <div css={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: theme.spacing.md, alignItems: 'center' }}>
+      <div
+        css={{
+          width: 76,
+          height: 76,
+          borderRadius: '50%',
+          background: `conic-gradient(${theme.colors.blue500} 0 66%, ${theme.colors.yellow500} 66% 100%)`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          css={{
+            width: 42,
+            height: 42,
+            borderRadius: '50%',
+            backgroundColor: theme.colors.backgroundPrimary,
+          }}
+        />
+      </div>
+      <div css={{ display: 'flex', alignItems: 'flex-end', gap: theme.spacing.sm, height: 92 }}>
+        {[46, 70, 32, 88].map((height, index) => (
+          <span
+            key={index}
+            css={{
+              width: 26,
+              height,
+              borderRadius: `${theme.borders.borderRadiusSm} ${theme.borders.borderRadiusSm} 0 0`,
+              backgroundColor: index === 1 ? theme.colors.yellow500 : theme.colors.blue500,
+            }}
+          />
+        ))}
+      </div>
+    </div>
   );
+};
 
-  // Convert ISO strings to milliseconds for the API
-  const startTimeMs = startTime ? new Date(startTime).getTime() : undefined;
-  const endTimeMs = endTime ? new Date(endTime).getTime() : undefined;
+const TopicsThumbnail = () => {
+  const { theme } = useDesignSystemTheme();
+  const points = [
+    { x: 18, y: 62, color: '#4466ff' },
+    { x: 25, y: 38, color: '#f28b20' },
+    { x: 35, y: 70, color: '#21c7d9' },
+    { x: 44, y: 44, color: '#8f5cf7' },
+    { x: 56, y: 76, color: '#72cf25' },
+    { x: 70, y: 36, color: '#b53a00' },
+    { x: 82, y: 58, color: '#b600b8' },
+  ];
 
-  // Calculate the default time unit for the current time range
-  const defaultTimeUnit = calculateDefaultTimeUnit(startTimeMs, endTimeMs);
-
-  // Auto-clear if selected time unit becomes invalid due to time range change
-  useEffect(() => {
-    if (selectedTimeUnit && !isTimeUnitValid(startTimeMs, endTimeMs, selectedTimeUnit)) {
-      setSelectedTimeUnit(null);
-    }
-  }, [startTimeMs, endTimeMs, selectedTimeUnit]);
-
-  // Use selected if valid, otherwise fall back to default
-  const effectiveTimeUnit = selectedTimeUnit ?? defaultTimeUnit;
-
-  // Use the effective time unit for time interval
-  const timeIntervalSeconds = TIME_UNIT_SECONDS[effectiveTimeUnit];
-
-  // Generate all time buckets once for all charts
-  const timeBuckets = useMemo(
-    () => generateTimeBuckets(startTimeMs, endTimeMs, timeIntervalSeconds),
-    [startTimeMs, endTimeMs, timeIntervalSeconds],
+  return (
+    <div
+      css={{
+        position: 'relative',
+        height: 120,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundImage: `linear-gradient(${theme.colors.border} 1px, transparent 1px), linear-gradient(90deg, ${theme.colors.border} 1px, transparent 1px)`,
+        backgroundSize: '34px 34px',
+      }}
+    >
+      {points.map((point, index) => (
+        <span
+          key={index}
+          css={{
+            position: 'absolute',
+            left: `${point.x}%`,
+            top: `${point.y}%`,
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            backgroundColor: point.color,
+            border: `2px solid ${theme.colors.backgroundPrimary}`,
+          }}
+        />
+      ))}
+    </div>
   );
+};
 
-  // User-driven filter rows captured by MetricsFilter. The MetricsFilter UI is only rendered on
-  // the Usage tab, so we scope both the chart-query filters (metrics-API DSL) and the navigation
-  // filters (Traces page URL format) to that tab; charts on Quality and Tool calls tabs are
-  // unaffected even though they share the same OverviewChartProvider.
-  const [metricFilters, setMetricFilters] = useState<MetricFilter[]>([]);
-  const isUsageTab = activeTab === OverviewTab.Usage;
-  const chartFilters = useMemo(
-    () => (isUsageTab ? translateToMetricsFilters(metricFilters) : undefined),
-    [isUsageTab, metricFilters],
+const CustomThumbnail = () => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div css={{ display: 'grid', gridTemplateColumns: '1fr 108px', gap: theme.spacing.md, alignItems: 'center' }}>
+      <MiniLine color={theme.colors.blue500} />
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+        {[82, 64, 92, 54].map((width, index) => (
+          <span
+            key={index}
+            css={{
+              width: `${width}%`,
+              height: 10,
+              borderRadius: theme.borders.borderRadiusSm,
+              backgroundColor: index === 1 ? theme.colors.green500 : theme.colors.actionTertiaryBackgroundHover,
+            }}
+          />
+        ))}
+      </div>
+    </div>
   );
-  const tracesNavigationFilters = useMemo(
-    () => (isUsageTab ? translateToTracesPageFilters(metricFilters) : undefined),
-    [isUsageTab, metricFilters],
+};
+
+const DashboardThumbnail = ({ kind }: { kind: DashboardThumbnailKind }) => {
+  const { theme } = useDesignSystemTheme();
+
+  if (kind === 'failure-patterns') {
+    return <FailurePatternThumbnail />;
+  }
+
+  if (kind === 'topics') {
+    return <TopicsThumbnail />;
+  }
+
+  if (kind === 'custom') {
+    return <CustomThumbnail />;
+  }
+
+  return (
+    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+      {kind === 'traces' && <MiniBars color={theme.colors.blue500} />}
+      {kind === 'quality' && <MiniLine color={theme.colors.green500} />}
+      {kind === 'tools' && <MiniBars color={theme.colors.yellow500} />}
+      <div css={{ display: 'flex', gap: theme.spacing.sm }}>
+        {[48, 64, 38].map((width, index) => (
+          <span
+            key={index}
+            css={{
+              height: 8,
+              width,
+              borderRadius: theme.borders.borderRadiusSm,
+              backgroundColor: theme.colors.actionTertiaryBackgroundHover,
+            }}
+          />
+        ))}
+      </div>
+    </div>
   );
-  const metricsFilterColumnOptions = useMemo<MetricFilterColumnOption[]>(
-    () => [
-      {
-        value: 'user',
-        label: intl.formatMessage({
-          defaultMessage: 'User',
-          description: 'Usage overview > metrics filter > user column option label',
-        }),
-      },
-      {
-        value: 'session',
-        label: intl.formatMessage({
-          defaultMessage: 'Session',
-          description: 'Usage overview > metrics filter > session column option label',
-        }),
-      },
-      {
-        value: 'state',
-        label: intl.formatMessage({
-          defaultMessage: 'State',
-          description: 'Usage overview > metrics filter > state column option label',
-        }),
-        valueOptions: TRACE_STATE_VALUES.map((value) => ({
-          value,
-          label: intl.formatMessage(ExperimentViewTracesStatusLabels[value]),
-        })),
-      },
-      {
-        value: 'git_branch',
-        label: intl.formatMessage({
-          defaultMessage: 'Git branch',
-          description: 'Usage overview > metrics filter > git branch column option label',
-        }),
-      },
-      {
-        value: 'git_commit',
-        label: intl.formatMessage({
-          defaultMessage: 'Git commit',
-          description: 'Usage overview > metrics filter > git commit column option label',
-        }),
-      },
-    ],
-    [intl],
+};
+
+const DashboardCard = ({ dashboard }: { dashboard: DashboardCardDefinition }) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <article
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 330,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundColor: theme.colors.backgroundPrimary,
+        overflow: 'hidden',
+      }}
+    >
+      <div css={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.md }}>
+        <div
+          css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.sm, alignItems: 'flex-start' }}
+        >
+          <div css={{ minWidth: 0 }}>
+            <Typography.Title level={3} css={{ margin: 0 }} ellipsis>
+              {dashboard.title}
+            </Typography.Title>
+            <Typography.Text color="secondary" size="lg">
+              {dashboard.source}
+            </Typography.Text>
+          </div>
+          {dashboard.verified && <CheckCircleIcon css={{ color: theme.colors.blue500, flexShrink: 0 }} />}
+        </div>
+      </div>
+      <div
+        css={{
+          margin: `0 ${theme.spacing.lg}px`,
+          padding: theme.spacing.md,
+          minHeight: 142,
+          borderRadius: theme.borders.borderRadiusMd,
+          backgroundColor: theme.colors.backgroundSecondary,
+          border: `1px solid ${theme.colors.border}`,
+        }}
+      >
+        <DashboardThumbnail kind={dashboard.thumbnail} />
+      </div>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.sm,
+          padding: theme.spacing.lg,
+          paddingTop: theme.spacing.md,
+          flex: 1,
+        }}
+      >
+        <Typography.Text color="secondary">{dashboard.subtitle}</Typography.Text>
+        <div css={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
+          <Typography.Text color="secondary" size="sm">
+            <FormattedMessage
+              defaultMessage="{count} widgets"
+              description="Dashboard card widget count"
+              values={{ count: dashboard.widgets }}
+            />
+          </Typography.Text>
+          <Button componentId="mlflow.experiment-dashboard.open" size="small" type="tertiary">
+            <FormattedMessage defaultMessage="Open" description="Open dashboard card button" />
+          </Button>
+        </div>
+      </div>
+    </article>
   );
+};
+
+const ExperimentGenAIDashboardPage = () => {
+  const { theme } = useDesignSystemTheme();
 
   return (
     <div
       css={{
         display: 'flex',
         flexDirection: 'column',
+        gap: theme.spacing.lg,
         flex: 1,
-        overflow: 'hidden',
+        minHeight: 0,
+        overflow: 'auto',
+        padding: theme.spacing.md,
       }}
     >
-      {isFileStore && (
-        <Alert
-          componentId="mlflow.experiment.overview.filestore-warning"
-          type="warning"
-          css={{ marginBottom: theme.spacing.sm }}
-          message={
+      <div css={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: theme.spacing.md }}>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+          <Typography.Title level={2} css={{ margin: 0 }}>
+            <FormattedMessage defaultMessage="Dashboard" description="Dashboard gallery page title" />
+          </Typography.Title>
+          <Typography.Text color="secondary">
             <FormattedMessage
-              defaultMessage="The Overview tab requires a SQL-based tracking store for full functionality, file-based backend is not supported."
-              description="Warning banner shown on the Overview tab when using FileStore backend"
+              defaultMessage="Preconfigured dashboards appear first. Widgets promoted from Analysis create custom dashboards next."
+              description="Dashboard gallery page description"
             />
-          }
-        />
-      )}
-      <Tabs.Root
-        componentId="mlflow.experiment.overview.tabs"
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as OverviewTab)}
-        valueHasNoPii
-        css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
-      >
-        <Tabs.List>
-          <Tabs.Trigger value={OverviewTab.Usage}>
-            <FormattedMessage
-              defaultMessage="Usage"
-              description="Label for the usage tab in the experiment overview page"
-            />
-          </Tabs.Trigger>
-          <Tabs.Trigger value={OverviewTab.Quality}>
-            <FormattedMessage
-              defaultMessage="Quality"
-              description="Label for the quality tab in the experiment overview page"
-            />
-          </Tabs.Trigger>
-          <Tabs.Trigger value={OverviewTab.ToolCalls}>
-            <FormattedMessage
-              defaultMessage="Tool calls"
-              description="Label for the tool calls tab in the experiment overview page"
-            />
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        {/* Control bar with time range */}
-        <div
-          css={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-          }}
-        >
-          {activeTab === OverviewTab.Usage && (
-            <MetricsFilter
-              filters={metricFilters}
-              setFilters={setMetricFilters}
-              columnOptions={metricsFilterColumnOptions}
-            />
-          )}
-
-          {/* Time unit selector for chart grouping */}
-          <TimeUnitSelector
-            value={effectiveTimeUnit}
-            onChange={setSelectedTimeUnit}
-            startTimeMs={startTimeMs}
-            endTimeMs={endTimeMs}
-            allowClear={selectedTimeUnit !== null && selectedTimeUnit !== defaultTimeUnit}
-            onClear={() => setSelectedTimeUnit(null)}
-          />
-
-          {/*
-           * Time range selector - exclude 'ALL' since charts require start_time_ms and end_time_ms
-           * TODO: remove this once this is supported in backend
-           */}
-          <TracesV3DateSelector excludeOptions={['ALL']} componentId="mlflow.experiment.overview" />
-
-          {shouldEnableIssueDetection() && (
-            <div css={{ marginLeft: 'auto' }}>
-              <DetectIssuesButton
-                componentId="mlflow.experiment.overview.detect-issues-button"
-                onClick={() => setIsIssueDetectionModalOpen(true)}
-              />
-            </div>
-          )}
+          </Typography.Text>
         </div>
-
-        <OverviewChartProvider
-          experimentIds={[experimentId]}
-          startTimeMs={startTimeMs}
-          endTimeMs={endTimeMs}
-          timeIntervalSeconds={timeIntervalSeconds}
-          timeBuckets={timeBuckets}
-          filters={chartFilters}
-          tracesNavigationFilters={tracesNavigationFilters}
-        >
-          <Tabs.Content value={OverviewTab.Usage} css={{ flex: 1, overflowY: 'auto' }}>
-            <TabContentContainer>
-              {/* Requests chart - full width */}
-              <LazyTraceRequestsChart />
-
-              {/* Latency and Errors charts - side by side (latency requires UC) */}
-              <ChartGrid>
-                {enableAllCharts && <LazyTraceLatencyChart />}
-                <LazyTraceErrorsChart enableTraceNavigation={enableAllCharts} />
-              </ChartGrid>
-
-              {/* Token Usage and Token Stats charts - side by side (requires UC) */}
-              {enableAllCharts && (
-                <ChartGrid>
-                  <LazyTraceTokenUsageChart />
-                  <LazyTraceTokenStatsChart />
-                </ChartGrid>
-              )}
-
-              {/* Cost Breakdown and Cost Over Time charts - side by side (requires UC) */}
-              {enableAllCharts && (
-                <ChartGrid>
-                  <LazyTraceCostBreakdownChart />
-                  <LazyTraceCostOverTimeChart />
-                </ChartGrid>
-              )}
-            </TabContentContainer>
-          </Tabs.Content>
-
-          <Tabs.Content value={OverviewTab.Quality} css={{ flex: 1, overflowY: 'auto' }}>
-            <TabContentContainer>
-              {/* Assessment charts - dynamically rendered based on available assessments */}
-              <AssessmentChartsSection enableTraceNavigation={enableAllCharts} />
-            </TabContentContainer>
-          </Tabs.Content>
-
-          <Tabs.Content value={OverviewTab.ToolCalls} css={{ flex: 1, overflowY: 'auto' }}>
-            <TabContentContainer>
-              {enableAllCharts ? (
-                <>
-                  {/* Tool call statistics */}
-                  <ToolCallStatistics />
-
-                  {/* Tool performance summary */}
-                  <LazyToolPerformanceSummary />
-
-                  {/* Tool usage and latency charts - side by side */}
-                  <ChartGrid>
-                    <LazyToolUsageChart />
-                    <LazyToolLatencyChart />
-                  </ChartGrid>
-
-                  {/* Tool error rate charts - dynamically rendered based on available tools */}
-                  <ToolCallChartsSection />
-                </>
-              ) : (
-                <Typography.Text color="secondary">
-                  <FormattedMessage
-                    defaultMessage="Tool call metrics require Unity Catalog trace storage."
-                    description="Message shown on Tool Calls tab when experiment uses MySQL trace storage"
-                  />
-                </Typography.Text>
-              )}
-            </TabContentContainer>
-          </Tabs.Content>
-        </OverviewChartProvider>
-      </Tabs.Root>
-      {isIssueDetectionModalOpen && (
-        <IssueDetectionModal onClose={() => setIsIssueDetectionModalOpen(false)} experimentId={experimentId} />
-      )}
+        <Button componentId="mlflow.experiment-dashboard.new" type="primary" icon={<PlusIcon />}>
+          <FormattedMessage defaultMessage="New" description="Create new dashboard button" />
+        </Button>
+      </div>
+      <div
+        css={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: theme.spacing.lg,
+          paddingBottom: theme.spacing.lg,
+        }}
+      >
+        {DASHBOARD_CARDS.map((dashboard) => (
+          <DashboardCard key={dashboard.id} dashboard={dashboard} />
+        ))}
+      </div>
     </div>
   );
 };
-
-// Wrap in MonitoringConfigProvider so refresh button updates are received
-const ExperimentGenAIDashboardPage = () => (
-  <MonitoringConfigProvider>
-    <ExperimentGenAIDashboardPageImpl />
-  </MonitoringConfigProvider>
-);
 
 export default ExperimentGenAIDashboardPage;
