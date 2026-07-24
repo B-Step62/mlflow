@@ -137,8 +137,8 @@ const getMLTabDisplayName = (tabName: ExperimentPageTabName) => {
     case ExperimentPageTabName.Issues:
       return (
         <FormattedMessage
-          defaultMessage="Issues"
-          description="Label for the issues tab in the MLflow experiment navbar"
+          defaultMessage="Analysis"
+          description="Label for the analysis tab in the MLflow experiment navbar"
         />
       );
     case ExperimentPageTabName.SingleChatSession:

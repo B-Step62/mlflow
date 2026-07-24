@@ -60,13 +60,13 @@ const ExperimentPageSideNavGenAIConfig = {
     {
       label: (
         <FormattedMessage
-          defaultMessage="Issues"
-          description="Label for the issues tab in the MLflow experiment navbar"
+          defaultMessage="Analysis"
+          description="Label for the analysis tab in the MLflow experiment navbar"
         />
       ),
       icon: <TargetIcon />,
       tabName: ExperimentPageTabName.Issues,
-      componentId: 'mlflow.experiment-side-nav.genai.issues',
+      componentId: 'mlflow.experiment-side-nav.genai.analysis',
     },
   ],
   evaluation: [

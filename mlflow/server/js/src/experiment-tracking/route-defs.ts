@@ -121,7 +121,7 @@ const getExperimentPageRouteDefs = () => {
           pageId: PageId.experimentPageTabIssues,
           element: createLazyRouteElement(() => import('./pages/experiment-issues/ExperimentIssuesPage')),
           handle: {
-            getPageTitle: (params) => `Issues - Experiment ${params['experimentId']}`,
+            getPageTitle: (params) => `Analysis - Experiment ${params['experimentId']}`,
             getAssistantPrompts: () => [
               'Prioritize the newly detected issues.',
               'Draft evaluation checks for these failure modes.',
