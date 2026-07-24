@@ -3,6 +3,10 @@
     "defaultMessage": "Relevant",
     "description": "Evaluation results > retrieval relevancy assessment > positive value label. Displayed if evaluation result is considered as relevant to the query."
   },
+  "++syF9": {
+    "defaultMessage": "Review queues help your team inspect traces, answer structured questions, and track review progress for LLM applications.",
+    "description": "Review queue: empty state description when no queues exist"
+  },
   "+/Zrmm": {
     "defaultMessage": "Temperature",
     "description": "Label for temperature input"
@@ -1787,6 +1791,10 @@
     "defaultMessage": "Test",
     "description": "Test webhook button"
   },
+  "6o8WEF": {
+    "defaultMessage": "Group traces for a project, issue, or review pass.",
+    "description": "Review queue: empty state step 1 description"
+  },
   "6sFPJF": {
     "defaultMessage": "Learn more",
     "description": "Link text for production monitoring documentation"
@@ -1878,10 +1886,6 @@
   "7FvLl2": {
     "defaultMessage": "Ignore outliers",
     "description": "Runs charts > line chart > ignore outliers > label"
-  },
-  "7GU2wd": {
-    "defaultMessage": "Add traces from the Traces tab to start reviewing them with your team.",
-    "description": "Review queue: empty queue description"
   },
   "7KKvmS": {
     "defaultMessage": "Created by",
@@ -2223,10 +2227,6 @@
     "defaultMessage": "Experimental",
     "description": "Experimental badge shown for features which are experimental"
   },
-  "8reQyH": {
-    "defaultMessage": "Set up human review for your traces",
-    "description": "Review queue: empty state title when no queues exist"
-  },
   "8sCMmZ": {
     "defaultMessage": "3. Access the MLflow UI",
     "description": "Section title explaining how to access traces in the MLflow UI"
@@ -2462,6 +2462,10 @@
   "9qUuQ6": {
     "defaultMessage": "Average of {count} values",
     "description": "Tooltip for numeric assessment average in session header"
+  },
+  "9sCBmT": {
+    "defaultMessage": "Add traces to this queue",
+    "description": "Review queue: empty trace title"
   },
   "9tg3Dx": {
     "defaultMessage": "Description not updated",
@@ -4487,6 +4491,10 @@
     "defaultMessage": "Commit message:",
     "description": "A label for the commit message in the prompt details page"
   },
+  "KGePyz": {
+    "defaultMessage": "Traces selected",
+    "description": "Review queue: trace setup status traces"
+  },
   "KIlp8v": {
     "defaultMessage": "No models selected",
     "description": "Label for selector when no models are selected"
@@ -4770,6 +4778,10 @@
   "Ls2ris": {
     "defaultMessage": "Mark as reviewed",
     "description": "Evaluation review > assessments > mark as reviewed button"
+  },
+  "Lts3pu": {
+    "defaultMessage": "Choose what reviewers answer and who should review.",
+    "description": "Review queue: empty state step 2 description"
   },
   "LuOEnE": {
     "defaultMessage": "Add",
@@ -5327,10 +5339,6 @@
     "defaultMessage": "Show first 20",
     "description": "Menu option for showing only 10 first runs in the experiment view runs compare mode"
   },
-  "OQOckC": {
-    "defaultMessage": "Review queues let your team evaluate trace quality with structured questions. Add traces to a queue from the Traces tab, or create a new queue to get started.",
-    "description": "Review queue: empty state description when no queues exist"
-  },
   "OQsEJv": {
     "defaultMessage": "Value",
     "description": "Add new key-value tag modal > Value input label"
@@ -5746,6 +5754,10 @@
   "QXLV8h": {
     "defaultMessage": "Error",
     "description": "Title for error fallback component in the MLflow experiment chat sessions page"
+  },
+  "QZQpri": {
+    "defaultMessage": "Create a queue",
+    "description": "Review queue: empty state step 1"
   },
   "QZXOSm": {
     "defaultMessage": "Frequency Penalty",
@@ -7355,6 +7367,10 @@
     "defaultMessage": "Download artifact",
     "description": "Link to download the artifact of the experiment"
   },
+  "YCmpKA": {
+    "defaultMessage": "This queue is ready for traces",
+    "description": "Review queue: trace setup status title"
+  },
   "YECxws": {
     "defaultMessage": "Compare",
     "description": "Label for the compare experiments action on the experiments list page"
@@ -7563,10 +7579,6 @@
     "defaultMessage": "Operator",
     "description": "Usage overview > filter row > operator dropdown aria label"
   },
-  "ZGhYvh": {
-    "defaultMessage": "No traces in this queue yet",
-    "description": "Review queue: empty queue title"
-  },
   "ZGrkWk": {
     "defaultMessage": "Perform inference via model.transform()",
     "description": "Code comment which states how we can perform SparkML inference"
@@ -7606,6 +7618,10 @@
   "ZOsiNc": {
     "defaultMessage": "just now",
     "description": "Indicates a time duration that just passed"
+  },
+  "ZQnanO": {
+    "defaultMessage": "Add the examples reviewers should inspect.",
+    "description": "Review queue: empty state step 3 description"
   },
   "ZQpc2w": {
     "defaultMessage": "Enter dataset name",
@@ -8603,6 +8619,10 @@
     "defaultMessage": "Cancel",
     "description": "Evaluation review > assessments > cancel overriding review button"
   },
+  "e9zjts": {
+    "defaultMessage": "{count, plural, one {# question configured} other {# questions configured}}",
+    "description": "Review queue: trace setup status questions"
+  },
   "eANdPU": {
     "defaultMessage": "No changes to save",
     "description": "Tooltip shown when save button is disabled due to no changes"
@@ -8887,10 +8907,6 @@
     "defaultMessage": "About this logged model",
     "description": "Title for the details sidebar of a logged model on the logged model details page"
   },
-  "fWSvgp": {
-    "defaultMessage": "New queue",
-    "description": "Review queue: empty state button to create a new queue"
-  },
   "fWm1UC": {
     "defaultMessage": "Group by",
     "description": "Experiment page > artifact compare view > \"group by column\" select dropdown label"
@@ -8914,6 +8930,10 @@
   "faLIN+": {
     "defaultMessage": "Timestamp",
     "description": "Run page > Charts tab > Chart tooltip > Timestamp label"
+  },
+  "fbOUNB": {
+    "defaultMessage": "Select traces from the Traces tab and add them here so reviewers can answer this queue's configured questions.",
+    "description": "Review queue: empty trace description"
   },
   "fcIHyN": {
     "defaultMessage": "Medium",
@@ -9426,6 +9446,10 @@
   "hcDB9U": {
     "defaultMessage": "+∞",
     "description": "Label displaying positive infinity symbol displayed on a plot UI element"
+  },
+  "hces9j": {
+    "defaultMessage": "Create queue",
+    "description": "Review queue: empty state button to create a new queue"
   },
   "he7/4n": {
     "defaultMessage": "Pick your language and follow the steps.",
@@ -10727,6 +10751,10 @@
     "defaultMessage": "Submit",
     "description": "Review focused view: submit answers and mark the trace complete"
   },
+  "nUzzgi": {
+    "defaultMessage": "Reviewers assigned",
+    "description": "Review queue: trace setup status reviewers"
+  },
   "nVndit": {
     "defaultMessage": "Registered on {registeredDate}",
     "description": "Label to display at what date the model was registered"
@@ -11331,6 +11359,10 @@
     "defaultMessage": "Show less",
     "description": "Button to close alert description"
   },
+  "qXEKTi": {
+    "defaultMessage": "Configure questions and reviewers",
+    "description": "Review queue: empty state step 2"
+  },
   "qZKsz+": {
     "defaultMessage": "Cancel",
     "description": "Cancel webhook form button"
@@ -11715,9 +11747,17 @@
     "defaultMessage": "Key Name",
     "description": "Key name label"
   },
+  "sEsw45": {
+    "defaultMessage": "Learn more",
+    "description": "Review queue: empty state learn-more link"
+  },
   "sGXhV4": {
     "defaultMessage": "Welcome to MLflow",
     "description": "Home page hero title"
+  },
+  "sGqMxc": {
+    "defaultMessage": "Select traces",
+    "description": "Review queue: empty state step 3"
   },
   "sHvLH2": {
     "defaultMessage": "Browse all providers →",
@@ -11975,8 +12015,8 @@
     "defaultMessage": "Select one or more sessions to perform actions.",
     "description": "Tooltip shown when actions button is disabled due to no session selection"
   },
-  "tUESQQ": {
-    "defaultMessage": "Review queues let you organize traces for human evaluation. Select a queue from the sidebar, or create a new one to start reviewing traces.",
+  "tUav5E": {
+    "defaultMessage": "Review queues help your team inspect traces, answer structured questions, and track review progress for LLM applications.",
     "description": "Review queue: empty state description when no queue selected"
   },
   "tUgCAM": {
@@ -12687,6 +12727,10 @@
     "defaultMessage": "Chat",
     "description": "Label for chat prompt type in the prompt creation modal"
   },
+  "xNFvsR": {
+    "defaultMessage": "Quick guide",
+    "description": "Review queue: empty state guide title"
+  },
   "xNKhsu": {
     "defaultMessage": "Recent Experiments",
     "description": "Home page experiments preview title"
@@ -12894,6 +12938,10 @@
   "yK/6vg": {
     "defaultMessage": "Cancel",
     "description": "Cancel text for delete model modal on model view page"
+  },
+  "yL7uxL": {
+    "defaultMessage": "Get started with review queues",
+    "description": "Review queue: empty state title when no queues exist"
   },
   "yL9JKm": {
     "defaultMessage": "NaN",

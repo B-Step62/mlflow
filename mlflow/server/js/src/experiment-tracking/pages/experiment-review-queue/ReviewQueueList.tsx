@@ -25,7 +25,7 @@ import { useGetTracesById } from '@databricks/web-shared/model-trace-explorer';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 
 import { displayUser } from './hooks/useReviewer';
-import { ReviewQueueEmptyState } from './ReviewQueueEmptyState';
+import { ReviewQueueNoTracesEmptyState } from './ReviewQueueEmptyState';
 import type { ReviewQueueItem, ReviewStatus } from './types';
 
 const CID = 'mlflow.experiment-review-queue.list';
@@ -457,19 +457,8 @@ export const ReviewQueueList = ({
       )}
 
       {items.length === 0 ? (
-        <ReviewQueueEmptyState
-          title={
-            <FormattedMessage
-              defaultMessage="No traces in this queue yet"
-              description="Review queue: empty queue title"
-            />
-          }
-          description={
-            <FormattedMessage
-              defaultMessage="Add traces from the Traces tab to start reviewing them with your team."
-              description="Review queue: empty queue description"
-            />
-          }
+        <ReviewQueueNoTracesEmptyState
+          questionCount={questionCount}
           button={
             onGoToTraces && (
               <Button

@@ -98,7 +98,9 @@ describe('ReviewQueueList', () => {
 
   it('renders an empty state when there are no traces', () => {
     renderWithProviders(<ReviewQueueList items={[]} onOpen={jest.fn()} nowMs={NOW} />);
-    expect(screen.getByText('No traces in this queue yet')).toBeInTheDocument();
+    expect(screen.getByText('Add traces to this queue')).toBeInTheDocument();
+    expect(screen.getByText('This queue is ready for traces')).toBeInTheDocument();
+    expect(screen.queryByText('Quick guide')).not.toBeInTheDocument();
   });
 
   it('shows an "Add traces" CTA in the empty state that calls onGoToTraces', () => {

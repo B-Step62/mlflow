@@ -59,11 +59,9 @@ describe('ReviewQueueSidebar', () => {
   it('greys queues an editor can see but cannot open (non-owner, non-member)', () => {
     renderSidebar();
     // Owner (Alpha) and member (Gamma) queues are openable; Beta is greyed.
-    expect(screen.getByText('Alpha').closest('[role="button"]')).not.toBeNull();
-    expect(screen.getByText('Gamma').closest('[role="button"]')).not.toBeNull();
-    const beta = screen.getByText('Beta').closest('div');
-    expect(beta?.getAttribute('aria-disabled')).toBe('true');
-    expect(beta?.getAttribute('role')).toBeNull();
+    expect(screen.getByTestId('mlflow.experiment-review-queue.sidebar.row-a')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByTestId('mlflow.experiment-review-queue.sidebar.row-g')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByTestId('mlflow.experiment-review-queue.sidebar.row-b')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows the owner column and the My-queues filter on an auth server', () => {

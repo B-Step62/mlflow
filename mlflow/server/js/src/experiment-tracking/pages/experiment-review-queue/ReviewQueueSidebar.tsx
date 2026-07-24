@@ -1,13 +1,15 @@
 import { useState } from 'react';
 
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
   Button,
   GearIcon,
   PlusIcon,
   SegmentedControlButton,
   SegmentedControlGroup,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
   Typography,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -24,127 +26,10 @@ const CID = 'mlflow.experiment-review-queue.sidebar';
 
 // Fixed widths so the owner and "To do" columns line up across rows.
 const OWNER_COL_WIDTH = 120;
-const COUNT_COL_WIDTH = 48;
+const COUNT_COL_WIDTH = 72;
 
 type SortKey = 'name' | 'owner' | 'todo';
 type SortDir = 'asc' | 'desc';
-
-const SortHeader = ({
-  label,
-  active,
-  dir,
-  width,
-  align,
-  onClick,
-}: {
-  label: React.ReactNode;
-  active: boolean;
-  dir: SortDir;
-  /** Fixed pixel width; omit to flex-fill the remaining space. */
-  width?: number;
-  align: 'left' | 'right';
-  onClick: () => void;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      css={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-        gap: theme.spacing.xs,
-        cursor: 'pointer',
-        ...(width != null ? { width, flexShrink: 0 } : { flex: 1, minWidth: 0 }),
-      }}
-    >
-      <Typography.Text size="sm" color="secondary" bold ellipsis>
-        {label}
-      </Typography.Text>
-      {active && (dir === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />)}
-    </div>
-  );
-};
-
-const QueueRow = ({
-  label,
-  owner,
-  showOwner,
-  pending,
-  inspectable,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  owner: string;
-  showOwner: boolean;
-  /** Count of still-to-review traces; `undefined` while loading or not inspectable. */
-  pending: number | undefined;
-  inspectable: boolean;
-  selected: boolean;
-  onSelect: () => void;
-}) => {
-  const { theme } = useDesignSystemTheme();
-  const intl = useIntl();
-
-  const noAccessHint = intl.formatMessage({
-    defaultMessage: "You don't have access to this queue.",
-    description: 'Review queue sidebar: tooltip for a queue the reviewer cannot open',
-  });
-
-  return (
-    <div
-      {...(inspectable
-        ? {
-            role: 'button',
-            tabIndex: 0,
-            onClick: onSelect,
-            onKeyDown: (e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelect();
-              }
-            },
-          }
-        : { 'aria-disabled': true, title: noAccessHint })}
-      css={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
-        padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-        borderRadius: theme.borders.borderRadiusMd,
-        cursor: inspectable ? 'pointer' : 'default',
-        // Greyed when not inspectable: listed but not openable (server detail-tier gate).
-        opacity: inspectable ? 1 : 0.5,
-        backgroundColor: selected ? theme.colors.actionDefaultBackgroundPress : undefined,
-        '&:hover': inspectable
-          ? { backgroundColor: selected ? undefined : theme.colors.actionDefaultBackgroundHover }
-          : undefined,
-      }}
-    >
-      <Typography.Text bold={selected} ellipsis css={{ flex: 1, minWidth: 0 }}>
-        {label}
-      </Typography.Text>
-      {showOwner && (
-        <Typography.Text color="secondary" ellipsis css={{ width: OWNER_COL_WIDTH, flexShrink: 0 }}>
-          {owner}
-        </Typography.Text>
-      )}
-      <Typography.Text color="secondary" css={{ width: COUNT_COL_WIDTH, flexShrink: 0, textAlign: 'right' }}>
-        {/* Blank for zero, while loading, and for non-inspectable queues. */}
-        {pending ? pending : ''}
-      </Typography.Text>
-    </div>
-  );
-};
 
 /**
  * Left panel of the Review tab: a flat, sortable list of the reviewer's visible
@@ -185,6 +70,10 @@ export const ReviewQueueSidebar = ({
   // can see queues they don't own (i.e. editors).
   const showOwner = authAvailable;
   const showFilter = authAvailable && canEdit;
+  const noAccessHint = intl.formatMessage({
+    defaultMessage: "You don't have access to this queue.",
+    description: 'Review queue sidebar: tooltip for a queue the reviewer cannot open',
+  });
 
   const inspectable = (q: ReviewQueue) => canInspectQueue(q, reviewer, canManage, canEdit);
 
@@ -297,74 +186,103 @@ export const ReviewQueueSidebar = ({
       )}
 
       {queues.length > 0 && (
-        <div
-          css={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-            padding: `0 ${theme.spacing.sm}px`,
-            borderBottom: `1px solid ${theme.colors.border}`,
-            paddingBottom: theme.spacing.xs,
-          }}
-        >
-          <SortHeader
-            label={<FormattedMessage defaultMessage="Queue" description="Review queue sidebar: queue-name column" />}
-            active={sortKey === 'name'}
-            dir={sortDir}
-            align="left"
-            onClick={() => toggleSort('name')}
-          />
-          {showOwner && (
-            <SortHeader
-              label={<FormattedMessage defaultMessage="Owner" description="Review queue sidebar: queue-owner column" />}
-              active={sortKey === 'owner'}
-              dir={sortDir}
-              width={OWNER_COL_WIDTH}
-              align="left"
-              onClick={() => toggleSort('owner')}
-            />
-          )}
-          <SortHeader
-            label={
-              <FormattedMessage
-                defaultMessage="To do"
-                description="Review queue sidebar: still-to-review count column"
-              />
-            }
-            active={sortKey === 'todo'}
-            dir={sortDir}
-            width={COUNT_COL_WIDTH}
-            align="right"
-            onClick={() => toggleSort('todo')}
-          />
+        <div css={{ minHeight: 0, overflow: 'auto' }}>
+          <Table>
+            <TableRow isHeader>
+              <TableHeader
+                componentId={`${CID}.queue-header`}
+                sortable
+                sortDirection={sortKey === 'name' ? sortDir : 'none'}
+                onToggleSort={() => toggleSort('name')}
+                css={{ flex: 1, minWidth: 0 }}
+              >
+                <FormattedMessage defaultMessage="Queue" description="Review queue sidebar: queue-name column" />
+              </TableHeader>
+              {showOwner && (
+                <TableHeader
+                  componentId={`${CID}.owner-header`}
+                  sortable
+                  sortDirection={sortKey === 'owner' ? sortDir : 'none'}
+                  onToggleSort={() => toggleSort('owner')}
+                  css={{ flex: `0 0 ${OWNER_COL_WIDTH}px` }}
+                >
+                  <FormattedMessage defaultMessage="Owner" description="Review queue sidebar: queue-owner column" />
+                </TableHeader>
+              )}
+              <TableHeader
+                componentId={`${CID}.todo-header`}
+                sortable
+                sortDirection={sortKey === 'todo' ? sortDir : 'none'}
+                onToggleSort={() => toggleSort('todo')}
+                css={{ flex: `0 0 ${COUNT_COL_WIDTH}px`, justifyContent: 'flex-end' }}
+              >
+                <FormattedMessage
+                  defaultMessage="To do"
+                  description="Review queue sidebar: still-to-review count column"
+                />
+              </TableHeader>
+            </TableRow>
+            {visible.map((queue) => {
+              const queueInspectable = inspectable(queue);
+              const selected = queue.queue_id === selectedQueueId;
+              const pending = pendingByQueueId.get(queue.queue_id);
+              return (
+                <TableRow
+                  key={queue.queue_id}
+                  data-testid={`${CID}.row-${queue.queue_id}`}
+                  aria-disabled={queueInspectable ? undefined : true}
+                  aria-selected={selected}
+                  title={queueInspectable ? undefined : noAccessHint}
+                  tabIndex={queueInspectable ? 0 : undefined}
+                  onClick={queueInspectable ? () => onSelect(queue.queue_id) : undefined}
+                  onKeyDown={
+                    queueInspectable
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(queue.queue_id);
+                          }
+                        }
+                      : undefined
+                  }
+                  css={{
+                    cursor: queueInspectable ? 'pointer' : 'default',
+                    opacity: queueInspectable ? 1 : 0.5,
+                    backgroundColor: selected ? theme.colors.actionDefaultBackgroundPress : undefined,
+                    '&:hover': queueInspectable
+                      ? { backgroundColor: selected ? undefined : theme.colors.actionDefaultBackgroundHover }
+                      : undefined,
+                  }}
+                >
+                  <TableCell css={{ flex: 1, minWidth: 0 }}>
+                    <Typography.Text bold={selected} ellipsis>
+                      {labelOf(queue)}
+                    </Typography.Text>
+                  </TableCell>
+                  {showOwner && (
+                    <TableCell css={{ flex: `0 0 ${OWNER_COL_WIDTH}px`, minWidth: 0 }}>
+                      <Typography.Text color="secondary" ellipsis>
+                        {ownerOf(queue)}
+                      </Typography.Text>
+                    </TableCell>
+                  )}
+                  <TableCell css={{ flex: `0 0 ${COUNT_COL_WIDTH}px`, justifyContent: 'flex-end' }}>
+                    <Typography.Text color="secondary">{pending == null ? '' : pending}</Typography.Text>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </Table>
         </div>
       )}
 
-      {visible.length > 0 ? (
-        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-          {visible.map((queue) => (
-            <QueueRow
-              key={queue.queue_id}
-              label={labelOf(queue)}
-              owner={ownerOf(queue)}
-              showOwner={showOwner}
-              pending={pendingByQueueId.get(queue.queue_id)}
-              inspectable={inspectable(queue)}
-              selected={queue.queue_id === selectedQueueId}
-              onSelect={() => onSelect(queue.queue_id)}
-            />
-          ))}
-        </div>
-      ) : (
-        effectiveMineOnly &&
-        queues.length > 0 && (
-          <Typography.Text color="secondary" css={{ paddingLeft: theme.spacing.sm }}>
-            <FormattedMessage
-              defaultMessage="You don't own any queues yet."
-              description="Review queue sidebar: empty state for the My-queues filter"
-            />
-          </Typography.Text>
-        )
+      {visible.length === 0 && effectiveMineOnly && queues.length > 0 && (
+        <Typography.Text color="secondary" css={{ paddingLeft: theme.spacing.sm }}>
+          <FormattedMessage
+            defaultMessage="You don't own any queues yet."
+            description="Review queue sidebar: empty state for the My-queues filter"
+          />
+        </Typography.Text>
       )}
     </div>
   );

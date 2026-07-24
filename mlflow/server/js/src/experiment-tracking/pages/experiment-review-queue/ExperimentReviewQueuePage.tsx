@@ -315,21 +315,23 @@ const ExperimentReviewQueuePage = () => {
     });
   };
 
+  const showNoQueuesEmptyState = !queuesLoading && reviewQueues.length === 0;
+
   let rightContent: React.ReactNode;
   if (queuesLoading) {
     rightContent = <TableSkeleton lines={6} />;
-  } else if (reviewQueues.length === 0) {
+  } else if (showNoQueuesEmptyState) {
     rightContent = (
       <ReviewQueueEmptyState
         title={
           <FormattedMessage
-            defaultMessage="Set up human review for your traces"
+            defaultMessage="Get started with review queues"
             description="Review queue: empty state title when no queues exist"
           />
         }
         description={
           <FormattedMessage
-            defaultMessage="Review queues let your team evaluate trace quality with structured questions. Add traces to a queue from the Traces tab, or create a new queue to get started."
+            defaultMessage="Review queues help your team inspect traces, answer structured questions, and track review progress for LLM applications."
             description="Review queue: empty state description when no queues exist"
           />
         }
@@ -341,7 +343,7 @@ const ExperimentReviewQueuePage = () => {
             onClick={() => setCreateOpen(true)}
           >
             <FormattedMessage
-              defaultMessage="New queue"
+              defaultMessage="Create queue"
               description="Review queue: empty state button to create a new queue"
             />
           </Button>
@@ -359,7 +361,7 @@ const ExperimentReviewQueuePage = () => {
         }
         description={
           <FormattedMessage
-            defaultMessage="Review queues let you organize traces for human evaluation. Select a queue from the sidebar, or create a new one to start reviewing traces."
+            defaultMessage="Review queues help your team inspect traces, answer structured questions, and track review progress for LLM applications."
             description="Review queue: empty state description when no queue selected"
           />
         }
@@ -453,13 +455,13 @@ const ExperimentReviewQueuePage = () => {
       }}
     >
       <div css={{ display: 'flex', flex: 1, minHeight: 0, overflow: inFocusMode ? 'visible' : 'hidden' }}>
-        {inFocusMode ? (
+        {inFocusMode || showNoQueuesEmptyState ? (
           <div
             css={{
               width: '100%',
               height: '100%',
               minHeight: 0,
-              overflow: 'visible',
+              overflow: inFocusMode ? 'visible' : 'hidden',
               display: 'flex',
               flexDirection: 'column',
             }}
