@@ -49,17 +49,6 @@ const ExperimentPageSideNavGenAIConfig = {
     {
       label: (
         <FormattedMessage
-          defaultMessage="Dashboard"
-          description="Label for the dashboard tab in the MLflow experiment navbar"
-        />
-      ),
-      icon: <ChartLineIcon />,
-      tabName: ExperimentPageTabName.Dashboard,
-      componentId: 'mlflow.experiment-side-nav.genai.dashboard',
-    },
-    {
-      label: (
-        <FormattedMessage
           defaultMessage="Analysis"
           description="Label for the analysis tab in the MLflow experiment navbar"
         />
@@ -67,6 +56,17 @@ const ExperimentPageSideNavGenAIConfig = {
       icon: <TargetIcon />,
       tabName: ExperimentPageTabName.Issues,
       componentId: 'mlflow.experiment-side-nav.genai.analysis',
+    },
+    {
+      label: (
+        <FormattedMessage
+          defaultMessage="Dashboard"
+          description="Label for the dashboard tab in the MLflow experiment navbar"
+        />
+      ),
+      icon: <ChartLineIcon />,
+      tabName: ExperimentPageTabName.Dashboard,
+      componentId: 'mlflow.experiment-side-nav.genai.dashboard',
     },
   ],
   evaluation: [
@@ -126,17 +126,6 @@ const ExperimentPageSideNavGenAIConfig = {
       icon: <TextBoxIcon />,
       tabName: ExperimentPageTabName.Prompts,
       componentId: 'mlflow.experiment-side-nav.genai.prompts',
-    },
-    {
-      label: (
-        <FormattedMessage
-          defaultMessage="Agent versions"
-          description="Label for the agent versions tab in the MLflow experiment navbar"
-        />
-      ),
-      icon: <ModelsIcon />,
-      tabName: ExperimentPageTabName.Models,
-      componentId: 'mlflow.experiment-side-nav.genai.agent-versions',
     },
   ],
 };
@@ -198,8 +187,8 @@ export const getExperimentPageSideNavSectionLabel = (
     case 'prompts-versions':
       return (
         <FormattedMessage
-          defaultMessage="Prompts & versions"
-          description="Label for the versions section in the MLflow experiment navbar"
+          defaultMessage="Prompts"
+          description="Label for the prompts section in the MLflow experiment navbar"
         />
       );
     default:

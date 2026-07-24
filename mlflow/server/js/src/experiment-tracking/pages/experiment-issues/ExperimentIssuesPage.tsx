@@ -783,17 +783,17 @@ const AnalysisModeTabs = () => {
     {
       value: 'failure-patterns',
       label: <FormattedMessage defaultMessage="Common failures" description="Analysis tab label for common failures" />,
-      icon: <TargetIcon />,
+      icon: <TargetIcon css={{ fontSize: 14 }} />,
     },
     {
       value: 'topics',
       label: <FormattedMessage defaultMessage="Topics" description="Analysis tab label for topics" />,
-      icon: <ForkHorizontalIcon />,
+      icon: <ForkHorizontalIcon css={{ fontSize: 14 }} />,
     },
     {
       value: 'custom',
       label: <FormattedMessage defaultMessage="Custom" description="Analysis tab label for custom analysis" />,
-      icon: <SparkleIcon color="ai" />,
+      icon: <SparkleIcon color="ai" css={{ fontSize: 14 }} />,
     },
   ];
 
@@ -804,16 +804,8 @@ const AnalysisModeTabs = () => {
       }}
     >
       {modes.map((mode) => (
-        <Tabs.Trigger
-          key={mode.value}
-          value={mode.value}
-          css={{
-            minHeight: 44,
-            paddingLeft: theme.spacing.md,
-            paddingRight: theme.spacing.md,
-          }}
-        >
-          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm }}>
+        <Tabs.Trigger key={mode.value} value={mode.value}>
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
             {mode.icon}
             <span>{mode.label}</span>
           </span>

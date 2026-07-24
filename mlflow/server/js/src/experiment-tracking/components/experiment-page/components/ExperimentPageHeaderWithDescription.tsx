@@ -88,6 +88,7 @@ export const ExperimentPageHeaderWithDescription = ({
           setEditing={setEditing}
           onNoteUpdated={onNoteUpdated}
           defaultValue={experimentDescription}
+          hideDescription
         />
       </>
     );

@@ -143,12 +143,14 @@ export const ExperimentViewMetadataEditor = ({
   setEditing,
   onNoteUpdated,
   defaultValue,
+  hideDescription = false,
 }: {
   experiment: ExperimentEntity;
   editing: boolean;
   setEditing: (editing: boolean) => void;
   onNoteUpdated?: () => void;
   defaultValue?: string;
+  hideDescription?: boolean;
 }) => {
   const storedNote = useSelector((state) => {
     const tags = getExperimentTags(experiment.experimentId, state);
@@ -381,70 +383,74 @@ export const ExperimentViewMetadataEditor = ({
   }, [editing, effectiveNote, experiment.name, currentTraceArchivalRetention]);
 
   return (
-    <div
-      css={{
-        paddingBottom: theme.spacing.sm,
-        borderBottom: `1px solid ${theme.colors.border}`,
-      }}
-    >
-      {hasContent && (
+    <>
+      {!hideDescription && (
         <div
           css={{
-            background: theme.colors.backgroundSecondary,
-            display: 'flex',
-            alignItems: 'flex-start',
-            padding: theme.spacing.xs,
+            paddingBottom: theme.spacing.sm,
+            borderBottom: `1px solid ${theme.colors.border}`,
           }}
         >
-          <div
-            css={{
-              flexGrow: 1,
-              marginRight: PADDING_HORIZONTAL,
-              overflow: 'hidden',
-              overflowWrap: isExpanded ? 'break-word' : undefined,
-              padding: `${theme.spacing.sm}px ${PADDING_HORIZONTAL}px`,
-              maxHeight: isExpanded ? 'none' : COLLAPSE_MAX_HEIGHT + 'px',
-              wordBreak: 'break-word',
-              '&>:first-child': {
-                marginBlockStart: 0,
-                ...(isExpanded
-                  ? {}
-                  : {
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }),
-              },
-            }}
-          >
+          {hasContent && (
             <div
-              // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: sanitizedContent }}
-            />
-          </div>
-          {canEditMetadata && !headerActionsHidden && (
-            <Button
-              componentId="mlflow.experiment.metadata_editor.edit_button"
-              data-testid="experiment-metadata-editor-edit-button"
-              icon={<PencilIcon />}
-              onClick={() => setEditing(true)}
-              style={{ padding: `0px ${theme.spacing.sm}px` }}
-            />
-          )}
-          {isExpanded ? (
-            <Button
-              componentId="mlflow.experiment.metadata_editor.collapse_button"
-              icon={<ChevronUpIcon />}
-              onClick={() => setIsExpanded(false)}
-              style={{ padding: `0px ${theme.spacing.sm}px` }}
-            />
-          ) : (
-            <Button
-              componentId="mlflow.experiment.metadata_editor.expand_button"
-              icon={<ChevronDownIcon />}
-              onClick={() => setIsExpanded(true)}
-              style={{ padding: `0px ${theme.spacing.sm}px` }}
-            />
+              css={{
+                background: theme.colors.backgroundSecondary,
+                display: 'flex',
+                alignItems: 'flex-start',
+                padding: theme.spacing.xs,
+              }}
+            >
+              <div
+                css={{
+                  flexGrow: 1,
+                  marginRight: PADDING_HORIZONTAL,
+                  overflow: 'hidden',
+                  overflowWrap: isExpanded ? 'break-word' : undefined,
+                  padding: `${theme.spacing.sm}px ${PADDING_HORIZONTAL}px`,
+                  maxHeight: isExpanded ? 'none' : COLLAPSE_MAX_HEIGHT + 'px',
+                  wordBreak: 'break-word',
+                  '&>:first-child': {
+                    marginBlockStart: 0,
+                    ...(isExpanded
+                      ? {}
+                      : {
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }),
+                  },
+                }}
+              >
+                <div
+                  // eslint-disable-next-line react/no-danger
+                  dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+                />
+              </div>
+              {canEditMetadata && !headerActionsHidden && (
+                <Button
+                  componentId="mlflow.experiment.metadata_editor.edit_button"
+                  data-testid="experiment-metadata-editor-edit-button"
+                  icon={<PencilIcon />}
+                  onClick={() => setEditing(true)}
+                  style={{ padding: `0px ${theme.spacing.sm}px` }}
+                />
+              )}
+              {isExpanded ? (
+                <Button
+                  componentId="mlflow.experiment.metadata_editor.collapse_button"
+                  icon={<ChevronUpIcon />}
+                  onClick={() => setIsExpanded(false)}
+                  style={{ padding: `0px ${theme.spacing.sm}px` }}
+                />
+              ) : (
+                <Button
+                  componentId="mlflow.experiment.metadata_editor.expand_button"
+                  icon={<ChevronDownIcon />}
+                  onClick={() => setIsExpanded(true)}
+                  style={{ padding: `0px ${theme.spacing.sm}px` }}
+                />
+              )}
+            </div>
           )}
         </div>
       )}
@@ -574,6 +580,6 @@ export const ExperimentViewMetadataEditor = ({
           )}
         </div>
       </Modal>
-    </div>
+    </>
   );
 };
