@@ -14,6 +14,7 @@ import {
   Tag,
   TableIcon,
   Typography,
+  type TagColors,
   useDesignSystemTheme,
   WrenchSparkleIcon,
 } from '@databricks/design-system';
@@ -27,7 +28,7 @@ import {
 import { useNavigate } from '../../../common/utils/RoutingUtils';
 import { ExperimentPageTabName } from '../../constants';
 import Routes from '../../routes';
-import { type Issue, type IssueStatus } from './hooks/useSearchIssuesQuery';
+import { type Issue, type IssueSeverity, type IssueStatus } from './hooks/useSearchIssuesQuery';
 import { useUpdateIssue } from './hooks/useUpdateIssue';
 import Utils from '../../../common/utils/Utils';
 import { useAssistant } from '../../../assistant/AssistantContext';
@@ -52,6 +53,29 @@ interface IssueDetailsPanelProps {
 }
 
 type LinkedArtifactDrawer = { type: 'dataset' } | { type: 'scorer'; scorerName: string };
+
+const getIssueSeverityTagColor = (severity: IssueSeverity): TagColors => {
+  if (severity === 'high') {
+    return 'coral';
+  }
+  if (severity === 'medium') {
+    return 'lemon';
+  }
+  return 'charcoal';
+};
+
+const renderIssueSeverityLabel = (severity: IssueSeverity) => {
+  if (severity === 'not_an_issue') {
+    return <FormattedMessage defaultMessage="Not an issue" description="Not an issue severity label" />;
+  }
+  if (severity === 'high') {
+    return <FormattedMessage defaultMessage="High" description="Issue detail high severity label" />;
+  }
+  if (severity === 'medium') {
+    return <FormattedMessage defaultMessage="Medium" description="Issue detail medium severity label" />;
+  }
+  return <FormattedMessage defaultMessage="Low" description="Issue detail low severity label" />;
+};
 
 export const IssueDetailsPanel = ({
   issue,
@@ -188,6 +212,11 @@ export const IssueDetailsPanel = ({
 
   const evalArtifactsVisible = evalSetupStatus !== 'idle';
   const evalArtifactsClickable = evalSetupStatus === 'complete';
+  const severityTag = issue.severity ? (
+    <Tag componentId="mlflow.issues.details.severity" color={getIssueSeverityTagColor(issue.severity)}>
+      {renderIssueSeverityLabel(issue.severity)}
+    </Tag>
+  ) : null;
   const evalArtifactActionLabel =
     evalSetupStatus === 'complete' ? (
       <FormattedMessage defaultMessage="View" description="View linked eval artifact action" />
@@ -302,75 +331,80 @@ export const IssueDetailsPanel = ({
                 flex: '1 1 280px',
               }}
             >
-              <Typography.Title level={2} css={{ margin: 0, lineHeight: 1.25 }}>
-                {issue.name}
-              </Typography.Title>
-              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-                {issue.severity && (
-                  <Tag
-                    componentId="mlflow.issues.details.severity"
-                    color={issue.severity === 'high' ? 'coral' : issue.severity === 'medium' ? 'lemon' : 'charcoal'}
-                  >
-                    {issue.severity === 'not_an_issue' ? (
-                      <FormattedMessage defaultMessage="Not an issue" description="Not an issue severity label" />
-                    ) : issue.severity === 'high' ? (
-                      <FormattedMessage defaultMessage="High" description="Issue detail high severity label" />
-                    ) : issue.severity === 'medium' ? (
-                      <FormattedMessage defaultMessage="Medium" description="Issue detail medium severity label" />
-                    ) : issue.severity === 'low' ? (
-                      <FormattedMessage defaultMessage="Low" description="Issue detail low severity label" />
-                    ) : (
-                      issue.severity
-                    )}
-                  </Tag>
-                )}
-                {sourceJobId && (
-                  <Typography.Text color="secondary" size="sm">
-                    <FormattedMessage
-                      defaultMessage="Source job: {sourceJobLabel}"
-                      description="Issue detail source job metadata"
-                      values={{ sourceJobLabel: sourceJobId }}
-                    />
-                  </Typography.Text>
-                )}
-                {issue.trace_count !== undefined && (
-                  <Typography.Text color="secondary" size="sm">
-                    <FormattedMessage
-                      defaultMessage="{count} impacted {count, plural, one {trace} other {traces}}"
-                      description="Issue details impacted traces metadata"
-                      values={{ count: issue.trace_count }}
-                    />
-                  </Typography.Text>
-                )}
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, minWidth: 0 }}>
+                <Typography.Title level={2} css={{ margin: 0, lineHeight: 1.25 }}>
+                  {issue.name}
+                </Typography.Title>
                 <InfoPopover
                   iconTitle={intl.formatMessage({
-                    defaultMessage: 'Issue ID',
-                    description: 'Issue details issue ID popover title',
+                    defaultMessage: 'Issue details',
+                    description: 'Issue details metadata popover title',
                   })}
                 >
-                  <div css={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                    <FormattedMessage defaultMessage="Issue ID" description="Label for issue ID in popover" />
-                    {': '}
-                    {issue.issue_id}{' '}
-                    <Typography.Text
-                      size="md"
-                      dangerouslySetAntdProps={{
-                        copyable: {
-                          text: issue.issue_id,
-                          icon: <CopyIcon />,
-                          tooltips: [
-                            intl.formatMessage({
-                              defaultMessage: 'Copy issue ID',
-                              description: 'Tooltip to copy issue ID',
-                            }),
-                            intl.formatMessage({
-                              defaultMessage: 'Issue ID copied',
-                              description: 'Tooltip after issue ID was copied',
-                            }),
-                          ],
-                        },
-                      }}
-                    />
+                  <div
+                    css={{
+                      minWidth: 260,
+                      display: 'grid',
+                      gridTemplateColumns: '96px minmax(0, 1fr)',
+                      gap: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+                      alignItems: 'center',
+                    }}
+                  >
+                    {severityTag && (
+                      <>
+                        <Typography.Text color="secondary" size="sm">
+                          <FormattedMessage defaultMessage="Severity" description="Issue severity metadata label" />
+                        </Typography.Text>
+                        <div>{severityTag}</div>
+                      </>
+                    )}
+                    {sourceJobId && (
+                      <>
+                        <Typography.Text color="secondary" size="sm">
+                          <FormattedMessage defaultMessage="Run ID" description="Issue run ID metadata label" />
+                        </Typography.Text>
+                        <Typography.Text css={{ wordBreak: 'break-all' }}>{sourceJobId}</Typography.Text>
+                      </>
+                    )}
+                    {issue.trace_count !== undefined && (
+                      <>
+                        <Typography.Text color="secondary" size="sm">
+                          <FormattedMessage defaultMessage="Traces" description="Issue trace count metadata label" />
+                        </Typography.Text>
+                        <Typography.Text>
+                          <FormattedMessage
+                            defaultMessage="{count} impacted {count, plural, one {trace} other {traces}}"
+                            description="Issue details impacted traces metadata"
+                            values={{ count: issue.trace_count }}
+                          />
+                        </Typography.Text>
+                      </>
+                    )}
+                    <Typography.Text color="secondary" size="sm">
+                      <FormattedMessage defaultMessage="Issue ID" description="Label for issue ID in popover" />
+                    </Typography.Text>
+                    <div css={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                      <Typography.Text css={{ wordBreak: 'break-all' }}>{issue.issue_id}</Typography.Text>{' '}
+                      <Typography.Text
+                        size="md"
+                        dangerouslySetAntdProps={{
+                          copyable: {
+                            text: issue.issue_id,
+                            icon: <CopyIcon />,
+                            tooltips: [
+                              intl.formatMessage({
+                                defaultMessage: 'Copy issue ID',
+                                description: 'Tooltip to copy issue ID',
+                              }),
+                              intl.formatMessage({
+                                defaultMessage: 'Issue ID copied',
+                                description: 'Tooltip after issue ID was copied',
+                              }),
+                            ],
+                          },
+                        }}
+                      />
+                    </div>
                   </div>
                 </InfoPopover>
               </div>
@@ -386,11 +420,12 @@ export const IssueDetailsPanel = ({
             >
               <Button
                 componentId="mlflow.issues.details.reject"
+                type="tertiary"
                 icon={<CloseIcon />}
                 onClick={() => handleStatusChange('rejected')}
                 loading={isUpdating}
               >
-                <FormattedMessage defaultMessage="Reject" description="Button to reject issue" />
+                <FormattedMessage defaultMessage="Dismiss" description="Button to dismiss issue" />
               </Button>
               <Button
                 componentId="mlflow.issues.details.resolve"

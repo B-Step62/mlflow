@@ -42,7 +42,7 @@ const STATUS_TAG_CONFIG: Record<IssueStatus, { color: TagColors; label: MessageD
   },
   rejected: {
     color: 'coral',
-    label: defineMessage({ defaultMessage: 'Rejected', description: 'Issue status tag label for rejected issues' }),
+    label: defineMessage({ defaultMessage: 'Dismissed', description: 'Issue status tag label for dismissed issues' }),
   },
   resolved: {
     color: 'purple',
@@ -69,7 +69,7 @@ const SEVERITY_TAG_CONFIG: Record<IssueSeverity, { color: TagColors; label: Mess
   },
 };
 
-// Editable severity values exclude 'not_an_issue' because users can reject the issue if it's invalid
+// Editable severity values exclude 'not_an_issue' because users can dismiss the issue if it's invalid
 const EDITABLE_SEVERITY_VALUES: IssueSeverity[] = ['low', 'medium', 'high'];
 
 const parseCategoryId = (category: string): string => {
@@ -487,7 +487,7 @@ export const IssueCard = ({
                       onClick={handleStatusChange('rejected')}
                       loading={isUpdating}
                     >
-                      <FormattedMessage defaultMessage="Reject" description="Button to reject an issue" />
+                      <FormattedMessage defaultMessage="Dismiss" description="Button to dismiss an issue" />
                     </Button>
                   )}
                   {(issue.status === 'resolved' || issue.status === 'rejected') && (

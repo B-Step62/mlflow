@@ -33,6 +33,7 @@ export const RunViewIssuesContent = ({
   onStatusFilterChange,
   hideStatusFilter = false,
   dimUnselectedCards = false,
+  emptyState,
 }: {
   issues: Issue[];
   isLoading?: boolean;
@@ -52,6 +53,7 @@ export const RunViewIssuesContent = ({
   onStatusFilterChange?: (value: IssueStatusFilterValue) => void;
   hideStatusFilter?: boolean;
   dimUnselectedCards?: boolean;
+  emptyState?: ReactNode;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [uncontrolledStatusFilter, setUncontrolledStatusFilter] = useState<IssueStatusFilterValue>('pending');
@@ -137,7 +139,7 @@ export const RunViewIssuesContent = ({
           padding: theme.spacing.md,
         }}
       >
-        <IssuesTabEmptyState />
+        {emptyState ?? <IssuesTabEmptyState />}
       </div>
     );
   }

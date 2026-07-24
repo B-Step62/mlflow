@@ -22,7 +22,7 @@ const IssueStatusFilterLabel = ({ value }: { value: IssueStatusFilterValue }) =>
     return <FormattedMessage defaultMessage="Pending" description="Issue status filter option > Pending label" />;
   }
   if (value === 'rejected') {
-    return <FormattedMessage defaultMessage="Rejected" description="Issue status filter option > Rejected label" />;
+    return <FormattedMessage defaultMessage="Dismissed" description="Issue status filter option > Dismissed label" />;
   }
   return <FormattedMessage defaultMessage="Resolved" description="Issue status filter option > Resolved label" />;
 };

@@ -15,10 +15,14 @@ import {
 } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
 
-import { useParams } from '../../../common/utils/RoutingUtils';
+import { useNavigate, useParams } from '../../../common/utils/RoutingUtils';
+import { ExperimentPageTabName } from '../../constants';
 import { RunViewIssuesContent } from '../../components/run-page/RunViewIssuesTab';
+import { IssuesTabEmptyState } from '../../components/run-page/IssuesTabEmptyState';
 import { IssueStatusFilter, type IssueStatusFilterValue } from '../../components/run-page/IssueStatusFilter';
 import type { Issue, IssueStatus } from '../../components/run-page/hooks/useSearchIssuesQuery';
+import { useExperimentContainsTraces } from '../../components/traces/hooks/useExperimentContainsTraces';
+import Routes from '../../routes';
 import { MOCK_FAILURE_ANALYSIS_ISSUES } from '../experiment-overview/failureAnalysisMock';
 import { getAiGradientBorderStyle } from '../../../shared/web-shared/design-system/aiGradientBorderStyle';
 
@@ -603,12 +607,17 @@ const CustomAnalysisTab = () => {
 const ExperimentIssuesPage = () => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams<{ experimentId: string }>();
+  const navigate = useNavigate();
   const [notification, notificationContextHolder] = useLegacyNotification();
   const [activeTab, setActiveTab] = useState<AnalysisTab>('failure-patterns');
   const [isDetectionScheduled, setIsDetectionScheduled] = useState(false);
   const [issueStatusFilter, setIssueStatusFilter] = useState<IssueStatusFilterValue>('pending');
   const [statusOverrides, setStatusOverrides] = useState<Record<string, IssueStatus>>({});
   const safeExperimentId = experimentId ?? '';
+  const { containsTraces, isLoading: isTracePresenceLoading } = useExperimentContainsTraces({
+    experimentId: safeExperimentId,
+    enabled: Boolean(safeExperimentId),
+  });
 
   const baseIssues = useMemo<Issue[]>(
     () => [
@@ -719,6 +728,15 @@ const ExperimentIssuesPage = () => {
     });
   };
 
+  const handleGoToTraces = () => {
+    if (!safeExperimentId) {
+      return;
+    }
+    navigate(Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Traces));
+  };
+
+  const traceAwareEmptyStateContainsTraces = safeExperimentId && !isTracePresenceLoading ? containsTraces : undefined;
+
   return (
     <div
       css={{
@@ -828,6 +846,15 @@ const ExperimentIssuesPage = () => {
                     ...current,
                     [issueId]: status,
                   }))
+                }
+                emptyState={
+                  <IssuesTabEmptyState
+                    containsTraces={traceAwareEmptyStateContainsTraces}
+                    onRunDetection={handleRunDetection}
+                    onScheduleDetection={handleScheduleDetection}
+                    onGoToTraces={handleGoToTraces}
+                    isDetectionScheduled={isDetectionScheduled}
+                  />
                 }
               />
             </div>
