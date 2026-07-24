@@ -2595,6 +2595,10 @@
     "defaultMessage": "Manage and version prompts using MLflow's Prompt Registry. <link>Learn more</link>",
     "description": "Subtitle for the empty state on the prompts list page"
   },
+  "9gWKdk": {
+    "defaultMessage": "Analyze result",
+    "description": "Button label for AI-assisted evaluation result analysis"
+  },
   "9i4YFp": {
     "defaultMessage": "No assertions recorded for this test.",
     "description": "Empty assertions state in the regression-test detail"
@@ -3102,6 +3106,10 @@
   "BkDhmT": {
     "defaultMessage": "Chat",
     "description": "Label for the chat tab of the model trace explorer."
+  },
+  "BnJSYM": {
+    "defaultMessage": "Dataset",
+    "description": "Label for the dataset in evaluation run header metadata"
   },
   "Bnruyp": {
     "defaultMessage": "500",
@@ -4058,6 +4066,10 @@
   "Gk9Z7W": {
     "defaultMessage": "Created by",
     "description": "Header for the dataset created-by column"
+  },
+  "GkQEup": {
+    "defaultMessage": "Create dataset",
+    "description": "Button label to create an evaluation dataset from the evaluation run header"
   },
   "Gm77Ws": {
     "defaultMessage": "Loading artifact failed",
@@ -9399,6 +9411,10 @@
     "defaultMessage": "Admin",
     "description": "Tag content marking an admin role (single-tenant)"
   },
+  "fObYja": {
+    "defaultMessage": "Compare {numRuns, plural, one {# run} other {# runs}}",
+    "description": "Header title for the evaluation runs comparison view"
+  },
   "fRJE/2": {
     "defaultMessage": "Load a saved prompt to replace the current playground messages, and apply any settings stored with it.",
     "description": "Intro paragraph at the top of the playground prompt-registry picker modal, explaining that loading replaces messages and applies stored settings"
@@ -10483,6 +10499,10 @@
     "defaultMessage": "All runs are hidden. Select at least one run to view charts.",
     "description": "Experiment tracking > runs charts > indication displayed when no runs are selected for comparison"
   },
+  "jY3yMS": {
+    "defaultMessage": "Duration",
+    "description": "Label for total duration in evaluation run header metadata"
+  },
   "jcGdSy": {
     "defaultMessage": "Queue",
     "description": "Review queue sidebar: queue-name column"
@@ -10746,6 +10766,10 @@
   "kgJSBI": {
     "defaultMessage": "Delete",
     "description": "A label for the confirm button in the delete prompt modal"
+  },
+  "ki782i": {
+    "defaultMessage": "Analyze evaluation run \"{runName}\" ({runUuid}) and summarize quality issues, failing assessments, latency, token usage, and cost.",
+    "description": "Prompt seeded into the assistant for analyzing a selected evaluation run"
   },
   "ki5dBO": {
     "defaultMessage": "Time Unit",
@@ -11506,6 +11530,10 @@
   "oHW+ks": {
     "defaultMessage": "Description",
     "description": "Title text for the description section under details tab on the model\n                   view page"
+  },
+  "oITkgf": {
+    "defaultMessage": "Tokens",
+    "description": "Label for total token count in evaluation run header metadata"
   },
   "oKNOju": {
     "defaultMessage": "Conversational tool call efficiency",
@@ -12511,6 +12539,10 @@
     "defaultMessage": "No evaluation tables logged",
     "description": "Experiment page > artifact compare view > empty state for no evaluation tables logged > title"
   },
+  "shyoxJ": {
+    "defaultMessage": "Created",
+    "description": "Label for the created timestamp in evaluation run header metadata"
+  },
   "sj0gOQ": {
     "defaultMessage": "Capabilities",
     "description": "Filter section label for capabilities"
@@ -12698,6 +12730,10 @@
   "tUav5E": {
     "defaultMessage": "Review queues help your team inspect traces, answer structured questions, and track review progress for LLM applications.",
     "description": "Review queue: empty state description when no queue selected"
+  },
+  "tV99Gs": {
+    "defaultMessage": "Analyze these evaluation runs and summarize the most important quality, latency, token, and cost differences: {runUuids}",
+    "description": "Prompt seeded into the assistant for analyzing compared evaluation runs"
   },
   "tUgCAM": {
     "defaultMessage": "Prompt",
@@ -13071,6 +13107,10 @@
     "defaultMessage": "Enter API key or select saved key",
     "description": "Placeholder for API key combobox input"
   },
+  "vgJ7P1": {
+    "defaultMessage": "Scorer",
+    "description": "Label for a registered scorer in evaluation run header metadata"
+  },
   "vgfy8y": {
     "defaultMessage": "Add assessment",
     "description": "Evaluation review > assessments > add assessment button label"
@@ -13206,6 +13246,10 @@
   "wFvyI1": {
     "defaultMessage": "Registered at:",
     "description": "A label for the registration timestamp in the prompt details page"
+  },
+  "wHk/Pn": {
+    "defaultMessage": "Total cost",
+    "description": "Label for total cost in evaluation run header metadata"
   },
   "wJX0a/": {
     "defaultMessage": "Provider",
@@ -13786,6 +13830,10 @@
   "yyjAgE": {
     "defaultMessage": "Output for the trace",
     "description": "Description for outputs variable"
+  },
+  "yzdTvJ": {
+    "defaultMessage": "Runs",
+    "description": "Label for the run count in evaluation run header metadata"
   },
   "yzf17M": {
     "defaultMessage": "Some assessments are hidden by your time range filter: \"{filterLabel}\".",

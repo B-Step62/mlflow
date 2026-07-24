@@ -17,7 +17,7 @@ import {
   SparkleIcon,
 } from '@databricks/design-system';
 import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
-import { DatasetSourceTypes, RunEntity } from '../../types';
+import { RunEntity } from '../../types';
 import { Link, useNavigate, useSearchParams } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
 import { useGetLoggedModelQuery } from '../../hooks/logged-models/useGetLoggedModelQuery';
 import Routes from '../../routes';
@@ -177,12 +177,7 @@ export const RunNameCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
   );
 };
 
-export const DatasetCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
-  row,
-  table: {
-    options: { meta },
-  },
-}) => {
+export const DatasetCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({ row }) => {
   const { theme } = useDesignSystemTheme();
 
   if ('subRuns' in row.original) {
@@ -196,20 +191,6 @@ export const DatasetCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
   if (!displayedDataset) {
     return <div>-</div>;
   }
-
-  const openDatasetDrawer = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    (meta as any).setSelectedDatasetWithRun({
-      datasetWithTags: { dataset: displayedDataset },
-      runData: {
-        experimentId: run.info?.experimentId,
-        runUuid: run.info?.runUuid ?? '',
-        runName: run.info?.runName,
-        datasets: datasets,
-      },
-    });
-    (meta as any).setIsDrawerOpen(true);
-  };
 
   const baseTagContent = (
     <div
@@ -230,14 +211,9 @@ export const DatasetCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
   const tagContent = <DatasetLink dataset={displayedDataset}>{baseTagContent}</DatasetLink>;
 
   return (
-    <div>
+    <div onClick={(e) => e.stopPropagation()}>
       <Tooltip componentId="mlflow.eval-runs.dataset-cell-tooltip" content={displayedDataset.name}>
-        <Tag
-          componentId="mlflow.eval-runs.dataset-cell"
-          onClick={openDatasetDrawer}
-          id="dataset-cell"
-          css={{ maxWidth: '100%', marginRight: 0 }}
-        >
+        <Tag componentId="mlflow.eval-runs.dataset-cell" id="dataset-cell" css={{ maxWidth: '100%', marginRight: 0 }}>
           {tagContent}
         </Tag>
       </Tooltip>

@@ -11,9 +11,19 @@ import { IntlProvider } from 'react-intl';
 import { DesignSystemProvider } from '@databricks/design-system';
 
 import { QueryClient, QueryClientProvider } from '@mlflow/mlflow/src/common/utils/reactQueryHooks';
+import {
+  HeaderVisibilityProvider,
+  useHeaderVisibility,
+} from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
 
 jest.mock('../../hooks/useExperimentQuery', () => ({
   useGetExperimentQuery: jest.fn(() => ({})),
+}));
+
+const mockUseGetScheduledScorers = jest.fn();
+jest.mock('../experiment-scorers/hooks/useGetScheduledScorers', () => ({
+  __esModule: true,
+  useGetScheduledScorers: (...args: unknown[]) => mockUseGetScheduledScorers(...args),
 }));
 
 // eslint-disable-next-line no-restricted-syntax -- TODO(FEINF-4392)
@@ -23,20 +33,42 @@ const createMockRun = ({ index }: { index: number }) => ({
   data: {
     params: [],
     tags: [],
-    metrics: [],
+    metrics:
+      index === 0
+        ? [
+            { key: 'total_cost_usd', value: 0.01234, step: 0, timestamp: 0 },
+            { key: 'total_tokens', value: 1240, step: 0, timestamp: 0 },
+            { key: 'Safety', value: 0.95, step: 0, timestamp: 0 },
+          ]
+        : [{ key: 'total_cost_usd', value: 0.002, step: 0, timestamp: 0 }],
   },
   info: {
     artifact_uri: '',
-    end_time: 0,
+    end_time: Date.UTC(2026, 0, 1, 12, 0, 3),
     experiment_id: 'exp-1',
     lifecycle_stage: '',
     run_uuid: `run-${index}`,
     run_name: `Test Run ${index}`,
-    start_time: 0,
+    start_time: Date.UTC(2026, 0, 1, 12, 0, 0),
     status: 'FINISHED',
   },
   inputs: {
-    dataset_inputs: [],
+    dataset_inputs:
+      index === 0
+        ? [
+            {
+              dataset: {
+                digest: 'support-qa-smoke-digest',
+                name: 'support_qa_smoke',
+                profile: '{}',
+                schema: '{}',
+                source: JSON.stringify({ dataset_id: 'd-support-qa-smoke' }),
+                source_type: 'mlflow_evaluation_dataset',
+              },
+              tags: [],
+            },
+          ]
+        : [],
     model_inputs: [],
   },
   outputs: {
@@ -52,6 +84,18 @@ const createMockResponse = ({ pageToken, pageSize }: { pageToken?: string; pageS
     runs: allRuns.slice((page - 1) * pageSize, page * pageSize),
     next_page_token,
   };
+};
+
+const TestHeader = () => {
+  const { titleOverride, titleAdjacent, titleMetadata, actionSlot } = useHeaderVisibility();
+  return (
+    <div>
+      <div data-testid="header-title">{titleOverride}</div>
+      <div data-testid="header-title-adjacent">{titleAdjacent}</div>
+      <div data-testid="header-title-metadata">{titleMetadata}</div>
+      <div data-testid="header-actions">{actionSlot}</div>
+    </div>
+  );
 };
 
 describe('ExperimentEvaluationRunsPage', () => {
@@ -76,7 +120,7 @@ describe('ExperimentEvaluationRunsPage', () => {
     rest.post('ajax-api/2.0/mlflow/runs/search', searchRequestHandler),
   );
 
-  const renderTestComponent = () => {
+  const renderTestComponent = (initialEntry = '/experiments/exp-1/evaluation-runs') => {
     const queryClient = new QueryClient();
     return render(
       <TestApolloProvider disableCache>
@@ -84,11 +128,20 @@ describe('ExperimentEvaluationRunsPage', () => {
           <MockedReduxStoreProvider state={{ entities: { colorByRunUuid: {} } }}>
             <IntlProvider locale="en">
               <DesignSystemProvider>
-                <TestRouter
-                  routes={[testRoute(<ExperimentEvaluationRunsPage />, '/experiments/:experimentId/evaluation-runs')]}
-                  history={history}
-                  initialEntries={['/experiments/exp-1/evaluation-runs']}
-                />
+                <HeaderVisibilityProvider>
+                  <TestHeader />
+                  <TestRouter
+                    routes={[
+                      testRoute(<ExperimentEvaluationRunsPage />, '/experiments/:experimentId/evaluation-runs'),
+                      testRoute(
+                        <div data-testid="dataset-detail-route" />,
+                        '/experiments/:experimentId/datasets/:datasetId',
+                      ),
+                    ]}
+                    history={history}
+                    initialEntries={[initialEntry]}
+                  />
+                </HeaderVisibilityProvider>
               </DesignSystemProvider>
             </IntlProvider>
           </MockedReduxStoreProvider>
@@ -97,13 +150,7 @@ describe('ExperimentEvaluationRunsPage', () => {
     );
   };
 
-  beforeAll(() => {
-    process.env['MLFLOW_USE_ABSOLUTE_AJAX_URLS'] = 'true';
-    server.listen();
-  });
-
-  beforeEach(async () => {
-    server.resetHandlers();
+  const renderListPage = async () => {
     renderTestComponent();
     const table = await screen.findByRole('table');
     Object.defineProperty(table, 'scrollHeight', {
@@ -115,9 +162,28 @@ describe('ExperimentEvaluationRunsPage', () => {
       writable: true,
       value: 0,
     });
+  };
+
+  beforeAll(() => {
+    process.env['MLFLOW_USE_ABSOLUTE_AJAX_URLS'] = 'true';
+    server.listen();
+  });
+
+  beforeEach(() => {
+    server.resetHandlers();
+    mockUseGetScheduledScorers.mockReturnValue({
+      data: {
+        experimentId: 'exp-1',
+        scheduledScorers: [
+          { name: 'Safety', type: 'llm', isSessionLevelScorer: false },
+          { name: 'Unused Judge', type: 'llm', isSessionLevelScorer: false },
+        ],
+      },
+    });
   });
 
   test('should display runs title when fetched', async () => {
+    await renderListPage();
     await waitFor(() => {
       // Make sure first and last items are displayed.
       expect(screen.getByText('Test Run 0')).toBeInTheDocument();
@@ -128,6 +194,7 @@ describe('ExperimentEvaluationRunsPage', () => {
   });
 
   test('should load next page when scroll is at the bottom', async () => {
+    await renderListPage();
     fireEvent.scroll(screen.getByRole('table'), { target: { scrollTop: 1000 } });
     await waitFor(() => {
       // Make sure first and last items are displayed.
@@ -137,10 +204,47 @@ describe('ExperimentEvaluationRunsPage', () => {
   });
 
   test('should not render a refresh button', async () => {
+    await renderListPage();
     await waitFor(() => {
       expect(screen.getByText('Test Run 0')).toBeInTheDocument();
     });
 
     expect(screen.queryByRole('button', { name: 'Refresh evaluation runs' })).not.toBeInTheDocument();
+  });
+
+  test('should use selected run name as header title and show dataset and analyze actions', async () => {
+    renderTestComponent('/experiments/exp-1/evaluation-runs?selectedRunUuid=run-0');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('header-title')).toHaveTextContent('Test Run 0');
+    });
+    expect(screen.getByTestId('header-title-adjacent')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('support_qa_smoke');
+    expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('Safety');
+    expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('Total cost');
+    expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('$0.01234');
+    expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('Tokens');
+    expect(screen.getByRole('button', { name: 'Analyze result' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('support_qa_smoke'));
+    expect(await screen.findByTestId('dataset-detail-route')).toBeInTheDocument();
+  });
+
+  test('should show create dataset action when selected run has no input dataset', async () => {
+    renderTestComponent('/experiments/exp-1/evaluation-runs?selectedRunUuid=run-1');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('header-title')).toHaveTextContent('Test Run 1');
+    });
+    expect(screen.getByRole('button', { name: 'Create dataset' })).toBeInTheDocument();
+  });
+
+  test('should not render summary charts in comparison mode', async () => {
+    renderTestComponent('/experiments/exp-1/evaluation-runs?selectedRunUuid=run-0&compareToRunUuid=run-1');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('header-title')).toHaveTextContent('Compare 2 runs');
+    });
+    expect(screen.queryByLabelText('Evaluation run charts')).not.toBeInTheDocument();
   });
 });

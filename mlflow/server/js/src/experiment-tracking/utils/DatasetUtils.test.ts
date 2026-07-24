@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { getDatasetSourceUrl } from './DatasetUtils';
+import { getDatasetSourceUrl, getEvaluationDatasetId } from './DatasetUtils';
 import { DatasetSourceTypes } from '../types';
 import type { RunDatasetWithTags } from '../types';
 
@@ -54,5 +54,17 @@ describe('getDatasetSourceUrl', () => {
   test('returns null for EXTERNAL source with no url field', () => {
     const dataset = createDatasetWithTags(DatasetSourceTypes.EXTERNAL, JSON.stringify({ other: 'value' }));
     expect(getDatasetSourceUrl(dataset)).toBeNull();
+  });
+});
+
+describe('getEvaluationDatasetId', () => {
+  test('returns dataset ID from evaluation dataset source', () => {
+    const dataset = createDatasetWithTags('mlflow_evaluation_dataset', JSON.stringify({ dataset_id: 'd-123' }));
+    expect(getEvaluationDatasetId(dataset)).toBe('d-123');
+  });
+
+  test('returns undefined when source does not include dataset ID', () => {
+    const dataset = createDatasetWithTags(DatasetSourceTypes.HTTP, JSON.stringify({ url: 'https://example.com/data' }));
+    expect(getEvaluationDatasetId(dataset)).toBeUndefined();
   });
 });

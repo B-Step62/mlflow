@@ -9,7 +9,6 @@ import type { OnChangeFn, SortDirection, SortingState } from '@tanstack/react-ta
 import { flexRender, getCoreRowModel, getExpandedRowModel, getSortedRowModel } from '@tanstack/react-table';
 import type { ExpandedState, RowSelectionState } from '@tanstack/react-table';
 import { ExperimentEvaluationRunsTableRow } from './ExperimentEvaluationRunsTableRow';
-import type { DatasetWithRunType } from '../../components/experiment-page/components/runs/ExperimentViewDatasetDrawer';
 import { useCallback, useMemo, useState, forwardRef } from 'react';
 import { KeyedValueCell, SortableHeaderCell } from './ExperimentEvaluationRunsTableCellRenderers';
 import {
@@ -30,8 +29,6 @@ export interface ExperimentEvaluationRunsTableProps {
   hasNextPage: boolean;
   rowSelection: RowSelectionState;
   setRowSelection: OnChangeFn<RowSelectionState>;
-  setSelectedDatasetWithRun: (datasetWithRun: DatasetWithRunType) => void;
-  setIsDrawerOpen: (isOpen: boolean) => void;
   viewMode: ExperimentEvaluationRunsPageMode;
   onScroll?: React.UIEventHandler<HTMLDivElement>;
   isGrouped?: boolean;
@@ -51,8 +48,6 @@ export const ExperimentEvaluationRunsTable = forwardRef<HTMLDivElement, Experime
       hasNextPage,
       rowSelection,
       setRowSelection,
-      setSelectedDatasetWithRun,
-      setIsDrawerOpen,
       viewMode,
       onScroll,
       isGrouped,
@@ -131,8 +126,6 @@ export const ExperimentEvaluationRunsTable = forwardRef<HTMLDivElement, Experime
         },
         meta: {
           setSelectedRunUuid,
-          setSelectedDatasetWithRun,
-          setIsDrawerOpen,
         },
         onRowSelectionChange: setRowSelection,
         state: {

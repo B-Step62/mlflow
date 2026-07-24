@@ -118,7 +118,7 @@ const RunViewEvaluationsTabInner = ({
   // and hide the compare selector below.
   const compareToRunUuid = isRegressionTest ? undefined : compareToRunUuidParam;
   const [isGroupedBySession, setIsGroupedBySession] = useState(false);
-  const [textCellMaxLines, setTextCellMaxLines] = useState(5);
+  const [textCellMaxLines, setTextCellMaxLines] = useState(1);
 
   const traceLocations = useMemo(() => [createTraceLocationForExperiment(experimentId)], [experimentId]);
   const getTrace = getTraceV3;

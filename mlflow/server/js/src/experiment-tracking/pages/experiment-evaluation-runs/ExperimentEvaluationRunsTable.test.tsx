@@ -58,8 +58,6 @@ describe('ExperimentEvaluationRunsTable sorting', () => {
               hasNextPage={false}
               rowSelection={{}}
               setRowSelection={jest.fn()}
-              setSelectedDatasetWithRun={jest.fn()}
-              setIsDrawerOpen={jest.fn()}
               viewMode={ExperimentEvaluationRunsPageMode.TRACES}
             />
           </ExperimentEvaluationRunsRowVisibilityProvider>

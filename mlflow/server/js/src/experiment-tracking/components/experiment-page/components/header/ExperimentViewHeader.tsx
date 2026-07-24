@@ -74,7 +74,8 @@ export const ExperimentViewHeader = React.memo(
     const intl = useIntl();
     const navigate = useNavigate();
     const location = useLocation();
-    const { headerActionsHidden, breadcrumbChild } = useHeaderVisibility();
+    const { headerActionsHidden, breadcrumbChild, titleOverride, titleAdjacent, titleMetadata, actionSlot } =
+      useHeaderVisibility();
     const handleBack = useCallback(() => {
       const pathSegments = location.pathname.split('/').filter(Boolean);
 
@@ -111,6 +112,8 @@ export const ExperimentViewHeader = React.memo(
       activeTabByRoute === ExperimentPageTabName.SingleChatSession;
     const experimentTitle =
       shouldEnableWorkflowBasedNavigation() && tabDisplayName ? tabDisplayName : normalizedExperimentName;
+    const headerTitle = titleOverride ?? experimentTitle;
+    const headerTitleTooltip = typeof headerTitle === 'string' ? headerTitle : normalizedExperimentName;
 
     const breadcrumbs: React.ReactNode[] = useMemo(() => {
       const items: React.ReactNode[] = [
@@ -221,7 +224,7 @@ export const ExperimentViewHeader = React.memo(
         css={{
           display: 'flex',
           flexDirection: 'column',
-          gap: theme.spacing.xs,
+          gap: showBreadcrumbs ? theme.spacing.md : theme.spacing.xs,
           marginBottom: theme.spacing.xs,
         }}
       >
@@ -239,7 +242,13 @@ export const ExperimentViewHeader = React.memo(
           }}
         >
           <div
-            css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center', overflow: 'hidden', minWidth: 250 }}
+            css={{
+              display: 'flex',
+              gap: theme.spacing.sm,
+              alignItems: titleMetadata ? 'flex-start' : 'center',
+              overflow: 'hidden',
+              minWidth: 250,
+            }}
           >
             {!shouldEnableWorkflowBasedNavigation() && (
               <Button
@@ -255,66 +264,92 @@ export const ExperimentViewHeader = React.memo(
                 borderRadius: theme.borders.borderRadiusSm,
                 backgroundColor: theme.colors.backgroundSecondary,
                 padding: theme.spacing.sm,
+                flexShrink: 0,
               }}
             >
               {getTabDisplayIcon(activeTabByRoute)}
             </div>
-            <Tooltip
-              content={normalizedExperimentName}
-              open={shouldEnableWorkflowBasedNavigation() ? false : undefined}
-              componentId="mlflow.experiment_view.header.experiment-name-tooltip"
+            <div
+              css={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: theme.spacing.xs,
+                minWidth: 0,
+                maxWidth: '100%',
+              }}
             >
-              <span
+              <div
                 css={{
-                  maxWidth: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
                   overflow: 'hidden',
+                  minWidth: 0,
                 }}
               >
-                <Typography.Title
-                  withoutMargins
-                  level={2}
-                  css={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {experimentTitle}
-                </Typography.Title>
-              </span>
-            </Tooltip>
-            {experimentKindSelector}
-            {traceArchivalRetention && shouldShowTraceArchivalBadge && (
-              <div css={{ display: 'flex', alignItems: 'center' }}>
                 <Tooltip
-                  componentId="mlflow.experiment_view.header.trace_archival_badge_tooltip"
-                  content={
-                    <FormattedMessage
-                      defaultMessage="Archived traces remain accessible, but searching within span content no longer works after archival."
-                      description="Tooltip explaining the trace archival badge behavior"
-                    />
-                  }
+                  content={headerTitleTooltip}
+                  open={shouldEnableWorkflowBasedNavigation() ? false : undefined}
+                  componentId="mlflow.experiment_view.header.experiment-name-tooltip"
                 >
-                  <Tag
-                    componentId="mlflow.experiment_view.header.trace_archival_badge"
-                    color="turquoise"
-                    css={{ margin: 0 }}
+                  <span
+                    css={{
+                      maxWidth: '100%',
+                      minWidth: 0,
+                      flexShrink: 1,
+                      overflow: 'hidden',
+                    }}
                   >
-                    <FormattedMessage
-                      defaultMessage="Archive after: {retention}"
-                      description="Badge showing the active trace archival retention for the experiment"
-                      values={{ retention: traceArchivalRetention }}
-                    />
-                  </Tag>
+                    <Typography.Title
+                      withoutMargins
+                      level={2}
+                      css={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {headerTitle}
+                    </Typography.Title>
+                  </span>
                 </Tooltip>
+                {titleAdjacent}
+                {experimentKindSelector}
+                {traceArchivalRetention && shouldShowTraceArchivalBadge && (
+                  <div css={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <Tooltip
+                      componentId="mlflow.experiment_view.header.trace_archival_badge_tooltip"
+                      content={
+                        <FormattedMessage
+                          defaultMessage="Archived traces remain accessible, but searching within span content no longer works after archival."
+                          description="Tooltip explaining the trace archival badge behavior"
+                        />
+                      }
+                    >
+                      <Tag
+                        componentId="mlflow.experiment_view.header.trace_archival_badge"
+                        color="turquoise"
+                        css={{ margin: 0 }}
+                      >
+                        <FormattedMessage
+                          defaultMessage="Archive after: {retention}"
+                          description="Badge showing the active trace archival retention for the experiment"
+                          values={{ retention: traceArchivalRetention }}
+                        />
+                      </Tag>
+                    </Tooltip>
+                  </div>
+                )}
+                {getInfoTooltip()}
               </div>
-            )}
-            {getInfoTooltip()}
+              {titleMetadata}
+            </div>
           </div>
           <div />
           <div
             css={{ display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end', marginLeft: theme.spacing.sm }}
           >
+            {actionSlot}
             {!headerActionsHidden && (
               <>
                 {savedViewsSlot}

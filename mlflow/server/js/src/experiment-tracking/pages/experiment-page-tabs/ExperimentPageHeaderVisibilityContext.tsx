@@ -10,6 +10,14 @@ type HeaderVisibilityContextValue = {
   setHeaderActionsHidden: (hidden: boolean) => void;
   breadcrumbChild: ReactNode;
   setBreadcrumbChild: (breadcrumbChild: ReactNode) => void;
+  titleOverride: ReactNode;
+  setTitleOverride: (titleOverride: ReactNode) => void;
+  titleAdjacent: ReactNode;
+  setTitleAdjacent: (titleAdjacent: ReactNode) => void;
+  titleMetadata: ReactNode;
+  setTitleMetadata: (titleMetadata: ReactNode) => void;
+  actionSlot: ReactNode;
+  setActionSlot: (actionSlot: ReactNode) => void;
 };
 
 const HeaderVisibilityContext = createContext<HeaderVisibilityContextValue>({
@@ -19,12 +27,24 @@ const HeaderVisibilityContext = createContext<HeaderVisibilityContextValue>({
   setHeaderActionsHidden: () => {},
   breadcrumbChild: undefined,
   setBreadcrumbChild: () => {},
+  titleOverride: undefined,
+  setTitleOverride: () => {},
+  titleAdjacent: undefined,
+  setTitleAdjacent: () => {},
+  titleMetadata: undefined,
+  setTitleMetadata: () => {},
+  actionSlot: undefined,
+  setActionSlot: () => {},
 });
 
 export const HeaderVisibilityProvider = ({ children }: { children: ReactNode }) => {
   const [headerHidden, setHeaderHidden] = useState(false);
   const [headerActionsHidden, setHeaderActionsHidden] = useState(false);
   const [breadcrumbChild, setBreadcrumbChild] = useState<ReactNode>();
+  const [titleOverride, setTitleOverride] = useState<ReactNode>();
+  const [titleAdjacent, setTitleAdjacent] = useState<ReactNode>();
+  const [titleMetadata, setTitleMetadata] = useState<ReactNode>();
+  const [actionSlot, setActionSlot] = useState<ReactNode>();
   const value = useMemo(
     () => ({
       headerHidden,
@@ -33,8 +53,16 @@ export const HeaderVisibilityProvider = ({ children }: { children: ReactNode }) 
       setHeaderActionsHidden,
       breadcrumbChild,
       setBreadcrumbChild,
+      titleOverride,
+      setTitleOverride,
+      titleAdjacent,
+      setTitleAdjacent,
+      titleMetadata,
+      setTitleMetadata,
+      actionSlot,
+      setActionSlot,
     }),
-    [headerHidden, headerActionsHidden, breadcrumbChild],
+    [headerHidden, headerActionsHidden, breadcrumbChild, titleOverride, titleAdjacent, titleMetadata, actionSlot],
   );
   return <HeaderVisibilityContext.Provider value={value}>{children}</HeaderVisibilityContext.Provider>;
 };

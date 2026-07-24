@@ -29,3 +29,20 @@ export function getDatasetSourceUrl(datasetWithTags: RunDatasetWithTags): string
     return null;
   }
 }
+
+export function getEvaluationDatasetIdFromDatasetSource(source?: string): string | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(source);
+    return typeof parsed?.dataset_id === 'string' && parsed.dataset_id ? parsed.dataset_id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getEvaluationDatasetId(datasetWithTags?: RunDatasetWithTags): string | undefined {
+  return getEvaluationDatasetIdFromDatasetSource(datasetWithTags?.dataset.source);
+}

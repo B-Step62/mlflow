@@ -1,17 +1,23 @@
 import invariant from 'invariant';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useExperimentEvaluationRunsData } from '../../components/experiment-page/hooks/useExperimentEvaluationRunsData';
 import { ExperimentEvaluationRunsPageWrapper } from './ExperimentEvaluationRunsPageWrapper';
 import { ExperimentEvaluationRunsTable } from './ExperimentEvaluationRunsTable';
 import type { RowSelectionState } from '@tanstack/react-table';
-import { useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
-import { Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
+import {
+  Button,
+  DatabaseIcon,
+  SparkleIcon,
+  Tag,
+  Tooltip,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import { RunViewEvaluationsTab } from '../../components/evaluations/RunViewEvaluationsTab';
 import { ExperimentEvaluationRunsTableControls } from './ExperimentEvaluationRunsTableControls';
 import evalRunsEmptyImg from '@mlflow/mlflow/src/common/static/eval-runs-empty.svg';
 import Utils from '@mlflow/mlflow/src/common/utils/Utils';
-import type { DatasetWithRunType } from '../../components/experiment-page/components/runs/ExperimentViewDatasetDrawer';
-import { ExperimentViewDatasetDrawer } from '../../components/experiment-page/components/runs/ExperimentViewDatasetDrawer';
 import { keyBy, mapValues, xor } from 'lodash';
 import {
   EVAL_RUNS_TABLE_BASE_SELECTION_STATE,
@@ -19,7 +25,7 @@ import {
 } from './ExperimentEvaluationRunsTable.constants';
 import { invalidateMlflowSearchTracesCache } from '@databricks/web-shared/genai-traces-table';
 import { useQueryClient } from '@databricks/web-shared/query-client';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import {
   useSelectedRunUuid,
   SELECTED_RUN_UUID_QUERY_PARAM,
@@ -36,21 +42,312 @@ import {
 } from './ExperimentEvaluationRunsTable.utils';
 import { ExperimentEvaluationRunsPageMode } from './hooks/useExperimentEvaluationRunsPageMode';
 import { ExperimentEvaluationRunsRowVisibilityProvider } from './hooks/useExperimentEvaluationRunsRowVisibility';
-import { useRegisterSelectedIds } from '@mlflow/mlflow/src/assistant';
+import { useAssistant, useRegisterSelectedIds } from '@mlflow/mlflow/src/assistant';
 import { ExperimentEvaluationRunsSummaryCharts } from './ExperimentEvaluationRunsSummaryCharts';
 import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
+import type { RunDatasetWithTags, RunEntity } from '../../types';
+import { getAiGradientBorderStyle } from '../../../shared/web-shared/design-system/aiGradientBorderStyle';
+import { CreateEvaluationDatasetModal } from '../experiment-evaluation-datasets/components/CreateEvaluationDatasetModal';
+import { useGetScheduledScorers } from '../experiment-scorers/hooks/useGetScheduledScorers';
+import type { ScheduledScorer } from '../experiment-scorers/types';
+import { formatCostUSD } from '@databricks/web-shared/model-trace-explorer';
+import { getEvaluationDatasetId } from '../../utils/DatasetUtils';
+import Routes from '../../routes';
+import { ExperimentPageTabName } from '../../constants';
 
 const getLearnMoreLink = () => {
   return 'https://mlflow.org/docs/latest/genai/eval-monitor/quickstart/';
 };
 
+const getRunInputDataset = (run?: RunEntity) => run?.inputs?.datasetInputs?.[0];
+
+const getDatasetDisplayName = (datasetWithTags: RunDatasetWithTags) =>
+  datasetWithTags.dataset.name || datasetWithTags.dataset.digest;
+
+const normalizeMetadataKey = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const getRunMetricByExactKeys = (run: RunEntity, exactKeys: string[]) => {
+  const normalizedExactKeys = new Set(exactKeys.map(normalizeMetadataKey));
+  return run.data.metrics?.find(
+    ({ key, value }) => normalizedExactKeys.has(normalizeMetadataKey(key)) && Number.isFinite(Number(value)),
+  );
+};
+
+const getRunMetricByPattern = (run: RunEntity, pattern: RegExp) => {
+  return run.data.metrics?.find(({ key, value }) => pattern.test(key) && Number.isFinite(Number(value)));
+};
+
+const getMetricValue = (metric?: { value: number }) => {
+  const value = Number(metric?.value);
+  return Number.isFinite(value) ? value : undefined;
+};
+
+const getRunCostValue = (run: RunEntity) =>
+  getMetricValue(
+    getRunMetricByExactKeys(run, ['total_cost_usd', 'total_cost', 'cost_usd', 'cost']) ??
+      getRunMetricByPattern(run, /(^|[._/\s-])(total[._/\s-]?)?cost([._/\s-]?usd)?($|[._/\s-])/i) ??
+      getRunMetricByPattern(run, /price/i),
+  );
+
+const getRunTokenValue = (run: RunEntity) => {
+  const exactTotal = getMetricValue(getRunMetricByExactKeys(run, ['total_tokens', 'token_count', 'tokens']));
+  if (exactTotal !== undefined) {
+    return exactTotal;
+  }
+
+  const inputTokens = getMetricValue(getRunMetricByExactKeys(run, ['input_tokens', 'prompt_tokens']));
+  const outputTokens = getMetricValue(getRunMetricByExactKeys(run, ['output_tokens', 'completion_tokens']));
+  if (inputTokens !== undefined || outputTokens !== undefined) {
+    return (inputTokens ?? 0) + (outputTokens ?? 0);
+  }
+  return getMetricValue(getRunMetricByPattern(run, /token/i));
+};
+
+const sumDefinedValues = (values: Array<number | undefined>) => {
+  const definedValues = values.filter((value): value is number => value !== undefined);
+  if (definedValues.length === 0) {
+    return undefined;
+  }
+  return definedValues.reduce((sum, value) => sum + value, 0);
+};
+
+const getRunDurationMs = (run: RunEntity) => {
+  if (!Number(run.info.startTime) || !Number(run.info.endTime)) {
+    return undefined;
+  }
+  return Number(run.info.endTime) - Number(run.info.startTime);
+};
+
+const getRegisteredScorerNamesForRuns = (runs: RunEntity[], scheduledScorers: ScheduledScorer[]) => {
+  if (!runs.length || !scheduledScorers.length) {
+    return [];
+  }
+
+  const metricKeys = runs.flatMap((run) => run.data.metrics?.map((metric) => metric.key) ?? []);
+  const scorerNames = new Set<string>();
+  for (const scorer of scheduledScorers) {
+    const normalizedScorerName = normalizeMetadataKey(scorer.name);
+    if (metricKeys.some((metricKey) => normalizeMetadataKey(metricKey).includes(normalizedScorerName))) {
+      scorerNames.add(scorer.name);
+    }
+  }
+  return Array.from(scorerNames);
+};
+
+type EvaluationRunMetadataTagProps = {
+  componentId: string;
+  label: ReactNode;
+  value: ReactNode;
+  onClick?: () => void;
+};
+
+const EvaluationRunMetadataTag = forwardRef<HTMLDivElement, EvaluationRunMetadataTagProps>(
+  function EvaluationRunMetadataTag({ componentId, label, value, onClick }, ref) {
+    const { theme } = useDesignSystemTheme();
+
+    return (
+      <Tag
+        ref={ref}
+        componentId={componentId}
+        onClick={onClick}
+        css={{
+          margin: 0,
+          maxWidth: 320,
+          cursor: onClick ? 'pointer' : undefined,
+        }}
+      >
+        <span css={{ display: 'inline-flex', gap: theme.spacing.xs, minWidth: 0, alignItems: 'center' }}>
+          <Typography.Text bold css={{ whiteSpace: 'nowrap' }}>
+            {label}
+          </Typography.Text>
+          <Typography.Text css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {value}
+          </Typography.Text>
+        </span>
+      </Tag>
+    );
+  },
+);
+EvaluationRunMetadataTag.displayName = 'EvaluationRunMetadataTag';
+
+const CreateEvaluationRunDatasetButton = ({ experimentId }: { experimentId: string }) => {
+  const [isCreateDatasetModalOpen, setIsCreateDatasetModalOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        componentId="mlflow.eval-runs.selected-run.create-dataset-button"
+        icon={<DatabaseIcon />}
+        size="small"
+        onClick={() => setIsCreateDatasetModalOpen(true)}
+      >
+        <FormattedMessage
+          defaultMessage="Create dataset"
+          description="Button label to create an evaluation dataset from the evaluation run header"
+        />
+      </Button>
+      <CreateEvaluationDatasetModal
+        visible={isCreateDatasetModalOpen}
+        experimentId={experimentId}
+        onCancel={() => setIsCreateDatasetModalOpen(false)}
+      />
+    </>
+  );
+};
+
+const EvaluationRunHeaderMetadata = ({
+  experimentId,
+  runs,
+  selectedRun,
+  selectedRunDataset,
+  selectedRunDatasetDisplayName,
+  registeredScorerNames,
+  onOpenDataset,
+  showComparisonMetadata,
+}: {
+  experimentId: string;
+  runs: RunEntity[];
+  selectedRun?: RunEntity;
+  selectedRunDataset?: RunDatasetWithTags;
+  selectedRunDatasetDisplayName?: string;
+  registeredScorerNames: string[];
+  onOpenDataset: () => void;
+  showComparisonMetadata: boolean;
+}) => {
+  const { theme } = useDesignSystemTheme();
+  const intl = useIntl();
+
+  const totalCost = sumDefinedValues(runs.map(getRunCostValue));
+  const totalTokens = sumDefinedValues(runs.map(getRunTokenValue));
+  const totalDurationMs = sumDefinedValues(runs.map(getRunDurationMs));
+  const createdAt = selectedRun?.info.startTime ? Utils.formatTimestamp(selectedRun.info.startTime, intl) : undefined;
+
+  if (!runs.length) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="evaluation-run-header-metadata"
+      css={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: theme.spacing.xs,
+        alignItems: 'center',
+        minWidth: 0,
+      }}
+    >
+      {showComparisonMetadata && (
+        <EvaluationRunMetadataTag
+          componentId="mlflow.eval-runs.header-metadata.run-count"
+          label={
+            <FormattedMessage
+              defaultMessage="Runs"
+              description="Label for the run count in evaluation run header metadata"
+            />
+          }
+          value={runs.length.toLocaleString()}
+        />
+      )}
+      {!showComparisonMetadata &&
+        (selectedRunDataset && selectedRunDatasetDisplayName ? (
+          <Tooltip
+            componentId="mlflow.eval-runs.header-metadata.dataset-tooltip"
+            content={selectedRunDatasetDisplayName}
+          >
+            <EvaluationRunMetadataTag
+              componentId="mlflow.eval-runs.header-metadata.dataset"
+              label={
+                <FormattedMessage
+                  defaultMessage="Dataset"
+                  description="Label for the dataset in evaluation run header metadata"
+                />
+              }
+              value={selectedRunDatasetDisplayName}
+              onClick={onOpenDataset}
+            />
+          </Tooltip>
+        ) : (
+          <CreateEvaluationRunDatasetButton experimentId={experimentId} />
+        ))}
+      {registeredScorerNames.map((scorerName) => (
+        <EvaluationRunMetadataTag
+          key={scorerName}
+          componentId="mlflow.eval-runs.header-metadata.scorer"
+          label={
+            <FormattedMessage
+              defaultMessage="Scorer"
+              description="Label for a registered scorer in evaluation run header metadata"
+            />
+          }
+          value={scorerName}
+        />
+      ))}
+      {createdAt && (
+        <EvaluationRunMetadataTag
+          componentId="mlflow.eval-runs.header-metadata.created-at"
+          label={
+            <FormattedMessage
+              defaultMessage="Created"
+              description="Label for the created timestamp in evaluation run header metadata"
+            />
+          }
+          value={createdAt}
+        />
+      )}
+      {totalDurationMs !== undefined && (
+        <EvaluationRunMetadataTag
+          componentId="mlflow.eval-runs.header-metadata.duration"
+          label={
+            <FormattedMessage
+              defaultMessage="Duration"
+              description="Label for total duration in evaluation run header metadata"
+            />
+          }
+          value={Utils.formatDuration(totalDurationMs)}
+        />
+      )}
+      <EvaluationRunMetadataTag
+        componentId="mlflow.eval-runs.header-metadata.total-cost"
+        label={
+          <FormattedMessage
+            defaultMessage="Total cost"
+            description="Label for total cost in evaluation run header metadata"
+          />
+        }
+        value={formatCostUSD(totalCost ?? 0)}
+      />
+      {totalTokens !== undefined && (
+        <EvaluationRunMetadataTag
+          componentId="mlflow.eval-runs.header-metadata.total-tokens"
+          label={
+            <FormattedMessage
+              defaultMessage="Tokens"
+              description="Label for total token count in evaluation run header metadata"
+            />
+          }
+          value={Math.round(totalTokens).toLocaleString()}
+        />
+      )}
+    </div>
+  );
+};
+
 const ExperimentEvaluationRunsPageImpl = () => {
   const { experimentId } = useParams();
   const { theme } = useDesignSystemTheme();
-  const { setBreadcrumbChild } = useHeaderVisibility();
+  const intl = useIntl();
+  const navigate = useNavigate();
+  const { openPanel, prefillPrompt } = useAssistant();
+  const {
+    setBreadcrumbChild,
+    setHeaderActionsHidden,
+    setTitleOverride,
+    setTitleAdjacent,
+    setTitleMetadata,
+    setActionSlot,
+  } = useHeaderVisibility();
   const [searchFilter, setSearchFilter] = useState('');
-  const [selectedDatasetWithRun, setSelectedDatasetWithRun] = useState<DatasetWithRunType>();
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedColumns, setSelectedColumns] = useState<{ [key: string]: boolean }>(
     EVAL_RUNS_TABLE_BASE_SELECTION_STATE,
   );
@@ -300,8 +597,6 @@ const ExperimentEvaluationRunsPageImpl = () => {
       hasNextPage={hasNextPage ?? false}
       rowSelection={rowSelection}
       setRowSelection={setRowSelection}
-      setSelectedDatasetWithRun={setSelectedDatasetWithRun}
-      setIsDrawerOpen={setIsDrawerOpen}
       viewMode={ExperimentEvaluationRunsPageMode.TRACES}
       onScroll={(e) => fetchMoreOnBottomReached(e.currentTarget)}
       ref={tableContainerRef}
@@ -380,14 +675,134 @@ const ExperimentEvaluationRunsPageImpl = () => {
     </div>
   );
 
-  const comparisonRunUuids =
-    selectedRunUuidsFromCheckbox.length >= 2
-      ? selectedRunUuidsFromCheckbox
-      : [selectedRunUuid, compareToRunUuid].filter((uuid): uuid is string => Boolean(uuid));
+  const comparisonRunUuids = useMemo(
+    () =>
+      selectedRunUuidsFromCheckbox.length >= 2
+        ? selectedRunUuidsFromCheckbox
+        : [selectedRunUuid, compareToRunUuid].filter((uuid): uuid is string => Boolean(uuid)),
+    [compareToRunUuid, selectedRunUuid, selectedRunUuidsFromCheckbox],
+  );
   const primaryComparisonRunUuid =
     selectedRunUuid && comparisonRunUuids.includes(selectedRunUuid) ? selectedRunUuid : comparisonRunUuids[0];
 
   const selectedRun = useMemo(() => runs?.find((run) => run.info.runUuid === selectedRunUuid), [runs, selectedRunUuid]);
+  const selectedRunDisplayName = selectedRunUuid
+    ? Utils.getRunDisplayName(selectedRun?.info, selectedRunUuid)
+    : undefined;
+  const { data: scheduledScorersData } = useGetScheduledScorers(experimentId, {
+    enabled: Boolean(selectedRunUuid || isComparisonMode),
+  });
+  const selectedRunDataset = getRunInputDataset(selectedRun);
+  const selectedRunDatasetDisplayName = selectedRunDataset ? getDatasetDisplayName(selectedRunDataset) : undefined;
+  const selectedRunEvaluationDatasetId = getEvaluationDatasetId(selectedRunDataset);
+  const openSelectedRunDataset = useCallback(() => {
+    if (selectedRunEvaluationDatasetId) {
+      navigate(Routes.getExperimentPageDatasetDetailRoute(experimentId, selectedRunEvaluationDatasetId));
+      return;
+    }
+
+    navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Datasets));
+  }, [experimentId, navigate, selectedRunEvaluationDatasetId]);
+  const headerTitle = useMemo(() => {
+    if (isComparisonMode && comparisonRunUuids.length >= 2) {
+      return (
+        <FormattedMessage
+          defaultMessage="Compare {numRuns, plural, one {# run} other {# runs}}"
+          description="Header title for the evaluation runs comparison view"
+          values={{ numRuns: comparisonRunUuids.length }}
+        />
+      );
+    }
+    return selectedRunDisplayName;
+  }, [comparisonRunUuids.length, isComparisonMode, selectedRunDisplayName]);
+  const headerMetadataRuns = useMemo(() => {
+    if (isComparisonMode && comparisonRunUuids.length >= 2) {
+      return comparisonRunUuids
+        .map((runUuid) => runs?.find((run) => run.info.runUuid === runUuid))
+        .filter((run): run is RunEntity => Boolean(run));
+    }
+    return selectedRun ? [selectedRun] : [];
+  }, [comparisonRunUuids, isComparisonMode, runs, selectedRun]);
+  const registeredScorerNames = useMemo(
+    () => getRegisteredScorerNamesForRuns(headerMetadataRuns, scheduledScorersData?.scheduledScorers ?? []),
+    [headerMetadataRuns, scheduledScorersData?.scheduledScorers],
+  );
+  const headerTitleMetadata = useMemo(() => {
+    if (!headerMetadataRuns.length) {
+      return undefined;
+    }
+
+    return (
+      <EvaluationRunHeaderMetadata
+        experimentId={experimentId}
+        runs={headerMetadataRuns}
+        selectedRun={selectedRun}
+        selectedRunDataset={selectedRunDataset}
+        selectedRunDatasetDisplayName={selectedRunDatasetDisplayName}
+        registeredScorerNames={registeredScorerNames}
+        onOpenDataset={openSelectedRunDataset}
+        showComparisonMetadata={isComparisonMode && comparisonRunUuids.length >= 2}
+      />
+    );
+  }, [
+    experimentId,
+    headerMetadataRuns,
+    isComparisonMode,
+    comparisonRunUuids.length,
+    openSelectedRunDataset,
+    registeredScorerNames,
+    selectedRun,
+    selectedRunDataset,
+    selectedRunDatasetDisplayName,
+  ]);
+  const analyzeResultPrompt = useMemo(() => {
+    if (isComparisonMode && comparisonRunUuids.length >= 2) {
+      return intl.formatMessage(
+        {
+          defaultMessage:
+            'Analyze these evaluation runs and summarize the most important quality, latency, token, and cost differences: {runUuids}',
+          description: 'Prompt seeded into the assistant for analyzing compared evaluation runs',
+        },
+        { runUuids: comparisonRunUuids.join(', ') },
+      );
+    }
+    if (selectedRunUuid && selectedRunDisplayName) {
+      return intl.formatMessage(
+        {
+          defaultMessage:
+            'Analyze evaluation run "{runName}" ({runUuid}) and summarize quality issues, failing assessments, latency, token usage, and cost.',
+          description: 'Prompt seeded into the assistant for analyzing a selected evaluation run',
+        },
+        { runName: selectedRunDisplayName, runUuid: selectedRunUuid },
+      );
+    }
+    return undefined;
+  }, [comparisonRunUuids, intl, isComparisonMode, selectedRunDisplayName, selectedRunUuid]);
+  const handleAnalyzeResult = useCallback(() => {
+    if (!analyzeResultPrompt) {
+      return;
+    }
+    openPanel();
+    prefillPrompt(analyzeResultPrompt);
+  }, [analyzeResultPrompt, openPanel, prefillPrompt]);
+  const headerActionSlot = useMemo(() => {
+    if (!analyzeResultPrompt) {
+      return undefined;
+    }
+    return (
+      <Button
+        componentId="mlflow.eval-runs.analyze-result-button"
+        icon={<SparkleIcon color="ai" />}
+        onClick={handleAnalyzeResult}
+        css={getAiGradientBorderStyle(theme)}
+      >
+        <FormattedMessage
+          defaultMessage="Analyze result"
+          description="Button label for AI-assisted evaluation result analysis"
+        />
+      </Button>
+    );
+  }, [analyzeResultPrompt, handleAnalyzeResult, theme]);
   const breadcrumbChild = useMemo(() => {
     if (isComparisonMode && comparisonRunUuids.length >= 2) {
       return (
@@ -406,17 +821,37 @@ const ExperimentEvaluationRunsPageImpl = () => {
 
   useEffect(() => {
     setBreadcrumbChild(breadcrumbChild);
-    return () => setBreadcrumbChild(undefined);
-  }, [breadcrumbChild, setBreadcrumbChild]);
+    setHeaderActionsHidden(Boolean(headerActionSlot));
+    setTitleOverride(headerTitle);
+    setTitleAdjacent(undefined);
+    setTitleMetadata(headerTitleMetadata);
+    setActionSlot(headerActionSlot);
+    return () => {
+      setBreadcrumbChild(undefined);
+      setHeaderActionsHidden(false);
+      setTitleOverride(undefined);
+      setTitleAdjacent(undefined);
+      setTitleMetadata(undefined);
+      setActionSlot(undefined);
+    };
+  }, [
+    breadcrumbChild,
+    headerActionSlot,
+    headerTitle,
+    headerTitleMetadata,
+    setActionSlot,
+    setBreadcrumbChild,
+    setHeaderActionsHidden,
+    setTitleAdjacent,
+    setTitleMetadata,
+    setTitleOverride,
+  ]);
 
   if (isComparisonMode && primaryComparisonRunUuid) {
     return (
       <ExperimentEvaluationRunsRowVisibilityProvider>
-        <div css={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: '0px', gap: theme.spacing.sm }}>
-          <ExperimentEvaluationRunsSummaryCharts runs={runs ?? []} selectedRunUuids={comparisonRunUuids} />
-          <div css={{ display: 'flex', flex: 1, minHeight: '0px', overflow: 'hidden' }}>
-            {renderActiveTab(primaryComparisonRunUuid)}
-          </div>
+        <div css={{ display: 'flex', flex: 1, minHeight: '0px', overflow: 'hidden' }}>
+          {renderActiveTab(primaryComparisonRunUuid)}
         </div>
       </ExperimentEvaluationRunsRowVisibilityProvider>
     );
@@ -451,14 +886,6 @@ const ExperimentEvaluationRunsPageImpl = () => {
           {renderTableControls()}
           {isEmpty ? renderEmptyState() : renderTable()}
         </div>
-        {selectedDatasetWithRun && (
-          <ExperimentViewDatasetDrawer
-            isOpen={isDrawerOpen}
-            setIsOpen={setIsDrawerOpen}
-            selectedDatasetWithRun={selectedDatasetWithRun}
-            setSelectedDatasetWithRun={setSelectedDatasetWithRun}
-          />
-        )}
       </div>
     </ExperimentEvaluationRunsRowVisibilityProvider>
   );

@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
-import { Link, useLocation, useParams } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
-import { parseJSONSafe } from '@mlflow/mlflow/src/common/utils/TagUtils';
+import { Link, useParams } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
 import Routes from '@mlflow/mlflow/src/experiment-tracking/routes';
-import { ExperimentPageTabName } from '@mlflow/mlflow/src/experiment-tracking/constants';
-import { SELECTED_DATASET_ID_QUERY_PARAM_KEY } from './hooks/useSelectedDatasetBySearchParam';
+import { getEvaluationDatasetIdFromDatasetSource } from '../../utils/DatasetUtils';
 
 export const DatasetLink = ({
   dataset,
@@ -22,27 +20,14 @@ export const DatasetLink = ({
   className?: string;
 }) => {
   const { experimentId } = useParams();
-  const parsedSource = useMemo<{ table_name?: string; dataset_id?: string } | undefined>(
-    () => parseJSONSafe(dataset.source),
-    [dataset.source],
-  );
-
-  const { search, hash } = useLocation();
+  const datasetId = useMemo(() => getEvaluationDatasetIdFromDatasetSource(dataset.source), [dataset.source]);
 
   // If the dataset ID is present, render a link to the dataset page
-  if (parsedSource?.dataset_id && experimentId) {
-    const pathname = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Datasets);
-    const searchParams = new URLSearchParams(search);
-    searchParams.set(SELECTED_DATASET_ID_QUERY_PARAM_KEY, parsedSource.dataset_id);
-
+  if (datasetId && experimentId) {
     return (
       <Link
         componentId="mlflow.experiment_tracking.evaluation_datasets.dataset_link"
-        to={{
-          pathname,
-          search: searchParams.toString(),
-          hash,
-        }}
+        to={Routes.getExperimentPageDatasetDetailRoute(experimentId, datasetId)}
         className={className}
       >
         {children}
