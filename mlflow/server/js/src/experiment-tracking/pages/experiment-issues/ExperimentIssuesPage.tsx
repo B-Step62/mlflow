@@ -751,8 +751,8 @@ const ExperimentIssuesPage = () => {
                 flexWrap: 'wrap',
               }}
             >
-              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <Typography.Title level={3} css={{ margin: 0 }}>
+              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minHeight: 32 }}>
+                <Typography.Title level={3} css={{ margin: 0, marginBottom: '0 !important', lineHeight: '32px' }}>
                   <FormattedMessage defaultMessage="Detected Issues" description="Detected issues section title" />
                 </Typography.Title>
                 <IssueStatusFilter
@@ -820,6 +820,7 @@ const ExperimentIssuesPage = () => {
                 statusFilter={issueStatusFilter}
                 onStatusFilterChange={setIssueStatusFilter}
                 hideStatusFilter
+                dimUnselectedCards
                 getIssueSourceLabel={(issue) => truncateSourceJobId(issue.source_run_id)}
                 getIssueSourceTagColor={() => 'charcoal'}
                 onIssueStatusChange={(issueId, status) =>

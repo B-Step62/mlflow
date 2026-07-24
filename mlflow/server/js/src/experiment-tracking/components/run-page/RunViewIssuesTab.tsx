@@ -32,6 +32,7 @@ export const RunViewIssuesContent = ({
   statusFilter: controlledStatusFilter,
   onStatusFilterChange,
   hideStatusFilter = false,
+  dimUnselectedCards = false,
 }: {
   issues: Issue[];
   isLoading?: boolean;
@@ -50,6 +51,7 @@ export const RunViewIssuesContent = ({
   statusFilter?: IssueStatusFilterValue;
   onStatusFilterChange?: (value: IssueStatusFilterValue) => void;
   hideStatusFilter?: boolean;
+  dimUnselectedCards?: boolean;
 }) => {
   const { theme } = useDesignSystemTheme();
   const [uncontrolledStatusFilter, setUncontrolledStatusFilter] = useState<IssueStatusFilterValue>('pending');
@@ -184,19 +186,23 @@ export const RunViewIssuesContent = ({
           {compactCards && !hideStatusFilter && (
             <IssueStatusFilter issues={issues} value={statusFilter} onChange={setStatusFilter} />
           )}
-          {filteredIssues.map((issue) => (
-            <div key={issue.issue_id} ref={(el) => (issueCardRefs.current[issue.issue_id] = el)}>
-              <IssueCard
-                issue={issue}
-                isSelected={selectedIssue?.issue_id === issue.issue_id}
-                onSelect={() => handleSelect(issue)}
-                hideActions={hideIssueActions}
-                sourceLabel={getIssueSourceLabel?.(issue)}
-                sourceTagColor={getIssueSourceTagColor?.(issue)}
-                compact={compactCards}
-              />
-            </div>
-          ))}
+          {filteredIssues.map((issue) => {
+            const isIssueSelected = selectedIssue?.issue_id === issue.issue_id;
+            return (
+              <div key={issue.issue_id} ref={(el) => (issueCardRefs.current[issue.issue_id] = el)}>
+                <IssueCard
+                  issue={issue}
+                  isSelected={isIssueSelected}
+                  onSelect={() => handleSelect(issue)}
+                  hideActions={hideIssueActions}
+                  sourceLabel={getIssueSourceLabel?.(issue)}
+                  sourceTagColor={getIssueSourceTagColor?.(issue)}
+                  compact={compactCards}
+                  dimmed={dimUnselectedCards && Boolean(selectedIssue) && !isIssueSelected}
+                />
+              </div>
+            );
+          })}
         </div>
         {selectedIssue && (
           <div

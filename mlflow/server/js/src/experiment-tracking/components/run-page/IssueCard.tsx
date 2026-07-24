@@ -32,6 +32,7 @@ interface IssueCardProps {
   sourceLabel?: ReactNode;
   sourceTagColor?: TagColors;
   compact?: boolean;
+  dimmed?: boolean;
 }
 
 const STATUS_TAG_CONFIG: Record<IssueStatus, { color: TagColors; label: MessageDescriptor }> = {
@@ -88,6 +89,7 @@ export const IssueCard = ({
   sourceLabel,
   sourceTagColor = 'charcoal',
   compact = false,
+  dimmed = false,
 }: IssueCardProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -205,9 +207,13 @@ export const IssueCard = ({
           width: '100%',
           boxSizing: 'border-box',
           cursor: 'pointer',
-          transition: 'box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.3s ease',
+          opacity: dimmed ? 0.58 : 1,
+          transition: 'box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.3s ease, opacity 0.2s ease',
           border: isSelected ? `1px solid ${theme.colors.actionPrimaryBackgroundDefault}` : undefined,
           backgroundColor: isSelected ? theme.colors.actionTertiaryBackgroundHover : undefined,
+          ':hover': {
+            opacity: 1,
+          },
         }}
         onClick={onSelect}
       >

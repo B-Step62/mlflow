@@ -54,6 +54,7 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
         display: 'flex',
         alignItems: 'center',
         justifyContent: showLabel ? 'flex-start' : 'center',
+        height: showLabel ? undefined : 32,
       }}
     >
       <DropdownMenu.Root>
@@ -73,9 +74,9 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: showLabel ? undefined : 28,
-                    minWidth: showLabel ? undefined : 28,
-                    height: showLabel ? undefined : 28,
+                    width: showLabel ? undefined : 32,
+                    minWidth: showLabel ? undefined : 32,
+                    height: showLabel ? undefined : 32,
                     padding: showLabel ? undefined : 0,
                     lineHeight: 0,
                     borderColor: theme.colors.actionDefaultBorderFocus,
@@ -87,14 +88,17 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
                     '& .anticon svg': {
                       display: 'block',
                     },
+                    '& svg': {
+                      display: 'block',
+                    },
                   }
                 : {
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: showLabel ? undefined : 28,
-                    minWidth: showLabel ? undefined : 28,
-                    height: showLabel ? undefined : 28,
+                    width: showLabel ? undefined : 32,
+                    minWidth: showLabel ? undefined : 32,
+                    height: showLabel ? undefined : 32,
                     padding: showLabel ? undefined : 0,
                     lineHeight: 0,
                     '& .anticon': {
@@ -102,6 +106,9 @@ export const IssueStatusFilter = ({ issues, value, onChange, showLabel = true }:
                       alignItems: 'center',
                     },
                     '& .anticon svg': {
+                      display: 'block',
+                    },
+                    '& svg': {
                       display: 'block',
                     },
                   }
