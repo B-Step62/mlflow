@@ -68,16 +68,16 @@ describe('ExperimentPageSideNav', () => {
       // Check observability section
       expect(screen.getByText('Observability')).toBeInTheDocument();
       expect(screen.getByText('Traces')).toBeInTheDocument();
-      expect(screen.getByText('Sessions')).toBeInTheDocument();
+      expect(screen.getByText('Analysis')).toBeInTheDocument();
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
 
       // Check evaluation section
       expect(screen.getByText('Evaluation')).toBeInTheDocument();
       expect(screen.getByText('Datasets')).toBeInTheDocument();
 
-      // Check prompts & versions section
-      const versionsSectionHeader = 'Prompts & versions';
-      expect(screen.getByText(versionsSectionHeader)).toBeInTheDocument();
-      expect(screen.getByText('Agent versions')).toBeInTheDocument();
+      // Check prompts section
+      expect(screen.getAllByText('Prompts')).toHaveLength(2);
+      expect(screen.queryByText('Agent versions')).not.toBeInTheDocument();
     },
   );
   test('should not render chat sessions or overview for non-genai', () => {
