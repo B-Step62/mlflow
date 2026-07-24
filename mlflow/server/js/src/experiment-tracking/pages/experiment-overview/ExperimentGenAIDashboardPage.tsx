@@ -93,7 +93,7 @@ const DashboardSelector = ({
           defaultMessage: 'Usage, errors, latency, cost, and trace volume.',
           description: 'Dashboard selector description for the project overview dashboard',
         }),
-        icon: <ChartLineIcon />,
+        icon: <ChartLineIcon css={{ color: theme.colors.actionPrimaryBackgroundDefault }} />,
       },
       {
         value: OverviewTab.Quality,
@@ -105,7 +105,7 @@ const DashboardSelector = ({
           defaultMessage: 'Evaluation scores, judge results, and quality trends.',
           description: 'Dashboard selector description for the eval and quality dashboard',
         }),
-        icon: <GavelIcon />,
+        icon: <GavelIcon css={{ color: theme.colors.actionPrimaryBackgroundDefault }} />,
       },
       {
         value: OverviewTab.ToolCalls,
@@ -117,10 +117,10 @@ const DashboardSelector = ({
           defaultMessage: 'Tool calls, skill usage, failures, and latency breakdowns.',
           description: 'Dashboard selector description for the tools, skills, and MCP dashboard',
         }),
-        icon: <TerminalIcon />,
+        icon: <TerminalIcon css={{ color: theme.colors.actionPrimaryBackgroundDefault }} />,
       },
     ],
-    [intl],
+    [intl, theme.colors.actionPrimaryBackgroundDefault],
   );
 
   const selectedOption = dashboardOptions.find(({ value }) => value === activeTab) ?? dashboardOptions[0];
@@ -140,15 +140,16 @@ const DashboardSelector = ({
             description: 'Aria label for the dashboard selector',
           })}
           css={{
-            minWidth: 220,
+            paddingLeft: theme.spacing.sm,
+            paddingRight: theme.spacing.sm,
             maxWidth: '100%',
           }}
         >
           {selectedOption.title}
         </Button>
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="start" css={{ width: 360, padding: theme.spacing.xs }}>
-        <div css={{ padding: theme.spacing.xs }}>
+      <DropdownMenu.Content align="start" css={{ width: 400, padding: theme.spacing.sm }}>
+        <div css={{ padding: `${theme.spacing.xs}px ${theme.spacing.xs}px ${theme.spacing.sm}px` }}>
           <Input
             componentId="mlflow.experiment.dashboard.selector.search"
             prefix={<SearchIcon />}
@@ -176,7 +177,13 @@ const DashboardSelector = ({
             <DropdownMenu.RadioItem
               key={option.value}
               value={option.value}
-              css={{ minHeight: 56, alignItems: 'flex-start' }}
+              css={{
+                minHeight: 76,
+                alignItems: 'flex-start',
+                paddingTop: theme.spacing.sm,
+                paddingBottom: theme.spacing.sm,
+                gap: theme.spacing.sm,
+              }}
             >
               <DropdownMenu.ItemIndicator />
               <span
@@ -197,7 +204,14 @@ const DashboardSelector = ({
                   <Typography.Text bold ellipsis>
                     {option.title}
                   </Typography.Text>
-                  <Tag componentId="mlflow.experiment.dashboard.selector.built-in-tag" color="charcoal">
+                  <Tag
+                    componentId="mlflow.experiment.dashboard.selector.built-in-tag"
+                    css={{
+                      backgroundColor: theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue100,
+                      borderColor: theme.isDarkMode ? theme.colors.blue700 : theme.colors.blue200,
+                      color: theme.isDarkMode ? theme.colors.blue100 : theme.colors.blue700,
+                    }}
+                  >
                     <FormattedMessage defaultMessage="Built-in" description="Built-in dashboard tag label" />
                   </Tag>
                 </span>
@@ -209,7 +223,10 @@ const DashboardSelector = ({
           ))}
         </DropdownMenu.RadioGroup>
         <DropdownMenu.Separator />
-        <DropdownMenu.Item componentId="mlflow.experiment.dashboard.selector.add-new">
+        <DropdownMenu.Item
+          componentId="mlflow.experiment.dashboard.selector.add-new"
+          css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm }}
+        >
           <PlusIcon />
           <FormattedMessage defaultMessage="Add new" description="Add new dashboard menu item" />
         </DropdownMenu.Item>

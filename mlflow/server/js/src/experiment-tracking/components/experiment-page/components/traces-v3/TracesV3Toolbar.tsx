@@ -1,19 +1,32 @@
-import { SpeechBubbleIcon, Tag, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import {
+  Button,
+  ChartLineIcon,
+  SpeechBubbleIcon,
+  Tag,
+  Typography,
+  useDesignSystemTheme,
+} from '@databricks/design-system';
 import { CopyActionButton } from '@databricks/web-shared/copy';
 import { TracesV3DateSelector } from './TracesV3DateSelector';
 import { FormattedMessage } from '@databricks/i18n';
+import { useNavigate } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
+import Routes from '@mlflow/mlflow/src/experiment-tracking/routes';
+import { ExperimentPageTabName } from '@mlflow/mlflow/src/experiment-tracking/constants';
 
 export const TracesV3Toolbar = ({
   viewState,
   sessionId,
+  experimentId,
   className,
 }: {
   viewState: string;
   sessionId?: string;
+  experimentId?: string;
   className?: string;
 }) => {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { theme } = useDesignSystemTheme();
+  const navigate = useNavigate();
 
   return (
     <div
@@ -52,6 +65,17 @@ export const TracesV3Toolbar = ({
           </Typography.Title>
           {sessionId && <CopyActionButton copyText={sessionId} componentId="mlflow.chat-sessions.copy-session-id" />}
         </div>
+      )}
+      {experimentId && (
+        <Button
+          componentId="mlflow.traces.go-to-dashboard-button"
+          icon={<ChartLineIcon />}
+          onClick={() => navigate(Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Dashboard))}
+          aria-label="Go to Dashboard"
+          css={{ marginLeft: 'auto', flexShrink: 0 }}
+        >
+          Go to Dashboard
+        </Button>
       )}
     </div>
   );
