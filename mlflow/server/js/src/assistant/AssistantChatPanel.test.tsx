@@ -6,9 +6,14 @@ import { DesignSystemProvider } from '@databricks/design-system';
 import { AssistantChatPanel, AssistantMessageBody, groupParts } from './AssistantChatPanel';
 import type { AssistantPart, ChatMessage } from './types';
 import { useLogTelemetryEvent } from '../telemetry/hooks/useLogTelemetryEvent';
+import { copyToClipboard } from '../common/utils/copyToClipboard';
 
 jest.mock('../telemetry/hooks/useLogTelemetryEvent', () => ({
   useLogTelemetryEvent: jest.fn(() => jest.fn()),
+}));
+
+jest.mock('../common/utils/copyToClipboard', () => ({
+  copyToClipboard: jest.fn(() => Promise.resolve(true)),
 }));
 
 beforeAll(() => {
@@ -35,6 +40,8 @@ jest.mock('./AssistantContext', () => ({
     isLoadingConfig: false,
     isLocalServer: true,
     pendingPrompt: mockPendingPrompt,
+    contextualSuggestedPrompts: [],
+    pendingPermission: null,
     canUseAssistant: true,
     tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: null },
     openPanel: jest.fn(),
@@ -47,6 +54,7 @@ jest.mock('./AssistantContext', () => ({
     cancelSession: mockCancelSession,
     refreshConfig: jest.fn(),
     completeSetup: jest.fn(),
+    respondToPermission: jest.fn(),
   }),
 }));
 
@@ -211,6 +219,21 @@ describe('groupParts', () => {
       { type: 'text', text: 'a' },
       { type: 'toolCall', toolUseId: 't1', name: 'Bash' },
       { type: 'toolCall', toolUseId: 't2', name: 'Bash' },
+      { type: 'linkAction', actionId: 'open-result', label: 'Open result', href: '/result' },
+      { type: 'promptAction', actionId: 'analyze-result', label: 'Analyze result', prompt: 'Analyze result' },
+      {
+        type: 'copyAction',
+        actionId: 'copy-fix-prompt',
+        label: 'Copy prompt to fix with coding agent',
+        copyText: 'Fix this issue.',
+      },
+      {
+        type: 'evalComparisonSummary',
+        actionId: 'summary',
+        title: 'Evaluation comparison summary',
+        metrics: [{ label: 'Failing traces', baseline: '11', fixed: '2', delta: '-82%', improved: true }],
+        chart: [{ label: 'Failures', baseline: 11, fixed: 2 }],
+      },
       { type: 'text', text: 'b' },
       { type: 'toolCall', toolUseId: 't3', name: 'Read' },
     ];
@@ -218,8 +241,12 @@ describe('groupParts', () => {
     expect(groups).toEqual([
       { kind: 'text', text: 'a' },
       { kind: 'tools', calls: [parts[1], parts[2]] },
+      { kind: 'linkAction', action: parts[3] },
+      { kind: 'promptAction', action: parts[4] },
+      { kind: 'copyAction', action: parts[5] },
+      { kind: 'evalComparisonSummary', summary: parts[6] },
       { kind: 'text', text: 'b' },
-      { kind: 'tools', calls: [parts[4]] },
+      { kind: 'tools', calls: [parts[8]] },
     ]);
   });
 
@@ -269,5 +296,101 @@ describe('AssistantMessageBody', () => {
   test('falls back to content for legacy messages without parts', () => {
     renderBody({ ...baseAssistantMessage, content: 'legacy answer' });
     expect(screen.getByText('legacy answer')).toBeInTheDocument();
+  });
+
+  test('renders link action parts and opens them in a new tab', async () => {
+    const user = userEvent.setup();
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+
+    try {
+      renderBody({
+        ...baseAssistantMessage,
+        parts: [
+          { type: 'text', text: 'Evaluation finished.' },
+          {
+            type: 'linkAction',
+            actionId: 'open-eval-result',
+            label: 'Open evaluation result',
+            href: '/#/experiments/123/evaluation-runs?selectedRunUuid=real-evaluation-run-1',
+          },
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Open evaluation result' }));
+
+      expect(openSpy).toHaveBeenCalledWith(
+        '/#/experiments/123/evaluation-runs?selectedRunUuid=real-evaluation-run-1',
+        '_blank',
+        'noopener,noreferrer',
+      );
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  test('renders prompt action parts and sends the prompt', async () => {
+    const user = userEvent.setup();
+    renderBody({
+      ...baseAssistantMessage,
+      parts: [
+        { type: 'text', text: 'Evaluation finished.' },
+        {
+          type: 'promptAction',
+          actionId: 'analyze-eval-result',
+          label: 'Analyze result',
+          prompt: 'Analyze result',
+        },
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Analyze result' }));
+
+    expect(mockSendMessage).toHaveBeenCalledWith('Analyze result');
+  });
+
+  test('renders copy action parts and copies the prompt', async () => {
+    const user = userEvent.setup();
+    renderBody({
+      ...baseAssistantMessage,
+      parts: [
+        { type: 'text', text: 'Suggested fixes.' },
+        {
+          type: 'copyAction',
+          actionId: 'copy-fix-prompt',
+          label: 'Copy prompt to fix with coding agent',
+          copyText: 'Fix this issue.',
+        },
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Copy prompt to fix with coding agent' }));
+
+    expect(copyToClipboard).toHaveBeenCalledWith('Fix this issue.');
+  });
+
+  test('renders eval comparison summary parts', () => {
+    renderBody({
+      ...baseAssistantMessage,
+      parts: [
+        {
+          type: 'evalComparisonSummary',
+          actionId: 'eval-summary',
+          title: 'Evaluation comparison summary',
+          metrics: [
+            { label: 'Failing traces', baseline: '11', fixed: '2', delta: '-82%', improved: true },
+            { label: 'P95 latency', baseline: '1.42s', fixed: '1.48s', delta: '+0.06s', improved: false },
+          ],
+          chart: [
+            { label: 'Failures', baseline: 11, fixed: 2 },
+            { label: 'Pass rate', baseline: 78, fixed: 96, unit: '%' },
+          ],
+        },
+      ],
+    });
+
+    expect(screen.getByText('Evaluation comparison summary')).toBeInTheDocument();
+    expect(screen.getByText('Failing traces')).toBeInTheDocument();
+    expect(screen.getByText('11 to 2')).toBeInTheDocument();
+    expect(screen.getByText('Pass rate')).toBeInTheDocument();
   });
 });

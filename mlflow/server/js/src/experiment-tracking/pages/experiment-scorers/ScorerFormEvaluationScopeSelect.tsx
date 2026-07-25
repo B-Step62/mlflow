@@ -9,9 +9,14 @@ import type { LLMScorerFormData } from './LLMScorerFormRenderer';
 interface ScorerFormEvaluationScopeSelectProps {
   mode: ScorerFormMode;
   onUserSelect?: (fieldName: keyof LLMScorerFormData, value: string) => void;
+  disabled?: boolean;
 }
 
-export const ScorerFormEvaluationScopeSelect = ({ mode, onUserSelect }: ScorerFormEvaluationScopeSelectProps) => {
+export const ScorerFormEvaluationScopeSelect = ({
+  mode,
+  onUserSelect,
+  disabled,
+}: ScorerFormEvaluationScopeSelectProps) => {
   const { control } = useFormContext<ScorerFormData>();
 
   const isEditMode = mode === SCORER_FORM_MODE.EDIT;
@@ -43,7 +48,7 @@ export const ScorerFormEvaluationScopeSelect = ({ mode, onUserSelect }: ScorerFo
               field.onChange(newValue);
               onUserSelect?.('evaluationScope', newValue);
             }}
-            disabled={isEditMode}
+            disabled={isEditMode || disabled}
           >
             <Radio value={ScorerEvaluationScope.TRACES}>
               <FormattedMessage defaultMessage="Traces" description="Label for the scorer evaluation scope selection" />

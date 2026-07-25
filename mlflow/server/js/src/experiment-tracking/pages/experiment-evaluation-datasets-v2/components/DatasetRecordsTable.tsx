@@ -34,6 +34,7 @@ import {
   type SortDirection,
 } from '../utils/constants';
 import type { PendingNewRecord } from '../hooks/useRecordCreateState';
+import { getDatasetRecordValuePreview } from '../utils/datasetRecordRendering';
 
 interface DatasetRecordsTableProps {
   records: DatasetRecord[];
@@ -476,9 +477,9 @@ export const DatasetRecordsTable = ({
                 const hasValidContent = value !== undefined && Object.keys(value).length > 0;
                 const trimmedText = text.trim();
                 const isEmpty = !hasValidContent && trimmedText === '';
-                // Prefer compact JSON for valid input (collapses pretty-printed source onto one
-                // line); otherwise echo the raw text so each keystroke shows up immediately.
-                const display = hasValidContent ? JSON.stringify(value) : trimmedText;
+                const display = hasValidContent
+                  ? (getDatasetRecordValuePreview(value) ?? JSON.stringify(value))
+                  : trimmedText;
                 return (
                   <TableCell
                     key={col}
@@ -492,12 +493,7 @@ export const DatasetRecordsTable = ({
                         <FormattedMessage defaultMessage="(empty)" description="Placeholder for an empty JSON cell" />
                       </Typography.Text>
                     ) : (
-                      <span
-                        css={[
-                          truncateCss,
-                          { fontFamily: 'monospace', fontSize: theme.typography.fontSizeSm, display: 'block' },
-                        ]}
-                      >
+                      <span css={[truncateCss, { fontSize: theme.typography.fontSizeSm, display: 'block' }]}>
                         {display}
                       </span>
                     )}

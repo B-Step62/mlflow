@@ -8,11 +8,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   ToolCallStatus,
   type AssistantAgentContextType,
+  type AssistantEvalComparisonChartPoint,
+  type AssistantEvalComparisonMetric,
   type AssistantConfig,
   type AssistantPart,
   type AssistantSelectionPromptOption,
   type ChatMessage,
   type MockEvalSetupRequest,
+  type MockProductionMonitoringRequest,
   type PermissionRequest,
   type ToolUseInfo,
   type ToolResultInfo,
@@ -30,6 +33,16 @@ import { useLocalStorage } from '@databricks/web-shared/hooks';
 import { useAssistantPageContextActions } from './AssistantPageContext';
 import { GatewayApi } from '../gateway/api';
 import { GATEWAY_PROVIDER_ID } from './constants';
+import Routes from '../experiment-tracking/routes';
+import {
+  ExperimentPageTabName,
+  MLFLOW_RUN_TYPE_TAG,
+  MLFLOW_RUN_TYPE_VALUE_EVALUATION,
+  MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE,
+} from '../experiment-tracking/constants';
+import { MlflowService } from '../experiment-tracking/sdk/MlflowService';
+import { COMPARE_TO_RUN_UUID_QUERY_PARAM } from '../experiment-tracking/components/evaluations/hooks/useCompareToRunUuid';
+import { SELECTED_RUN_UUID_QUERY_PARAM } from '../experiment-tracking/components/evaluations/hooks/useSelectedRunUuid';
 
 const AssistantReactContext = createContext<AssistantAgentContextType | null>(null);
 
@@ -53,6 +66,65 @@ interface PersistedChat {
 
 type MockEvalDatasetChoice = 'new' | 'golden';
 
+const EVALUATION_RUN_TYPE_VALUES = [MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE, MLFLOW_RUN_TYPE_VALUE_EVALUATION];
+const DIRECT_FIX_PROVIDER_IDS = new Set(['claude_code', 'codex']);
+const MOCK_PRODUCTION_MONITORING_SAMPLING_RATIO = 0.05;
+
+const getLatestEvaluationRunIds = async (experimentId: string, maxResults: number): Promise<string[]> => {
+  const runIds: string[] = [];
+  const seenRunIds = new Set<string>();
+  for (const runType of EVALUATION_RUN_TYPE_VALUES) {
+    try {
+      const response = await MlflowService.searchRuns({
+        experiment_ids: [experimentId],
+        order_by: ['attributes.start_time DESC'],
+        run_view_type: 'ACTIVE_ONLY',
+        filter: `tags.\`${MLFLOW_RUN_TYPE_TAG}\` = '${runType}'`,
+        max_results: maxResults,
+      });
+      for (const run of response.runs ?? []) {
+        const info = run.info as unknown as
+          | ({ runUuid?: string; run_uuid?: string; run_id?: string } & Record<string, unknown>)
+          | undefined;
+        const runId = info?.runUuid ?? info?.run_uuid ?? info?.run_id;
+        if (runId && !seenRunIds.has(runId)) {
+          seenRunIds.add(runId);
+          runIds.push(runId);
+        }
+        if (runIds.length >= maxResults) {
+          return runIds;
+        }
+      }
+    } catch {
+      // Try the next known evaluation run type.
+    }
+  }
+  return runIds;
+};
+
+const getLatestEvaluationRunId = async (experimentId: string): Promise<string | undefined> => {
+  return (await getLatestEvaluationRunIds(experimentId, 1))[0];
+};
+
+const getEvaluationRunsResultUrl = (experimentId: string, runUuid: string): string => {
+  const route = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.EvaluationRuns);
+  const searchParams = new URLSearchParams({ [SELECTED_RUN_UUID_QUERY_PARAM]: runUuid });
+  return `/#${route}?${searchParams.toString()}`;
+};
+
+const getEvaluationRunsComparisonUrl = (experimentId: string, selectedRunUuid: string, compareToRunUuid: string) => {
+  const route = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.EvaluationRuns);
+  const searchParams = new URLSearchParams({
+    [SELECTED_RUN_UUID_QUERY_PARAM]: selectedRunUuid,
+    [COMPARE_TO_RUN_UUID_QUERY_PARAM]: compareToRunUuid,
+  });
+  return `/#${route}?${searchParams.toString()}`;
+};
+
+const getJudgeAlignmentUrl = (experimentId: string): string => {
+  return `/#${Routes.getExperimentPageTabScorerAlignmentRoute(experimentId)}`;
+};
+
 type ActiveMockEvalSetup = {
   request: MockEvalSetupRequest;
   traceCount: number;
@@ -60,6 +132,34 @@ type ActiveMockEvalSetup = {
   primaryScorer: string;
   secondaryScorer: string;
 };
+
+const getMockEvalTargetDatasetName = (
+  setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice },
+): string => {
+  const { request, datasetChoice } = setup;
+  return datasetChoice === 'golden' ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
+};
+
+const getMockCodingAgentFixPrompt = (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }): string =>
+  [
+    `Fix the regression tracked by issue "${setup.request.issueName}".`,
+    `Use evaluation dataset "${getMockEvalTargetDatasetName(setup)}" and aligned scorer "${setup.primaryScorer}" as the verification target.`,
+    'The latest eval shows the LLM judge is now calibrated and the remaining failures are caused by unsupported answer claims when retrieval evidence is weak.',
+    'Please tighten the answer-generation prompt or guardrail so the app cites retrieved evidence, declines unsupported claims, and uses an uncertainty fallback when context is insufficient.',
+    'After the change, run the linked evaluation with a fresh trace sample and compare it against the baseline evaluation run.',
+  ].join('\n');
+
+const getMockProductionMonitoringRequest = (
+  setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice },
+): MockProductionMonitoringRequest => ({
+  issueId: setup.request.issueId,
+  issueName: setup.request.issueName,
+  sourceJobId: setup.request.sourceJobId,
+  experimentId: setup.request.experimentId,
+  datasetName: getMockEvalTargetDatasetName(setup),
+  scorerNames: [setup.primaryScorer, setup.secondaryScorer],
+  samplingRatio: MOCK_PRODUCTION_MONITORING_SAMPLING_RATIO,
+});
 
 /** `timestamp` round-trips through JSON as a string; restore it to a Date on load. */
 export const reviveMessages = (messages: ChatMessage[]): ChatMessage[] =>
@@ -166,6 +266,10 @@ export const applyToolResult = (parts: AssistantPart[], result: ToolResultInfo):
 /** The kinds of new information the stream delivers, each changing the open message's parts. */
 const PartsUpdateKind = {
   Text: 'text',
+  LinkAction: 'linkAction',
+  PromptAction: 'promptAction',
+  CopyAction: 'copyAction',
+  EvalComparisonSummary: 'evalComparisonSummary',
   SelectionPrompt: 'selectionPrompt',
   ToolCalls: 'toolCalls',
   ToolResult: 'toolResult',
@@ -174,6 +278,31 @@ const PartsUpdateKind = {
 /** A piece of new information from the stream that changes the open message's parts. */
 type PartsUpdate =
   | { kind: typeof PartsUpdateKind.Text; text: string }
+  | {
+      kind: typeof PartsUpdateKind.LinkAction;
+      actionId: string;
+      label: string;
+      href: string;
+    }
+  | {
+      kind: typeof PartsUpdateKind.PromptAction;
+      actionId: string;
+      label: string;
+      prompt: string;
+    }
+  | {
+      kind: typeof PartsUpdateKind.CopyAction;
+      actionId: string;
+      label: string;
+      copyText: string;
+    }
+  | {
+      kind: typeof PartsUpdateKind.EvalComparisonSummary;
+      actionId: string;
+      title: string;
+      metrics: AssistantEvalComparisonMetric[];
+      chart: AssistantEvalComparisonChartPoint[];
+    }
   | {
       kind: typeof PartsUpdateKind.SelectionPrompt;
       selectionId: string;
@@ -191,6 +320,29 @@ const reduceParts = (parts: AssistantPart[], update: PartsUpdate): AssistantPart
   switch (update.kind) {
     case PartsUpdateKind.Text:
       return update.text ? setOpenTextPart(parts, update.text) : parts;
+    case PartsUpdateKind.LinkAction:
+      return [...parts, { type: 'linkAction', actionId: update.actionId, label: update.label, href: update.href }];
+    case PartsUpdateKind.PromptAction:
+      return [
+        ...parts,
+        { type: 'promptAction', actionId: update.actionId, label: update.label, prompt: update.prompt },
+      ];
+    case PartsUpdateKind.CopyAction:
+      return [
+        ...parts,
+        { type: 'copyAction', actionId: update.actionId, label: update.label, copyText: update.copyText },
+      ];
+    case PartsUpdateKind.EvalComparisonSummary:
+      return [
+        ...parts,
+        {
+          type: 'evalComparisonSummary',
+          actionId: update.actionId,
+          title: update.title,
+          metrics: update.metrics,
+          chart: update.chart,
+        },
+      ];
     case PartsUpdateKind.SelectionPrompt:
       return [
         ...parts,
@@ -284,7 +436,19 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   const pendingMockJudgeAlignmentRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
     null,
   );
+  const pendingMockAlignedEvaluationRef = useRef<
+    (ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null
+  >(null);
+  const pendingMockFixRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(null);
+  const pendingMockFinalEvaluationRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
+    null,
+  );
   const pendingMockIssueResolutionRef = useRef<MockEvalSetupRequest | null>(null);
+  const pendingMockProductionMonitoringRef = useRef<MockProductionMonitoringRequest | null>(null);
+  const pendingMockProductionMonitoringNudgeRef = useRef<MockProductionMonitoringRequest | null>(null);
+  const baselineEvaluationRunIdRef = useRef<string | null>(null);
+  const fixedEvaluationRunIdRef = useRef<string | null>(null);
+  const selectedProviderIdRef = useRef<string | null>(null);
 
   // Token identifying the in-flight send; reset/cancel invalidates it so a late POST's
   // guarded callbacks no-op and its stream is closed instead of leaking into new state.
@@ -439,7 +603,89 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       openTextBufferRef.current = '';
       applyToOpenParts(
         { kind: PartsUpdateKind.Text, text: buffered },
-        { kind: PartsUpdateKind.SelectionPrompt, selectionId, title, description, options, defaultValue, continueLabel },
+        {
+          kind: PartsUpdateKind.SelectionPrompt,
+          selectionId,
+          title,
+          description,
+          options,
+          defaultValue,
+          continueLabel,
+        },
+      );
+    },
+    [applyToOpenParts],
+  );
+
+  const addLinkAction = useCallback(
+    ({ actionId, label, href }: { actionId: string; label: string; href: string }) => {
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+      const buffered = openTextBufferRef.current;
+      openTextBufferRef.current = '';
+      applyToOpenParts(
+        { kind: PartsUpdateKind.Text, text: buffered },
+        { kind: PartsUpdateKind.LinkAction, actionId, label, href },
+      );
+    },
+    [applyToOpenParts],
+  );
+
+  const addPromptAction = useCallback(
+    ({ actionId, label, prompt }: { actionId: string; label: string; prompt: string }) => {
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+      const buffered = openTextBufferRef.current;
+      openTextBufferRef.current = '';
+      applyToOpenParts(
+        { kind: PartsUpdateKind.Text, text: buffered },
+        { kind: PartsUpdateKind.PromptAction, actionId, label, prompt },
+      );
+    },
+    [applyToOpenParts],
+  );
+
+  const addCopyAction = useCallback(
+    ({ actionId, label, copyText }: { actionId: string; label: string; copyText: string }) => {
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+      const buffered = openTextBufferRef.current;
+      openTextBufferRef.current = '';
+      applyToOpenParts(
+        { kind: PartsUpdateKind.Text, text: buffered },
+        { kind: PartsUpdateKind.CopyAction, actionId, label, copyText },
+      );
+    },
+    [applyToOpenParts],
+  );
+
+  const addEvalComparisonSummary = useCallback(
+    ({
+      actionId,
+      title,
+      metrics,
+      chart,
+    }: {
+      actionId: string;
+      title: string;
+      metrics: AssistantEvalComparisonMetric[];
+      chart: AssistantEvalComparisonChartPoint[];
+    }) => {
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+      const buffered = openTextBufferRef.current;
+      openTextBufferRef.current = '';
+      applyToOpenParts(
+        { kind: PartsUpdateKind.Text, text: buffered },
+        { kind: PartsUpdateKind.EvalComparisonSummary, actionId, title, metrics, chart },
       );
     },
     [applyToOpenParts],
@@ -485,11 +731,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     setIsLoadingConfig(true);
     try {
       const config = await getConfig();
+      selectedProviderIdRef.current =
+        Object.entries(config.providers ?? {}).find(([, providerConfig]) => providerConfig.selected === true)?.[0] ??
+        null;
       const isComplete = await resolveSetupComplete(config);
       setSetupComplete(isComplete);
       setRemoteAccessAllowed(config.remote_access_allowed ?? false);
     } catch {
       // On error, assume setup is not complete
+      selectedProviderIdRef.current = null;
       setSetupComplete(false);
       setRemoteAccessAllowed(false);
     } finally {
@@ -636,7 +886,14 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     activeMockEvalSetupRef.current = null;
     lastMockEvalSetupRef.current = null;
     pendingMockJudgeAlignmentRef.current = null;
+    pendingMockAlignedEvaluationRef.current = null;
+    pendingMockFixRef.current = null;
+    pendingMockFinalEvaluationRef.current = null;
     pendingMockIssueResolutionRef.current = null;
+    pendingMockProductionMonitoringRef.current = null;
+    pendingMockProductionMonitoringNudgeRef.current = null;
+    baselineEvaluationRunIdRef.current = null;
+    fixedEvaluationRunIdRef.current = null;
   }, [clearMockStreamTimers]);
 
   // Begin a new in-flight send: stamp a fresh token in closure,
@@ -773,10 +1030,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       setup.request.onChoice?.(datasetChoice);
       activeMockEvalSetupRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
+      pendingMockAlignedEvaluationRef.current = null;
+      pendingMockFixRef.current = null;
+      pendingMockFinalEvaluationRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
 
       const { request, traceCount, traceSummary, primaryScorer, secondaryScorer } = setup;
       const addToGolden = datasetChoice === 'golden';
-      const targetDatasetName = addToGolden ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+      const targetDatasetName = addToGolden ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
       const datasetAction = addToGolden ? 'add_records_to_dataset' : 'create_dataset';
       const datasetResult = addToGolden
         ? `Added ${traceCount || 0} records to ${targetDatasetName}.`
@@ -795,7 +1057,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         {
           id: generateMessageId(),
           role: 'user',
-          content: addToGolden ? 'Add to golden dataset' : 'Create new dataset',
+          content: addToGolden ? 'Add to existing dataset' : 'Create new dataset',
           timestamp: new Date(),
         },
         {
@@ -899,25 +1161,25 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       scheduleMockStreamAction(4450, () => {
         request.onComplete?.(datasetChoice);
         lastMockEvalSetupRef.current = { ...setup, datasetChoice };
-        pendingMockJudgeAlignmentRef.current = { ...setup, datasetChoice };
         addSelectionPrompt({
-          selectionId: `mock-align-judge-${request.issueId}`,
-          title: 'Do you want me to fine-tune the judge so it aligns with human judgement?',
-          description:
-            'Judge alignment can improve agreement with reviewers, but it may take longer and use additional model calls.',
-          defaultValue: 'align',
+          selectionId: `mock-run-evaluation-now-${request.issueId}`,
+          title: 'Do you want to run evaluation now?',
+          description: 'Run the linked judges now and open the standard run page when it finishes.',
+          defaultValue: 'run',
           continueLabel: 'Continue',
           options: [
             {
-              value: 'align',
-              label: 'Yes, align the judge',
-              description: 'Use reviewed traces and fix-verification outcomes to tune the judge rubric.',
+              value: 'run',
+              label: 'Yes, run evaluation',
+              description: 'Run the evaluation with the linked dataset and judges now.',
               recommended: true,
+              prompt: 'Run evaluation',
             },
             {
-              value: 'skip',
-              label: 'Skip for now',
-              description: 'Keep the generated judge as-is and run evaluations with the draft rubric.',
+              value: 'later',
+              label: 'No, not now',
+              description: 'Keep the dataset and judges linked so you can run evaluation later.',
+              prompt: 'Not now',
             },
           ],
         });
@@ -939,10 +1201,12 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
       clearMockStreamTimers();
       activeRequestRef.current = null;
+      lastMockEvalSetupRef.current = setup;
 
       const { request, datasetChoice, primaryScorer, secondaryScorer } = setup;
       const targetDatasetName =
-        datasetChoice === 'golden' ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+        datasetChoice === 'golden' ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
+      const experimentId = request.experimentId ?? (getPageContext()['experimentId'] as string | undefined);
 
       setError(null);
       setIsStreaming(true);
@@ -989,18 +1253,194 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       scheduleMockStreamAction(1550, () => {
         resolveToolCall({
           toolUseId: `mock-run-evaluation-${request.issueId}`,
-          content: 'Started evaluation run eval_run_20260723_1718.',
+          content: 'Started evaluation run.',
+          isError: false,
+        });
+        writeStreamedText('\n\nEvaluation is running. I will attach the result to this issue when it finishes.');
+      });
+      scheduleMockStreamAction(1900, () => {
+        setCurrentStatus('Summarizing evaluation result');
+        writeStreamedText(
+          '\n\nEvaluation finished. The linked judges found a small set of failing traces that still reproduce the issue.',
+        );
+      });
+      scheduleMockStreamAction(2250, () => {
+        setCurrentStatus('Finding evaluation result');
+        const latestEvaluationRunIdPromise = experimentId
+          ? getLatestEvaluationRunId(experimentId)
+          : Promise.resolve(undefined);
+        void latestEvaluationRunIdPromise.then((latestEvaluationRunId) => {
+          if (experimentId && latestEvaluationRunId) {
+            baselineEvaluationRunIdRef.current = latestEvaluationRunId;
+            addLinkAction({
+              actionId: `mock-open-eval-result-${request.issueId}`,
+              label: 'Open evaluation result',
+              href: getEvaluationRunsResultUrl(experimentId, latestEvaluationRunId),
+            });
+            addPromptAction({
+              actionId: `mock-analyze-eval-result-${request.issueId}`,
+              label: 'Analyze result',
+              prompt: 'Analyze result',
+            });
+          } else {
+            writeStreamedText(
+              '\n\nI could not find an evaluation run to open yet. Check the evaluation runs table once the run appears.',
+            );
+          }
+          endStreamingTurn();
+        });
+      });
+    },
+    [
+      addLinkAction,
+      addPromptAction,
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      getPageContext,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockDeferEvaluation = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      lastMockEvalSetupRef.current = null;
+
+      const { request, datasetChoice } = setup;
+      const targetDatasetName =
+        datasetChoice === 'golden' ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Saving eval setup');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Not now',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `No problem. \`${targetDatasetName}\` and the linked judges are attached to the issue, so you can run evaluation later from the eval run workflow.`,
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        endStreamingTurn();
+      });
+    },
+    [clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockAnalyzeEvaluationResult = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+
+      const { request, datasetChoice, primaryScorer } = setup;
+      const targetDatasetName =
+        datasetChoice === 'golden' ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Analyzing evaluation result');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Analyze result',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(`I'll inspect the latest evaluation result for \`${targetDatasetName}\`.`);
+      });
+      scheduleMockStreamAction(700, () => {
+        addToolCalls([
+          {
+            id: `mock-analyze-eval-result-${request.issueId}`,
+            name: 'analyze_evaluation_result',
+            input: {
+              dataset: targetDatasetName,
+              scorer: primaryScorer,
+              issue_id: request.issueId,
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1500, () => {
+        resolveToolCall({
+          toolUseId: `mock-analyze-eval-result-${request.issueId}`,
+          content: 'Found 11 failing traces where the judge score stayed high despite issue-pattern matches.',
           isError: false,
         });
         writeStreamedText(
-          '\n\nEvaluation run `eval_run_20260723_1718` is running. I will attach the result to this issue when it finishes.',
+          `\n\nThe evaluation suggests \`${primaryScorer}\` is too permissive for this failure mode. Several traces still reproduce the issue, but the judge gives them passing or near-passing scores. I recommend aligning the judge before using this eval as a release gate.`,
         );
       });
       scheduleMockStreamAction(1900, () => {
+        pendingMockJudgeAlignmentRef.current = setup;
+        addSelectionPrompt({
+          selectionId: `mock-align-judge-${request.issueId}`,
+          title: 'Do you want me to fine-tune the judge so it aligns with human judgement?',
+          description:
+            'Judge alignment can improve agreement with reviewers, but it may take longer and use additional model calls.',
+          defaultValue: 'align',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'align',
+              label: 'Yes, align the judge',
+              description: 'Use reviewed traces and fix-verification outcomes to tune the judge rubric.',
+              recommended: true,
+            },
+            {
+              value: 'skip',
+              label: 'Skip for now',
+              description: 'Keep the generated judge as-is and run evaluations with the draft rubric.',
+            },
+          ],
+        });
         endStreamingTurn();
       });
     },
     [
+      addSelectionPrompt,
       addToolCalls,
       clearMockStreamTimers,
       endStreamingTurn,
@@ -1010,19 +1450,42 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     ],
   );
 
+  const addMockFixAction = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      const fixPrompt = getMockCodingAgentFixPrompt(setup);
+      if (DIRECT_FIX_PROVIDER_IDS.has(selectedProviderIdRef.current ?? '')) {
+        addPromptAction({
+          actionId: `mock-fix-issue-${setup.request.issueId}`,
+          label: 'Fix it',
+          prompt: 'Fix it',
+        });
+        return;
+      }
+      addCopyAction({
+        actionId: `mock-copy-fix-prompt-${setup.request.issueId}`,
+        label: 'Copy prompt to fix with coding agent',
+        copyText: fixPrompt,
+      });
+    },
+    [addCopyAction, addPromptAction],
+  );
+
   const startMockJudgeAlignment = useCallback(
     (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
       clearMockStreamTimers();
       activeRequestRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
+      pendingMockAlignedEvaluationRef.current = setup;
+      lastMockEvalSetupRef.current = setup;
 
       const { request, datasetChoice, primaryScorer } = setup;
       const targetDatasetName =
-        datasetChoice === 'golden' ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+        datasetChoice === 'golden' ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
+      const experimentId = request.experimentId ?? (getPageContext()['experimentId'] as string | undefined);
 
       setError(null);
       setIsStreaming(true);
-      setCurrentStatus('Aligning judge');
+      setCurrentStatus('Preparing judge alignment');
       setActiveTools([]);
       setPendingPermission(null);
       setContextualSuggestedPrompts([]);
@@ -1048,7 +1511,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
       scheduleMockStreamAction(150, () => {
         writeStreamedText(
-          `I'll align \`${primaryScorer}\` against reviewed traces and the fix-verification outcomes before we run the golden eval.`,
+          `I'll prepare judge alignment for \`${primaryScorer}\` using reviewed traces and the failing examples from the evaluation result.`,
         );
       });
       scheduleMockStreamAction(700, () => {
@@ -1075,39 +1538,53 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         writeStreamedText('\n\nBuilt an alignment set from reviewed examples, repaired traces, and edge cases.');
       });
       scheduleMockStreamAction(1900, () => {
-        setCurrentStatus('Tuning judge rubric');
+        setCurrentStatus('Opening judge alignment console');
         addToolCalls([
           {
-            id: `mock-align-judge-${request.issueId}`,
-            name: 'align_judge',
+            id: `mock-create-alignment-session-${request.issueId}`,
+            name: 'create_judge_alignment_session',
             input: {
               scorer: primaryScorer,
+              dataset: targetDatasetName,
               objective: 'match human judgement on this failure mode',
-              cost_confirmation: 'approved',
             },
           },
         ]);
       });
-      scheduleMockStreamAction(2850, () => {
+      scheduleMockStreamAction(2550, () => {
         resolveToolCall({
-          toolUseId: `mock-align-judge-${request.issueId}`,
-          content: 'Aligned judge rubric. Agreement improved from 82% to 94% on reviewed traces.',
+          toolUseId: `mock-create-alignment-session-${request.issueId}`,
+          content: 'Created judge alignment session with the failing eval examples.',
           isError: false,
         });
         writeStreamedText(
-          `\n\nJudge alignment completed. Agreement improved from 82% to 94% on reviewed traces. \`${primaryScorer}\` is ready to use in the golden eval.`,
+          `\n\nI prepared the alignment console for \`${primaryScorer}\`. Use it to review the failing eval examples and tighten the judge rubric.`,
         );
       });
-      scheduleMockStreamAction(3200, () => {
-        request.onResolve?.();
+      scheduleMockStreamAction(2850, () => {
+        if (experimentId) {
+          addLinkAction({
+            actionId: `mock-open-judge-alignment-${request.issueId}`,
+            label: 'Open judge alignment console',
+            href: getJudgeAlignmentUrl(experimentId),
+          });
+        }
+        writeStreamedText('\n\nOnce you aligned the judge, tell me to re-run the evaluation.');
+        addPromptAction({
+          actionId: `mock-rerun-aligned-evaluation-${request.issueId}`,
+          label: 'Re-run evaluation',
+          prompt: 'Re-run evaluation',
+        });
         endStreamingTurn();
-        setContextualSuggestedPrompts(['Run evaluation']);
       });
     },
     [
+      addLinkAction,
+      addPromptAction,
       addToolCalls,
       clearMockStreamTimers,
       endStreamingTurn,
+      getPageContext,
       resolveToolCall,
       scheduleMockStreamAction,
       writeStreamedText,
@@ -1119,10 +1596,11 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       clearMockStreamTimers();
       activeRequestRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
+      pendingMockFixRef.current = setup;
 
       const { request, datasetChoice, primaryScorer } = setup;
       const targetDatasetName =
-        datasetChoice === 'golden' ? request.goldenDatasetName ?? request.datasetName : request.datasetName;
+        datasetChoice === 'golden' ? (request.goldenDatasetName ?? request.datasetName) : request.datasetName;
 
       setError(null);
       setIsStreaming(true);
@@ -1152,16 +1630,408 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
       scheduleMockStreamAction(150, () => {
         writeStreamedText(
-          `Got it. I'll keep \`${primaryScorer}\` as a draft judge for \`${targetDatasetName}\`. You can align it later from the judge detail page.`,
+          `Got it. I'll keep \`${primaryScorer}\` as-is for \`${targetDatasetName}\`. The latest evaluation result suggests it may be too permissive, so fix recommendations will be lower confidence until the judge is aligned.`,
         );
       });
       scheduleMockStreamAction(700, () => {
-        request.onResolve?.();
+        writeStreamedText(
+          '\n\nThe likely app-side fixes are to tighten grounding, add an unsupported-claim fallback, and make retrieval evidence mandatory before final answer generation.',
+        );
+        addMockFixAction(setup);
         endStreamingTurn();
-        setContextualSuggestedPrompts(['Run evaluation']);
+      });
+    },
+    [addMockFixAction, clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockRerunAlignedEvaluation = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockAlignedEvaluationRef.current = null;
+      pendingMockFixRef.current = setup;
+      lastMockEvalSetupRef.current = setup;
+
+      const { request, primaryScorer, secondaryScorer } = setup;
+      const targetDatasetName = getMockEvalTargetDatasetName(setup);
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Re-running evaluation');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Re-run evaluation',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(`I'll re-run the evaluation on \`${targetDatasetName}\` with the aligned judge rubric.`);
+      });
+      scheduleMockStreamAction(650, () => {
+        addToolCalls([
+          {
+            id: `mock-rerun-aligned-evaluation-${request.issueId}`,
+            name: 'run_evaluation',
+            input: {
+              dataset: targetDatasetName,
+              scorers: [primaryScorer, secondaryScorer],
+              issue_id: request.issueId,
+              judge_alignment: 'aligned',
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1450, () => {
+        resolveToolCall({
+          toolUseId: `mock-rerun-aligned-evaluation-${request.issueId}`,
+          content: 'Aligned evaluation run completed.',
+          isError: false,
+        });
+        writeStreamedText(
+          `\n\nThe aligned judge now flags this issue pattern consistently. The remaining failures point to app behavior, not judge drift.`,
+        );
+      });
+      scheduleMockStreamAction(1900, () => {
+        writeStreamedText(
+          [
+            '\n\nSuggested fixes:',
+            '- Require retrieved evidence before emitting factual claims.',
+            '- Add an uncertainty fallback when context is missing or contradictory.',
+            '- Tighten the final-answer prompt so citations are mandatory for user-facing claims.',
+          ].join('\n'),
+        );
+      });
+      scheduleMockStreamAction(2200, () => {
+        addMockFixAction(setup);
+        endStreamingTurn();
+      });
+    },
+    [
+      addMockFixAction,
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockApplyFix = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockFixRef.current = null;
+      pendingMockFinalEvaluationRef.current = setup;
+
+      const { request } = setup;
+      const targetDatasetName = getMockEvalTargetDatasetName(setup);
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Applying fix');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Fix it',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          'I will apply the prompt and guardrail changes that address the aligned evaluation failures.',
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        addToolCalls([
+          {
+            id: `mock-apply-fix-${request.issueId}`,
+            name: 'apply_prompt_fix',
+            input: {
+              issue_id: request.issueId,
+              dataset: targetDatasetName,
+              change:
+                'Require retrieval evidence for factual claims and fall back to uncertainty when evidence is insufficient.',
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1450, () => {
+        resolveToolCall({
+          toolUseId: `mock-apply-fix-${request.issueId}`,
+          content: 'Applied prompt and guardrail update.',
+          isError: false,
+        });
+        writeStreamedText(
+          '\n\nI applied the fix. The next useful check is an evaluation with a fresh trace sample so we can compare it against the baseline.',
+        );
+      });
+      scheduleMockStreamAction(1800, () => {
+        addSelectionPrompt({
+          selectionId: `mock-run-fixed-evaluation-${request.issueId}`,
+          title: 'Run evaluation again with new traces?',
+          description: 'This will compare the fixed behavior against the baseline evaluation run.',
+          defaultValue: 'run',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'run',
+              label: 'Yes, run evaluation again',
+              description: 'Run the aligned judges on a fresh trace sample and compare with the baseline.',
+              recommended: true,
+              prompt: 'Yes, run evaluation again',
+            },
+            {
+              value: 'later',
+              label: 'No, not now',
+              description: 'Keep the fix and linked eval artifacts for a later run.',
+              prompt: 'No, not now',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [
+      addSelectionPrompt,
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockDeferFixedEvaluation = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockFinalEvaluationRef.current = null;
+
+      const targetDatasetName = getMockEvalTargetDatasetName(setup);
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Saving fix');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'No, not now',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `No problem. The fix is ready, and \`${targetDatasetName}\` remains linked so you can run the comparison later.`,
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        endStreamingTurn();
       });
     },
     [clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockRunFixedEvaluation = useCallback(
+    (setup: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockFinalEvaluationRef.current = null;
+
+      const { request, primaryScorer, secondaryScorer } = setup;
+      const targetDatasetName = getMockEvalTargetDatasetName(setup);
+      const experimentId = request.experimentId ?? (getPageContext()['experimentId'] as string | undefined);
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Running fixed evaluation');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Yes, run evaluation again',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `I'll run the aligned evaluation again on fresh traces and compare it with the baseline result.`,
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        addToolCalls([
+          {
+            id: `mock-run-fixed-evaluation-${request.issueId}`,
+            name: 'run_evaluation',
+            input: {
+              dataset: targetDatasetName,
+              scorers: [primaryScorer, secondaryScorer],
+              issue_id: request.issueId,
+              trace_sample: 'fresh',
+              compare_to: baselineEvaluationRunIdRef.current ?? 'latest baseline evaluation run',
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1450, () => {
+        resolveToolCall({
+          toolUseId: `mock-run-fixed-evaluation-${request.issueId}`,
+          content: 'Fixed evaluation run completed.',
+          isError: false,
+        });
+        writeStreamedText(
+          '\n\nEvaluation finished. Compared with the baseline, aligned-judge failures dropped from 11 to 2, and the remaining failures are low-confidence edge cases.',
+        );
+      });
+      scheduleMockStreamAction(1850, () => {
+        setCurrentStatus('Finding evaluation runs');
+        const latestEvaluationRunIdsPromise = experimentId
+          ? getLatestEvaluationRunIds(experimentId, 2)
+          : Promise.resolve([]);
+        void latestEvaluationRunIdsPromise.then((latestEvaluationRunIds) => {
+          addEvalComparisonSummary({
+            actionId: `mock-eval-comparison-summary-${request.issueId}`,
+            title: 'Evaluation comparison summary',
+            metrics: [
+              {
+                label: 'Failing traces',
+                baseline: '11',
+                fixed: '2',
+                delta: '-82%',
+                improved: true,
+              },
+              {
+                label: 'Pass rate',
+                baseline: '78%',
+                fixed: '96%',
+                delta: '+18 pts',
+                improved: true,
+              },
+              {
+                label: 'P95 latency',
+                baseline: '1.42s',
+                fixed: '1.48s',
+                delta: '+0.06s',
+                improved: false,
+              },
+            ],
+            chart: [
+              { label: 'Failures', baseline: 11, fixed: 2 },
+              { label: 'Pass rate', baseline: 78, fixed: 96, unit: '%' },
+              { label: 'Latency p95', baseline: 1420, fixed: 1480, unit: 'ms' },
+            ],
+          });
+          const baselineRunId =
+            baselineEvaluationRunIdRef.current ??
+            latestEvaluationRunIds.find((runId) => runId !== fixedEvaluationRunIdRef.current) ??
+            null;
+          const fixedRunId =
+            latestEvaluationRunIds.find((runId) => runId !== baselineRunId) ?? latestEvaluationRunIds[0] ?? null;
+          if (fixedRunId) {
+            fixedEvaluationRunIdRef.current = fixedRunId;
+          }
+          if (experimentId && baselineRunId && fixedRunId && baselineRunId !== fixedRunId) {
+            addLinkAction({
+              actionId: `mock-open-eval-comparison-${request.issueId}`,
+              label: 'Open comparison view',
+              href: getEvaluationRunsComparisonUrl(experimentId, fixedRunId, baselineRunId),
+            });
+          } else {
+            writeStreamedText(
+              '\n\nI could not find two distinct evaluation runs to compare yet. Open the evaluation runs table once the fixed run appears.',
+            );
+          }
+          pendingMockProductionMonitoringRef.current = getMockProductionMonitoringRequest(setup);
+          writeStreamedText(
+            '\n\nThe fix looks good in evaluation. I recommend setting up production monitoring with the aligned judges so regressions are caught on live traffic.',
+          );
+          addPromptAction({
+            actionId: `mock-setup-production-monitoring-${request.issueId}`,
+            label: 'Setup production monitoring',
+            prompt: 'Setup production monitoring',
+          });
+          request.onResolve?.();
+          endStreamingTurn();
+        });
+      });
+    },
+    [
+      addEvalComparisonSummary,
+      addLinkAction,
+      addPromptAction,
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      getPageContext,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      writeStreamedText,
+    ],
   );
 
   const beginMockEvalSetup = useCallback(
@@ -1195,7 +2065,14 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       activeMockEvalSetupRef.current = activeSetup;
       lastMockEvalSetupRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
+      pendingMockAlignedEvaluationRef.current = null;
+      pendingMockFixRef.current = null;
+      pendingMockFinalEvaluationRef.current = null;
       pendingMockIssueResolutionRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
+      baselineEvaluationRunIdRef.current = null;
+      fixedEvaluationRunIdRef.current = null;
       setIsPanelOpen(true);
       setSetupComplete(true);
       setIsLoadingConfig(false);
@@ -1269,24 +2146,22 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
           selectionId: `mock-select-eval-target-${request.issueId}`,
           title: 'Where should I put these examples?',
           description: request.goldenDatasetName
-            ? `I found ${request.goldenDatasetName} with ${
-                request.goldenDatasetRecordCount ?? 'existing'
-              } records.`
+            ? `I found ${request.goldenDatasetName} with ${request.goldenDatasetRecordCount ?? 'existing'} records.`
             : 'No matching golden dataset was found, so I can create a dedicated regression dataset.',
-          defaultValue: request.goldenDatasetName ? 'golden' : 'new',
+          defaultValue: 'new',
           continueLabel: 'Continue',
           options: request.goldenDatasetName
             ? [
                 {
                   value: 'golden',
-                  label: 'Add to golden dataset',
+                  label: 'Add to existing dataset',
                   description: `Add ${traceCount || 0} issue records to ${request.goldenDatasetName}.`,
-                  recommended: true,
                 },
                 {
                   value: 'new',
                   label: 'Create new dataset',
                   description: `Create ${request.datasetName} for this issue.`,
+                  recommended: true,
                 },
               ]
             : [
@@ -1319,6 +2194,8 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       clearMockStreamTimers();
       activeRequestRef.current = null;
       pendingMockIssueResolutionRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
 
       setError(null);
       setIsStreaming(true);
@@ -1374,6 +2251,13 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       activeMockEvalSetupRef.current = null;
       lastMockEvalSetupRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
+      pendingMockAlignedEvaluationRef.current = null;
+      pendingMockFixRef.current = null;
+      pendingMockFinalEvaluationRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
+      baselineEvaluationRunIdRef.current = null;
+      fixedEvaluationRunIdRef.current = null;
       setIsPanelOpen(true);
       setSetupComplete(true);
       setIsLoadingConfig(false);
@@ -1433,7 +2317,252 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         endStreamingTurn();
       });
     },
-    [addSelectionPrompt, clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, setIsPanelOpen, writeStreamedText],
+    [
+      addSelectionPrompt,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockProductionMonitoring = useCallback(
+    (request: MockProductionMonitoringRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+
+      const samplingPercent = Math.round(request.samplingRatio * 100);
+      const scorerNames = request.scorerNames.length ? request.scorerNames : ['linked_issue_judge'];
+      const scorerList = scorerNames.map((scorerName) => `\`${scorerName}\``).join(', ');
+
+      request.onStart?.();
+      setIsPanelOpen(true);
+      setSetupComplete(true);
+      setIsLoadingConfig(false);
+      setSessionId(`mock-production-monitoring-${request.issueId}`);
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing production monitor');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      const productionMonitoringMessages: ChatMessage[] = [
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: `Monitor issue in production: ${request.issueName}`,
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ];
+      if (request.appendToCurrentThread) {
+        setMessages((prev) => [...prev, ...productionMonitoringMessages]);
+      } else {
+        setMessages(productionMonitoringMessages);
+      }
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `I'll turn the linked eval judges into an online monitor for "${request.issueName}" with a ${samplingPercent}% sampling ratio.`,
+        );
+      });
+      scheduleMockStreamAction(700, () => {
+        setCurrentStatus('Configuring online judges');
+        addToolCalls([
+          {
+            id: `mock-configure-online-judges-${request.issueId}`,
+            name: 'configure_online_judges',
+            input: {
+              issue_id: request.issueId,
+              experiment_id: request.experimentId ?? getPageContext()['experimentId'],
+              dataset: request.datasetName,
+              scorers: scorerNames,
+              sampling_ratio: request.samplingRatio,
+              source_job: request.sourceJobId,
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1550, () => {
+        resolveToolCall({
+          toolUseId: `mock-configure-online-judges-${request.issueId}`,
+          content: `Enabled ${scorerNames.length} online judges at ${samplingPercent}% sampling.`,
+          isError: false,
+        });
+        writeStreamedText(
+          `\n\nEnabled ${scorerList} on production traffic at ${samplingPercent}% sampling. New failures will be linked back to this issue's eval package.`,
+        );
+      });
+      scheduleMockStreamAction(2100, () => {
+        setCurrentStatus('Saving monitor');
+        request.onComplete?.();
+        writeStreamedText(
+          '\n\nMonitor is ready. You can adjust the sampling ratio later from the online judges configuration.',
+        );
+        endStreamingTurn();
+      });
+    },
+    [
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      getPageContext,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockResolveWithoutProductionMonitoring = useCallback(
+    (request: MockProductionMonitoringRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Resolving issue');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Resolve without production monitoring',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          'Got it. I marked the issue as resolved without production monitoring. The eval package remains linked if you want to enable monitoring later.',
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        request.onResolve?.();
+        endStreamingTurn();
+      });
+    },
+    [clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockProductionMonitoringNudge = useCallback(
+    (request: MockProductionMonitoringRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = request;
+      pendingMockProductionMonitoringRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+
+      setIsPanelOpen(true);
+      setSetupComplete(true);
+      setIsLoadingConfig(false);
+      setSessionId(`mock-production-monitoring-nudge-${request.issueId}`);
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing production monitoring prompt');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages([
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: `Mark issue as resolved: ${request.issueName}`,
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          'This issue already has an eval, but production monitoring is not enabled yet. I recommend turning the aligned judges into an online monitor before resolving it.',
+        );
+      });
+      scheduleMockStreamAction(600, () => {
+        addSelectionPrompt({
+          selectionId: `mock-resolve-monitor-production-${request.issueId}`,
+          title: 'Set up production monitoring before resolving?',
+          description:
+            'This enables the linked judges on sampled production traffic so regressions reopen as new issue signals.',
+          defaultValue: 'monitor',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'monitor',
+              label: 'Yes, monitor in production',
+              description: 'Enable online monitoring, then mark the issue as resolved.',
+              recommended: true,
+              prompt: 'Setup production monitoring',
+            },
+            {
+              value: 'skip',
+              label: 'Resolve without monitoring',
+              description: 'Mark resolved now and leave monitoring disabled.',
+              prompt: 'Resolve without production monitoring',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [
+      addSelectionPrompt,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
   );
 
   const handleSendMessage = useCallback(
@@ -1441,12 +2570,53 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       clearMockStreamTimers();
       const normalizedMessage = message.trim().toLowerCase();
       const pendingMockIssueResolution = pendingMockIssueResolutionRef.current;
+      const pendingMockProductionMonitoringNudge = pendingMockProductionMonitoringNudgeRef.current;
+      if (pendingMockProductionMonitoringNudge) {
+        if (normalizedMessage.includes('without') || normalizedMessage.includes('skip') || normalizedMessage === 'no') {
+          startMockResolveWithoutProductionMonitoring(pendingMockProductionMonitoringNudge);
+          return;
+        }
+        if (
+          normalizedMessage.includes('monitor') ||
+          normalizedMessage.includes('production') ||
+          normalizedMessage.includes('yes') ||
+          normalizedMessage.includes('setup')
+        ) {
+          startMockProductionMonitoring({
+            ...pendingMockProductionMonitoringNudge,
+            appendToCurrentThread: true,
+            onComplete: () => {
+              pendingMockProductionMonitoringNudge.onComplete?.();
+              pendingMockProductionMonitoringNudge.onResolve?.();
+            },
+          });
+          return;
+        }
+      }
+      const pendingMockProductionMonitoring = pendingMockProductionMonitoringRef.current;
+      if (
+        pendingMockProductionMonitoring &&
+        (normalizedMessage.includes('monitor') ||
+          normalizedMessage.includes('production') ||
+          normalizedMessage.includes('setup'))
+      ) {
+        startMockProductionMonitoring({ ...pendingMockProductionMonitoring, appendToCurrentThread: true });
+        return;
+      }
       if (pendingMockIssueResolution) {
-        if (normalizedMessage.includes('without') || normalizedMessage.includes('skip') || normalizedMessage.includes('no')) {
+        if (
+          normalizedMessage.includes('without') ||
+          normalizedMessage.includes('skip') ||
+          normalizedMessage.includes('no')
+        ) {
           startMockResolveWithoutEval(pendingMockIssueResolution);
           return;
         }
-        if (normalizedMessage.includes('yes') || normalizedMessage.includes('create') || normalizedMessage.includes('eval')) {
+        if (
+          normalizedMessage.includes('yes') ||
+          normalizedMessage.includes('create') ||
+          normalizedMessage.includes('eval')
+        ) {
           beginMockEvalSetup({ ...pendingMockIssueResolution, appendToCurrentThread: true });
           return;
         }
@@ -1457,7 +2627,11 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
           startMockEvalArtifactCreation(activeMockEvalSetup, 'golden');
           return;
         }
-        if (normalizedMessage.includes('new') || normalizedMessage.includes('dedicated') || normalizedMessage.includes('create')) {
+        if (
+          normalizedMessage.includes('new') ||
+          normalizedMessage.includes('dedicated') ||
+          normalizedMessage.includes('create')
+        ) {
           startMockEvalArtifactCreation(activeMockEvalSetup, 'new');
           return;
         }
@@ -1477,9 +2651,72 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
       }
-      if (lastMockEvalSetupRef.current && normalizedMessage === 'run evaluation') {
-        startMockRunEvaluation(lastMockEvalSetupRef.current);
-        return;
+      const pendingMockAlignedEvaluation = pendingMockAlignedEvaluationRef.current;
+      if (pendingMockAlignedEvaluation) {
+        if (
+          normalizedMessage.includes('re-run') ||
+          normalizedMessage.includes('rerun') ||
+          normalizedMessage === 'run evaluation' ||
+          normalizedMessage.includes('run evaluation')
+        ) {
+          startMockRerunAlignedEvaluation(pendingMockAlignedEvaluation);
+          return;
+        }
+      }
+      const pendingMockFix = pendingMockFixRef.current;
+      if (pendingMockFix) {
+        if (
+          normalizedMessage.includes('fix it') ||
+          normalizedMessage.includes('apply') ||
+          normalizedMessage.includes('fixed') ||
+          normalizedMessage.includes('ready')
+        ) {
+          startMockApplyFix(pendingMockFix);
+          return;
+        }
+      }
+      const pendingMockFinalEvaluation = pendingMockFinalEvaluationRef.current;
+      if (pendingMockFinalEvaluation) {
+        if (
+          normalizedMessage.includes('yes') ||
+          normalizedMessage.includes('run') ||
+          normalizedMessage.includes('evaluation')
+        ) {
+          startMockRunFixedEvaluation(pendingMockFinalEvaluation);
+          return;
+        }
+        if (
+          normalizedMessage.includes('not now') ||
+          normalizedMessage.includes('later') ||
+          normalizedMessage.includes('skip') ||
+          normalizedMessage === 'no'
+        ) {
+          startMockDeferFixedEvaluation(pendingMockFinalEvaluation);
+          return;
+        }
+      }
+      const lastMockEvalSetup = lastMockEvalSetupRef.current;
+      if (lastMockEvalSetup) {
+        if (normalizedMessage.includes('analyze') && normalizedMessage.includes('result')) {
+          startMockAnalyzeEvaluationResult(lastMockEvalSetup);
+          return;
+        }
+        if (
+          normalizedMessage === 'run evaluation' ||
+          (normalizedMessage.includes('yes') && normalizedMessage.includes('evaluation'))
+        ) {
+          startMockRunEvaluation(lastMockEvalSetup);
+          return;
+        }
+        if (
+          normalizedMessage.includes('not now') ||
+          normalizedMessage.includes('later') ||
+          normalizedMessage.includes('skip') ||
+          normalizedMessage === 'no'
+        ) {
+          startMockDeferEvaluation(lastMockEvalSetup);
+          return;
+        }
       }
       if (!sessionId) {
         startChat(message);
@@ -1543,6 +2780,14 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       startMockJudgeAlignment,
       startMockResolveWithoutEval,
       startMockSkipJudgeAlignment,
+      startMockDeferEvaluation,
+      startMockAnalyzeEvaluationResult,
+      startMockRerunAlignedEvaluation,
+      startMockApplyFix,
+      startMockRunFixedEvaluation,
+      startMockDeferFixedEvaluation,
+      startMockProductionMonitoring,
+      startMockResolveWithoutProductionMonitoring,
       startMockRunEvaluation,
     ],
   );
@@ -1690,6 +2935,8 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     respondToPermission,
     startMockEvalSetup,
     startMockIssueResolution,
+    startMockProductionMonitoring,
+    startMockProductionMonitoringNudge,
   };
 
   return <AssistantReactContext.Provider value={value}>{children}</AssistantReactContext.Provider>;
@@ -1725,6 +2972,8 @@ const disabledAssistantContext: AssistantAgentContextType = {
   respondToPermission: () => {},
   startMockEvalSetup: () => {},
   startMockIssueResolution: () => {},
+  startMockProductionMonitoring: () => {},
+  startMockProductionMonitoringNudge: () => {},
 };
 
 /**

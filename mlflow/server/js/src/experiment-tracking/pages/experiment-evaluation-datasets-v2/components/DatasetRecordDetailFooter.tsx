@@ -48,13 +48,13 @@ const StatusText = ({ status, errorMessage }: { status: SaveStatus; errorMessage
         </Typography.Text>
       );
     case 'invalid':
-      // The per-section editors render their own "Invalid JSON" indicator (icon + red border).
+      // The per-section editors render their own invalid-format indicator (icon + red border).
       // This footer line tells the user *why* Save is disabled without re-stating which field.
       return (
         <Typography.Text color="error">
           <FormattedMessage
-            defaultMessage="Fix invalid JSON to save"
-            description="Status text shown in the dataset record drawer footer when at least one editor has malformed JSON"
+            defaultMessage="Fix invalid fields to save"
+            description="Status text shown in the dataset record drawer footer when at least one editor has malformed JSON or YAML"
           />
         </Typography.Text>
       );

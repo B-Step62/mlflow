@@ -324,7 +324,6 @@ const DashboardTimeRangeSelector = ({
   const selectedDateFilterLabel =
     namedDateFilters.find((namedDateFilter) => namedDateFilter.key === currentStartTimeLabel)?.label ??
     namedDateFilters.find((namedDateFilter) => namedDateFilter.key === DEFAULT_START_TIME_LABEL)?.label;
-  const selectedTimeUnitLabel = timeUnitOptions.find((option) => option.value === effectiveTimeUnit)?.label;
   const triggerTimeRangeLabel =
     currentStartTimeLabel === 'CUSTOM'
       ? `${formatDateShort(startTime)} - ${formatDateShort(endTime ?? dateNow.toISOString())}`
@@ -333,17 +332,13 @@ const DashboardTimeRangeSelector = ({
   const handleTimeRangeChange = (startTimeLabel: START_TIME_LABEL) => {
     if (startTimeLabel === 'CUSTOM') {
       setMonitoringFilters({
-        ...monitoringFilters,
         startTimeLabel,
         startTime: startTime ?? getFallbackStartTime(dateNow),
         endTime: endTime ?? dateNow.toISOString(),
       });
       return;
     }
-    setMonitoringFilters({
-      ...monitoringFilters,
-      startTimeLabel,
-    });
+    setMonitoringFilters({ startTimeLabel });
   };
 
   return (
@@ -355,12 +350,12 @@ const DashboardTimeRangeSelector = ({
           endIcon={<ChevronDownIcon />}
           css={{ whiteSpace: 'nowrap' }}
         >
-          {triggerTimeRangeLabel} / {selectedTimeUnitLabel}
+          {triggerTimeRangeLabel}
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" css={{ width: 420 }}>
         <DropdownMenu.Label>
-          <FormattedMessage defaultMessage="Time" description="Label for the time range select dropdown" />
+          <FormattedMessage defaultMessage="Time range" description="Label for the time range select dropdown" />
         </DropdownMenu.Label>
         <DropdownMenu.RadioGroup
           componentId="mlflow.experiment.dashboard.time-range-selector.range"
@@ -392,7 +387,6 @@ const DashboardTimeRangeSelector = ({
               onChange={(e) => {
                 const date = e.target.value;
                 setMonitoringFilters({
-                  ...monitoringFilters,
                   startTimeLabel: 'CUSTOM',
                   startTime: date?.from ? date.from.toISOString() : undefined,
                   endTime: date?.to ? date.to.toISOString() : undefined,
@@ -421,10 +415,7 @@ const DashboardTimeRangeSelector = ({
         )}
         <DropdownMenu.Separator />
         <DropdownMenu.Label>
-          <FormattedMessage
-            defaultMessage="Group by"
-            description="Experiment page > group by runs control > trigger button label > empty"
-          />
+          <FormattedMessage defaultMessage="Unit" description="Label for the dashboard time unit selector" />
         </DropdownMenu.Label>
         <DropdownMenu.RadioGroup
           componentId="mlflow.experiment.dashboard.time-range-selector.time-unit"
@@ -471,12 +462,16 @@ const ExperimentGenAIDashboardPageImpl = () => {
   const { data: experiment } = useGetExperimentQuery({ experimentId });
 
   // Get the current time range from monitoring filters
-  const [monitoringFilters, setMonitoringFilters] = useMonitoringFilters();
+  const [monitoringFilters, setMonitoringFilters, disableAutomaticInitialization] = useMonitoringFilters();
   const monitoringConfig = useMonitoringConfig();
 
   // Initialize with demo time range if this is a demo experiment
   useEffect(() => {
-    if (!experiment || monitoringFilters.startTimeLabel !== DEFAULT_START_TIME_LABEL) {
+    if (
+      !experiment ||
+      disableAutomaticInitialization ||
+      monitoringFilters.startTimeLabel !== DEFAULT_START_TIME_LABEL
+    ) {
       return;
     }
 
@@ -501,7 +496,7 @@ const ExperimentGenAIDashboardPageImpl = () => {
         );
       }
     }
-  }, [experiment, monitoringFilters.startTimeLabel, setMonitoringFilters]);
+  }, [disableAutomaticInitialization, experiment, monitoringFilters.startTimeLabel, setMonitoringFilters]);
 
   // 'ALL' is excluded from the date selector on this page since charts require
   // start_time_ms and end_time_ms. If the user navigates here with ?startTimeLabel=ALL,

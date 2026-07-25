@@ -25,8 +25,48 @@ export interface AssistantSelectionPromptOption {
   prompt?: string;
 }
 
+export interface AssistantEvalComparisonMetric {
+  label: string;
+  baseline: string;
+  fixed: string;
+  delta: string;
+  improved: boolean;
+}
+
+export interface AssistantEvalComparisonChartPoint {
+  label: string;
+  baseline: number;
+  fixed: number;
+  unit?: string;
+}
+
 export type AssistantPart =
   | { type: 'text'; text: string }
+  | {
+      type: 'linkAction';
+      actionId: string;
+      label: string;
+      href: string;
+    }
+  | {
+      type: 'promptAction';
+      actionId: string;
+      label: string;
+      prompt: string;
+    }
+  | {
+      type: 'copyAction';
+      actionId: string;
+      label: string;
+      copyText: string;
+    }
+  | {
+      type: 'evalComparisonSummary';
+      actionId: string;
+      title: string;
+      metrics: AssistantEvalComparisonMetric[];
+      chart: AssistantEvalComparisonChartPoint[];
+    }
   | {
       type: 'selectionPrompt';
       selectionId: string;
@@ -97,6 +137,7 @@ export interface MockEvalSetupRequest {
   issueId: string;
   issueName: string;
   sourceJobId?: string;
+  experimentId?: string;
   traceCount?: number;
   traceIds?: string[];
   datasetName: string;
@@ -107,6 +148,20 @@ export interface MockEvalSetupRequest {
   onStart?: () => void;
   onChoice?: (datasetMode: 'new' | 'golden') => void;
   onComplete?: (datasetMode: 'new' | 'golden') => void;
+  onResolve?: () => void;
+}
+
+export interface MockProductionMonitoringRequest {
+  issueId: string;
+  issueName: string;
+  sourceJobId?: string;
+  experimentId?: string;
+  datasetName: string;
+  scorerNames: string[];
+  samplingRatio: number;
+  appendToCurrentThread?: boolean;
+  onStart?: () => void;
+  onComplete?: () => void;
   onResolve?: () => void;
 }
 
@@ -218,6 +273,10 @@ export interface AssistantAgentActions {
   startMockEvalSetup: (request: MockEvalSetupRequest) => void;
   /** Start a frontend-only assistant demo prompt before resolving an issue */
   startMockIssueResolution: (request: MockEvalSetupRequest) => void;
+  /** Start a frontend-only assistant demo stream for enabling production monitoring */
+  startMockProductionMonitoring: (request: MockProductionMonitoringRequest) => void;
+  /** Start a frontend-only assistant demo prompt before resolving without production monitoring */
+  startMockProductionMonitoringNudge: (request: MockProductionMonitoringRequest) => void;
 }
 
 export type AssistantAgentContextType = AssistantAgentState & AssistantAgentActions;

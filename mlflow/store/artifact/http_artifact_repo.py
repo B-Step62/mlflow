@@ -3,6 +3,7 @@ import os
 import posixpath
 import time
 from concurrent.futures import as_completed
+from urllib.parse import urlparse
 
 import requests
 from requests import HTTPError
@@ -32,6 +33,7 @@ from mlflow.store.artifact.artifact_repo import (
     verify_artifact_path,
 )
 from mlflow.store.artifact.cloud_artifact_repo import _complete_futures, _compute_num_chunks
+from mlflow.tracking._tracking_service.utils import get_tracking_uri
 from mlflow.utils.credentials import get_default_host_creds
 from mlflow.utils.file_utils import (
     ArtifactProgressBar,
@@ -43,9 +45,17 @@ from mlflow.utils.file_utils import (
 from mlflow.utils.mime_type_utils import _guess_mime_type
 from mlflow.utils.request_utils import download_chunk
 from mlflow.utils.rest_utils import augmented_raise_for_status, http_request
-from mlflow.utils.uri import validate_path_is_safe
+from mlflow.utils.uri import is_http_uri, validate_path_is_safe
 
 _logger = logging.getLogger(__name__)
+
+
+def _same_http_host(uri: str, other: str) -> bool:
+    a = urlparse(uri)
+    b = urlparse(other)
+    # Compare scheme + host + port so ambient tracking credentials are only ever
+    # attached to the configured tracking host, not an arbitrary artifact host.
+    return (a.scheme, a.hostname, a.port) == (b.scheme, b.hostname, b.port)
 
 
 class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
@@ -64,9 +74,29 @@ class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
             self._chunk_thread_pool = self._create_thread_pool()
         return self._chunk_thread_pool
 
+    def _scoped_host_creds(self, uri):
+        """
+        Build host creds for an artifact HTTP request, attaching the ambient MLflow tracking
+        credentials only when ``uri`` targets the trusted tracking host. A raw ``http(s)``
+        artifact/model URI can point at an attacker-controlled host; sending the tracking
+        token/basic-auth there would leak it (CWE-918), so credentials are stripped unless the
+        request host matches the tracking server.
+        """
+        host_creds = get_default_host_creds(uri)
+        trusted_uri = self.tracking_uri or get_tracking_uri()
+        if trusted_uri and is_http_uri(trusted_uri) and _same_http_host(uri, trusted_uri):
+            return host_creds
+
+        host_creds.username = None
+        host_creds.password = None
+        host_creds.token = None
+        host_creds.aws_sigv4 = False
+        host_creds.auth = None
+        return host_creds
+
     @property
     def _host_creds(self):
-        return get_default_host_creds(self.artifact_uri)
+        return self._scoped_host_creds(self.artifact_uri)
 
     def log_artifact(self, local_file, artifact_path=None):
         verify_artifact_path(artifact_path)
@@ -113,7 +143,7 @@ class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
         url, tail = self.artifact_uri.split(endpoint, maxsplit=1)
         root = tail.lstrip("/")
         params = {"path": posixpath.join(root, path) if path else root}
-        host_creds = get_default_host_creds(url)
+        host_creds = self._scoped_host_creds(url)
         resp = http_request(host_creds, endpoint, "GET", params=params)
         augmented_raise_for_status(resp)
         file_infos = []
@@ -263,7 +293,7 @@ class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
         uri, endpoint = self._construct_artifact_uri_and_path(
             "/mlflow-artifacts/presigned", remote_file_path
         )
-        host_creds = get_default_host_creds(uri)
+        host_creds = self._scoped_host_creds(uri)
         resp = http_request(host_creds, endpoint, "GET")
         augmented_raise_for_status(resp)
         return PresignedDownloadUrlResponse.from_dict(resp.json())
@@ -287,7 +317,7 @@ class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
         uri, endpoint = self._construct_artifact_uri_and_path(
             "/mlflow-artifacts/mpu/create", artifact_path
         )
-        host_creds = get_default_host_creds(uri)
+        host_creds = self._scoped_host_creds(uri)
         params = {
             "path": local_file,
             "num_parts": num_parts,
@@ -300,7 +330,7 @@ class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
         uri, endpoint = self._construct_artifact_uri_and_path(
             "/mlflow-artifacts/mpu/complete", artifact_path
         )
-        host_creds = get_default_host_creds(uri)
+        host_creds = self._scoped_host_creds(uri)
         params = {
             "path": local_file,
             "upload_id": upload_id,
@@ -313,7 +343,7 @@ class HttpArtifactRepository(ArtifactRepository, MultipartUploadMixin):
         uri, endpoint = self._construct_artifact_uri_and_path(
             "/mlflow-artifacts/mpu/abort", artifact_path
         )
-        host_creds = get_default_host_creds(uri)
+        host_creds = self._scoped_host_creds(uri)
         params = {
             "path": local_file,
             "upload_id": upload_id,

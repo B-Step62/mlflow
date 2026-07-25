@@ -2,13 +2,14 @@ import { useState, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   Button,
+  ChartLineIcon,
   CheckCircleIcon,
+  Checkbox,
   CloseIcon,
   CopyIcon,
-  Drawer,
   Empty,
-  ForkHorizontalIcon,
   InfoPopover,
+  Modal,
   Spinner,
   SparkleIcon,
   Tag,
@@ -17,6 +18,7 @@ import {
   type TagColors,
   useDesignSystemTheme,
 } from '@databricks/design-system';
+import { useLocalStorage } from '@databricks/web-shared/hooks';
 import {
   isV3ModelTraceInfo,
   ModelTraceExplorer,
@@ -25,21 +27,25 @@ import {
 } from '@databricks/web-shared/model-trace-explorer';
 
 import { useNavigate } from '../../../common/utils/RoutingUtils';
-import { ExperimentPageTabName } from '../../constants';
+import { prefixRouteWithWorkspace } from '../../../workspaces/utils/WorkspaceUtils';
+import { SELECTED_RUN_UUID_QUERY_PARAM } from '../evaluations/hooks/useSelectedRunUuid';
+import {
+  ExperimentPageTabName,
+  MLFLOW_RUN_TYPE_TAG,
+  MLFLOW_RUN_TYPE_VALUE_EVALUATION,
+  MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE,
+} from '../../constants';
 import Routes from '../../routes';
+import { MlflowService } from '../../sdk/MlflowService';
 import { type Issue, type IssueSeverity, type IssueStatus } from './hooks/useSearchIssuesQuery';
 import { useUpdateIssue } from './hooks/useUpdateIssue';
 import Utils from '../../../common/utils/Utils';
 import { useAssistant } from '../../../assistant/AssistantContext';
-import type { MockEvalSetupRequest } from '../../../assistant/types';
-import {
-  getEvalLinkedItems,
-  getMockEvalDatasetRecords,
-  getMockEvalScorers,
-  type MockEvalDatasetMode,
-} from '../../mockEvalArtifacts';
+import type { MockEvalSetupRequest, MockProductionMonitoringRequest } from '../../../assistant/types';
+import { getEvalLinkedItems, type MockEvalDatasetMode } from '../../mockEvalArtifacts';
 
 export type IssueEvalSetupStatus = 'idle' | 'choosing' | 'running' | 'complete';
+export type IssueProductionMonitoringStatus = 'idle' | 'running' | 'complete';
 
 interface IssueDetailsPanelProps {
   issue: Issue;
@@ -47,11 +53,23 @@ interface IssueDetailsPanelProps {
   onStatusChange?: (issueId: string, status: IssueStatus) => void;
   evalSetupStatus?: IssueEvalSetupStatus;
   evalSetupDatasetMode?: MockEvalDatasetMode;
+  productionMonitoringStatus?: IssueProductionMonitoringStatus;
   onEvalSetupStatusChange?: (issueId: string, status: IssueEvalSetupStatus) => void;
   onEvalSetupDatasetModeChange?: (issueId: string, mode: MockEvalDatasetMode) => void;
+  onProductionMonitoringStatusChange?: (issueId: string, status: IssueProductionMonitoringStatus) => void;
 }
 
-type LinkedArtifactDrawer = { type: 'dataset' } | { type: 'scorer'; scorerName: string };
+const EVALUATION_RUN_TYPE_VALUES = [MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE, MLFLOW_RUN_TYPE_VALUE_EVALUATION];
+const DEFAULT_PRODUCTION_MONITORING_SAMPLING_RATIO = 0.05;
+const RESOLVE_WITHOUT_EVAL_NUDGE_STORAGE_KEY = 'mlflow.issues.resolve_without_eval_nudge_dismissed';
+const RESOLVE_WITHOUT_MONITORING_NUDGE_STORAGE_KEY = 'mlflow.issues.resolve_without_monitoring_nudge_dismissed';
+
+const openRouteInNewTab = (route: string) => {
+  const newWindow = window.open(`/#${prefixRouteWithWorkspace(route)}`, '_blank', 'noopener,noreferrer');
+  if (newWindow) {
+    newWindow.opener = null;
+  }
+};
 
 const getIssueSeverityTagColor = (severity: IssueSeverity): TagColors => {
   if (severity === 'high') {
@@ -76,22 +94,61 @@ const renderIssueSeverityLabel = (severity: IssueSeverity) => {
   return <FormattedMessage defaultMessage="Low" description="Issue detail low severity label" />;
 };
 
+const getLatestEvaluationRunId = async (experimentId: string): Promise<string | undefined> => {
+  for (const runType of EVALUATION_RUN_TYPE_VALUES) {
+    try {
+      const response = await MlflowService.searchRuns({
+        experiment_ids: [experimentId],
+        order_by: ['attributes.start_time DESC'],
+        run_view_type: 'ACTIVE_ONLY',
+        filter: `tags.\`${MLFLOW_RUN_TYPE_TAG}\` = '${runType}'`,
+        max_results: 1,
+      });
+      const info = response.runs?.[0]?.info as
+        | ({ runUuid?: string; run_uuid?: string; run_id?: string } & Record<string, unknown>)
+        | undefined;
+      const runId = info?.runUuid ?? info?.run_uuid ?? info?.run_id;
+      if (runId) {
+        return runId;
+      }
+    } catch {
+      // Try the next known evaluation run type.
+    }
+  }
+  return undefined;
+};
+
 export const IssueDetailsPanel = ({
   issue,
   experimentId,
   onStatusChange,
   evalSetupStatus = 'idle',
   evalSetupDatasetMode = 'new',
+  productionMonitoringStatus = 'idle',
   onEvalSetupStatusChange,
   onEvalSetupDatasetModeChange,
+  onProductionMonitoringStatusChange,
 }: IssueDetailsPanelProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const navigate = useNavigate();
-  const { startMockEvalSetup, startMockIssueResolution } = useAssistant();
+  const { startMockEvalSetup, startMockProductionMonitoring } = useAssistant();
   const { updateIssueAsync, isUpdating } = useUpdateIssue();
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [linkedArtifactDrawer, setLinkedArtifactDrawer] = useState<LinkedArtifactDrawer | null>(null);
+  const [isResolveWithoutEvalModalOpen, setIsResolveWithoutEvalModalOpen] = useState(false);
+  const [doNotShowResolveWithoutEvalNudge, setDoNotShowResolveWithoutEvalNudge] = useState(false);
+  const [isResolveWithoutMonitoringModalOpen, setIsResolveWithoutMonitoringModalOpen] = useState(false);
+  const [doNotShowResolveWithoutMonitoringNudge, setDoNotShowResolveWithoutMonitoringNudge] = useState(false);
+  const [isResolveWithoutEvalNudgeDismissed, setIsResolveWithoutEvalNudgeDismissed] = useLocalStorage({
+    initialValue: false,
+    key: RESOLVE_WITHOUT_EVAL_NUDGE_STORAGE_KEY,
+    version: 1,
+  });
+  const [isResolveWithoutMonitoringNudgeDismissed, setIsResolveWithoutMonitoringNudgeDismissed] = useLocalStorage({
+    initialValue: false,
+    key: RESOLVE_WITHOUT_MONITORING_NUDGE_STORAGE_KEY,
+    version: 1,
+  });
   const tracesRoute = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Traces);
   const selectedTraceIds = selectedTraceId ? [selectedTraceId] : [];
   const { data: selectedTraces, isLoading: isLoadingSelectedTrace } = useGetTracesById(selectedTraceIds);
@@ -100,17 +157,12 @@ export const IssueDetailsPanel = ({
   const dedicatedEvalLinkedItems = getEvalLinkedItems(issue, 'new');
   const goldenEvalLinkedItems = getEvalLinkedItems(issue, 'golden');
   const evalLinkedItems = getEvalLinkedItems(issue, evalSetupDatasetMode);
-  const datasetRecords = getMockEvalDatasetRecords(evalLinkedItems.dataset.datasetId) ?? [];
-  const scorerDetails = getMockEvalScorers(evalLinkedItems.scorers.map((scorer) => scorer.name));
-  const selectedScorer =
-    linkedArtifactDrawer?.type === 'scorer'
-      ? scorerDetails.find((scorer) => scorer.name === linkedArtifactDrawer.scorerName)
-      : undefined;
 
   const createEvalSetupRequest = (overrides: Partial<MockEvalSetupRequest> = {}): MockEvalSetupRequest => ({
     issueId: issue.issue_id,
     issueName: issue.name,
     sourceJobId,
+    experimentId,
     traceCount: dedicatedEvalLinkedItems.dataset.traceCount,
     traceIds: issue.example_trace_ids,
     datasetName: dedicatedEvalLinkedItems.dataset.name,
@@ -136,21 +188,144 @@ export const IssueDetailsPanel = ({
     startMockEvalSetup(createEvalSetupRequest());
   };
 
+  const handleViewEvaluationRuns = async () => {
+    const route = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.EvaluationRuns);
+    const latestEvaluationRunId = await getLatestEvaluationRunId(experimentId);
+    if (latestEvaluationRunId) {
+      const searchParams = new URLSearchParams({ [SELECTED_RUN_UUID_QUERY_PARAM]: latestEvaluationRunId });
+      openRouteInNewTab(`${route}?${searchParams.toString()}`);
+      return;
+    }
+    openRouteInNewTab(route);
+  };
+
+  const handleViewDataset = () => {
+    openRouteInNewTab(Routes.getExperimentPageDatasetDetailRoute(experimentId, evalLinkedItems.dataset.datasetId));
+  };
+
+  const handleViewScorer = (scorerName: string) => {
+    const route = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Judges);
+    const searchParams = new URLSearchParams({
+      mockScorers: evalLinkedItems.scorers.map((scorer) => scorer.name).join(','),
+      selectedScorer: scorerName,
+    });
+    openRouteInNewTab(`${route}?${searchParams.toString()}`);
+  };
+
+  const createProductionMonitoringRequest = (
+    overrides: Partial<MockProductionMonitoringRequest> = {},
+  ): MockProductionMonitoringRequest => ({
+    issueId: issue.issue_id,
+    issueName: issue.name,
+    sourceJobId,
+    experimentId,
+    datasetName: evalLinkedItems.dataset.name,
+    scorerNames: evalLinkedItems.scorers.map((scorer) => scorer.name),
+    samplingRatio: DEFAULT_PRODUCTION_MONITORING_SAMPLING_RATIO,
+    onStart: () => onProductionMonitoringStatusChange?.(issue.issue_id, 'running'),
+    onComplete: () => onProductionMonitoringStatusChange?.(issue.issue_id, 'complete'),
+    ...overrides,
+  });
+
+  const handleMonitorInProduction = () => {
+    if (productionMonitoringStatus === 'running' || productionMonitoringStatus === 'complete') {
+      return;
+    }
+    startMockProductionMonitoring(createProductionMonitoringRequest());
+  };
+
+  const persistResolveWithoutEvalNudgePreference = () => {
+    if (!doNotShowResolveWithoutEvalNudge) {
+      return;
+    }
+    setIsResolveWithoutEvalNudgeDismissed(true);
+  };
+
+  const persistResolveWithoutMonitoringNudgePreference = () => {
+    if (!doNotShowResolveWithoutMonitoringNudge) {
+      return;
+    }
+    setIsResolveWithoutMonitoringNudgeDismissed(true);
+  };
+
+  const closeResolveWithoutEvalModal = () => {
+    persistResolveWithoutEvalNudgePreference();
+    setIsResolveWithoutEvalModalOpen(false);
+  };
+
+  const closeResolveWithoutMonitoringModal = () => {
+    persistResolveWithoutMonitoringNudgePreference();
+    setIsResolveWithoutMonitoringModalOpen(false);
+  };
+
+  const handleSetupEvalFromResolveModal = () => {
+    persistResolveWithoutEvalNudgePreference();
+    setIsResolveWithoutEvalModalOpen(false);
+    handleSetupEval();
+  };
+
+  const handleMonitorInProductionFromResolveModal = () => {
+    persistResolveWithoutMonitoringNudgePreference();
+    setIsResolveWithoutMonitoringModalOpen(false);
+    startMockProductionMonitoring(
+      createProductionMonitoringRequest({
+        onComplete: () => {
+          onProductionMonitoringStatusChange?.(issue.issue_id, 'complete');
+          handleStatusChange('resolved');
+        },
+      }),
+    );
+  };
+
   const setupEvalComplete = evalSetupStatus === 'complete';
+  const productionMonitoringComplete = productionMonitoringStatus === 'complete';
   const nextSteps = [
     {
       key: 'setup-eval',
       componentId: 'mlflow.issues.details.setup-eval',
-      title: <FormattedMessage defaultMessage="Setup eval" description="Issue detail next step to set up eval" />,
-      onClick: handleSetupEval,
+      title: setupEvalComplete ? (
+        <FormattedMessage defaultMessage="Eval created" description="Issue detail next step after eval is created" />
+      ) : (
+        <FormattedMessage defaultMessage="Setup eval" description="Issue detail next step to set up eval" />
+      ),
+      onClick: setupEvalComplete ? undefined : handleSetupEval,
       loading: evalSetupStatus === 'running',
-      disabled: evalSetupStatus === 'choosing' || setupEvalComplete,
+      disabled: evalSetupStatus === 'choosing',
       icon: setupEvalComplete ? (
         <CheckCircleIcon css={{ color: theme.colors.textValidationSuccess }} />
       ) : (
         <SparkleIcon color="ai" />
       ),
+      success: setupEvalComplete,
     },
+    ...(setupEvalComplete
+      ? [
+          {
+            key: 'monitor-production',
+            componentId: 'mlflow.issues.details.monitor-production',
+            title: productionMonitoringComplete ? (
+              <FormattedMessage
+                defaultMessage="Monitoring enabled"
+                description="Issue detail next step after production monitoring is enabled"
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="Monitor in production"
+                description="Issue detail next step to monitor the issue in production"
+              />
+            ),
+            onClick: productionMonitoringComplete ? undefined : handleMonitorInProduction,
+            loading: productionMonitoringStatus === 'running',
+            disabled: false,
+            icon: productionMonitoringComplete ? (
+              <CheckCircleIcon css={{ color: theme.colors.textValidationSuccess }} />
+            ) : (
+              <SparkleIcon color="ai" />
+            ),
+            success: productionMonitoringComplete,
+          },
+        ]
+      : []),
     {
       key: 'ask-review',
       componentId: 'mlflow.issues.details.ask-review',
@@ -159,6 +334,7 @@ export const IssueDetailsPanel = ({
       loading: false,
       disabled: false,
       icon: <SparkleIcon color="ai" />,
+      success: false,
     },
   ];
 
@@ -181,12 +357,38 @@ export const IssueDetailsPanel = ({
     });
   };
 
+  const handleResolveWithoutEvalFromModal = () => {
+    persistResolveWithoutEvalNudgePreference();
+    setIsResolveWithoutEvalModalOpen(false);
+    handleStatusChange('resolved');
+  };
+
+  const handleResolveWithoutMonitoringFromModal = () => {
+    persistResolveWithoutMonitoringNudgePreference();
+    setIsResolveWithoutMonitoringModalOpen(false);
+    handleStatusChange('resolved');
+  };
+
   const handleResolveIssue = () => {
     if (evalSetupStatus === 'complete') {
+      if (productionMonitoringStatus === 'idle') {
+        if (isResolveWithoutMonitoringNudgeDismissed) {
+          handleStatusChange('resolved');
+          return;
+        }
+        setDoNotShowResolveWithoutMonitoringNudge(false);
+        setIsResolveWithoutMonitoringModalOpen(true);
+        return;
+      }
       handleStatusChange('resolved');
       return;
     }
-    startMockIssueResolution(createEvalSetupRequest({ onResolve: () => handleStatusChange('resolved') }));
+    if (isResolveWithoutEvalNudgeDismissed) {
+      handleStatusChange('resolved');
+      return;
+    }
+    setDoNotShowResolveWithoutEvalNudge(false);
+    setIsResolveWithoutEvalModalOpen(true);
   };
 
   const evalArtifactsVisible = evalSetupStatus !== 'idle';
@@ -432,6 +634,18 @@ export const IssueDetailsPanel = ({
                   onClick={step.onClick}
                   loading={step.loading}
                   disabled={step.disabled}
+                  css={
+                    step.success
+                      ? {
+                          borderColor: theme.colors.textValidationSuccess,
+                          color: theme.colors.textValidationSuccess,
+                          ':hover': {
+                            borderColor: theme.colors.textValidationSuccess,
+                            color: theme.colors.textValidationSuccess,
+                          },
+                        }
+                      : undefined
+                  }
                 >
                   {step.title}
                 </Button>
@@ -513,7 +727,7 @@ export const IssueDetailsPanel = ({
                         values={{ count: evalLinkedItems.dataset.traceCount }}
                       />
                     ),
-                  onClick: evalArtifactsClickable ? () => setLinkedArtifactDrawer({ type: 'dataset' }) : undefined,
+                  onClick: evalArtifactsClickable ? handleViewDataset : undefined,
                 })}
                 {evalLinkedItems.scorers.map((scorer) =>
                   renderArtifactRow({
@@ -526,11 +740,29 @@ export const IssueDetailsPanel = ({
                       ) : (
                         <FormattedMessage defaultMessage="Draft LLM judge" description="Draft generated judge label" />
                       ),
-                    onClick: evalArtifactsClickable
-                      ? () => setLinkedArtifactDrawer({ type: 'scorer', scorerName: scorer.name })
-                      : undefined,
+                    onClick: evalArtifactsClickable ? () => handleViewScorer(scorer.name) : undefined,
                   }),
                 )}
+                {setupEvalComplete &&
+                  renderArtifactRow({
+                    key: 'evaluation-runs',
+                    icon: <ChartLineIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />,
+                    title: (
+                      <FormattedMessage
+                        defaultMessage="Evaluation runs"
+                        description="Issue detail linked evaluation runs row title"
+                      />
+                    ),
+                    metadata: (
+                      <FormattedMessage
+                        defaultMessage="Runs using the linked dataset and judges"
+                        description="Issue detail linked evaluation runs metadata"
+                      />
+                    ),
+                    onClick: () => {
+                      void handleViewEvaluationRuns();
+                    },
+                  })}
               </div>
             </div>
           )}
@@ -559,6 +791,14 @@ export const IssueDetailsPanel = ({
                 </li>
               ))}
             </ul>
+            <Button
+              componentId="mlflow.issues.details.view-all-traces"
+              type="link"
+              onClick={() => navigate(tracesRoute)}
+              css={{ alignSelf: 'flex-start', padding: 0, height: 'auto' }}
+            >
+              <FormattedMessage defaultMessage="View all traces" description="Issue details view all traces link" />
+            </Button>
           </div>
 
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
@@ -574,141 +814,180 @@ export const IssueDetailsPanel = ({
               )}
             </Typography.Text>
           </div>
-
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-            <Typography.Text color="secondary" size="sm">
-              <FormattedMessage defaultMessage="Example traces" description="Issue details example traces label" />
-            </Typography.Text>
-            {(issue.example_trace_ids ?? []).map((traceId) => (
-              <Button
-                key={traceId}
-                componentId="mlflow.issues.details.example-trace"
-                size="small"
-                icon={<ForkHorizontalIcon />}
-                onClick={() => setSelectedTraceId(traceId)}
-              >
-                {traceId}
-              </Button>
-            ))}
-            <Button
-              componentId="mlflow.issues.details.view-all-traces"
-              type="link"
-              onClick={() => navigate(tracesRoute)}
-            >
-              <FormattedMessage defaultMessage="View all" description="Issue details view all traces link" />
-            </Button>
-          </div>
         </div>
       </div>
 
-      <Drawer.Root open={linkedArtifactDrawer !== null} onOpenChange={(open) => !open && setLinkedArtifactDrawer(null)}>
-        <Drawer.Content
-          componentId="mlflow.issues.details.linked-artifact-drawer"
-          width="560px"
-          title={
-            <Typography.Title level={3} withoutMargins>
-              {linkedArtifactDrawer?.type === 'scorer' ? selectedScorer?.name : evalLinkedItems.dataset.name}
-            </Typography.Title>
-          }
-        >
-          {linkedArtifactDrawer?.type === 'dataset' ? (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-                <Tag componentId="mlflow.issues.details.dataset-drawer-type" color="charcoal">
-                  {evalSetupDatasetMode === 'golden' ? (
-                    <FormattedMessage defaultMessage="Golden dataset" description="Golden dataset drawer type label" />
-                  ) : (
-                    <FormattedMessage defaultMessage="Dataset" description="Dataset drawer type label" />
-                  )}
-                </Tag>
-                <Typography.Text color="secondary" size="sm">
-                  {evalSetupDatasetMode === 'golden' ? (
-                    <FormattedMessage
-                      defaultMessage="{count} new issue records"
-                      description="Golden dataset drawer added records label"
-                      values={{ count: evalLinkedItems.dataset.traceCount }}
-                    />
-                  ) : (
-                    <FormattedMessage
-                      defaultMessage="{count} issue records"
-                      description="Dataset drawer records label"
-                      values={{ count: evalLinkedItems.dataset.traceCount }}
-                    />
-                  )}
-                </Typography.Text>
-              </div>
-              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-                {datasetRecords.map((record) => (
-                  <div
-                    key={record.dataset_record_id}
-                    css={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: theme.spacing.xs,
-                      padding: theme.spacing.md,
-                      border: `1px solid ${theme.colors.border}`,
-                      borderRadius: theme.borders.borderRadiusMd,
-                      backgroundColor: theme.colors.backgroundPrimary,
-                    }}
-                  >
-                    <Typography.Text bold>{record.inputs['question']}</Typography.Text>
-                    <Typography.Text color="secondary" size="sm">
-                      {record.inputs['retrieved_evidence']}
-                    </Typography.Text>
-                    <div
-                      css={{
-                        marginTop: theme.spacing.xs,
-                        padding: theme.spacing.sm,
-                        borderRadius: theme.borders.borderRadiusSm,
-                        backgroundColor: theme.colors.backgroundSecondary,
-                      }}
-                    >
-                      <Typography.Text size="sm">{record.expectations?.['expected_response']}</Typography.Text>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      <Modal
+        componentId="mlflow.issues.details.resolve-without-eval-modal"
+        visible={isResolveWithoutEvalModalOpen}
+        title={
+          <FormattedMessage
+            defaultMessage="Create eval before resolving?"
+            description="Title for modal warning before resolving an issue without eval"
+          />
+        }
+        onCancel={closeResolveWithoutEvalModal}
+        footer={
+          <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
+            <Button
+              componentId="mlflow.issues.details.resolve-without-eval-modal.resolve"
+              onClick={handleResolveWithoutEvalFromModal}
+            >
+              <FormattedMessage
+                defaultMessage="Resolve without eval"
+                description="Button to resolve an issue without creating eval"
+              />
+            </Button>
+            <Button
+              componentId="mlflow.issues.details.resolve-without-eval-modal.setup-eval"
+              type="primary"
+              icon={<SparkleIcon color="ai" />}
+              onClick={handleSetupEvalFromResolveModal}
+            >
+              <FormattedMessage defaultMessage="Setup eval" description="Button to set up eval from resolve modal" />
+            </Button>
+          </div>
+        }
+      >
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+          <Typography.Text>
+            <FormattedMessage
+              defaultMessage="This issue does not have an eval yet."
+              description="Resolve without eval modal intro text"
+            />
+          </Typography.Text>
+          <Typography.Text>
+            <FormattedMessage
+              defaultMessage="Set one up to turn the impacted traces into a regression dataset and add judges for this failure mode."
+              description="Resolve without eval modal explanation text"
+            />
+          </Typography.Text>
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            <Typography.Text bold>
+              <FormattedMessage
+                defaultMessage="What you will get"
+                description="Resolve modal generated items heading"
+              />
+            </Typography.Text>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <TableIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+              <Typography.Text>
+                <FormattedMessage
+                  defaultMessage="Regression dataset"
+                  description="Resolve without eval modal dataset item"
+                />
+              </Typography.Text>
             </div>
-          ) : (
-            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-                <Tag componentId="mlflow.issues.details.scorer-drawer-type" color="purple">
-                  <FormattedMessage defaultMessage="LLM judge" description="Scorer drawer type label" />
-                </Tag>
-                {selectedScorer?.type === 'llm' && selectedScorer.model && (
-                  <Typography.Text color="secondary" size="sm">
-                    {selectedScorer.model}
-                  </Typography.Text>
-                )}
-              </div>
-              {selectedScorer?.type === 'llm' && (
-                <>
-                  <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-                    <Typography.Text bold>
-                      <FormattedMessage defaultMessage="Guidelines" description="Scorer drawer guidelines heading" />
-                    </Typography.Text>
-                    <ul css={{ margin: 0, paddingLeft: theme.spacing.lg }}>
-                      {(selectedScorer.guidelines ?? []).map((guideline) => (
-                        <li key={guideline} css={{ marginBottom: theme.spacing.xs }}>
-                          <Typography.Text>{guideline}</Typography.Text>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  {selectedScorer.filterString && (
-                    <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-                      <Typography.Text bold>
-                        <FormattedMessage defaultMessage="Filter" description="Scorer drawer filter heading" />
-                      </Typography.Text>
-                      <Typography.Text code>{selectedScorer.filterString}</Typography.Text>
-                    </div>
-                  )}
-                </>
-              )}
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <SparkleIcon color="ai" css={{ flexShrink: 0 }} />
+              <Typography.Text>
+                <FormattedMessage
+                  defaultMessage="{count} LLM judges"
+                  description="Resolve without eval modal scorer item"
+                  values={{ count: dedicatedEvalLinkedItems.scorers.length }}
+                />
+              </Typography.Text>
             </div>
-          )}
-        </Drawer.Content>
-      </Drawer.Root>
+          </div>
+          <Checkbox
+            componentId="mlflow.issues.details.resolve-without-eval-modal.do-not-show"
+            isChecked={doNotShowResolveWithoutEvalNudge}
+            onChange={setDoNotShowResolveWithoutEvalNudge}
+          >
+            <FormattedMessage
+              defaultMessage="Do not show this message again"
+              description="Resolve without eval modal dismiss preference checkbox"
+            />
+          </Checkbox>
+        </div>
+      </Modal>
+
+      <Modal
+        componentId="mlflow.issues.details.resolve-without-monitoring-modal"
+        visible={isResolveWithoutMonitoringModalOpen}
+        title={
+          <FormattedMessage
+            defaultMessage="Set up production monitoring before resolving?"
+            description="Title for modal warning before resolving an issue without production monitoring"
+          />
+        }
+        onCancel={closeResolveWithoutMonitoringModal}
+        footer={
+          <div css={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
+            <Button
+              componentId="mlflow.issues.details.resolve-without-monitoring-modal.resolve"
+              onClick={handleResolveWithoutMonitoringFromModal}
+            >
+              <FormattedMessage
+                defaultMessage="Resolve without monitoring"
+                description="Button to resolve an issue without setting up production monitoring"
+              />
+            </Button>
+            <Button
+              componentId="mlflow.issues.details.resolve-without-monitoring-modal.setup-monitoring"
+              type="primary"
+              icon={<SparkleIcon color="ai" />}
+              onClick={handleMonitorInProductionFromResolveModal}
+            >
+              <FormattedMessage
+                defaultMessage="Monitor in production"
+                description="Button to set up production monitoring from resolve modal"
+              />
+            </Button>
+          </div>
+        }
+      >
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+          <Typography.Text>
+            <FormattedMessage
+              defaultMessage="This issue has an eval, but production monitoring is not enabled yet."
+              description="Resolve without monitoring modal intro text"
+            />
+          </Typography.Text>
+          <Typography.Text>
+            <FormattedMessage
+              defaultMessage="Turn the linked judges into an online monitor so this failure mode is tracked on sampled production traces."
+              description="Resolve without monitoring modal explanation text"
+            />
+          </Typography.Text>
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            <Typography.Text bold>
+              <FormattedMessage
+                defaultMessage="What you will get"
+                description="Resolve modal generated items heading"
+              />
+            </Typography.Text>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <SparkleIcon color="ai" css={{ flexShrink: 0 }} />
+              <Typography.Text>
+                <FormattedMessage
+                  defaultMessage="Automatic LLM judge execution on sampled traces"
+                  description="Resolve without monitoring modal automatic judge execution item"
+                />
+              </Typography.Text>
+            </div>
+            <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <ChartLineIcon css={{ color: theme.colors.textSecondary, flexShrink: 0 }} />
+              <Typography.Text>
+                <FormattedMessage
+                  defaultMessage="Dashboard for viewing trends"
+                  description="Resolve without monitoring modal dashboard item"
+                />
+              </Typography.Text>
+            </div>
+          </div>
+          <Checkbox
+            componentId="mlflow.issues.details.resolve-without-monitoring-modal.do-not-show"
+            isChecked={doNotShowResolveWithoutMonitoringNudge}
+            onChange={setDoNotShowResolveWithoutMonitoringNudge}
+          >
+            <FormattedMessage
+              defaultMessage="Do not show this message again"
+              description="Resolve without monitoring modal dismiss preference checkbox"
+            />
+          </Checkbox>
+        </div>
+      </Modal>
 
       {selectedTraceId && (
         <ModelTraceExplorerDrawer

@@ -243,6 +243,30 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
     [requestTransition, url],
   );
 
+  const selectedRecordIndex = url.recordId
+    ? records.orderedRecords.findIndex((candidate) => candidate.dataset_record_id === url.recordId)
+    : -1;
+  const canNavigatePreviousRecord = panelMode === 'edit' && selectedRecordIndex > 0;
+  const canNavigateNextRecord =
+    panelMode === 'edit' && selectedRecordIndex >= 0 && selectedRecordIndex < records.orderedRecords.length - 1;
+
+  const handleNavigateRecord = useCallback(
+    (direction: -1 | 1) => {
+      if (!url.recordId) return;
+      const currentIndex = records.orderedRecords.findIndex(
+        (candidate) => candidate.dataset_record_id === url.recordId,
+      );
+      const nextIndex = currentIndex + direction;
+      const nextRecord = records.orderedRecords[nextIndex];
+      if (!nextRecord) return;
+      requestTransition(() => {
+        setPendingNewRecord(null);
+        url.setRecordIdAndPageIndex(nextRecord.dataset_record_id, Math.floor(nextIndex / DEFAULT_RECORD_PAGE_SIZE) + 1);
+      });
+    },
+    [records.orderedRecords, requestTransition, url],
+  );
+
   const handleClosePanel = useCallback(() => {
     requestTransition(() => {
       url.setRecordId(undefined);
@@ -481,6 +505,9 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
               onPendingChange={setPendingNewRecord}
               onDirtyChange={setIsPanelDirty}
               onOpenTraceModal={handleOpenTraceModal}
+              onNavigateRecord={handleNavigateRecord}
+              canNavigatePreviousRecord={canNavigatePreviousRecord}
+              canNavigateNextRecord={canNavigateNextRecord}
             />
           </ResizableBox>
         )}

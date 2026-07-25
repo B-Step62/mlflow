@@ -486,11 +486,11 @@ module.exports = function () {
           MLFLOW_SHOW_GDPR_PURGING_MESSAGES: process.env.MLFLOW_SHOW_GDPR_PURGING_MESSAGES ? 'true' : 'false',
           MLFLOW_USE_ABSOLUTE_AJAX_URLS: process.env.MLFLOW_USE_ABSOLUTE_AJAX_URLS ? 'true' : 'false',
         }),
-        // Only the dataset record editor uses Monaco today, and only for JSON. Restricting
+        // Only the dataset record editor uses Monaco today. Restricting
         // languages + dropping the search/quickCommand features keeps the lazy chunk to ~1MB
         // gz instead of the full ~3MB.
         new MonacoWebpackPlugin({
-          languages: ['json'],
+          languages: ['json', 'yaml'],
           features: ['!gotoSymbol', '!documentSymbols'],
           filename: 'static/js/monaco-[name].worker.[contenthash:8].js',
         }),

@@ -26,6 +26,7 @@ interface DatasetRecordsUrlState {
   setPageIndex: (next: number) => void;
   recordId: string | undefined;
   setRecordId: (next: string | undefined) => void;
+  setRecordIdAndPageIndex: (recordId: string, pageIndex: number) => void;
   /** Active sort column id. Falls back to the default when absent or unrecognized. */
   sort: RecordColumnId;
   dir: SortDirection;
@@ -82,6 +83,21 @@ export const useDatasetRecordsUrlState = (): DatasetRecordsUrlState => {
     [setSearchParams],
   );
 
+  const setRecordIdAndPageIndex = useCallback(
+    (recordId: string, pageIndex: number) => {
+      setSearchParams((params) => {
+        params.set(RECORD_ID_PARAM, recordId);
+        if (pageIndex === 1) {
+          params.delete(PAGE_PARAM);
+        } else {
+          params.set(PAGE_PARAM, String(pageIndex));
+        }
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
+
   const setSort = useCallback(
     (column: RecordColumnId, direction: SortDirection) => {
       setSearchParams((params) => {
@@ -101,5 +117,16 @@ export const useDatasetRecordsUrlState = (): DatasetRecordsUrlState => {
     [setSearchParams],
   );
 
-  return { search, setSearch, pageIndex, setPageIndex, recordId, setRecordId, sort, dir, setSort };
+  return {
+    search,
+    setSearch,
+    pageIndex,
+    setPageIndex,
+    recordId,
+    setRecordId,
+    setRecordIdAndPageIndex,
+    sort,
+    dir,
+    setSort,
+  };
 };

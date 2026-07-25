@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type React from 'react';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import {
   ArrowRightIcon,
   Button,
   Card,
   CheckCircleIcon,
-  DatabaseIcon,
   GavelIcon,
   GitCommitIcon,
   PlayIcon,
@@ -28,11 +27,7 @@ import { recordSubmittedIssueDetectionJob } from '../../components/experiment-pa
 import { useInvokeIssueDetection } from '../../components/experiment-page/components/traces-v3/hooks/useInvokeIssueDetection';
 import Routes from '../../routes';
 import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
-import {
-  OverviewChartContainer,
-  useChartXAxisProps,
-  useChartYAxisProps,
-} from './components/OverviewChartComponents';
+import { OverviewChartContainer, useChartXAxisProps, useChartYAxisProps } from './components/OverviewChartComponents';
 import {
   FAILURE_ANALYSIS_CLUSTERS,
   FAILURE_ANALYSIS_TOTAL_CONVERSATIONS,
@@ -47,6 +42,13 @@ type SuggestedAction = {
   icon: React.ReactNode;
   to?: string;
   onClick?: () => void;
+};
+
+type SuggestedQuery = {
+  componentId: string;
+  label: React.ReactNode;
+  prompt: string;
+  icon?: React.ReactNode;
 };
 
 const ANALYSIS_DELAY_MS = 1400;
@@ -135,13 +137,13 @@ const SuggestedActionRow = ({ action, index }: { action: SuggestedAction; index:
   );
 };
 
-const TraceActivityChart = () => {
+const TraceActivityChart = ({ hasTraceActivity }: { hasTraceActivity: boolean }) => {
   const { theme } = useDesignSystemTheme();
   const xAxisProps = useChartXAxisProps();
   const yAxisProps = useChartYAxisProps();
   const traceActivityData = useMemo(
-    () => TRACE_ACTIVITY_HOURS.map((hour) => ({ name: hour.label, count: hour.count })),
-    [],
+    () => TRACE_ACTIVITY_HOURS.map((hour) => ({ name: hour.label, count: hasTraceActivity ? hour.count : 0 })),
+    [hasTraceActivity],
   );
   return (
     <OverviewChartContainer
@@ -166,7 +168,7 @@ const TraceActivityChart = () => {
   );
 };
 
-const RecentActivityPanel = ({ tracesRoute }: { tracesRoute: string }) => {
+const RecentActivityPanel = ({ tracesRoute, hasTraceActivity }: { tracesRoute: string; hasTraceActivity: boolean }) => {
   const { theme } = useDesignSystemTheme();
 
   return (
@@ -187,71 +189,95 @@ const RecentActivityPanel = ({ tracesRoute }: { tracesRoute: string }) => {
           height: OVERVIEW_PANEL_HEIGHT,
         }}
       >
-        {RECENT_ACTIVITY.map((activityGroup) => (
-          <div
-            key={activityGroup.id}
-            css={{
-              display: 'grid',
-              gridTemplateColumns: '108px minmax(0, 1fr)',
-              gap: theme.spacing.md,
-              alignItems: 'start',
-            }}
-          >
-            <Typography.Text color="secondary" size="sm">
-              {activityGroup.label}
-            </Typography.Text>
+        {hasTraceActivity ? (
+          RECENT_ACTIVITY.map((activityGroup) => (
             <div
+              key={activityGroup.id}
               css={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: theme.spacing.sm,
-                borderLeft: `1px solid ${theme.colors.border}`,
-                paddingLeft: theme.spacing.md,
-                minWidth: 0,
+                display: 'grid',
+                gridTemplateColumns: '108px minmax(0, 1fr)',
+                gap: theme.spacing.md,
+                alignItems: 'start',
               }}
             >
-              {activityGroup.items.map((activity) => (
-                <Link
-                  key={activity.id}
-                  componentId="mlflow.genai-overview.recent-activity-traces-link"
-                  to={tracesRoute}
-                  css={{ color: theme.colors.textPrimary, textDecoration: 'none' }}
-                >
-                  <div
-                    css={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: theme.spacing.md,
-                      alignItems: 'center',
-                      minWidth: 0,
-                      margin: -theme.spacing.xs,
-                      padding: theme.spacing.xs,
-                      borderRadius: theme.borders.borderRadiusSm,
-                      ':hover': {
-                        backgroundColor: theme.colors.actionDefaultBackgroundHover,
-                      },
-                    }}
+              <Typography.Text color="secondary" size="sm">
+                {activityGroup.label}
+              </Typography.Text>
+              <div
+                css={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: theme.spacing.sm,
+                  borderLeft: `1px solid ${theme.colors.border}`,
+                  paddingLeft: theme.spacing.md,
+                  minWidth: 0,
+                }}
+              >
+                {activityGroup.items.map((activity) => (
+                  <Link
+                    key={activity.id}
+                    componentId="mlflow.genai-overview.recent-activity-traces-link"
+                    to={tracesRoute}
+                    css={{ color: theme.colors.textPrimary, textDecoration: 'none' }}
                   >
-                    <div css={{ display: 'flex', gap: theme.spacing.md, alignItems: 'center', minWidth: 0 }}>
-                      <TableIcon css={{ color: theme.colors.actionPrimaryBackgroundDefault, flexShrink: 0 }} />
-                      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
-                        <Typography.Text bold ellipsis>
-                          {activity.title}
-                        </Typography.Text>
-                        <Typography.Text color="secondary" size="sm" ellipsis>
-                          {activity.description}
-                        </Typography.Text>
+                    <div
+                      css={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: theme.spacing.md,
+                        alignItems: 'center',
+                        minWidth: 0,
+                        margin: -theme.spacing.xs,
+                        padding: theme.spacing.xs,
+                        borderRadius: theme.borders.borderRadiusSm,
+                        ':hover': {
+                          backgroundColor: theme.colors.actionDefaultBackgroundHover,
+                        },
+                      }}
+                    >
+                      <div css={{ display: 'flex', gap: theme.spacing.md, alignItems: 'center', minWidth: 0 }}>
+                        <TableIcon css={{ color: theme.colors.actionPrimaryBackgroundDefault, flexShrink: 0 }} />
+                        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+                          <Typography.Text bold ellipsis>
+                            {activity.title}
+                          </Typography.Text>
+                          <Typography.Text color="secondary" size="sm" ellipsis>
+                            {activity.description}
+                          </Typography.Text>
+                        </div>
                       </div>
+                      <Typography.Text color="secondary" size="sm" css={{ whiteSpace: 'nowrap' }}>
+                        {activity.age}
+                      </Typography.Text>
                     </div>
-                    <Typography.Text color="secondary" size="sm" css={{ whiteSpace: 'nowrap' }}>
-                      {activity.age}
-                    </Typography.Text>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))}
+              </div>
             </div>
+          ))
+        ) : (
+          <div
+            css={{
+              display: 'flex',
+              flex: 1,
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: theme.spacing.xs,
+              textAlign: 'center',
+            }}
+          >
+            <Typography.Text bold>
+              <FormattedMessage defaultMessage="No recent activity yet" description="GenAI overview empty activity" />
+            </Typography.Text>
+            <Typography.Text color="secondary">
+              <FormattedMessage
+                defaultMessage="Trace activity will appear here after traces are logged."
+                description="GenAI overview empty activity description"
+              />
+            </Typography.Text>
           </div>
-        ))}
+        )}
       </div>
     </section>
   );
@@ -287,10 +313,11 @@ const SuggestedActionsPanel = ({ actions }: { actions: SuggestedAction[] }) => {
 
 const ExperimentGenAIOverviewPage = () => {
   const { theme } = useDesignSystemTheme();
+  const intl = useIntl();
   const { experimentId } = useParams<{ experimentId: string }>();
   const navigate = useNavigate();
   const { setHeaderHidden } = useHeaderVisibility();
-  const { closePanel } = useAssistant();
+  const { closePanel, openPanel, prefillPrompt } = useAssistant();
   const [analysisState, setAnalysisState] = useState<AnalysisState>('idle');
   const [isIssueDetectionQueued, setIsIssueDetectionQueued] = useState(false);
   const [usesMockAnalysis, setUsesMockAnalysis] = useState(false);
@@ -298,7 +325,6 @@ const ExperimentGenAIOverviewPage = () => {
 
   const safeExperimentId = experimentId ?? '';
   const tracesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Traces);
-  const datasetsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Datasets);
   const evaluationRunsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.EvaluationRuns);
   const playgroundRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Playground);
   const analysisRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, MOCK_FAILURE_ANALYSIS_RUN_ID);
@@ -309,9 +335,17 @@ const ExperimentGenAIOverviewPage = () => {
     () => (safeExperimentId ? [createTraceLocationForExperiment(safeExperimentId)] : []),
     [safeExperimentId],
   );
-  const totalTraceCount = useMemo(() => TRACE_ACTIVITY_HOURS.reduce((total, hour) => total + hour.count, 0), []);
-  const hasTraceActivity = totalTraceCount > 0;
   const { data: endpoints, isLoading: isLoadingEndpoints } = useEndpointsQuery();
+  const {
+    data: tracePresence,
+    isLoading: isLoadingTracePresence,
+    isFetching: isFetchingTracePresence,
+  } = useSearchMlflowTraces({
+    locations: traceSearchLocations,
+    disabled: !safeExperimentId,
+    limit: 1,
+    enablePagination: false,
+  });
   const {
     data: recentTraces,
     isLoading: isLoadingRecentTraces,
@@ -323,6 +357,8 @@ const ExperimentGenAIOverviewPage = () => {
     disabled: !safeExperimentId,
     enablePagination: false,
   });
+  const hasTraceActivity = Boolean(tracePresence?.length);
+  const shouldShowTraceActivity = isLoadingTracePresence || isFetchingTracePresence || hasTraceActivity;
   const { mutate: invokeIssueDetection, isLoading: isInvokingIssueDetection } = useInvokeIssueDetection();
   const isAnalysisRunning =
     analysisState === 'preparing' ||
@@ -433,7 +469,12 @@ const ExperimentGenAIOverviewPage = () => {
     setIsIssueDetectionQueued(true);
   };
 
-  const suggestedActions: SuggestedAction[] = hasTraceActivity
+  const openAssistantWithPrompt = (prompt: string) => {
+    openPanel();
+    prefillPrompt(prompt);
+  };
+
+  const suggestedActions: SuggestedAction[] = shouldShowTraceActivity
     ? [
         {
           title: <FormattedMessage defaultMessage="Detect issues" description="GenAI overview detect issues action" />,
@@ -447,9 +488,7 @@ const ExperimentGenAIOverviewPage = () => {
           onClick: runAnalysis,
         },
         {
-          title: (
-            <FormattedMessage defaultMessage="Set up evaluation" description="GenAI overview setup eval action" />
-          ),
+          title: <FormattedMessage defaultMessage="Setup eval" description="GenAI overview setup eval action" />,
           description: (
             <FormattedMessage
               defaultMessage="Turn trace samples into eval runs"
@@ -460,7 +499,9 @@ const ExperimentGenAIOverviewPage = () => {
           to: evaluationRunsRoute,
         },
         {
-          title: <FormattedMessage defaultMessage="Connect GitHub" description="GenAI overview connect GitHub action" />,
+          title: (
+            <FormattedMessage defaultMessage="Connect GitHub" description="GenAI overview connect GitHub action" />
+          ),
           description: (
             <FormattedMessage
               defaultMessage="Correlate regressions with commits"
@@ -472,11 +513,11 @@ const ExperimentGenAIOverviewPage = () => {
       ]
     : [
         {
-          title: <FormattedMessage defaultMessage="Log traces" description="GenAI overview log traces action" />,
+          title: <FormattedMessage defaultMessage="Setup tracing" description="GenAI overview setup tracing action" />,
           description: (
             <FormattedMessage
               defaultMessage="Instrument your app with MLflow"
-              description="GenAI overview log traces action description"
+              description="GenAI overview setup tracing action description"
             />
           ),
           icon: <TerminalIcon />,
@@ -495,16 +536,63 @@ const ExperimentGenAIOverviewPage = () => {
         },
         {
           title: (
-            <FormattedMessage defaultMessage="Upload a dataset" description="GenAI overview upload dataset action" />
+            <FormattedMessage defaultMessage="Connect GitHub" description="GenAI overview connect GitHub action" />
           ),
           description: (
             <FormattedMessage
-              defaultMessage="Start an evaluation baseline"
-              description="GenAI overview upload dataset action description"
+              defaultMessage="Correlate regressions with commits"
+              description="GenAI overview connect GitHub action description"
             />
           ),
-          icon: <DatabaseIcon />,
-          to: datasetsRoute,
+          icon: <GitCommitIcon />,
+        },
+      ];
+  const suggestedQueries: SuggestedQuery[] = shouldShowTraceActivity
+    ? [
+        {
+          componentId: 'mlflow.genai-overview.detect-issues-query',
+          label: <FormattedMessage defaultMessage="Detect issues" description="GenAI overview suggested query" />,
+          prompt: intl.formatMessage({
+            defaultMessage: 'Detect issues',
+            description: 'GenAI overview suggested query',
+          }),
+          icon: <SparkleIcon color="ai" />,
+        },
+        {
+          componentId: 'mlflow.genai-overview.setup-eval-query',
+          label: <FormattedMessage defaultMessage="Setup eval" description="GenAI overview suggested query" />,
+          prompt: intl.formatMessage({
+            defaultMessage: 'Setup eval',
+            description: 'GenAI overview suggested query',
+          }),
+          icon: <SparkleIcon color="ai" />,
+        },
+      ]
+    : [
+        {
+          componentId: 'mlflow.genai-overview.how-get-started',
+          label: (
+            <FormattedMessage
+              defaultMessage="How do I get started with MLflow?"
+              description="GenAI overview suggested query"
+            />
+          ),
+          prompt: intl.formatMessage({
+            defaultMessage: 'How do I get started with MLflow?',
+            description: 'GenAI overview suggested query',
+          }),
+          icon: <SparkleIcon color="ai" />,
+        },
+        {
+          componentId: 'mlflow.genai-overview.how-trace-agent',
+          label: (
+            <FormattedMessage defaultMessage="How to trace my agent?" description="GenAI overview suggested query" />
+          ),
+          prompt: intl.formatMessage({
+            defaultMessage: 'How to trace my agent?',
+            description: 'GenAI overview suggested query',
+          }),
+          icon: <SparkleIcon color="ai" />,
         },
       ];
 
@@ -628,30 +716,17 @@ const ExperimentGenAIOverviewPage = () => {
                   minWidth: 0,
                 }}
               >
-                <Button
-                  componentId="mlflow.genai-overview.what-should-i-do-next"
-                  size="small"
-                  icon={<SparkleIcon color="ai" />}
-                  onClick={runAnalysis}
-                  disabled={isAnalysisRunning}
-                >
-                  <FormattedMessage
-                    defaultMessage="What should I do next?"
-                    description="GenAI overview suggested query"
-                  />
-                </Button>
-                <Button
-                  componentId="mlflow.genai-overview.find-common-failure-modes"
-                  size="small"
-                  icon={isAnalysisRunning ? <Spinner size="small" /> : <SparkleIcon color="ai" />}
-                  onClick={runAnalysis}
-                  disabled={isAnalysisRunning}
-                >
-                  <FormattedMessage
-                    defaultMessage="Find common failure modes"
-                    description="GenAI overview suggested query"
-                  />
-                </Button>
+                {suggestedQueries.map((query) => (
+                  <Button
+                    key={query.componentId}
+                    componentId={query.componentId}
+                    size="small"
+                    icon={query.icon}
+                    onClick={() => openAssistantWithPrompt(query.prompt)}
+                  >
+                    {query.label}
+                  </Button>
+                ))}
               </div>
               <Button
                 componentId="mlflow.genai-overview.submit-prompt"
@@ -753,7 +828,7 @@ const ExperimentGenAIOverviewPage = () => {
           </Card>
         )}
 
-        <TraceActivityChart />
+        <TraceActivityChart hasTraceActivity={shouldShowTraceActivity} />
 
         <section
           css={{
@@ -763,7 +838,7 @@ const ExperimentGenAIOverviewPage = () => {
             alignItems: 'start',
           }}
         >
-          <RecentActivityPanel tracesRoute={tracesRoute} />
+          <RecentActivityPanel tracesRoute={tracesRoute} hasTraceActivity={shouldShowTraceActivity} />
           <SuggestedActionsPanel actions={suggestedActions} />
         </section>
       </div>

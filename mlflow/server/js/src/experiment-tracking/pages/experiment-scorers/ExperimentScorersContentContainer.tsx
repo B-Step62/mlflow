@@ -5,24 +5,42 @@ import {
   PlusIcon,
   CodeIcon,
   Spacer,
+  SparkleIcon,
   SplitButton,
   DropdownMenu,
-  CursorPagination,
+  Typography,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
+import { useNavigate } from '../../../common/utils/RoutingUtils';
 import ScorerCardContainer from './ScorerCardContainer';
 import ScorerModalRenderer from './ScorerModalRenderer';
 import ScorerEmptyStateRenderer from './ScorerEmptyStateRenderer';
-import { shouldPaginateScorers } from '../../../common/utils/FeatureUtils';
 import { useGetScheduledScorers } from './hooks/useGetScheduledScorers';
-import { SCORER_FORM_MODE } from './constants';
+import {
+  SCORER_CREATE_FORM_INTENT,
+  SCORER_FORM_MODE,
+  type ScorerCreateFormIntent,
+  type ScorerEvaluationScope,
+} from './constants';
 import type { ScorerFormData } from './utils/scorerTransformUtils';
 import { getMockEvalScorers } from '../../mockEvalArtifacts';
+import Routes from '../../routes';
+import { LLM_TEMPLATE } from './types';
+import type { BuiltInJudgeCatalogItem } from './ScorerEmptyStateRenderer';
 
 interface ExperimentScorersContentContainerProps {
   experimentId: string;
   mockScorerNames?: string[];
   selectedScorerName?: string | null;
+}
+
+interface ScorerModalConfig {
+  initialScorerType: ScorerFormData['scorerType'];
+  initialLLMTemplate?: LLM_TEMPLATE;
+  initialScorerName?: string;
+  initialScope?: ScorerEvaluationScope;
+  createFormIntent: ScorerCreateFormIntent;
+  initialBuiltinJudgeLabel?: string;
 }
 
 const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContainerProps> = ({
@@ -32,8 +50,13 @@ const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContai
 }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
+  const navigate = useNavigate();
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [initialScorerType, setInitialScorerType] = useState<ScorerFormData['scorerType']>('llm');
+  const [modalConfig, setModalConfig] = useState<ScorerModalConfig>({
+    initialScorerType: 'llm',
+    initialLLMTemplate: LLM_TEMPLATE.CUSTOM,
+    createFormIntent: SCORER_CREATE_FORM_INTENT.CREATE,
+  });
   const shouldUseMockScorers = Boolean(mockScorerNames?.length);
   const scheduledScorersResult = useGetScheduledScorers(experimentId, { enabled: !shouldUseMockScorers });
   const scorers = shouldUseMockScorers
@@ -44,14 +67,35 @@ const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContai
   const isLoading = shouldUseMockScorers ? false : scheduledScorersResult.isLoading;
   const isError = shouldUseMockScorers ? false : scheduledScorersResult.isError;
   const error = scheduledScorersResult.error;
+  const firstLLMScorer = scorers.find((scorer) => scorer.type === 'llm');
 
   const handleNewLLMScorerClick = () => {
-    setInitialScorerType('llm');
+    setModalConfig({
+      initialScorerType: 'llm',
+      initialLLMTemplate: LLM_TEMPLATE.CUSTOM,
+      initialScorerName: '',
+      createFormIntent: SCORER_CREATE_FORM_INTENT.CREATE,
+    });
     setIsModalVisible(true);
   };
 
   const handleNewCustomCodeScorerClick = () => {
-    setInitialScorerType('custom-code');
+    setModalConfig({
+      initialScorerType: 'custom-code',
+      createFormIntent: SCORER_CREATE_FORM_INTENT.CREATE,
+    });
+    setIsModalVisible(true);
+  };
+
+  const handleUseBuiltInJudgeClick = (judge: BuiltInJudgeCatalogItem) => {
+    setModalConfig({
+      initialScorerType: 'llm',
+      initialLLMTemplate: judge.template,
+      initialScorerName: judge.defaultName,
+      initialScope: judge.scope,
+      createFormIntent: SCORER_CREATE_FORM_INTENT.USE_BUILT_IN,
+      initialBuiltinJudgeLabel: judge.label,
+    });
     setIsModalVisible(true);
   };
 
@@ -97,6 +141,7 @@ const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContai
   if (shouldShowEmptyState) {
     return (
       <ScorerEmptyStateRenderer
+        onUseBuiltInJudgeClick={handleUseBuiltInJudgeClick}
         onAddLLMScorerClick={handleNewLLMScorerClick}
         onAddCustomCodeScorerClick={handleNewCustomCodeScorerClick}
       />
@@ -112,6 +157,41 @@ const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContai
         overflow: 'auto',
       }}
     >
+      {firstLLMScorer && (
+        <div css={{ padding: `${theme.spacing.sm}px ${theme.spacing.sm}px 0` }}>
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+              width: '100%',
+              padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusMd,
+              backgroundColor: theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue100,
+            }}
+          >
+            <SparkleIcon color="ai" css={{ flexShrink: 0 }} />
+            <span>
+              <FormattedMessage
+                defaultMessage="Low quality judge or false positive? Use {alignJudgeLink}."
+                description="Info banner message suggesting judge alignment"
+                values={{
+                  alignJudgeLink: (
+                    <Typography.Link
+                      componentId="mlflow.experiment-scorers.alignment-info-banner-link"
+                      onClick={() => navigate(Routes.getExperimentPageTabScorerAlignmentRoute(experimentId))}
+                    >
+                      <FormattedMessage defaultMessage="Align judge" description="Link to open judge alignment" />
+                    </Typography.Link>
+                  ),
+                }}
+              />
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Header with New judge split button */}
       <div
         css={{
@@ -172,7 +252,12 @@ const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContai
         onClose={closeModal}
         experimentId={experimentId}
         mode={SCORER_FORM_MODE.CREATE}
-        initialScorerType={initialScorerType}
+        initialScorerType={modalConfig.initialScorerType}
+        initialLLMTemplate={modalConfig.initialLLMTemplate}
+        initialScorerName={modalConfig.initialScorerName}
+        initialScope={modalConfig.initialScope}
+        createFormIntent={modalConfig.createFormIntent}
+        initialBuiltinJudgeLabel={modalConfig.initialBuiltinJudgeLabel}
       />
     </div>
   );

@@ -18,7 +18,13 @@ import LLMScorerFormRenderer, { type LLMScorerFormData } from './LLMScorerFormRe
 import CustomCodeScorerFormRenderer, { type CustomCodeScorerFormData } from './CustomCodeScorerFormRenderer';
 import SampleScorerOutputPanelContainer from './SampleScorerOutputPanelContainer';
 import type { ScorerFormData } from './utils/scorerTransformUtils';
-import { SCORER_FORM_MODE, ScorerEvaluationScope, type ScorerFormMode } from './constants';
+import {
+  SCORER_CREATE_FORM_INTENT,
+  SCORER_FORM_MODE,
+  ScorerEvaluationScope,
+  type ScorerCreateFormIntent,
+  type ScorerFormMode,
+} from './constants';
 
 interface ScorerFormRendererProps {
   mode: ScorerFormMode;
@@ -37,6 +43,7 @@ interface ScorerFormRendererProps {
   isSubmitDisabled: boolean;
   experimentId: string;
   initialSelectedItemIds?: string[];
+  createFormIntent?: ScorerCreateFormIntent;
 }
 
 // Extracted form content component
@@ -47,6 +54,8 @@ interface ScorerFormContentProps {
   getValues: UseFormGetValues<ScorerFormData>;
   scorerType: ScorerFormData['scorerType'];
   onScopeChange?: () => void;
+  lockTemplateSelection?: boolean;
+  lockScopeSelection?: boolean;
 }
 
 const ScorerFormContent: React.FC<ScorerFormContentProps> = ({
@@ -56,6 +65,8 @@ const ScorerFormContent: React.FC<ScorerFormContentProps> = ({
   getValues,
   scorerType,
   onScopeChange,
+  lockTemplateSelection,
+  lockScopeSelection,
 }) => {
   return (
     <>
@@ -67,6 +78,8 @@ const ScorerFormContent: React.FC<ScorerFormContentProps> = ({
           setValue={setValue as UseFormSetValue<LLMScorerFormData>}
           getValues={getValues as UseFormGetValues<LLMScorerFormData>}
           onScopeChange={onScopeChange}
+          lockTemplateSelection={lockTemplateSelection}
+          lockScopeSelection={lockScopeSelection}
         />
       ) : (
         <CustomCodeScorerFormRenderer mode={mode} control={control as Control<CustomCodeScorerFormData>} />
@@ -89,6 +102,7 @@ const ScorerFormRenderer: React.FC<ScorerFormRendererProps> = ({
   isSubmitDisabled,
   experimentId,
   initialSelectedItemIds,
+  createFormIntent = SCORER_CREATE_FORM_INTENT.CREATE,
 }) => {
   const { theme } = useDesignSystemTheme();
   const [leftPaneWidth, setLeftPaneWidth] = useState(800);
@@ -97,6 +111,7 @@ const ScorerFormRenderer: React.FC<ScorerFormRendererProps> = ({
   const evaluationScope = useWatch({ control, name: 'evaluationScope' });
   const isSessionLevelScorer = evaluationScope === ScorerEvaluationScope.SESSIONS;
   const { resetField } = useFormContext<ScorerFormData>();
+  const isUsingBuiltInJudge = createFormIntent === SCORER_CREATE_FORM_INTENT.USE_BUILT_IN;
 
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>(initialSelectedItemIds ?? []);
 
@@ -167,6 +182,8 @@ const ScorerFormRenderer: React.FC<ScorerFormRendererProps> = ({
                     getValues={getValues}
                     scorerType={scorerType}
                     onScopeChange={handleScopeChange}
+                    lockTemplateSelection={isUsingBuiltInJudge}
+                    lockScopeSelection={isUsingBuiltInJudge}
                   />
                 </div>
               </div>
@@ -214,6 +231,8 @@ const ScorerFormRenderer: React.FC<ScorerFormRendererProps> = ({
             setValue={setValue}
             getValues={getValues}
             scorerType={scorerType}
+            lockTemplateSelection={isUsingBuiltInJudge}
+            lockScopeSelection={isUsingBuiltInJudge}
           />
         </div>
       )}
@@ -257,6 +276,11 @@ const ScorerFormRenderer: React.FC<ScorerFormRendererProps> = ({
           >
             {mode === SCORER_FORM_MODE.EDIT ? (
               <FormattedMessage defaultMessage="Save" description="Save judge button text" />
+            ) : isUsingBuiltInJudge ? (
+              <FormattedMessage
+                defaultMessage="Use judge"
+                description="Button text for using a built-in judge from the catalog"
+              />
             ) : (
               <FormattedMessage defaultMessage="Create judge" description="Create judge button text" />
             )}

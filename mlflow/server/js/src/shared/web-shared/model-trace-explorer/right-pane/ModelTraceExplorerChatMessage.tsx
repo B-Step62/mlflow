@@ -1,5 +1,5 @@
 import { isNil } from 'lodash';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import {
   ChevronDownIcon,
@@ -314,9 +314,11 @@ function ModelTraceExplorerAudioPlayer({ audioParts }: { audioParts: ModelTraceI
 export function ModelTraceExplorerChatMessage({
   message,
   className,
+  renderContent,
 }: {
   message: ModelTraceChatMessage;
   className?: string;
+  renderContent?: (message: ModelTraceChatMessage) => ReactNode;
 }) {
   const { theme } = useDesignSystemTheme();
   const [expanded, setExpanded] = useState(false);
@@ -331,7 +333,7 @@ export function ModelTraceExplorerChatMessage({
   // are lightweight (~120 chars each) and truncating mid-ref breaks markdown rendering.
   const attachmentRefCount = content.split('mlflow-attachment://').length - 1;
   const effectiveLimit = CONTENT_TRUNCATION_LIMIT + attachmentRefCount * 150;
-  const isExpandable = !shouldDisplayCodeSnippet && getDisplayLength(content) > effectiveLimit;
+  const isExpandable = !renderContent && !shouldDisplayCodeSnippet && getDisplayLength(content) > effectiveLimit;
 
   const displayedContent = isExpandable && !expanded ? truncatePreservingImages(content, effectiveLimit) : content;
 
@@ -353,21 +355,27 @@ export function ModelTraceExplorerChatMessage({
         message={message}
       />
       <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-        {message.reasoning && <ModelTraceExplorerReasoningSection reasoning={message.reasoning} />}
-        {!isNil(message.tool_calls) &&
-          message.tool_calls.map((toolCall) => (
-            <ModelTraceExplorerToolCallMessage key={toolCall.id} toolCall={toolCall} />
-          ))}
-        {/* Text content renders before audio parts. The markdown renderer and audio
+        {renderContent ? (
+          renderContent(message)
+        ) : (
+          <>
+            {message.reasoning && <ModelTraceExplorerReasoningSection reasoning={message.reasoning} />}
+            {!isNil(message.tool_calls) &&
+              message.tool_calls.map((toolCall) => (
+                <ModelTraceExplorerToolCallMessage key={toolCall.id} toolCall={toolCall} />
+              ))}
+            {/* Text content renders before audio parts. The markdown renderer and audio
             player are separate rendering paths, so original part interleaving is not
             preserved. Text-first matches the typical pattern where prompts precede
             media (see https://developers.openai.com/api/docs/guides/audio). */}
-        <ModelTraceExplorerChatMessageContent
-          content={displayedContent}
-          shouldDisplayCodeSnippet={shouldDisplayCodeSnippet}
-        />
-        {message.audioParts && message.audioParts.length > 0 && (
-          <ModelTraceExplorerAudioPlayer audioParts={message.audioParts} />
+            <ModelTraceExplorerChatMessageContent
+              content={displayedContent}
+              shouldDisplayCodeSnippet={shouldDisplayCodeSnippet}
+            />
+            {message.audioParts && message.audioParts.length > 0 && (
+              <ModelTraceExplorerAudioPlayer audioParts={message.audioParts} />
+            )}
+          </>
         )}
       </div>
       {isExpandable && (

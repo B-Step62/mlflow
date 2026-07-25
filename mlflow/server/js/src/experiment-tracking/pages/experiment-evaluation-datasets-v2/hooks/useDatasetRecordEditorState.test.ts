@@ -135,4 +135,27 @@ describe('useDatasetRecordEditorState', () => {
     expect(result.current.text).toBe('{"a":42}');
     expect(result.current.parsed).toEqual({ a: 42 });
   });
+
+  test('parses YAML when the editor format is yaml', () => {
+    const { result } = renderHook(() =>
+      useDatasetRecordEditorState({ recordId: 'r1', initialValue: { foo: 'bar' }, format: 'yaml' }),
+    );
+    expect(result.current.text).toBe('foo: bar\n');
+    act(() => result.current.setText('foo: baz\nnested:\n  count: 2\n'));
+    expect(result.current.isValid).toBe(true);
+    expect(result.current.isDirty).toBe(true);
+    expect(result.current.parsed).toEqual({ foo: 'baz', nested: { count: 2 } });
+  });
+
+  test('format-only JSON to YAML changes stay clean when the parsed object is unchanged', () => {
+    const { result, rerender } = renderHook(
+      ({ format }: { format: 'json' | 'yaml' }) =>
+        useDatasetRecordEditorState({ recordId: 'r1', initialValue: { foo: 'bar' }, format }),
+      { initialProps: { format: 'json' as const } },
+    );
+    rerender({ format: 'yaml' as const });
+    act(() => result.current.setText('foo: bar\n'));
+    expect(result.current.isValid).toBe(true);
+    expect(result.current.isDirty).toBe(false);
+  });
 });

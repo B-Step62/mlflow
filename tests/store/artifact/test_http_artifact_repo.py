@@ -71,7 +71,10 @@ class FileObjectMatcher:
 @pytest.fixture
 def http_artifact_repo():
     artifact_uri = "http://test.com/api/2.0/mlflow-artifacts/artifacts"
-    return HttpArtifactRepository(artifact_uri)
+    # tracking_uri shares the artifact host, so ambient tracking creds are attached
+    # (the trusted-host case). See test_host_creds_scoped_to_tracking_host for the
+    # untrusted-host case where creds are stripped.
+    return HttpArtifactRepository(artifact_uri, tracking_uri="http://test.com")
 
 
 @pytest.fixture
@@ -451,7 +454,8 @@ def test_default_host_creds(monkeypatch):
         server_cert_path=server_cert_path,
     )
 
-    repo = HttpArtifactRepository(artifact_uri)
+    # tracking_uri shares the artifact host, so ambient credentials are attached.
+    repo = HttpArtifactRepository(artifact_uri, tracking_uri=artifact_uri)
 
     monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, username)
     monkeypatch.setenv(MLFLOW_TRACKING_PASSWORD.name, password)
@@ -460,6 +464,49 @@ def test_default_host_creds(monkeypatch):
     monkeypatch.setenv(MLFLOW_TRACKING_CLIENT_CERT_PATH.name, client_cert_path)
     monkeypatch.setenv(MLFLOW_TRACKING_SERVER_CERT_PATH.name, server_cert_path)
     assert repo._host_creds == expected_host_creds
+
+
+@pytest.mark.parametrize(
+    ("artifact_uri", "tracking_uri"),
+    [
+        # Raw http(s) artifact/model URI pointing at an attacker-controlled host.
+        ("https://attacker.example.com/artifacts", "https://tracking.internal:5000"),
+        # Same hostname but a different port is still a different origin.
+        ("https://tracking.internal:9999/artifacts", "https://tracking.internal:5000"),
+        # No usable tracking host to trust (local file store) — never leak creds.
+        ("https://attacker.example.com/artifacts", "file:///tmp/mlruns"),
+    ],
+)
+def test_host_creds_scoped_to_tracking_host(monkeypatch, artifact_uri, tracking_uri):
+    monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "user")
+    monkeypatch.setenv(MLFLOW_TRACKING_PASSWORD.name, "pass")
+    monkeypatch.setenv(MLFLOW_TRACKING_TOKEN.name, "secret-token")
+
+    repo = HttpArtifactRepository(artifact_uri, tracking_uri=tracking_uri)
+    host_creds = repo._host_creds
+
+    # Ambient tracking credentials must not be attached to a non-tracking host (CWE-918).
+    assert host_creds.username is None
+    assert host_creds.password is None
+    assert host_creds.token is None
+    assert host_creds.aws_sigv4 is False
+    assert host_creds.auth is None
+
+
+def test_host_creds_attached_to_matching_tracking_host(monkeypatch):
+    monkeypatch.setenv(MLFLOW_TRACKING_USERNAME.name, "user")
+    monkeypatch.setenv(MLFLOW_TRACKING_PASSWORD.name, "pass")
+    monkeypatch.setenv(MLFLOW_TRACKING_TOKEN.name, "secret-token")
+
+    repo = HttpArtifactRepository(
+        "https://tracking.internal:5000/api/2.0/mlflow-artifacts/artifacts",
+        tracking_uri="https://tracking.internal:5000",
+    )
+    host_creds = repo._host_creds
+
+    assert host_creds.username == "user"
+    assert host_creds.password == "pass"
+    assert host_creds.token == "secret-token"
 
 
 @pytest.mark.parametrize("remote_file_path", ["a.txt", "dir/b.txt", None])

@@ -3,7 +3,11 @@ import type { TagColors } from '@databricks/design-system';
 import { TableSkeleton, useDesignSystemTheme } from '@databricks/design-system';
 import { IssuesTabEmptyState } from './IssuesTabEmptyState';
 import { IssueCard } from './IssueCard';
-import { IssueDetailsPanel, type IssueEvalSetupStatus } from './IssueDetailsPanel';
+import {
+  IssueDetailsPanel,
+  type IssueEvalSetupStatus,
+  type IssueProductionMonitoringStatus,
+} from './IssueDetailsPanel';
 import { IssueStatusFilter, type IssueStatusFilterValue } from './IssueStatusFilter';
 import { IssueTracesPanel } from './IssueTracesPanel';
 import { useSearchIssuesQuery, type Issue } from './hooks/useSearchIssuesQuery';
@@ -29,6 +33,8 @@ export const RunViewIssuesContent = ({
   onIssueEvalSetupStatusChange,
   getIssueEvalSetupDatasetMode,
   onIssueEvalSetupDatasetModeChange,
+  getIssueProductionMonitoringStatus,
+  onIssueProductionMonitoringStatusChange,
   statusFilter: controlledStatusFilter,
   onStatusFilterChange,
   hideStatusFilter = false,
@@ -49,6 +55,8 @@ export const RunViewIssuesContent = ({
   onIssueEvalSetupStatusChange?: (issueId: string, status: IssueEvalSetupStatus) => void;
   getIssueEvalSetupDatasetMode?: (issue: Issue) => 'new' | 'golden';
   onIssueEvalSetupDatasetModeChange?: (issueId: string, mode: 'new' | 'golden') => void;
+  getIssueProductionMonitoringStatus?: (issue: Issue) => IssueProductionMonitoringStatus;
+  onIssueProductionMonitoringStatusChange?: (issueId: string, status: IssueProductionMonitoringStatus) => void;
   statusFilter?: IssueStatusFilterValue;
   onStatusFilterChange?: (value: IssueStatusFilterValue) => void;
   hideStatusFilter?: boolean;
@@ -59,6 +67,15 @@ export const RunViewIssuesContent = ({
   const [uncontrolledStatusFilter, setUncontrolledStatusFilter] = useState<IssueStatusFilterValue>('pending');
   const statusFilter = controlledStatusFilter ?? uncontrolledStatusFilter;
   const setStatusFilter = onStatusFilterChange ?? setUncontrolledStatusFilter;
+  const [uncontrolledEvalSetupStatuses, setUncontrolledEvalSetupStatuses] = useState<
+    Record<string, IssueEvalSetupStatus>
+  >({});
+  const [uncontrolledEvalSetupDatasetModes, setUncontrolledEvalSetupDatasetModes] = useState<
+    Record<string, 'new' | 'golden'>
+  >({});
+  const [uncontrolledProductionMonitoringStatuses, setUncontrolledProductionMonitoringStatuses] = useState<
+    Record<string, IssueProductionMonitoringStatus>
+  >({});
   const issueCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const autoSwitchedForIssueRef = useRef<string | null>(null);
 
@@ -117,6 +134,28 @@ export const RunViewIssuesContent = ({
     () => issues.find((i) => i.issue_id === selectedIssueId) || (defaultSelectFirstIssue ? filteredIssues[0] : null),
     [defaultSelectFirstIssue, filteredIssues, issues, selectedIssueId],
   );
+
+  const getResolvedIssueEvalSetupStatus = (issue: Issue) =>
+    getIssueEvalSetupStatus?.(issue) ?? uncontrolledEvalSetupStatuses[issue.issue_id] ?? 'idle';
+  const handleIssueEvalSetupStatusChange =
+    onIssueEvalSetupStatusChange ??
+    ((issueId: string, status: IssueEvalSetupStatus) => {
+      setUncontrolledEvalSetupStatuses((current) => ({ ...current, [issueId]: status }));
+    });
+  const getResolvedIssueEvalSetupDatasetMode = (issue: Issue) =>
+    getIssueEvalSetupDatasetMode?.(issue) ?? uncontrolledEvalSetupDatasetModes[issue.issue_id] ?? 'new';
+  const handleIssueEvalSetupDatasetModeChange =
+    onIssueEvalSetupDatasetModeChange ??
+    ((issueId: string, mode: 'new' | 'golden') => {
+      setUncontrolledEvalSetupDatasetModes((current) => ({ ...current, [issueId]: mode }));
+    });
+  const getResolvedIssueProductionMonitoringStatus = (issue: Issue) =>
+    getIssueProductionMonitoringStatus?.(issue) ?? uncontrolledProductionMonitoringStatuses[issue.issue_id] ?? 'idle';
+  const handleIssueProductionMonitoringStatusChange =
+    onIssueProductionMonitoringStatusChange ??
+    ((issueId: string, status: IssueProductionMonitoringStatus) => {
+      setUncontrolledProductionMonitoringStatuses((current) => ({ ...current, [issueId]: status }));
+    });
 
   if (isLoading) {
     return (
@@ -222,10 +261,12 @@ export const RunViewIssuesContent = ({
                 issue={selectedIssue}
                 experimentId={experimentId}
                 onStatusChange={onIssueStatusChange}
-                evalSetupStatus={getIssueEvalSetupStatus?.(selectedIssue)}
-                evalSetupDatasetMode={getIssueEvalSetupDatasetMode?.(selectedIssue)}
-                onEvalSetupStatusChange={onIssueEvalSetupStatusChange}
-                onEvalSetupDatasetModeChange={onIssueEvalSetupDatasetModeChange}
+                evalSetupStatus={getResolvedIssueEvalSetupStatus(selectedIssue)}
+                evalSetupDatasetMode={getResolvedIssueEvalSetupDatasetMode(selectedIssue)}
+                productionMonitoringStatus={getResolvedIssueProductionMonitoringStatus(selectedIssue)}
+                onEvalSetupStatusChange={handleIssueEvalSetupStatusChange}
+                onEvalSetupDatasetModeChange={handleIssueEvalSetupDatasetModeChange}
+                onProductionMonitoringStatusChange={handleIssueProductionMonitoringStatusChange}
               />
             ) : (
               <IssueTracesPanel issue={selectedIssue} experimentId={experimentId} />

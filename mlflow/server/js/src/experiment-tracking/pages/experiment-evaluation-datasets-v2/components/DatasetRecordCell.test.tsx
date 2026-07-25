@@ -76,7 +76,7 @@ describe('JsonPreviewCell', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  test('renders compact JSON in a monospace <span> — not a <code> element', () => {
+  test('renders a readable scalar preview in a <span> — not a <code> element', () => {
     render(
       <JsonPreviewCell
         value={{ question: 'hi' }}
@@ -86,10 +86,24 @@ describe('JsonPreviewCell', () => {
       />,
       { wrapper: wrap },
     );
-    const text = screen.getByText('{"question":"hi"}');
-    // Locks in the requirement that inputs/expectations are rendered as monospace text,
+    const text = screen.getByText('hi');
+    // Locks in the requirement that inputs/expectations are rendered as readable text,
     // not in code blocks. If someone reverts to <code>, this test catches it.
     expect(text.tagName.toLowerCase()).toBe('span');
+  });
+
+  test('renders chat-shaped values as a single message preview', () => {
+    render(
+      <JsonPreviewCell
+        value={{ messages: [{ role: 'user', content: 'Explain the failure' }] }}
+        emptyLabel="(empty)"
+        onActivate={jest.fn()}
+        accessibleLabel="Open dataset record rec-1 — inputs"
+      />,
+      { wrapper: wrap },
+    );
+    expect(screen.getByText('Explain the failure')).toBeInTheDocument();
+    expect(screen.queryByText(/messages/)).not.toBeInTheDocument();
   });
 
   test('clicking the activator fires onActivate', async () => {

@@ -233,8 +233,20 @@ class Routes {
     return generatePath(RoutePaths.experimentPageTabbed, { experimentId, tabName });
   }
 
-  static getExperimentPageTabScorerAlignmentRoute(experimentId: string) {
-    return generatePath(RoutePaths.experimentPageTabScorerAlignment, { experimentId });
+  static getExperimentPageTabScorerAlignmentRoute(
+    experimentId: string,
+    options?: { scorerName?: string; prefill?: string },
+  ) {
+    const route = generatePath(RoutePaths.experimentPageTabScorerAlignment, { experimentId });
+    const searchParams = new URLSearchParams();
+    if (options?.scorerName) {
+      searchParams.set('scorerName', options.scorerName);
+    }
+    if (options?.prefill) {
+      searchParams.set('prefill', options.prefill);
+    }
+    const queryString = searchParams.toString();
+    return queryString ? `${route}?${queryString}` : route;
   }
 
   static getExperimentPageTabSingleChatSessionRoute(experimentId: string, sessionId: string) {

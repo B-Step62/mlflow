@@ -17,6 +17,7 @@ import {
   SparkleDoubleIcon,
   DialogComboboxTrigger,
   PlusIcon,
+  Tag,
 } from '@databricks/design-system';
 import { HighlightedTextArea } from './HighlightedTextArea';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
@@ -58,6 +59,8 @@ interface LLMScorerFormRendererProps {
   setValue: UseFormSetValue<LLMScorerFormData>;
   getValues: UseFormGetValues<LLMScorerFormData>;
   onScopeChange?: () => void;
+  lockTemplateSelection?: boolean;
+  lockScopeSelection?: boolean;
 }
 
 interface LLMTemplateSectionProps {
@@ -65,14 +68,22 @@ interface LLMTemplateSectionProps {
   control: Control<LLMScorerFormData>;
   setValue: UseFormSetValue<LLMScorerFormData>;
   currentTemplate: string;
+  lockTemplateSelection?: boolean;
 }
 
-const LLMTemplateSection: React.FC<LLMTemplateSectionProps> = ({ mode, control, setValue, currentTemplate }) => {
+const LLMTemplateSection: React.FC<LLMTemplateSectionProps> = ({
+  mode,
+  control,
+  setValue,
+  currentTemplate,
+  lockTemplateSelection,
+}) => {
   const { theme } = useDesignSystemTheme();
   const { watch } = useFormContext<LLMScorerFormData>();
   const scope = watch('evaluationScope');
   const intl = useIntl();
   const { templateOptions, displayMap } = useTemplateOptions(scope);
+  const selectedTemplateOption = templateOptions.find((option) => option.value === currentTemplate);
 
   const stopPropagationClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -90,6 +101,51 @@ const LLMTemplateSection: React.FC<LLMTemplateSectionProps> = ({ mode, control, 
   // Don't show template selector for custom LLM judges in non-create mode
   if (isReadOnly && currentTemplate === LLM_TEMPLATE.CUSTOM) {
     return null;
+  }
+
+  if (lockTemplateSelection && currentTemplate !== LLM_TEMPLATE.CUSTOM) {
+    return (
+      <div css={{ display: 'flex', flexDirection: 'column' }}>
+        <FormUI.Label htmlFor="mlflow-experiment-scorers-built-in-scorer">
+          <FormattedMessage defaultMessage="Built-in judge" description="Section header for locked built-in judge" />
+        </FormUI.Label>
+        <FormUI.Hint>
+          <FormattedMessage
+            defaultMessage="This judge comes from the built-in scorer catalog."
+            description="Hint text for locked built-in judge"
+          />
+        </FormUI.Hint>
+        <div
+          id="mlflow-experiment-scorers-built-in-scorer"
+          css={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: theme.spacing.md,
+            marginTop: theme.spacing.sm,
+            padding: theme.spacing.md,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: theme.borders.borderRadiusMd,
+            backgroundColor: theme.colors.backgroundSecondary,
+          }}
+        >
+          <div css={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.sm, minWidth: 0 }}>
+            <SparkleDoubleIcon color="ai" css={{ flexShrink: 0, marginTop: 2 }} />
+            <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+              <Typography.Text bold>{displayMap[currentTemplate] || currentTemplate}</Typography.Text>
+              {selectedTemplateOption?.hint && (
+                <Typography.Text color="secondary" css={{ fontSize: theme.typography.fontSizeSm }}>
+                  {selectedTemplateOption.hint}
+                </Typography.Text>
+              )}
+            </div>
+          </div>
+          <Tag componentId="mlflow.experiment-scorers.locked-built-in-judge-tag" color="turquoise" css={{ margin: 0 }}>
+            <FormattedMessage defaultMessage="Built-in" description="Tag label for built-in judge" />
+          </Tag>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -541,6 +597,8 @@ const LLMScorerFormRenderer: React.FC<LLMScorerFormRendererProps> = ({
   setValue,
   getValues,
   onScopeChange,
+  lockTemplateSelection,
+  lockScopeSelection,
 }) => {
   const { theme } = useDesignSystemTheme();
   const selectedTemplate = useWatch({ control, name: 'llmTemplate' });
@@ -568,7 +626,11 @@ const LLMScorerFormRenderer: React.FC<LLMScorerFormRendererProps> = ({
 
   const generalSection = (
     <>
-      <ScorerFormEvaluationScopeSelect mode={mode} onUserSelect={checkAndProgressGeneral} />
+      <ScorerFormEvaluationScopeSelect
+        mode={mode}
+        onUserSelect={checkAndProgressGeneral}
+        disabled={lockScopeSelection}
+      />
       <NameSection mode={mode} control={control} />
       {isScorerModelSelectionEnabled() && (
         <ModelSectionRenderer
@@ -583,7 +645,13 @@ const LLMScorerFormRenderer: React.FC<LLMScorerFormRendererProps> = ({
 
   const evaluationCriteriaSection = (
     <>
-      <LLMTemplateSection mode={mode} control={control} setValue={setValue} currentTemplate={selectedTemplate} />
+      <LLMTemplateSection
+        mode={mode}
+        control={control}
+        setValue={setValue}
+        currentTemplate={selectedTemplate}
+        lockTemplateSelection={lockTemplateSelection}
+      />
       {isGuidelinesTemplate(selectedTemplate) && <GuidelinesSection mode={mode} control={control} />}
       {!isGuidelinesTemplate(selectedTemplate) && (
         <InstructionsSection mode={mode} control={control} setValue={setValue} getValues={getValues} />
@@ -607,7 +675,13 @@ const LLMScorerFormRenderer: React.FC<LLMScorerFormRendererProps> = ({
           paddingLeft: theme.spacing.lg,
         }}
       >
-        <LLMTemplateSection mode={mode} control={control} setValue={setValue} currentTemplate={selectedTemplate} />
+        <LLMTemplateSection
+          mode={mode}
+          control={control}
+          setValue={setValue}
+          currentTemplate={selectedTemplate}
+          lockTemplateSelection={lockTemplateSelection}
+        />
         <NameSection mode={mode} control={control} />
         {isGuidelinesTemplate(selectedTemplate) && <GuidelinesSection mode={mode} control={control} />}
         {!isGuidelinesTemplate(selectedTemplate) && (

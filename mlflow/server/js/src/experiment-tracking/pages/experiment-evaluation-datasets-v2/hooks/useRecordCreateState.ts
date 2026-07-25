@@ -5,6 +5,7 @@ import { listDatasetRecordsQueryKey, useCreateDatasetRecordMutation } from './us
 import type { SaveStatus } from '../components/DatasetRecordDetailFooter';
 import { getDefaultRecord, validateSchemaConsistency } from '../utils/datasetSchemaUtils';
 import { useDatasetRecordEditorState } from './useDatasetRecordEditorState';
+import type { RecordEditorFormat } from '../utils/datasetRecordRendering';
 
 /**
  * Snapshot of the in-progress "new record" create form. Mirrored to the records table so the
@@ -33,6 +34,8 @@ interface UseRecordCreateStateParams {
   onSaveError?: (error: Error) => void;
   /** Live preview hook for the phantom row in the records table. Fires on every editor change. */
   onPendingChange?: (next: PendingNewRecord) => void;
+  inputsFormat?: RecordEditorFormat;
+  expectationsFormat?: RecordEditorFormat;
 }
 
 interface UseRecordCreateStateResult {
@@ -62,6 +65,8 @@ export const useRecordCreateState = ({
   onSaveSuccess,
   onSaveError,
   onPendingChange,
+  inputsFormat = 'json',
+  expectationsFormat = 'json',
 }: UseRecordCreateStateParams): UseRecordCreateStateResult => {
   // Seed the editors with v1's default record shape (singleturn `messages` for empty/messages-
   // shaped datasets, multiturn `goal`/`persona` when existing rows already use a `goal` key) so
@@ -73,10 +78,15 @@ export const useRecordCreateState = ({
   // recordId: undefined keeps editor state stuck to its initial value for the lifetime
   // of the panel — opening the panel a second time after a successful save starts fresh
   // because the panel unmounts/remounts (orchestrated by the page).
-  const inputs = useDatasetRecordEditorState({ recordId: undefined, initialValue: seededDefaults.inputs });
+  const inputs = useDatasetRecordEditorState({
+    recordId: undefined,
+    initialValue: seededDefaults.inputs,
+    format: inputsFormat,
+  });
   const expectations = useDatasetRecordEditorState({
     recordId: undefined,
     initialValue: seededDefaults.expectations,
+    format: expectationsFormat,
   });
   // Draft tags live entirely in local state — no upsert mutation here because there's no
   // record ID until the create RPC resolves. Tags are submitted alongside inputs/expectations

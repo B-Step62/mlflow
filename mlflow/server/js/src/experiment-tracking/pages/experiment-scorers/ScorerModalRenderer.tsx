@@ -4,9 +4,10 @@ import { FormattedMessage } from '@databricks/i18n';
 import { isRunningScorersEnabled } from '../../../common/utils/FeatureUtils';
 import ScorerFormCreateContainer from './ScorerFormCreateContainer';
 import ScorerFormEditContainer from './ScorerFormEditContainer';
-import type { ScorerEvaluationScope } from './constants';
-import { SCORER_FORM_MODE, type ScorerFormMode } from './constants';
+import type { ScorerCreateFormIntent, ScorerEvaluationScope } from './constants';
+import { SCORER_CREATE_FORM_INTENT, SCORER_FORM_MODE, type ScorerFormMode } from './constants';
 import type { ScheduledScorer } from './types';
+import type { LLM_TEMPLATE } from './types';
 import type { ScorerFormData } from './utils/scorerTransformUtils';
 
 interface ScorerModalRendererProps {
@@ -16,8 +17,12 @@ interface ScorerModalRendererProps {
   mode: ScorerFormMode;
   existingScorer?: ScheduledScorer;
   initialScorerType?: ScorerFormData['scorerType'];
+  initialLLMTemplate?: LLM_TEMPLATE;
+  initialScorerName?: string;
   initialScope?: ScorerEvaluationScope;
   initialItemId?: string;
+  createFormIntent?: ScorerCreateFormIntent;
+  initialBuiltinJudgeLabel?: string;
 }
 
 const ScorerModalRenderer: React.FC<ScorerModalRendererProps> = ({
@@ -27,8 +32,12 @@ const ScorerModalRenderer: React.FC<ScorerModalRendererProps> = ({
   mode,
   existingScorer,
   initialScorerType,
+  initialLLMTemplate,
+  initialScorerName,
   initialScope,
   initialItemId,
+  createFormIntent = SCORER_CREATE_FORM_INTENT.CREATE,
+  initialBuiltinJudgeLabel,
 }) => {
   const isRunningScorersFeatureEnabled = isRunningScorersEnabled();
 
@@ -38,6 +47,12 @@ const ScorerModalRenderer: React.FC<ScorerModalRendererProps> = ({
       title={
         mode === SCORER_FORM_MODE.EDIT ? (
           <FormattedMessage defaultMessage="Edit judge" description="Title for edit judge modal" />
+        ) : createFormIntent === SCORER_CREATE_FORM_INTENT.USE_BUILT_IN && initialBuiltinJudgeLabel ? (
+          <FormattedMessage
+            defaultMessage="Use {judgeName}"
+            description="Title for using a built-in judge from the catalog"
+            values={{ judgeName: initialBuiltinJudgeLabel }}
+          />
         ) : initialScorerType === 'custom-code' ? (
           <FormattedMessage
             defaultMessage="Create custom code judge"
@@ -78,8 +93,11 @@ const ScorerModalRenderer: React.FC<ScorerModalRendererProps> = ({
           experimentId={experimentId}
           onClose={onClose}
           initialScorerType={initialScorerType}
+          initialLLMTemplate={initialLLMTemplate}
+          initialScorerName={initialScorerName}
           initialScope={initialScope}
           initialItemId={initialItemId}
+          createFormIntent={createFormIntent}
         />
       )}
     </Modal>

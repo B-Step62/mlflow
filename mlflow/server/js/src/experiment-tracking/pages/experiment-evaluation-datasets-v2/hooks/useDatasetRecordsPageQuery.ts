@@ -47,6 +47,7 @@ interface DatasetRecordsPage {
   error: unknown;
   refetch: () => void;
   allRecords: DatasetRecord[];
+  orderedRecords: DatasetRecord[];
   /**
    * Timestamp (ms since epoch) of the last successful underlying query resolution, or `0`
    * if the data has never loaded. Forwarded from React Query so the page can render a
@@ -124,6 +125,7 @@ export const useDatasetRecordsPageQuery = ({
     error: query.error,
     refetch: query.refetch,
     allRecords,
+    orderedRecords: sorted,
     dataUpdatedAt: query.dataUpdatedAt,
   };
 };

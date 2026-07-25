@@ -19,7 +19,10 @@ import { RunPage } from '../../components/run-page/RunPage';
 import { RunViewModeSwitch } from '../../components/run-page/RunViewModeSwitch';
 import { useRunViewActiveTab } from '../../components/run-page/useRunViewActiveTab';
 import { RunViewIssuesContent } from '../../components/run-page/RunViewIssuesTab';
-import type { IssueEvalSetupStatus } from '../../components/run-page/IssueDetailsPanel';
+import type {
+  IssueEvalSetupStatus,
+  IssueProductionMonitoringStatus,
+} from '../../components/run-page/IssueDetailsPanel';
 import type { Issue, IssueStatus } from '../../components/run-page/hooks/useSearchIssuesQuery';
 import type { MockEvalDatasetMode } from '../../mockEvalArtifacts';
 import {
@@ -84,6 +87,9 @@ const MockIssueDetectionIssuesTab = ({ experimentId }: { experimentId: string })
   const [statusOverrides, setStatusOverrides] = useState<Record<string, IssueStatus>>({});
   const [evalSetupStatuses, setEvalSetupStatuses] = useState<Record<string, IssueEvalSetupStatus>>({});
   const [evalSetupDatasetModes, setEvalSetupDatasetModes] = useState<Record<string, MockEvalDatasetMode>>({});
+  const [productionMonitoringStatuses, setProductionMonitoringStatuses] = useState<
+    Record<string, IssueProductionMonitoringStatus>
+  >({});
   const issues = useMemo<Issue[]>(
     () =>
       MOCK_FAILURE_ANALYSIS_ISSUES.map(
@@ -158,6 +164,13 @@ const MockIssueDetectionIssuesTab = ({ experimentId }: { experimentId: string })
           setEvalSetupDatasetModes((current) => ({
             ...current,
             [issueId]: mode,
+          }))
+        }
+        getIssueProductionMonitoringStatus={(issue) => productionMonitoringStatuses[issue.issue_id] ?? 'idle'}
+        onIssueProductionMonitoringStatusChange={(issueId, status) =>
+          setProductionMonitoringStatuses((current) => ({
+            ...current,
+            [issueId]: status,
           }))
         }
       />

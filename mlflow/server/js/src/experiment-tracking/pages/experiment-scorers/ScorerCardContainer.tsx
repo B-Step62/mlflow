@@ -10,6 +10,8 @@ import ScorerCardRenderer from './ScorerCardRenderer';
 import ScorerModalRenderer from './ScorerModalRenderer';
 import { SCORER_FORM_MODE } from './constants';
 import { useRegisterAssistantContext } from '@mlflow/mlflow/src/assistant';
+import { useNavigate } from '../../../common/utils/RoutingUtils';
+import Routes from '../../routes';
 
 interface ScorerCardContainerProps {
   scorer: ScheduledScorer;
@@ -17,6 +19,7 @@ interface ScorerCardContainerProps {
 }
 
 const ScorerCardContainer: React.FC<ScorerCardContainerProps> = ({ scorer, experimentId }) => {
+  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeModal, setActiveModal] = useState<'delete' | 'edit' | null>(null);
 
@@ -50,10 +53,17 @@ const ScorerCardContainer: React.FC<ScorerCardContainerProps> = ({ scorer, exper
     [isExpanded],
   );
 
-  const handleEditClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setActiveModal('edit');
-  }, []);
+  const handleEditClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (scorer.type === 'llm') {
+        navigate(Routes.getExperimentPageTabScorerAlignmentRoute(experimentId, { scorerName: scorer.name }));
+        return;
+      }
+      setActiveModal('edit');
+    },
+    [experimentId, navigate, scorer.name, scorer.type],
+  );
 
   const handleCloseEditModal = useCallback(() => {
     setActiveModal(null);

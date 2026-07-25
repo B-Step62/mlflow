@@ -9,9 +9,11 @@ import {
   Button,
   Card,
   CloseIcon,
+  CopyIcon,
   DesignSystemEventProviderAnalyticsEventTypes,
   DesignSystemEventProviderComponentTypes,
   GearIcon,
+  NewWindowIcon,
   RefreshIcon,
   SparkleDoubleIcon,
   SparkleIcon,
@@ -38,6 +40,7 @@ import { GenAIMarkdownRenderer } from '../shared/web-shared/genai-markdown-rende
 import { useCopyController } from '../shared/web-shared/snippet/hooks/useCopyController';
 import { useAssistantPrompts } from '../common/utils/RoutingUtils';
 import { AssistantWelcomeCarousel } from './AssistantWelcomeCarousel';
+import { CopyButton } from '../shared/building_blocks/CopyButton';
 
 type CurrentView = 'chat' | 'setup-wizard' | 'settings';
 
@@ -56,6 +59,10 @@ const DOTS_ANIMATION = {
 
 export type MessagePartGroup =
   | { kind: 'text'; text: string }
+  | { kind: 'linkAction'; action: Extract<AssistantPart, { type: 'linkAction' }> }
+  | { kind: 'promptAction'; action: Extract<AssistantPart, { type: 'promptAction' }> }
+  | { kind: 'copyAction'; action: Extract<AssistantPart, { type: 'copyAction' }> }
+  | { kind: 'evalComparisonSummary'; summary: Extract<AssistantPart, { type: 'evalComparisonSummary' }> }
   | { kind: 'selection'; prompt: Extract<AssistantPart, { type: 'selectionPrompt' }> }
   | { kind: 'tools'; calls: ToolCallPart[] };
 
@@ -70,6 +77,22 @@ export const groupParts = (parts: AssistantPart[]): MessagePartGroup[] => {
       groups.push({ kind: 'text', text: part.text });
       continue;
     }
+    if (part.type === 'linkAction') {
+      groups.push({ kind: 'linkAction', action: part });
+      continue;
+    }
+    if (part.type === 'promptAction') {
+      groups.push({ kind: 'promptAction', action: part });
+      continue;
+    }
+    if (part.type === 'copyAction') {
+      groups.push({ kind: 'copyAction', action: part });
+      continue;
+    }
+    if (part.type === 'evalComparisonSummary') {
+      groups.push({ kind: 'evalComparisonSummary', summary: part });
+      continue;
+    }
     if (part.type === 'selectionPrompt') {
       groups.push({ kind: 'selection', prompt: part });
       continue;
@@ -82,6 +105,183 @@ export const groupParts = (parts: AssistantPart[]): MessagePartGroup[] => {
     }
   }
   return groups;
+};
+
+const AssistantLinkAction = ({ action }: { action: Extract<AssistantPart, { type: 'linkAction' }> }) => {
+  const { theme } = useDesignSystemTheme();
+
+  const handleClick = () => {
+    window.open(action.href, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <div css={{ display: 'flex', marginTop: theme.spacing.md, marginBottom: theme.spacing.md }}>
+      <Button
+        componentId="mlflow.assistant.link_action.open"
+        type="primary"
+        size="small"
+        endIcon={<NewWindowIcon />}
+        onClick={handleClick}
+      >
+        {action.label}
+      </Button>
+    </div>
+  );
+};
+
+const AssistantPromptAction = ({ action }: { action: Extract<AssistantPart, { type: 'promptAction' }> }) => {
+  const { theme } = useDesignSystemTheme();
+  const { sendMessage, isStreaming } = useAssistant();
+
+  return (
+    <div css={{ display: 'flex', marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md }}>
+      <Button
+        componentId="mlflow.assistant.prompt_action"
+        size="small"
+        icon={<SparkleIcon color="ai" />}
+        disabled={isStreaming}
+        onClick={() => sendMessage(action.prompt)}
+      >
+        {action.label}
+      </Button>
+    </div>
+  );
+};
+
+const AssistantCopyAction = ({ action }: { action: Extract<AssistantPart, { type: 'copyAction' }> }) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div css={{ display: 'flex', marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md }}>
+      <CopyButton
+        componentId="mlflow.assistant.copy_action"
+        size="small"
+        icon={<CopyIcon />}
+        copyText={action.copyText}
+      >
+        {action.label}
+      </CopyButton>
+    </div>
+  );
+};
+
+const AssistantEvalComparisonSummary = ({
+  summary,
+}: {
+  summary: Extract<AssistantPart, { type: 'evalComparisonSummary' }>;
+}) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.md,
+        marginTop: theme.spacing.md,
+        marginBottom: theme.spacing.md,
+        padding: theme.spacing.md,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        backgroundColor: theme.colors.backgroundSecondary,
+      }}
+    >
+      <Typography.Text bold>{summary.title}</Typography.Text>
+      <div
+        css={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))',
+          gap: theme.spacing.sm,
+        }}
+      >
+        {summary.metrics.map((metric) => (
+          <div
+            key={metric.label}
+            css={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.xs,
+              padding: theme.spacing.sm,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borders.borderRadiusSm,
+              backgroundColor: theme.colors.backgroundPrimary,
+              minWidth: 0,
+            }}
+          >
+            <Typography.Text color="secondary" size="sm">
+              {metric.label}
+            </Typography.Text>
+            <Typography.Text bold>
+              {metric.baseline} to {metric.fixed}
+            </Typography.Text>
+            <Typography.Text
+              size="sm"
+              css={{
+                color: metric.improved ? theme.colors.textValidationSuccess : theme.colors.textValidationDanger,
+              }}
+            >
+              {metric.delta}
+            </Typography.Text>
+          </div>
+        ))}
+      </div>
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+        {summary.chart.map((point) => {
+          const maxValue = Math.max(1, point.baseline, point.fixed);
+          const baselineWidth = `${Math.max(4, (point.baseline / maxValue) * 100)}%`;
+          const fixedWidth = `${Math.max(4, (point.fixed / maxValue) * 100)}%`;
+          return (
+            <div
+              key={point.label}
+              css={{ display: 'grid', gridTemplateColumns: '104px minmax(0, 1fr)', gap: theme.spacing.sm }}
+            >
+              <Typography.Text color="secondary" size="sm">
+                {point.label}
+              </Typography.Text>
+              <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, minWidth: 0 }}>
+                <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <Typography.Text color="secondary" size="sm" css={{ width: 56 }}>
+                    Baseline
+                  </Typography.Text>
+                  <div
+                    css={{
+                      height: 8,
+                      width: baselineWidth,
+                      maxWidth: '100%',
+                      borderRadius: 999,
+                      backgroundColor: theme.colors.textValidationDanger,
+                    }}
+                  />
+                  <Typography.Text size="sm">
+                    {point.baseline}
+                    {point.unit}
+                  </Typography.Text>
+                </div>
+                <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <Typography.Text color="secondary" size="sm" css={{ width: 56 }}>
+                    Fixed
+                  </Typography.Text>
+                  <div
+                    css={{
+                      height: 8,
+                      width: fixedWidth,
+                      maxWidth: '100%',
+                      borderRadius: 999,
+                      backgroundColor: theme.colors.textValidationSuccess,
+                    }}
+                  />
+                  <Typography.Text size="sm">
+                    {point.fixed}
+                    {point.unit}
+                  </Typography.Text>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 const AssistantSelectionPrompt = ({ prompt }: { prompt: Extract<AssistantPart, { type: 'selectionPrompt' }> }) => {
@@ -193,9 +393,9 @@ const AssistantSelectionPrompt = ({ prompt }: { prompt: Extract<AssistantPart, {
           {submittedValue ? (
             <FormattedMessage defaultMessage="Selected" description="Submitted selection prompt button label" />
           ) : (
-            prompt.continueLabel ?? (
+            (prompt.continueLabel ?? (
               <FormattedMessage defaultMessage="Continue" description="Selection prompt continue button label" />
-            )
+            ))
           )}
         </Button>
       </div>
@@ -232,6 +432,14 @@ export const AssistantMessageBody = ({ message }: { message: ChatMessage }) => {
           ) : null
         ) : group.kind === 'selection' ? (
           <AssistantSelectionPrompt key={group.prompt.selectionId} prompt={group.prompt} />
+        ) : group.kind === 'linkAction' ? (
+          <AssistantLinkAction key={group.action.actionId} action={group.action} />
+        ) : group.kind === 'promptAction' ? (
+          <AssistantPromptAction key={group.action.actionId} action={group.action} />
+        ) : group.kind === 'copyAction' ? (
+          <AssistantCopyAction key={group.action.actionId} action={group.action} />
+        ) : group.kind === 'evalComparisonSummary' ? (
+          <AssistantEvalComparisonSummary key={group.summary.actionId} summary={group.summary} />
         ) : (
           <ToolCallGroup key={group.calls[0].toolUseId} parts={group.calls} />
         ),

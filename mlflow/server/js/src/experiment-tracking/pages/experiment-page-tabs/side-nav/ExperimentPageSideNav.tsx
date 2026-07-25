@@ -8,6 +8,7 @@ import { useSqlWarehouseContextSafe } from '../SqlWarehouseContext';
 import { ExperimentPageSideNavSection } from './ExperimentPageSideNavSection';
 import { ExperimentPageSideNavAssistantButton } from './ExperimentPageSideNavAssistantButton';
 import { useParams } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
+import { useAssistant } from '@mlflow/mlflow/src/assistant';
 
 const SIDE_NAV_WIDTH = 160;
 const SIDE_NAV_COLLAPSED_WIDTH = 32;
@@ -21,9 +22,10 @@ export const ExperimentPageSideNav = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const { experimentId } = useParams();
+  const { isPanelOpen } = useAssistant();
   // the single chat session tab also has a sidebar. to conserve
   // horizontal space, we force the side nav to be collapsed in this tab
-  const forceCollapsed = activeTab === ExperimentPageTabName.SingleChatSession;
+  const forceCollapsed = activeTab === ExperimentPageTabName.SingleChatSession || isPanelOpen;
 
   const isGenAIExperiment =
     experimentKind === ExperimentKind.GENAI_DEVELOPMENT || experimentKind === ExperimentKind.GENAI_DEVELOPMENT_INFERRED;
@@ -54,6 +56,7 @@ export const ExperimentPageSideNav = ({
         borderRight: `1px solid ${theme.colors.border}`,
         boxSizing: 'content-box',
         width: SIDE_NAV_COLLAPSED_WIDTH,
+        transition: 'width 120ms ease-in-out',
         [`& .${COLLAPSED_CLASS_NAME}`]: {
           display: 'flex',
         },
@@ -94,6 +97,8 @@ export const ExperimentPageSideNav = ({
 
 export const ExperimentPageSideNavSkeleton = () => {
   const { theme } = useDesignSystemTheme();
+  const { isPanelOpen } = useAssistant();
+
   return (
     <div
       css={{
@@ -103,9 +108,14 @@ export const ExperimentPageSideNavSkeleton = () => {
         paddingRight: theme.spacing.sm,
         borderRight: `1px solid ${theme.colors.border}`,
         width: SIDE_NAV_COLLAPSED_WIDTH,
-        [theme.responsive.mediaQueries.xl]: {
-          width: SIDE_NAV_WIDTH,
-        },
+        transition: 'width 120ms ease-in-out',
+        ...(!isPanelOpen
+          ? {
+              [theme.responsive.mediaQueries.xl]: {
+                width: SIDE_NAV_WIDTH,
+              },
+            }
+          : {}),
       }}
     >
       <TitleSkeleton css={{ width: '60%' }} />

@@ -4,22 +4,35 @@ import { isRunningScorersEnabled } from '../../../common/utils/FeatureUtils';
 import { useCreateScheduledScorerMutation } from './hooks/useCreateScheduledScorer';
 import { convertFormDataToScheduledScorer, type ScorerFormData } from './utils/scorerTransformUtils';
 import ScorerFormRenderer from './ScorerFormRenderer';
-import { SCORER_FORM_MODE, ScorerEvaluationScope } from './constants';
+import {
+  SCORER_CREATE_FORM_INTENT,
+  SCORER_FORM_MODE,
+  ScorerEvaluationScope,
+  type ScorerCreateFormIntent,
+} from './constants';
+import { EDITABLE_TEMPLATES, TEMPLATE_INSTRUCTIONS_MAP } from './prompts';
+import { LLM_TEMPLATE } from './types';
 
 interface ScorerFormCreateContainerProps {
   experimentId: string;
   onClose: () => void;
   initialScorerType?: ScorerFormData['scorerType'];
+  initialLLMTemplate?: LLM_TEMPLATE;
+  initialScorerName?: string;
   initialScope?: ScorerEvaluationScope;
   initialItemId?: string;
+  createFormIntent?: ScorerCreateFormIntent;
 }
 
 const ScorerFormCreateContainer: React.FC<ScorerFormCreateContainerProps> = ({
   experimentId,
   onClose,
   initialScorerType = 'llm',
+  initialLLMTemplate = LLM_TEMPLATE.CUSTOM,
+  initialScorerName = '',
   initialScope,
   initialItemId,
+  createFormIntent = SCORER_CREATE_FORM_INTENT.CREATE,
 }) => {
   // Local error state for synchronous errors
   const [componentError, setComponentError] = useState<string | null>(null);
@@ -29,18 +42,21 @@ const ScorerFormCreateContainer: React.FC<ScorerFormCreateContainerProps> = ({
 
   // Hook for creating scorer
   const createScorerMutation = useCreateScheduledScorerMutation();
+  const isInstructionsJudge = initialScorerType === 'llm' && EDITABLE_TEMPLATES.has(initialLLMTemplate);
 
   const form = useForm<ScorerFormData>({
     mode: 'onChange', // Enable real-time validation
     defaultValues: {
       scorerType: initialScorerType,
-      name: '',
+      name: initialScorerName,
       sampleRate: 100,
       filterString: '',
-      llmTemplate: 'Custom',
+      llmTemplate: initialLLMTemplate,
       model: '',
       disableMonitoring: false,
-      isInstructionsJudge: true, // Custom template is an instructions judge
+      isInstructionsJudge,
+      instructions: TEMPLATE_INSTRUCTIONS_MAP[initialLLMTemplate] || '',
+      guidelines: '',
       evaluationScope: initialScope ?? ScorerEvaluationScope.TRACES,
     },
   });
@@ -118,6 +134,7 @@ const ScorerFormCreateContainer: React.FC<ScorerFormCreateContainerProps> = ({
           isSubmitDisabled={isSubmitDisabled}
           experimentId={experimentId}
           initialSelectedItemIds={initialItemId ? [initialItemId] : undefined}
+          createFormIntent={createFormIntent}
         />
       </FormProvider>
     </div>

@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  areRecordObjectsEqual,
+  parseRecordObject,
+  stringifyRecordObject,
+  type RecordEditorFormat,
+} from '../utils/datasetRecordRendering';
 
 interface UseDatasetRecordEditorStateParams {
   /**
@@ -9,13 +15,15 @@ interface UseDatasetRecordEditorStateParams {
   recordId?: string;
   /** Source-of-truth dictionary. Read once per `recordId` change, ignored on refetch. */
   initialValue: Record<string, unknown> | undefined;
+  /** Text format currently being edited. Read-only render modes keep the last editable format. */
+  format?: RecordEditorFormat;
 }
 
 interface UseDatasetRecordEditorStateResult {
-  /** JSON string the editor displays (and mutates via onChange). */
+  /** Editor string the current editable mode displays (and mutates via onChange). */
   text: string;
   setText: (next: string) => void;
-  /** Parsed value when the text is valid JSON. Empty text parses to `{}`. */
+  /** Parsed value when the text is valid. Empty text parses to `{}`. */
   parsed: Record<string, unknown> | undefined;
   isDirty: boolean;
   isValid: boolean;
@@ -34,30 +42,9 @@ interface UseDatasetRecordEditorStateResult {
   reset: (nextBaseline?: string) => void;
 }
 
-interface ParseResult {
-  value: Record<string, unknown> | undefined;
-  error: string | undefined;
-}
-
-const stringifyOrEmpty = (value: Record<string, unknown> | undefined): string =>
-  value === undefined ? '' : JSON.stringify(value, null, 2);
-
-const parseRecordObject = (text: string): ParseResult => {
-  if (text.trim() === '') return { value: {}, error: undefined };
-  try {
-    const value = JSON.parse(text);
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return { value: value as Record<string, unknown>, error: undefined };
-    }
-    return { value: undefined, error: 'JSON must be an object (not an array or primitive)' };
-  } catch (e) {
-    return { value: undefined, error: e instanceof Error ? e.message : 'Invalid JSON' };
-  }
-};
-
 /**
- * Tracks local editor text for one JSON field (inputs, expectations). Surfaces parsed value when
- * valid JSON, dirty flag for save-button enablement, and `reset` for the drawer's Discard button.
+ * Tracks local editor text for one record field (inputs, expectations). Surfaces parsed value when
+ * valid, dirty flag for save-button enablement, and `reset` for the drawer's Discard button.
  *
  * The dirty comparison uses a `baseline` snapshot that only advances on `recordId` change or
  * explicit `reset()` — never on server-side refetch. That way a concurrent edit landing in the
@@ -70,33 +57,54 @@ const parseRecordObject = (text: string): ParseResult => {
 export const useDatasetRecordEditorState = ({
   recordId,
   initialValue,
+  format = 'json',
 }: UseDatasetRecordEditorStateParams): UseDatasetRecordEditorStateResult => {
-  const initialTextForCurrentRecord = useMemo(() => stringifyOrEmpty(initialValue), [initialValue]);
+  const initialObjectForCurrentRecord = useMemo(() => initialValue ?? {}, [initialValue]);
+  const initialTextForCurrentRecord = useMemo(
+    () => stringifyRecordObject(initialValue, format),
+    [format, initialValue],
+  );
 
   // Track the freshest initialValue without making it a reset/dirty trigger.
   const latestInitialTextRef = useRef(initialTextForCurrentRecord);
+  const latestInitialObjectRef = useRef(initialObjectForCurrentRecord);
   useEffect(() => {
     latestInitialTextRef.current = initialTextForCurrentRecord;
-  }, [initialTextForCurrentRecord]);
+    latestInitialObjectRef.current = initialObjectForCurrentRecord;
+  }, [initialObjectForCurrentRecord, initialTextForCurrentRecord]);
 
   const [text, setText] = useState(initialTextForCurrentRecord);
   const [baseline, setBaseline] = useState(initialTextForCurrentRecord);
+  const [baselineObject, setBaselineObject] = useState(initialObjectForCurrentRecord);
 
   // Reset only when the underlying record changes — not on every refetch.
   useEffect(() => {
     setText(latestInitialTextRef.current);
     setBaseline(latestInitialTextRef.current);
+    setBaselineObject(latestInitialObjectRef.current);
   }, [recordId]);
 
-  const { value: parsed, error: parseError } = useMemo(() => parseRecordObject(text), [text]);
+  const { value: parsed, error: parseError } = useMemo(() => parseRecordObject(text, format), [format, text]);
   const isValid = parsed !== undefined;
-  const isDirty = text !== baseline;
+  const isDirty = isValid ? !areRecordObjectsEqual(parsed, baselineObject) : text !== baseline;
 
-  const reset = useCallback((nextBaseline?: string) => {
-    const next = nextBaseline ?? latestInitialTextRef.current;
-    setText(next);
-    setBaseline(next);
-  }, []);
+  const reset = useCallback(
+    (nextBaseline?: string) => {
+      if (nextBaseline !== undefined) {
+        const { value } = parseRecordObject(nextBaseline, format);
+        setText(nextBaseline);
+        setBaseline(nextBaseline);
+        setBaselineObject(value ?? {});
+        return;
+      }
+      const nextObject = latestInitialObjectRef.current;
+      const nextText = latestInitialTextRef.current;
+      setText(nextText);
+      setBaseline(nextText);
+      setBaselineObject(nextObject);
+    },
+    [format],
+  );
 
   return { text, setText, parsed, isDirty, isValid, parseError, reset };
 };

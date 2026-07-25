@@ -5,6 +5,7 @@ import { listDatasetRecordsQueryKey, useUpsertDatasetRecordsMutation } from './u
 import type { SaveStatus } from '../components/DatasetRecordDetailFooter';
 import { validateSchemaConsistency } from '../utils/datasetSchemaUtils';
 import { useDatasetRecordEditorState } from './useDatasetRecordEditorState';
+import type { RecordEditorFormat } from '../utils/datasetRecordRendering';
 
 interface UseRecordSaveStateParams {
   datasetId: string;
@@ -19,6 +20,8 @@ interface UseRecordSaveStateParams {
   existingRecords: DatasetRecord[];
   onSaveSuccess?: () => void;
   onSaveError?: (error: Error) => void;
+  inputsFormat?: RecordEditorFormat;
+  expectationsFormat?: RecordEditorFormat;
 }
 
 interface UseRecordSaveStateResult {
@@ -50,14 +53,18 @@ export const useRecordSaveState = ({
   existingRecords,
   onSaveSuccess,
   onSaveError,
+  inputsFormat = 'json',
+  expectationsFormat = 'json',
 }: UseRecordSaveStateParams): UseRecordSaveStateResult => {
   const inputs = useDatasetRecordEditorState({
     recordId: record?.dataset_record_id,
     initialValue: record?.inputs,
+    format: inputsFormat,
   });
   const expectations = useDatasetRecordEditorState({
     recordId: record?.dataset_record_id,
     initialValue: record?.expectations,
+    format: expectationsFormat,
   });
 
   const upsertMutation = useUpsertDatasetRecordsMutation(datasetId);

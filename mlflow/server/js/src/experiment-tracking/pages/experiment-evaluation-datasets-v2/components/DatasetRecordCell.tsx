@@ -4,6 +4,7 @@ import { forwardRef, Fragment, useMemo } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { getTimeAgoStrings } from '@databricks/web-shared/browse';
 import type { DatasetRecord } from '../hooks/useDatasetsQueries';
+import { getDatasetRecordValuePreview } from '../utils/datasetRecordRendering';
 
 type RecordJsonValue = DatasetRecord['inputs'];
 type RecordTags = DatasetRecord['tags'];
@@ -186,9 +187,8 @@ export const truncateCss: CSSObject = {
   verticalAlign: 'middle',
 };
 
-const monospaceCss = (theme: Theme): CSSObject => ({
+const previewTextCss = (theme: Theme): CSSObject => ({
   ...truncateCss,
-  fontFamily: 'monospace',
   fontSize: theme.typography.fontSizeSm,
 });
 
@@ -271,7 +271,7 @@ interface JsonPreviewCellProps {
 }
 
 /**
- * Compact one-line JSON preview for inputs/expectations cells. Tooltip shows the
+ * Compact one-line readable preview for inputs/expectations cells. Tooltip shows the
  * structurally-truncated JSON on hover or keyboard focus.
  */
 export const JsonPreviewCell = ({ value, emptyLabel, onActivate, accessibleLabel }: JsonPreviewCellProps) => {
@@ -297,7 +297,7 @@ export const JsonPreviewCell = ({ value, emptyLabel, onActivate, accessibleLabel
       </Typography.Text>
     );
   }
-  const compact = JSON.stringify(value);
+  const preview = getDatasetRecordValuePreview(value) ?? JSON.stringify(value);
   return (
     <Tooltip
       componentId="mlflow.eval-datasets-v2.records.cell.json-tooltip"
@@ -350,7 +350,7 @@ export const JsonPreviewCell = ({ value, emptyLabel, onActivate, accessibleLabel
         accessibleLabel={accessibleLabel}
         css={{ display: 'block', width: '100%', maxWidth: '100%' }}
       >
-        <span css={monospaceCss(theme)}>{compact}</span>
+        <span css={previewTextCss(theme)}>{preview}</span>
       </CellActivator>
     </Tooltip>
   );

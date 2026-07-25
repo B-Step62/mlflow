@@ -17,6 +17,7 @@ import {
 import * as AssistantService from './AssistantService';
 import type { SendMessageStreamCallbacks } from './AssistantService';
 import { GatewayApi } from '../gateway/api';
+import { MlflowService } from '../experiment-tracking/sdk/MlflowService';
 import type { AssistantConfig, ProviderConfig, AssistantPart, ChatMessage } from './types';
 
 const EMPTY_TOKEN_USAGE = { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: null };
@@ -42,6 +43,10 @@ jest.mock('../gateway/api', () => ({
   GatewayApi: { listEndpoints: jest.fn() },
 }));
 
+jest.mock('../experiment-tracking/sdk/MlflowService', () => ({
+  MlflowService: { searchRuns: jest.fn() },
+}));
+
 jest.mock('./AssistantPageContext', () => ({
   useAssistantPageContextActions: () => ({ getContext: () => ({}) }),
 }));
@@ -49,6 +54,7 @@ jest.mock('./AssistantPageContext', () => ({
 const mockSendMessageStream = jest.mocked(AssistantService.sendMessageStream);
 const mockGetConfig = jest.mocked(AssistantService.getConfig);
 const mockListEndpoints = jest.mocked(GatewayApi.listEndpoints);
+const mockSearchRuns = jest.mocked(MlflowService.searchRuns);
 
 // A fake EventSource — the real one is created inside sendMessageStream, which we mock,
 // so the context only ever calls .close() on what we hand back here.
@@ -74,6 +80,7 @@ beforeEach(() => {
     capturedCallbacks = callbacks;
     return { eventSource: fakeEventSource as unknown as EventSource };
   });
+  mockSearchRuns.mockResolvedValue({ runs: [] });
   // Control rAF so a scheduled flush stays pending until we assert on it.
   jest.spyOn(window, 'requestAnimationFrame').mockReturnValue(777 as unknown as number);
   jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
@@ -81,6 +88,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  jest.useRealTimers();
   jest.restoreAllMocks();
   jest.clearAllMocks();
 });
@@ -291,6 +299,345 @@ describe('AssistantContext — pendingPrompt seed', () => {
 
     expect(result.current.setupComplete).toBe(true);
     expect(result.current.pendingPrompt).toBe('SEED');
+  });
+});
+
+describe('AssistantContext — mock evaluation flow', () => {
+  const advanceMockStream = async (ms: number) => {
+    await act(async () => {
+      jest.advanceTimersByTime(ms);
+      await Promise.resolve();
+    });
+  };
+
+  it('links to the latest evaluation run returned by searchRuns', async () => {
+    jest.useFakeTimers();
+    mockSearchRuns.mockResolvedValue({
+      runs: [
+        {
+          info: { runUuid: 'real-evaluation-run-1' },
+        },
+      ],
+    } as any);
+
+    const { result } = await renderAssistant();
+
+    act(() => {
+      result.current.startMockEvalSetup({
+        issueId: 'issue-1',
+        issueName: 'Answer quality regression',
+        experimentId: 'experiment-123',
+        traceCount: 2,
+        traceIds: ['trace-1', 'trace-2'],
+        datasetName: 'answer-quality-regression',
+        scorerNames: ['answer_quality_judge', 'retrieval_judge'],
+      });
+    });
+
+    await advanceMockStream(1750);
+
+    act(() => {
+      result.current.sendMessage('Create new dataset');
+    });
+
+    await advanceMockStream(4450);
+
+    act(() => {
+      result.current.sendMessage('Run evaluation');
+    });
+
+    await advanceMockStream(2250);
+
+    expect(mockSearchRuns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        experiment_ids: ['experiment-123'],
+        order_by: ['attributes.start_time DESC'],
+        run_view_type: 'ACTIVE_ONLY',
+        filter: "tags.`mlflow.runType` = 'genai_evaluate'",
+        max_results: 1,
+      }),
+    );
+
+    const latestMessage = result.current.messages[result.current.messages.length - 1];
+    const linkAction = latestMessage.parts?.find((part) => part.type === 'linkAction');
+    const promptAction = latestMessage.parts?.find((part) => part.type === 'promptAction');
+    expect(linkAction).toEqual(
+      expect.objectContaining({
+        label: 'Open evaluation result',
+        href: expect.stringContaining(
+          '/experiments/experiment-123/evaluation-runs?selectedRunUuid=real-evaluation-run-1',
+        ),
+      }),
+    );
+    expect(promptAction).toEqual(
+      expect.objectContaining({
+        label: 'Analyze result',
+        prompt: 'Analyze result',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Analyze result');
+    });
+
+    await advanceMockStream(1900);
+
+    const analysisMessage = result.current.messages[result.current.messages.length - 1];
+    expect(analysisMessage.content).toContain('too permissive');
+    expect(analysisMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Do you want me to fine-tune the judge so it aligns with human judgement?',
+      }),
+    );
+  });
+
+  it('recommends creating a new dataset even when a golden dataset exists', async () => {
+    jest.useFakeTimers();
+
+    const { result } = await renderAssistant();
+
+    act(() => {
+      result.current.startMockEvalSetup({
+        issueId: 'issue-golden',
+        issueName: 'Answer quality regression',
+        experimentId: 'experiment-123',
+        traceCount: 2,
+        traceIds: ['trace-1', 'trace-2'],
+        datasetName: 'answer-quality-regression',
+        scorerNames: ['answer_quality_judge', 'retrieval_judge'],
+        goldenDatasetName: 'customer-support-golden',
+        goldenDatasetRecordCount: 120,
+      });
+    });
+
+    await advanceMockStream(1750);
+
+    const promptMessage = result.current.messages[result.current.messages.length - 1];
+    const selectionPrompt = promptMessage.parts?.find(
+      (part): part is Extract<AssistantPart, { type: 'selectionPrompt' }> => part.type === 'selectionPrompt',
+    );
+    const newDatasetOption = selectionPrompt?.options.find((option) => option.value === 'new');
+    const goldenDatasetOption = selectionPrompt?.options.find((option) => option.value === 'golden');
+    expect(selectionPrompt).toEqual(
+      expect.objectContaining({
+        title: 'Where should I put these examples?',
+        defaultValue: 'new',
+      }),
+    );
+    expect(newDatasetOption).toEqual(
+      expect.objectContaining({ value: 'new', label: 'Create new dataset', recommended: true }),
+    );
+    expect(goldenDatasetOption).toEqual(
+      expect.not.objectContaining({ value: 'golden', label: 'Add to existing dataset', recommended: true }),
+    );
+  });
+
+  it('continues from judge alignment to fix and opens a baseline-vs-fixed comparison', async () => {
+    jest.useFakeTimers();
+    mockGetConfig.mockResolvedValue(
+      config({ codex: providerConfig({ model: 'default', selected: true }) }) as Awaited<
+        ReturnType<typeof AssistantService.getConfig>
+      >,
+    );
+    mockSearchRuns
+      .mockResolvedValueOnce({
+        runs: [
+          {
+            info: { runUuid: 'baseline-evaluation-run' },
+          },
+        ],
+      } as any)
+      .mockResolvedValueOnce({
+        runs: [
+          {
+            info: { runUuid: 'fixed-evaluation-run' },
+          },
+          {
+            info: { runUuid: 'baseline-evaluation-run' },
+          },
+        ],
+      } as any);
+
+    const { result } = await renderAssistant();
+
+    act(() => {
+      result.current.startMockEvalSetup({
+        issueId: 'issue-2',
+        issueName: 'Unsupported claims regression',
+        experimentId: 'experiment-123',
+        traceCount: 3,
+        traceIds: ['trace-1', 'trace-2', 'trace-3'],
+        datasetName: 'unsupported-claims-regression',
+        scorerNames: ['groundedness_judge', 'retrieval_judge'],
+      });
+    });
+
+    await advanceMockStream(1750);
+
+    act(() => {
+      result.current.sendMessage('Create new dataset');
+    });
+
+    await advanceMockStream(4450);
+
+    act(() => {
+      result.current.sendMessage('Run evaluation');
+    });
+
+    await advanceMockStream(2250);
+
+    act(() => {
+      result.current.sendMessage('Analyze result');
+    });
+
+    await advanceMockStream(1900);
+
+    act(() => {
+      result.current.sendMessage('Yes, align the judge');
+    });
+
+    await advanceMockStream(2850);
+
+    const alignmentMessage = result.current.messages[result.current.messages.length - 1];
+    expect(alignmentMessage.content).toContain('Once you aligned the judge');
+    expect(alignmentMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'linkAction',
+        label: 'Open judge alignment console',
+        href: '/#/experiments/experiment-123/judges/alignment',
+      }),
+    );
+    expect(alignmentMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'promptAction',
+        label: 'Re-run evaluation',
+        prompt: 'Re-run evaluation',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Re-run evaluation');
+    });
+
+    await advanceMockStream(2200);
+
+    const fixMessage = result.current.messages[result.current.messages.length - 1];
+    expect(fixMessage.content).toContain('Suggested fixes');
+    expect(fixMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'promptAction',
+        label: 'Fix it',
+        prompt: 'Fix it',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Fix it');
+    });
+
+    await advanceMockStream(1800);
+
+    const runAgainPromptMessage = result.current.messages[result.current.messages.length - 1];
+    expect(runAgainPromptMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Run evaluation again with new traces?',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Yes, run evaluation again');
+    });
+
+    await advanceMockStream(1850);
+
+    const comparisonMessage = result.current.messages[result.current.messages.length - 1];
+    expect(comparisonMessage.content).toContain('failures dropped from 11 to 2');
+    expect(comparisonMessage.content).toContain('setting up production monitoring');
+    expect(comparisonMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'evalComparisonSummary',
+        title: 'Evaluation comparison summary',
+      }),
+    );
+    expect(comparisonMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'linkAction',
+        label: 'Open comparison view',
+        href: expect.stringContaining(
+          '/experiments/experiment-123/evaluation-runs?selectedRunUuid=fixed-evaluation-run&compareToRunUuid=baseline-evaluation-run',
+        ),
+      }),
+    );
+    expect(comparisonMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'promptAction',
+        label: 'Setup production monitoring',
+        prompt: 'Setup production monitoring',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Setup production monitoring');
+    });
+
+    await advanceMockStream(2100);
+
+    const monitoringMessage = result.current.messages[result.current.messages.length - 1];
+    expect(monitoringMessage.content).toContain('Monitor is ready');
+    expect(monitoringMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'toolCall',
+        name: 'configure_online_judges',
+        status: 'done',
+      }),
+    );
+  });
+
+  it('nudges production monitoring before resolving an issue that already has eval', async () => {
+    jest.useFakeTimers();
+    const onStart = jest.fn();
+    const onComplete = jest.fn();
+    const onResolve = jest.fn();
+
+    const { result } = await renderAssistant();
+
+    act(() => {
+      result.current.startMockProductionMonitoringNudge({
+        issueId: 'issue-3',
+        issueName: 'Unsupported claims regression',
+        experimentId: 'experiment-123',
+        datasetName: 'unsupported-claims-regression',
+        scorerNames: ['groundedness_judge'],
+        samplingRatio: 0.05,
+        onStart,
+        onComplete,
+        onResolve,
+      });
+    });
+
+    await advanceMockStream(600);
+
+    const nudgeMessage = result.current.messages[result.current.messages.length - 1];
+    expect(nudgeMessage.content).toContain('production monitoring is not enabled yet');
+    expect(nudgeMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Set up production monitoring before resolving?',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Setup production monitoring');
+    });
+
+    await advanceMockStream(2100);
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(result.current.messages[result.current.messages.length - 1].content).toContain('Monitor is ready');
   });
 });
 

@@ -151,20 +151,23 @@ describe('AssessmentChartsSection', () => {
     });
   });
 
-  describe('empty state', () => {
-    it('should render empty state with guidance when no assessments are available at all', async () => {
+  describe('prototype fallback state', () => {
+    it('should render demo quality charts when no assessments are available at all', async () => {
       setupTraceMetricsHandler([]);
 
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('No assessments available')).toBeInTheDocument();
-        expect(screen.getByText('Monitor quality metrics from scorers')).toBeInTheDocument();
-        expect(screen.getByText('Learn more')).toBeInTheDocument();
+        expect(screen.getByText('Detected issues over time')).toBeInTheDocument();
+        expect(screen.getByText('Assessment trends')).toBeInTheDocument();
+        expect(screen.getByText('End-user feedback trends')).toBeInTheDocument();
+        expect(screen.getByTestId('assessment-chart-Correctness')).toBeInTheDocument();
+        expect(screen.getByTestId('assessment-chart-Groundedness')).toBeInTheDocument();
       });
+      expect(screen.queryByText('No assessments available')).not.toBeInTheDocument();
     });
 
-    it('should treat only internal issue discovery judge as no assessments', async () => {
+    it('should render demo assessment charts when only internal issue discovery judge is present', async () => {
       setupTraceMetricsHandler(
         [createSimpleCountDataPoint(INTERNAL_ASSESSMENT_ISSUE_DISCOVERY_JUDGE, 50)],
         [createTimeSeriesDataPoint(INTERNAL_ASSESSMENT_ISSUE_DISCOVERY_JUDGE, '2025-12-22T10:00:00Z', 1)],
@@ -173,21 +176,17 @@ describe('AssessmentChartsSection', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('No assessments available')).toBeInTheDocument();
-        expect(screen.getByText('Monitor quality metrics from scorers')).toBeInTheDocument();
+        expect(screen.getByTestId('assessment-chart-Correctness')).toBeInTheDocument();
+        expect(screen.getByTestId('assessment-chart-Groundedness')).toBeInTheDocument();
       });
+      expect(
+        screen.queryByTestId(`assessment-chart-${INTERNAL_ASSESSMENT_ISSUE_DISCOVERY_JUDGE}`),
+      ).not.toBeInTheDocument();
     });
 
-    it('should not suggest widening time range when only hidden judge exists outside the range', async () => {
+    it('should render a daily severity breakdown for detected issues fallback data', async () => {
       server.use(
-        rest.post(getAjaxUrl('ajax-api/3.0/mlflow/traces/metrics'), async (req, res, ctx) => {
-          const body = await req.json();
-          const hasNoTimeRange = !('start_time_ms' in body) || body.start_time_ms === null;
-          if (hasNoTimeRange && body.metric_name === AssessmentMetricKey.ASSESSMENT_COUNT) {
-            return res(
-              ctx.json({ data_points: [createSimpleCountDataPoint(INTERNAL_ASSESSMENT_ISSUE_DISCOVERY_JUDGE, 10)] }),
-            );
-          }
+        rest.post(getAjaxUrl('ajax-api/3.0/mlflow/traces/metrics'), (_req, res, ctx) => {
           return res(ctx.json({ data_points: [] }));
         }),
       );
@@ -195,40 +194,27 @@ describe('AssessmentChartsSection', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('No assessments available')).toBeInTheDocument();
-        expect(screen.getByText('Monitor quality metrics from scorers')).toBeInTheDocument();
+        expect(screen.getByTestId('bar-Low')).toBeInTheDocument();
+        expect(screen.getByTestId('bar-Medium')).toBeInTheDocument();
+        expect(screen.getByTestId('bar-High')).toBeInTheDocument();
       });
-      expect(screen.queryByText(/Try selecting a longer time range/)).not.toBeInTheDocument();
+      expect(screen.getAllByTestId('bar-chart')[0]).toHaveAttribute('data-count', '7');
     });
 
-    it('should render time range message when assessments exist outside the current time range', async () => {
-      // Setup handler that returns empty for time-filtered queries but data for non-time-filtered queries
+    it('should render demo end-user feedback charts when feedback data is absent', async () => {
       server.use(
-        rest.post(getAjaxUrl('ajax-api/3.0/mlflow/traces/metrics'), async (req, res, ctx) => {
-          const body = await req.json();
-          // If query has no time range (from useHasAssessmentsOutsideTimeRange), return data
-          const hasNoTimeRange = !('start_time_ms' in body) || body.start_time_ms === null;
-          if (hasNoTimeRange && body.metric_name === AssessmentMetricKey.ASSESSMENT_COUNT) {
-            return res(ctx.json({ data_points: [createSimpleCountDataPoint('SomeAssessment', 10)] }));
-          }
-          // Time-filtered queries return empty
+        rest.post(getAjaxUrl('ajax-api/3.0/mlflow/traces/metrics'), (_req, res, ctx) => {
           return res(ctx.json({ data_points: [] }));
         }),
       );
 
       renderComponent();
 
-      await waitFor(
-        () => {
-          expect(screen.getByText('No assessments available')).toBeInTheDocument();
-          expect(screen.getByText(/Try selecting a longer time range/)).toBeInTheDocument();
-        },
-        { timeout: 10000 },
-      );
-
-      // Should NOT show the full guidance
-      expect(screen.queryByText('Monitor quality metrics from scorers')).not.toBeInTheDocument();
-    }, 15000);
+      await waitFor(() => {
+        expect(screen.getByText('End-user pass rate')).toBeInTheDocument();
+        expect(screen.getByText('End-user feedback volume')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('with data', () => {
@@ -251,7 +237,7 @@ describe('AssessmentChartsSection', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('Quality Insights')).toBeInTheDocument();
+        expect(screen.getByText('Assessment trends')).toBeInTheDocument();
       });
     });
 
@@ -261,7 +247,9 @@ describe('AssessmentChartsSection', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('Quality metrics computed by scorers.')).toBeInTheDocument();
+        expect(
+          screen.getByText('Daily score movement for each registered assessment and online judge.'),
+        ).toBeInTheDocument();
       });
     });
 

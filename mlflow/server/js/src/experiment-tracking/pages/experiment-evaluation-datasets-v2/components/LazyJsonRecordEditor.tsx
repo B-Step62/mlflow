@@ -7,7 +7,7 @@ import { GenericSkeleton } from '@databricks/design-system';
 import type { JsonRecordEditorProps } from './JsonRecordEditor';
 
 /**
- * Lazy-loads `JsonRecordEditor` so the Monaco bundle (~1 MB gz with our restricted languages
+ * Lazy-loads `JsonRecordEditor` so the Monaco bundle (restricted languages
  * config) stays out of the main app chunk. The record side panel is the only consumer in
  * v2, so users who never open it never download Monaco.
  */

@@ -11,6 +11,13 @@ export enum ScorerEvaluationScope {
 
 export type ScorerFormMode = (typeof SCORER_FORM_MODE)[keyof typeof SCORER_FORM_MODE];
 
+export const SCORER_CREATE_FORM_INTENT = {
+  CREATE: 'create',
+  USE_BUILT_IN: 'use-built-in',
+} as const;
+
+export type ScorerCreateFormIntent = (typeof SCORER_CREATE_FORM_INTENT)[keyof typeof SCORER_CREATE_FORM_INTENT];
+
 export const DEFAULT_TRACE_COUNT = 1;
 
 export const MAX_SELECTED_ITEM_COUNT = 100;

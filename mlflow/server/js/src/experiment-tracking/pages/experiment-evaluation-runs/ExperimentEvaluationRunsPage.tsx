@@ -1,19 +1,11 @@
 import invariant from 'invariant';
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useExperimentEvaluationRunsData } from '../../components/experiment-page/hooks/useExperimentEvaluationRunsData';
 import { ExperimentEvaluationRunsPageWrapper } from './ExperimentEvaluationRunsPageWrapper';
 import { ExperimentEvaluationRunsTable } from './ExperimentEvaluationRunsTable';
 import type { RowSelectionState } from '@tanstack/react-table';
 import { useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
-import {
-  Button,
-  DatabaseIcon,
-  SparkleIcon,
-  Tag,
-  Tooltip,
-  Typography,
-  useDesignSystemTheme,
-} from '@databricks/design-system';
+import { Button, DatabaseIcon, SparkleIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { RunViewEvaluationsTab } from '../../components/evaluations/RunViewEvaluationsTab';
 import { ExperimentEvaluationRunsTableControls } from './ExperimentEvaluationRunsTableControls';
 import evalRunsEmptyImg from '@mlflow/mlflow/src/common/static/eval-runs-empty.svg';
@@ -103,6 +95,20 @@ const getRunTokenValue = (run: RunEntity) => {
   return getMetricValue(getRunMetricByPattern(run, /token/i));
 };
 
+const getRunTraceCountValue = (run: RunEntity) =>
+  getMetricValue(
+    getRunMetricByExactKeys(run, [
+      'trace_count',
+      'total_traces',
+      'total_traces_analyzed',
+      'num_traces',
+      'record_count',
+      'row_count',
+      'num_records',
+      'num_samples',
+    ]) ?? getRunMetricByPattern(run, /(^|[._/\s-])(trace|record|row|sample)s?([._/\s-]?count)?($|[._/\s-])/i),
+  );
+
 const sumDefinedValues = (values: Array<number | undefined>) => {
   const definedValues = values.filter((value): value is number => value !== undefined);
   if (definedValues.length === 0) {
@@ -134,41 +140,25 @@ const getRegisteredScorerNamesForRuns = (runs: RunEntity[], scheduledScorers: Sc
   return Array.from(scorerNames);
 };
 
-type EvaluationRunMetadataTagProps = {
-  componentId: string;
-  label: ReactNode;
-  value: ReactNode;
-  onClick?: () => void;
+type EvaluationRunMetadataItem = {
+  key: string;
+  content: ReactNode;
 };
 
-const EvaluationRunMetadataTag = forwardRef<HTMLDivElement, EvaluationRunMetadataTagProps>(
-  function EvaluationRunMetadataTag({ componentId, label, value, onClick }, ref) {
-    const { theme } = useDesignSystemTheme();
-
-    return (
-      <Tag
-        ref={ref}
-        componentId={componentId}
-        onClick={onClick}
-        css={{
-          margin: 0,
-          maxWidth: 320,
-          cursor: onClick ? 'pointer' : undefined,
-        }}
-      >
-        <span css={{ display: 'inline-flex', gap: theme.spacing.xs, minWidth: 0, alignItems: 'center' }}>
-          <Typography.Text bold css={{ whiteSpace: 'nowrap' }}>
-            {label}
-          </Typography.Text>
-          <Typography.Text css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {value}
-          </Typography.Text>
-        </span>
-      </Tag>
-    );
-  },
+const EvaluationRunMetadataText = ({ children, maxWidth }: { children: ReactNode; maxWidth?: number | string }) => (
+  <Typography.Text
+    color="secondary"
+    size="sm"
+    css={{
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth,
+    }}
+  >
+    {children}
+  </Typography.Text>
 );
-EvaluationRunMetadataTag.displayName = 'EvaluationRunMetadataTag';
 
 const CreateEvaluationRunDatasetButton = ({ experimentId }: { experimentId: string }) => {
   const [isCreateDatasetModalOpen, setIsCreateDatasetModalOpen] = useState(false);
@@ -219,11 +209,161 @@ const EvaluationRunHeaderMetadata = ({
 
   const totalCost = sumDefinedValues(runs.map(getRunCostValue));
   const totalTokens = sumDefinedValues(runs.map(getRunTokenValue));
+  const totalTraceCount = sumDefinedValues(runs.map(getRunTraceCountValue));
   const totalDurationMs = sumDefinedValues(runs.map(getRunDurationMs));
   const createdAt = selectedRun?.info.startTime ? Utils.formatTimestamp(selectedRun.info.startTime, intl) : undefined;
 
   if (!runs.length) {
     return null;
+  }
+
+  const metadataItems: EvaluationRunMetadataItem[] = [];
+
+  if (showComparisonMetadata) {
+    metadataItems.push({
+      key: 'run-count',
+      content: (
+        <EvaluationRunMetadataText>
+          <FormattedMessage
+            defaultMessage="Runs: {count}"
+            description="Run count in evaluation run header metadata"
+            values={{ count: runs.length.toLocaleString() }}
+          />
+        </EvaluationRunMetadataText>
+      ),
+    });
+  }
+
+  if (!showComparisonMetadata) {
+    if (selectedRunDataset && selectedRunDatasetDisplayName) {
+      metadataItems.push({
+        key: 'dataset',
+        content: (
+          <span
+            css={{
+              display: 'inline-flex',
+              alignItems: 'baseline',
+              minWidth: 0,
+              maxWidth: 360,
+              gap: theme.spacing.xs / 2,
+            }}
+          >
+            <EvaluationRunMetadataText>
+              <FormattedMessage
+                defaultMessage="Dataset:"
+                description="Label for the dataset in evaluation run header metadata"
+              />
+            </EvaluationRunMetadataText>
+            <Typography.Link
+              componentId="mlflow.eval-runs.header-metadata.dataset"
+              onClick={onOpenDataset}
+              title={selectedRunDatasetDisplayName}
+              css={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontSize: theme.typography.fontSizeSm,
+              }}
+            >
+              {selectedRunDatasetDisplayName}
+            </Typography.Link>
+          </span>
+        ),
+      });
+    } else {
+      metadataItems.push({
+        key: 'create-dataset',
+        content: <CreateEvaluationRunDatasetButton experimentId={experimentId} />,
+      });
+    }
+  }
+
+  if (createdAt) {
+    metadataItems.push({
+      key: 'created-at',
+      content: (
+        <EvaluationRunMetadataText>
+          <FormattedMessage
+            defaultMessage="Created: {createdAt}"
+            description="Created timestamp in evaluation run header metadata"
+            values={{ createdAt }}
+          />
+        </EvaluationRunMetadataText>
+      ),
+    });
+  }
+
+  if (totalTraceCount !== undefined) {
+    metadataItems.push({
+      key: 'trace-count',
+      content: (
+        <EvaluationRunMetadataText>
+          <FormattedMessage
+            defaultMessage="{count, plural, one {# trace} other {# traces}}"
+            description="Trace count in evaluation run header metadata"
+            values={{ count: Math.round(totalTraceCount) }}
+          />
+        </EvaluationRunMetadataText>
+      ),
+    });
+  }
+
+  if (registeredScorerNames.length > 0) {
+    metadataItems.push({
+      key: 'judge-count',
+      content: (
+        <EvaluationRunMetadataText>
+          <FormattedMessage
+            defaultMessage="{count, plural, one {# judge} other {# judges}}"
+            description="Registered judge count in evaluation run header metadata"
+            values={{ count: registeredScorerNames.length }}
+          />
+        </EvaluationRunMetadataText>
+      ),
+    });
+  }
+
+  if (totalDurationMs !== undefined) {
+    metadataItems.push({
+      key: 'duration',
+      content: (
+        <EvaluationRunMetadataText>
+          <FormattedMessage
+            defaultMessage="Duration: {duration}"
+            description="Total duration in evaluation run header metadata"
+            values={{ duration: Utils.formatDuration(totalDurationMs) }}
+          />
+        </EvaluationRunMetadataText>
+      ),
+    });
+  }
+
+  metadataItems.push({
+    key: 'total-cost',
+    content: (
+      <EvaluationRunMetadataText>
+        <FormattedMessage
+          defaultMessage="Total cost: {cost}"
+          description="Total cost in evaluation run header metadata"
+          values={{ cost: formatCostUSD(totalCost ?? 0) }}
+        />
+      </EvaluationRunMetadataText>
+    ),
+  });
+
+  if (totalTokens !== undefined) {
+    metadataItems.push({
+      key: 'total-tokens',
+      content: (
+        <EvaluationRunMetadataText>
+          <FormattedMessage
+            defaultMessage="Tokens: {tokens}"
+            description="Total token count in evaluation run header metadata"
+            values={{ tokens: Math.round(totalTokens).toLocaleString() }}
+          />
+        </EvaluationRunMetadataText>
+      ),
+    });
   }
 
   return (
@@ -232,103 +372,32 @@ const EvaluationRunHeaderMetadata = ({
       css={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: theme.spacing.xs,
+        columnGap: theme.spacing.xs,
+        rowGap: theme.spacing.xs / 2,
         alignItems: 'center',
         minWidth: 0,
+        color: theme.colors.textSecondary,
       }}
     >
-      {showComparisonMetadata && (
-        <EvaluationRunMetadataTag
-          componentId="mlflow.eval-runs.header-metadata.run-count"
-          label={
-            <FormattedMessage
-              defaultMessage="Runs"
-              description="Label for the run count in evaluation run header metadata"
-            />
-          }
-          value={runs.length.toLocaleString()}
-        />
-      )}
-      {!showComparisonMetadata &&
-        (selectedRunDataset && selectedRunDatasetDisplayName ? (
-          <Tooltip
-            componentId="mlflow.eval-runs.header-metadata.dataset-tooltip"
-            content={selectedRunDatasetDisplayName}
-          >
-            <EvaluationRunMetadataTag
-              componentId="mlflow.eval-runs.header-metadata.dataset"
-              label={
-                <FormattedMessage
-                  defaultMessage="Dataset"
-                  description="Label for the dataset in evaluation run header metadata"
-                />
-              }
-              value={selectedRunDatasetDisplayName}
-              onClick={onOpenDataset}
-            />
-          </Tooltip>
-        ) : (
-          <CreateEvaluationRunDatasetButton experimentId={experimentId} />
-        ))}
-      {registeredScorerNames.map((scorerName) => (
-        <EvaluationRunMetadataTag
-          key={scorerName}
-          componentId="mlflow.eval-runs.header-metadata.scorer"
-          label={
-            <FormattedMessage
-              defaultMessage="Scorer"
-              description="Label for a registered scorer in evaluation run header metadata"
-            />
-          }
-          value={scorerName}
-        />
+      {metadataItems.map((item, index) => (
+        <span
+          key={item.key}
+          css={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            minWidth: 0,
+            maxWidth: '100%',
+          }}
+        >
+          {index > 0 && (
+            <Typography.Text color="secondary" size="sm" aria-hidden>
+              &middot;
+            </Typography.Text>
+          )}
+          {item.content}
+        </span>
       ))}
-      {createdAt && (
-        <EvaluationRunMetadataTag
-          componentId="mlflow.eval-runs.header-metadata.created-at"
-          label={
-            <FormattedMessage
-              defaultMessage="Created"
-              description="Label for the created timestamp in evaluation run header metadata"
-            />
-          }
-          value={createdAt}
-        />
-      )}
-      {totalDurationMs !== undefined && (
-        <EvaluationRunMetadataTag
-          componentId="mlflow.eval-runs.header-metadata.duration"
-          label={
-            <FormattedMessage
-              defaultMessage="Duration"
-              description="Label for total duration in evaluation run header metadata"
-            />
-          }
-          value={Utils.formatDuration(totalDurationMs)}
-        />
-      )}
-      <EvaluationRunMetadataTag
-        componentId="mlflow.eval-runs.header-metadata.total-cost"
-        label={
-          <FormattedMessage
-            defaultMessage="Total cost"
-            description="Label for total cost in evaluation run header metadata"
-          />
-        }
-        value={formatCostUSD(totalCost ?? 0)}
-      />
-      {totalTokens !== undefined && (
-        <EvaluationRunMetadataTag
-          componentId="mlflow.eval-runs.header-metadata.total-tokens"
-          label={
-            <FormattedMessage
-              defaultMessage="Tokens"
-              description="Label for total token count in evaluation run header metadata"
-            />
-          }
-          value={Math.round(totalTokens).toLocaleString()}
-        />
-      )}
     </div>
   );
 };

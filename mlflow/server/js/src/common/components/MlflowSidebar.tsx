@@ -40,6 +40,7 @@ import { MlflowSidebarExperimentItems } from './MlflowSidebarExperimentItems';
 import { MlflowSidebarGatewayItems } from './MlflowSidebarGatewayItems';
 import { MlflowSidebarSettingsItems } from './MlflowSidebarSettingsItems';
 import { MlflowSidebarWorkflowSwitch } from './MlflowSidebarWorkflowSwitch';
+import { useAssistant } from '../../assistant';
 
 const isInsideExperiment = (location: Location) =>
   Boolean(matchPath('/experiments/:experimentId/*', location.pathname));
@@ -94,6 +95,8 @@ export function MlflowSidebar({
   const [searchParams] = useSearchParams();
   const { theme } = useDesignSystemTheme();
   const enableWorkflowBasedNavigation = shouldEnableWorkflowBasedNavigation();
+  const { isPanelOpen } = useAssistant();
+  const effectiveShowSidebar = showSidebar && !isPanelOpen;
   // WorkflowType context is always available, but UI is guarded by feature flag
   const { workflowType, setWorkflowType } = useWorkflowType();
   const { experimentId } = useParams();
@@ -171,7 +174,7 @@ export function MlflowSidebar({
         componentId: 'mlflow.sidebar.experiments_tab_link',
         nestedItems: showNestedExperimentItems ? (
           <MlflowSidebarExperimentItems
-            collapsed={!showSidebar}
+            collapsed={!effectiveShowSidebar}
             experimentId={activeExperimentId ?? undefined}
             workflowType={workflowType}
             onBackClick={clearLastSelectedExperiment}
@@ -226,7 +229,7 @@ export function MlflowSidebar({
               componentId: 'mlflow.sidebar.gateway_tab_link',
               nestedItems:
                 shouldEnableWorkflowBasedNavigation() && isGatewayActive(location) ? (
-                  <MlflowSidebarGatewayItems collapsed={!showSidebar} />
+                  <MlflowSidebarGatewayItems collapsed={!effectiveShowSidebar} />
                 ) : undefined,
             },
           ]
@@ -239,7 +242,7 @@ export function MlflowSidebar({
       clearLastSelectedExperiment,
       enableWorkflowBasedNavigation,
       location,
-      showSidebar,
+      effectiveShowSidebar,
     ],
   );
 
@@ -264,17 +267,18 @@ export function MlflowSidebar({
   return (
     <aside
       css={{
-        width: showSidebar ? 190 : theme.spacing.lg + theme.spacing.md,
+        width: effectiveShowSidebar ? 190 : theme.spacing.lg + theme.spacing.md,
         flexShrink: 0,
         padding: theme.spacing.sm,
         paddingRight: 0,
         display: 'inline-flex',
         flexDirection: 'column',
         gap: theme.spacing.md,
+        transition: 'width 120ms ease-in-out',
       }}
     >
       <div css={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        {showSidebar && (
+        {effectiveShowSidebar && (
           <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
             <Link componentId="mlflow.sidebar.logo_home_link" to={ExperimentTrackingRoutes.rootRoute}>
               <MlflowLogo
@@ -294,10 +298,11 @@ export function MlflowSidebar({
           componentId="mlflow_header.toggle_sidebar_button"
           onClick={toggleSidebar}
           aria-label="Toggle sidebar"
-          icon={showSidebar ? <SidebarCollapseIcon /> : <SidebarExpandIcon />}
+          disabled={isPanelOpen}
+          icon={effectiveShowSidebar ? <SidebarCollapseIcon /> : <SidebarExpandIcon />}
         />
       </div>
-      {workspacesEnabled && showSidebar && <WorkspaceSelector />}
+      {workspacesEnabled && effectiveShowSidebar && <WorkspaceSelector />}
       {workspacesEnabled && !showWorkspaceMenuItems && (
         <MlflowSidebarLink
           key="mlflow.sidebar.workspace_home_link"
@@ -305,12 +310,12 @@ export function MlflowSidebar({
           componentId="mlflow.sidebar.workspace_home_link"
           isActive={isHomeActive}
           icon={<HomeIcon />}
-          collapsed={!showSidebar}
+          collapsed={!effectiveShowSidebar}
         >
           <FormattedMessage defaultMessage="Home" description="Sidebar link for home page" />
         </MlflowSidebarLink>
       )}
-      {enableWorkflowBasedNavigation && showWorkspaceMenuItems && showSidebar && (
+      {enableWorkflowBasedNavigation && showWorkspaceMenuItems && effectiveShowSidebar && (
         <MlflowSidebarWorkflowSwitch workflowType={workflowType} setWorkflowType={setWorkflowType} />
       )}
 
@@ -332,7 +337,7 @@ export function MlflowSidebar({
         >
           {showWorkspaceMenuItems &&
             (showNestedSettingsItems ? (
-              <MlflowSidebarSettingsItems collapsed={!showSidebar} />
+              <MlflowSidebarSettingsItems collapsed={!effectiveShowSidebar} />
             ) : (
               menuItems.map(
                 ({ icon, linkProps, componentId, nestedItems }) =>
@@ -343,7 +348,7 @@ export function MlflowSidebar({
                       componentId={componentId}
                       isActive={linkProps.isActive}
                       icon={icon}
-                      collapsed={!showSidebar}
+                      collapsed={!effectiveShowSidebar}
                     >
                       {linkProps.children}
                     </MlflowSidebarLink>
@@ -359,7 +364,7 @@ export function MlflowSidebar({
             componentId="mlflow.sidebar.docs_link"
             isActive={() => false}
             icon={<InfoBookIcon />}
-            collapsed={!showSidebar}
+            collapsed={!effectiveShowSidebar}
             openInNewTab
           >
             <span css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
@@ -374,7 +379,7 @@ export function MlflowSidebar({
               componentId="mlflow.sidebar.settings_tab_link"
               isActive={isSettingsActive}
               icon={<GearIcon />}
-              collapsed={!showSidebar}
+              collapsed={!effectiveShowSidebar}
             >
               <FormattedMessage defaultMessage="Settings" description="Sidebar link for settings page" />
             </MlflowSidebarLink>
@@ -408,7 +413,7 @@ export function MlflowSidebar({
                     type="button"
                     aria-label={`Account menu for ${username}`}
                     css={{
-                      ...getSidebarItemStyles(theme, !showSidebar),
+                      ...getSidebarItemStyles(theme, !effectiveShowSidebar),
                       background: 'transparent',
                       border: 'none',
                       cursor: 'pointer',
@@ -421,7 +426,7 @@ export function MlflowSidebar({
                     }}
                   >
                     <Avatar type="user" size="sm" label={username} />
-                    {showSidebar && (
+                    {effectiveShowSidebar && (
                       <Typography.Text
                         css={{
                           flex: 1,

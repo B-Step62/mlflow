@@ -240,6 +240,76 @@ def test_proxy_artifact_mpu_validator_returns_update_for_post():
 
 
 @pytest.mark.parametrize(
+    ("path", "method", "expected"),
+    [
+        (
+            "/api/3.0/mlflow/prompt-optimization/jobs/job-abc-123",
+            "GET",
+            "validate_can_read_prompt_optimization_job",
+        ),
+        (
+            "/ajax-api/3.0/mlflow/prompt-optimization/jobs/job-abc-123",
+            "GET",
+            "validate_can_read_prompt_optimization_job",
+        ),
+        (
+            "/api/3.0/mlflow/prompt-optimization/jobs/job-abc-123/cancel",
+            "POST",
+            "validate_can_update_prompt_optimization_job",
+        ),
+        (
+            "/api/3.0/mlflow/prompt-optimization/jobs/job-abc-123",
+            "DELETE",
+            "validate_can_delete_prompt_optimization_job",
+        ),
+    ],
+)
+def test_find_validator_resolves_prompt_optimization_job_object_routes(path, method, expected):
+    # These routes carry a <job_id> path parameter, so the exact-match
+    # BEFORE_REQUEST_VALIDATORS lookup misses them and _find_validator must fall back
+    # to regex matching. Before the fix it returned None, so _before_request ran the
+    # handler with no authorization check (cross-user read/cancel/delete, CWE-862).
+    validator = auth_module._find_validator(SimpleNamespace(path=path, method=method))
+    assert validator is not None
+    assert validator.__name__ == expected
+
+
+def test_find_validator_denies_unknown_prompt_optimization_job_subpath():
+    # Unrecognized paths under the job prefix fail closed rather than being skipped.
+    validator = auth_module._find_validator(
+        SimpleNamespace(
+            path="/api/3.0/mlflow/prompt-optimization/jobs/job-abc-123/unknown",
+            method="GET",
+        )
+    )
+    assert validator is not None
+    assert validator() is False
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "expected"),
+    [
+        (
+            "/api/3.0/mlflow/prompt-optimization/jobs/search",
+            "POST",
+            "validate_can_read_experiment",
+        ),
+        (
+            "/api/3.0/mlflow/prompt-optimization/jobs",
+            "POST",
+            "validate_can_update_experiment",
+        ),
+    ],
+)
+def test_find_validator_resolves_prompt_optimization_job_static_routes(path, method, expected):
+    # The static search/create routes must keep resolving via exact match and must not
+    # be shadowed by the parameterized <job_id> fallback.
+    validator = auth_module._find_validator(SimpleNamespace(path=path, method=method))
+    assert validator is not None
+    assert validator.__name__ == expected
+
+
+@pytest.mark.parametrize(
     ("path", "method"),
     [
         ("/ajax-api/3.0/mlflow/issues/invoke", "POST"),

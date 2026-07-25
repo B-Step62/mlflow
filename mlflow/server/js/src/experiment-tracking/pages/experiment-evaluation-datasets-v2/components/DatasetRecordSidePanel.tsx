@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button, CloseIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { DatasetRecord } from '../hooks/useDatasetsQueries';
-import { LazyJsonRecordEditor } from './LazyJsonRecordEditor';
 import { DatasetRecordDetailFooter } from './DatasetRecordDetailFooter';
 import { DatasetRecordCollapsibleSection } from './DatasetRecordCollapsibleSection';
 import { DatasetRecordDetailHeader } from './DatasetRecordDetailHeader';
@@ -10,6 +9,12 @@ import { TagsCell } from './TagsCell';
 import { DraftTagsField } from './DraftTagsField';
 import { useRecordSaveState } from '../hooks/useRecordSaveState';
 import { useRecordCreateState, type PendingNewRecord } from '../hooks/useRecordCreateState';
+import {
+  DatasetRecordFieldRenderer,
+  DatasetRecordFieldRenderModeSelector,
+  type DatasetRecordFieldRenderMode,
+} from './DatasetRecordFieldRenderer';
+import type { RecordEditorFormat } from '../utils/datasetRecordRendering';
 // Tiny intl-based date formatter; replaces @databricks/web-shared/date-time which OSS lacks.
 const formatDateTime = (
   input: string | undefined,
@@ -92,7 +97,23 @@ interface DatasetRecordSidePanelProps {
    * need to know about SQL warehouse / labeling-schemas plumbing the modal requires).
    */
   onOpenTraceModal?: (traceId: string) => void;
+  onNavigateRecord?: (direction: -1 | 1) => void;
+  canNavigatePreviousRecord?: boolean;
+  canNavigateNextRecord?: boolean;
 }
+
+const isEditableKeyboardTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return (
+    target.isContentEditable ||
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select' ||
+    target.getAttribute('role') === 'textbox' ||
+    Boolean(target.closest('.monaco-editor'))
+  );
+};
 
 /**
  * Inline side panel for editing an existing dataset record OR composing a new one. Replaces
@@ -112,6 +133,9 @@ export const DatasetRecordSidePanel = ({
   onPendingChange,
   onDirtyChange,
   onOpenTraceModal,
+  onNavigateRecord,
+  canNavigatePreviousRecord = false,
+  canNavigateNextRecord = false,
 }: DatasetRecordSidePanelProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -125,6 +149,15 @@ export const DatasetRecordSidePanel = ({
     description: 'Generic fallback save-error text for the dataset record side panel (create mode)',
   });
 
+  const [inputsRenderMode, setInputsRenderMode] = useState<DatasetRecordFieldRenderMode>(() =>
+    mode === 'create' ? 'json' : 'chat',
+  );
+  const [expectationsRenderMode, setExpectationsRenderMode] = useState<DatasetRecordFieldRenderMode>(() =>
+    mode === 'create' ? 'json' : 'chat',
+  );
+  const [inputsEditorFormat, setInputsEditorFormat] = useState<RecordEditorFormat>('json');
+  const [expectationsEditorFormat, setExpectationsEditorFormat] = useState<RecordEditorFormat>('json');
+
   // Both hooks are called unconditionally to satisfy the rules of hooks. The unused one
   // sits in `clean` status with no in-flight mutation, so the cost is a couple of memo'd
   // values and the editor state for two un-rendered fields — cheap and trivially correct.
@@ -135,6 +168,8 @@ export const DatasetRecordSidePanel = ({
     existingRecords,
     onSaveSuccess: mode === 'edit' ? onSaveSuccess : undefined,
     onSaveError: mode === 'edit' ? onSaveError : undefined,
+    inputsFormat: inputsEditorFormat,
+    expectationsFormat: expectationsEditorFormat,
   });
   const createState = useRecordCreateState({
     datasetId,
@@ -143,6 +178,8 @@ export const DatasetRecordSidePanel = ({
     onSaveSuccess: mode === 'create' ? onSaveSuccess : undefined,
     onSaveError: mode === 'create' ? onSaveError : undefined,
     onPendingChange: mode === 'create' ? onPendingChange : undefined,
+    inputsFormat: inputsEditorFormat,
+    expectationsFormat: expectationsEditorFormat,
   });
 
   const active = mode === 'edit' ? editState : createState;
@@ -193,12 +230,6 @@ export const DatasetRecordSidePanel = ({
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  const invalidJsonMessage = intl.formatMessage({
-    defaultMessage: 'Invalid JSON',
-    description:
-      'Inline error shown under a dataset record JSON editor when the contents do not parse as a JSON object',
-  });
-
   const closeLabel = intl.formatMessage({
     defaultMessage: 'Close',
     description: 'Aria label for the close button on the V2 dataset record side panel',
@@ -215,6 +246,46 @@ export const DatasetRecordSidePanel = ({
   if (!open) return null;
 
   const showRecordDetail = mode === 'edit' && record !== undefined;
+
+  const handleBodyKeyDown = (event: KeyboardEvent) => {
+    active.onContainerKeyDown(event);
+    if (event.defaultPrevented || mode !== 'edit' || !onNavigateRecord || isEditableKeyboardTarget(event.target)) {
+      return;
+    }
+    if (event.key === 'ArrowUp' && canNavigatePreviousRecord) {
+      event.preventDefault();
+      onNavigateRecord(-1);
+    }
+    if (event.key === 'ArrowDown' && canNavigateNextRecord) {
+      event.preventDefault();
+      onNavigateRecord(1);
+    }
+  };
+
+  const renderSectionTitle = (title: ReactNode, action?: ReactNode) => (
+    <div
+      css={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: theme.spacing.sm,
+        width: '100%',
+        minWidth: 0,
+      }}
+    >
+      <span css={{ minWidth: 0 }}>{title}</span>
+      {action && (
+        <span
+          css={{ flexShrink: 0 }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          {action}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <aside
@@ -277,7 +348,7 @@ export const DatasetRecordSidePanel = ({
         </div>
       </div>
       <div
-        onKeyDown={active.onContainerKeyDown}
+        onKeyDown={handleBodyKeyDown}
         css={{
           flex: 1,
           overflowY: 'auto',
@@ -287,42 +358,66 @@ export const DatasetRecordSidePanel = ({
         }}
       >
         <DatasetRecordCollapsibleSection
-          title={
+          title={renderSectionTitle(
             <FormattedMessage
               defaultMessage="Inputs"
               description="Section title for inputs in the V2 dataset record side panel"
-            />
-          }
+            />,
+            <DatasetRecordFieldRenderModeSelector
+              fieldKey="inputs"
+              value={active.inputs}
+              renderMode={inputsRenderMode}
+              onRenderModeChange={setInputsRenderMode}
+              editorFormat={inputsEditorFormat}
+              onEditorFormatChange={setInputsEditorFormat}
+            />,
+          )}
         >
-          <LazyJsonRecordEditor
-            value={active.inputs.text}
-            onChange={active.inputs.setText}
+          <DatasetRecordFieldRenderer
+            fieldKey="inputs"
+            value={active.inputs}
+            renderMode={inputsRenderMode}
+            editorFormat={inputsEditorFormat}
             ariaLabel={intl.formatMessage({
               defaultMessage: 'Dataset record inputs',
-              description: 'Aria label for the dataset record inputs JSON editor',
+              description: 'Aria label for the dataset record inputs editor',
             })}
-            errorMessage={active.inputs.isValid ? undefined : invalidJsonMessage}
             onSaveShortcut={active.save}
+            onNavigateRecord={mode === 'edit' ? onNavigateRecord : undefined}
+            canNavigatePreviousRecord={canNavigatePreviousRecord}
+            canNavigateNextRecord={canNavigateNextRecord}
           />
         </DatasetRecordCollapsibleSection>
 
         <DatasetRecordCollapsibleSection
-          title={
+          title={renderSectionTitle(
             <FormattedMessage
               defaultMessage="Expectations"
               description="Section title for expectations in the V2 dataset record side panel"
-            />
-          }
+            />,
+            <DatasetRecordFieldRenderModeSelector
+              fieldKey="expectations"
+              value={active.expectations}
+              renderMode={expectationsRenderMode}
+              onRenderModeChange={setExpectationsRenderMode}
+              editorFormat={expectationsEditorFormat}
+              onEditorFormatChange={setExpectationsEditorFormat}
+            />,
+          )}
         >
-          <LazyJsonRecordEditor
-            value={active.expectations.text}
-            onChange={active.expectations.setText}
+          <DatasetRecordFieldRenderer
+            fieldKey="expectations"
+            value={active.expectations}
+            renderMode={expectationsRenderMode}
+            editorFormat={expectationsEditorFormat}
             ariaLabel={intl.formatMessage({
               defaultMessage: 'Dataset record expectations',
-              description: 'Aria label for the dataset record expectations JSON editor',
+              description: 'Aria label for the dataset record expectations editor',
             })}
-            errorMessage={active.expectations.isValid ? undefined : invalidJsonMessage}
             onSaveShortcut={active.save}
+            onNavigateRecord={mode === 'edit' ? onNavigateRecord : undefined}
+            canNavigatePreviousRecord={canNavigatePreviousRecord}
+            canNavigateNextRecord={canNavigateNextRecord}
           />
         </DatasetRecordCollapsibleSection>
 

@@ -31,12 +31,13 @@ import { FormattedMessage, useIntl } from '@databricks/i18n';
 
 import Utils from '../../../common/utils/Utils';
 import { getAiGradientBorderStyle } from '../../../shared/web-shared/design-system/aiGradientBorderStyle';
-import { Link, useNavigate, useParams } from '../../../common/utils/RoutingUtils';
+import { Link, useNavigate, useParams, useSearchParams } from '../../../common/utils/RoutingUtils';
 import { diffLines } from '../prompts/diff';
 import { ExperimentPageTabName } from '../../constants';
 import Routes from '../../routes';
 
 const JUDGE_NAME = 'response_quality';
+const JUDGE_OPTIONS = [JUDGE_NAME, 'groundedness', 'safety', 'answer_relevance'];
 const MODEL_OPTIONS = ['openai:/gpt-5-mini', 'openai:/gpt-5', 'databricks:/databricks-claude-sonnet-4'];
 
 const INITIAL_INSTRUCTION = `Evaluate whether {{ outputs }} correctly answers {{ inputs }}.
@@ -210,6 +211,25 @@ const INITIAL_ROWS: AlignmentRow[] = [
     humanRationale: 'The final answer is incomplete because account-owner approval is required.',
   },
 ];
+
+const DATASET_SAMPLE_ROWS = INITIAL_ROWS.slice(0, 5);
+const TRACE_SAMPLE_ROWS = INITIAL_ROWS.slice(5, 10);
+const EVALUATION_PREFILL_ROWS = INITIAL_ROWS;
+
+const cloneAlignmentRows = (rows: AlignmentRow[]) => rows.map((row) => ({ ...row }));
+
+const getRowsForPrefillSource = (prefillSource: string | null): AlignmentRow[] => {
+  if (prefillSource === 'eval' || prefillSource === 'evaluation') {
+    return cloneAlignmentRows(EVALUATION_PREFILL_ROWS);
+  }
+  if (prefillSource === 'dataset') {
+    return cloneAlignmentRows(DATASET_SAMPLE_ROWS);
+  }
+  if (prefillSource === 'traces') {
+    return cloneAlignmentRows(TRACE_SAMPLE_ROWS);
+  }
+  return [];
+};
 
 const ResultTag = ({ value }: { value: JudgeResult }) => (
   <Tag
@@ -612,18 +632,88 @@ const EditableTextCell = ({
   );
 };
 
+const ExamplesEmptyState = ({
+  onLoadDataset,
+  onSelectTraces,
+  onManualAdd,
+}: {
+  onLoadDataset: () => void;
+  onSelectTraces: () => void;
+  onManualAdd: () => void;
+}) => {
+  const { theme } = useDesignSystemTheme();
+
+  return (
+    <div
+      css={{
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: theme.borders.borderRadiusMd,
+        minHeight: 240,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: theme.spacing.md,
+        backgroundColor: theme.colors.backgroundSecondary,
+        padding: theme.spacing.lg,
+        textAlign: 'center',
+      }}
+    >
+      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, maxWidth: 520 }}>
+        <Typography.Text bold>
+          <FormattedMessage defaultMessage="No examples yet" description="Empty state title for alignment examples" />
+        </Typography.Text>
+        <Typography.Text color="secondary">
+          <FormattedMessage
+            defaultMessage="Add examples with inputs, outputs, and human feedback before aligning this judge."
+            description="Empty state description for alignment examples"
+          />
+        </Typography.Text>
+      </div>
+      <div
+        css={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
+      >
+        <Button componentId="mlflow.experiment-scorers.judge-alignment-load-dataset" onClick={onLoadDataset}>
+          <FormattedMessage defaultMessage="Load dataset" description="Load dataset empty state action" />
+        </Button>
+        <Button componentId="mlflow.experiment-scorers.judge-alignment-select-traces" onClick={onSelectTraces}>
+          <FormattedMessage defaultMessage="Select traces" description="Select traces empty state action" />
+        </Button>
+        <Button
+          componentId="mlflow.experiment-scorers.judge-alignment-manual-add"
+          icon={<PlusIcon />}
+          onClick={onManualAdd}
+        >
+          <FormattedMessage defaultMessage="Manually add" description="Manually add empty state action" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const JudgeAlignmentPrototypePage = () => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const navigate = useNavigate();
   const { experimentId } = useParams();
+  const [searchParams] = useSearchParams();
+  const selectedJudgeName = searchParams.get('scorerName') ?? '';
+  const hasSelectedJudge = Boolean(selectedJudgeName);
+  const judgeName = selectedJudgeName || JUDGE_NAME;
+  const prefillSource = searchParams.get('prefill');
 
   const [savedInstruction, setSavedInstruction] = useState(INITIAL_INSTRUCTION);
   const [instruction, setInstruction] = useState(INITIAL_INSTRUCTION);
   const [savedModel, setSavedModel] = useState(MODEL_OPTIONS[0]);
   const [model, setModel] = useState(MODEL_OPTIONS[0]);
   const [savedVersion, setSavedVersion] = useState(5);
-  const [rows, setRows] = useState<AlignmentRow[]>(INITIAL_ROWS);
+  const [rows, setRows] = useState<AlignmentRow[]>(() => getRowsForPrefillSource(prefillSource));
   const [loadingRowIds, setLoadingRowIds] = useState<Set<string>>(new Set());
   const [isJudgeRunning, setIsJudgeRunning] = useState(false);
   const [alignmentPhase, setAlignmentPhase] = useState<AlignmentPhase>('idle');
@@ -639,6 +729,14 @@ const JudgeAlignmentPrototypePage = () => {
   const instructionSectionRef = useRef<HTMLElement | null>(null);
   const tableSectionRef = useRef<HTMLDivElement | null>(null);
 
+  const judgeOptions = useMemo(
+    () =>
+      selectedJudgeName && !JUDGE_OPTIONS.includes(selectedJudgeName)
+        ? [selectedJudgeName, ...JUDGE_OPTIONS]
+        : JUDGE_OPTIONS,
+    [selectedJudgeName],
+  );
+
   useEffect(
     () => () => {
       judgeRunTimeouts.current.forEach(clearTimeout);
@@ -649,11 +747,42 @@ const JudgeAlignmentPrototypePage = () => {
     [],
   );
 
-  const isDraft = instruction !== savedInstruction || model !== savedModel;
+  useEffect(() => {
+    setRows(getRowsForPrefillSource(prefillSource));
+    setLoadingRowIds(new Set());
+    setShowSuggestions(false);
+    setEditingCell(null);
+  }, [prefillSource]);
+
+  useEffect(() => {
+    setSavedInstruction(INITIAL_INSTRUCTION);
+    setInstruction(INITIAL_INSTRUCTION);
+    setSavedModel(MODEL_OPTIONS[0]);
+    setModel(MODEL_OPTIONS[0]);
+    setSavedVersion(5);
+    setAlignmentPhase('idle');
+    setShowSaveModal(false);
+    setShowDiff(false);
+    setCommitMessage('');
+  }, [selectedJudgeName]);
+
+  const isDraft = hasSelectedJudge && (instruction !== savedInstruction || model !== savedModel);
   const nextVersion = savedVersion + 1;
   const judgeLinkRoute = experimentId
     ? Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Judges)
     : undefined;
+
+  const handleJudgeSelect = (nextJudgeName: string) => {
+    if (!experimentId || !nextJudgeName) {
+      return;
+    }
+    navigate(
+      Routes.getExperimentPageTabScorerAlignmentRoute(experimentId, {
+        scorerName: nextJudgeName,
+        prefill: prefillSource ?? undefined,
+      }),
+    );
+  };
 
   const scrollToSection = (targetElement: HTMLElement | null, offset = theme.spacing.md) => {
     if (!pageScrollRef.current || !targetElement) {
@@ -667,7 +796,10 @@ const JudgeAlignmentPrototypePage = () => {
   };
 
   const runJudge = () => {
-    setShowSuggestions(true);
+    if (!hasSelectedJudge) {
+      scrollToSection(instructionSectionRef.current);
+      return;
+    }
     window.requestAnimationFrame(() => {
       scrollToSection(tableSectionRef.current);
     });
@@ -675,6 +807,13 @@ const JudgeAlignmentPrototypePage = () => {
     judgeRunTimeouts.current = [];
 
     const rowsToRun = [...rows];
+    if (rowsToRun.length === 0) {
+      setIsJudgeRunning(false);
+      setLoadingRowIds(new Set());
+      return;
+    }
+
+    setShowSuggestions(true);
     const instructionSnapshot = instruction;
     const loadingIds = new Set(rowsToRun.map((row) => row.id));
     setLoadingRowIds(loadingIds);
@@ -733,6 +872,9 @@ const JudgeAlignmentPrototypePage = () => {
 
   const alignJudgePrompt = () => {
     scrollToSection(instructionSectionRef.current);
+    if (!hasSelectedJudge) {
+      return;
+    }
     if (alignmentPhase === 'optimizing') {
       return;
     }
@@ -790,6 +932,15 @@ const JudgeAlignmentPrototypePage = () => {
         humanRationale: 'Add reviewer rationale.',
       },
     ]);
+  };
+
+  const loadExampleRows = (nextRows: AlignmentRow[]) => {
+    setRows(cloneAlignmentRows(nextRows));
+    setLoadingRowIds(new Set());
+    setShowSuggestions(false);
+    window.requestAnimationFrame(() => {
+      scrollToSection(tableSectionRef.current);
+    });
   };
 
   const handleSave = () => {
@@ -850,35 +1001,43 @@ const JudgeAlignmentPrototypePage = () => {
             padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
           }}
         >
-          <Typography.Text>
-            <FormattedMessage
-              defaultMessage="Align {judgeName} with reviewed human feedback. {helpLink}"
-              description="Judge alignment page heading"
-              values={{
-                judgeName: (
-                  <Typography.Link
-                    componentId="mlflow.experiment-scorers.judge-alignment-judge-link"
-                    onClick={() => {
-                      if (judgeLinkRoute) {
-                        navigate(judgeLinkRoute);
-                      }
-                    }}
-                  >
-                    {JUDGE_NAME}
-                  </Typography.Link>
-                ),
-                helpLink: (
-                  <Typography.Link
-                    componentId="mlflow.experiment-scorers.judge-alignment-how-to-use-link"
-                    href={ALIGNMENT_DOC_LINK}
-                    openInNewTab
-                  >
-                    <FormattedMessage defaultMessage="How to use this?" description="Judge alignment help link text" />
-                  </Typography.Link>
-                ),
-              }}
-            />
-          </Typography.Text>
+          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+            <Typography.Text>
+              <FormattedMessage defaultMessage="Edit" description="Lead-in text before judge selector" />
+            </Typography.Text>
+            <SimpleSelect
+              id="mlflow.experiment-scorers.judge-alignment-judge-select"
+              componentId="mlflow.experiment-scorers.judge-alignment-judge-select"
+              value={selectedJudgeName}
+              css={{ width: 220 }}
+              onChange={(event) => handleJudgeSelect(event.target.value)}
+            >
+              <SimpleSelectOption value="">
+                {intl.formatMessage({
+                  defaultMessage: 'Select judge',
+                  description: 'Placeholder option in judge alignment judge selector',
+                })}
+              </SimpleSelectOption>
+              {judgeOptions.map((option) => (
+                <SimpleSelectOption key={option} value={option}>
+                  {option}
+                </SimpleSelectOption>
+              ))}
+            </SimpleSelect>
+            <Typography.Text>
+              <FormattedMessage
+                defaultMessage="and use AI alignment with reviewed human feedback."
+                description="Judge alignment page heading after judge selector"
+              />
+            </Typography.Text>
+            <Typography.Link
+              componentId="mlflow.experiment-scorers.judge-alignment-how-to-use-link"
+              href={ALIGNMENT_DOC_LINK}
+              openInNewTab
+            >
+              <FormattedMessage defaultMessage="How to use this?" description="Judge alignment help link text" />
+            </Typography.Link>
+          </div>
           <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
             {isDraft && (
               <Typography.Text color="secondary">
@@ -889,7 +1048,7 @@ const JudgeAlignmentPrototypePage = () => {
               componentId="mlflow.experiment-scorers.judge-alignment-save"
               type="primary"
               icon={<SaveIcon />}
-              disabled={!isDraft}
+              disabled={!hasSelectedJudge || !isDraft}
               onClick={() => setShowSaveModal(true)}
             >
               <FormattedMessage defaultMessage="Save" description="Button label for saving judge alignment changes" />
@@ -932,6 +1091,7 @@ const JudgeAlignmentPrototypePage = () => {
                   componentId="mlflow.experiment-scorers.judge-alignment-model"
                   value={model}
                   css={{ width: 300 }}
+                  disabled={!hasSelectedJudge}
                   onChange={(event) => setModel(event.target.value)}
                 >
                   {MODEL_OPTIONS.map((option) => (
@@ -954,8 +1114,13 @@ const JudgeAlignmentPrototypePage = () => {
             ) : (
               <Input.TextArea
                 componentId="mlflow.experiment-scorers.judge-alignment-instruction"
-                value={instruction}
+                value={hasSelectedJudge ? instruction : ''}
                 rows={13}
+                disabled={!hasSelectedJudge}
+                placeholder={intl.formatMessage({
+                  defaultMessage: 'Select a judge to view and edit its instruction.',
+                  description: 'Instruction box placeholder before a judge is selected',
+                })}
                 css={{ minHeight: 280 }}
                 onKeyDown={(event) => event.stopPropagation()}
                 onChange={(event) => setInstruction(event.target.value)}
@@ -988,7 +1153,7 @@ const JudgeAlignmentPrototypePage = () => {
                   componentId="mlflow.experiment-scorers.judge-alignment-run-judge"
                   type="primary"
                   icon={isJudgeRunning ? undefined : <PlayIcon />}
-                  disabled={isJudgeRunning}
+                  disabled={!hasSelectedJudge || isJudgeRunning}
                   aria-label={isJudgeRunning ? 'Running judge' : undefined}
                   onClick={runJudge}
                 >
@@ -1014,7 +1179,7 @@ const JudgeAlignmentPrototypePage = () => {
                 <Button
                   componentId="mlflow.experiment-scorers.judge-alignment-align-prompt"
                   icon={<SparkleIcon color="ai" />}
-                  disabled={alignmentPhase === 'optimizing'}
+                  disabled={!hasSelectedJudge || alignmentPhase === 'optimizing'}
                   onClick={alignJudgePrompt}
                   css={{
                     ...getAiGradientBorderStyle(theme),
@@ -1101,241 +1266,259 @@ const JudgeAlignmentPrototypePage = () => {
             </section>
           )}
 
-          <div ref={tableSectionRef} css={{ overflowX: 'auto', scrollMarginTop: theme.spacing.md }}>
-            <table
-              css={{
-                width: '100%',
-                minWidth: 1160,
-                tableLayout: 'fixed',
-                borderCollapse: 'collapse',
-                border: `1px solid ${theme.colors.border}`,
-              }}
-            >
-              <colgroup>
-                <col style={{ width: '32%' }} />
-                <col style={{ width: '32%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '6%' }} />
-              </colgroup>
-              <thead>
-                <tr css={{ backgroundColor: theme.colors.backgroundSecondary }}>
-                  {['Inputs', 'Outputs', 'LLM judge', 'Human', 'Aligned?', ''].map((header) => (
-                    <th
-                      key={header}
-                      css={{
-                        textAlign: 'left',
-                        padding: theme.spacing.sm,
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                      }}
-                    >
-                      <Typography.Text bold>{header}</Typography.Text>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const isRowLoading = loadingRowIds.has(row.id);
-                  const isAligned = row.llmJudge === row.humanJudge;
+          <div
+            ref={tableSectionRef}
+            css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, scrollMarginTop: theme.spacing.md }}
+          >
+            <Typography.Text bold>
+              <FormattedMessage defaultMessage="Examples" description="Header for judge alignment examples table" />
+            </Typography.Text>
+            {rows.length === 0 ? (
+              <ExamplesEmptyState
+                onLoadDataset={() => loadExampleRows(DATASET_SAMPLE_ROWS)}
+                onSelectTraces={() => loadExampleRows(TRACE_SAMPLE_ROWS)}
+                onManualAdd={addRow}
+              />
+            ) : (
+              <>
+                <div css={{ overflowX: 'auto' }}>
+                  <table
+                    css={{
+                      width: '100%',
+                      minWidth: 1160,
+                      tableLayout: 'fixed',
+                      borderCollapse: 'collapse',
+                      border: `1px solid ${theme.colors.border}`,
+                    }}
+                  >
+                    <colgroup>
+                      <col style={{ width: '32%' }} />
+                      <col style={{ width: '32%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '8%' }} />
+                      <col style={{ width: '6%' }} />
+                    </colgroup>
+                    <thead>
+                      <tr css={{ backgroundColor: theme.colors.backgroundSecondary }}>
+                        {['Inputs', 'Outputs', 'LLM judge', 'Human', 'Aligned?', ''].map((header) => (
+                          <th
+                            key={header}
+                            css={{
+                              textAlign: 'left',
+                              padding: theme.spacing.sm,
+                              borderBottom: `1px solid ${theme.colors.border}`,
+                            }}
+                          >
+                            <Typography.Text bold>{header}</Typography.Text>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => {
+                        const isRowLoading = loadingRowIds.has(row.id);
+                        const isAligned = row.llmJudge === row.humanJudge;
 
-                  return (
-                    <tr key={row.id}>
-                      <td
-                        css={{
-                          padding: theme.spacing.sm,
-                          verticalAlign: 'top',
-                          borderBottom: `1px solid ${theme.colors.border}`,
-                        }}
-                      >
-                        <EditableTextCell
-                          value={row.inputs}
-                          isEditing={editingCell?.rowId === row.id && editingCell.field === 'inputs'}
-                          onEdit={() => setEditingCell({ rowId: row.id, field: 'inputs' })}
-                          onDone={() => setEditingCell(null)}
-                          onChange={(value) => updateRowField(row.id, 'inputs', value)}
-                        />
-                      </td>
-                      <td
-                        css={{
-                          padding: theme.spacing.sm,
-                          verticalAlign: 'top',
-                          borderBottom: `1px solid ${theme.colors.border}`,
-                        }}
-                      >
-                        <EditableTextCell
-                          value={row.outputs}
-                          isEditing={editingCell?.rowId === row.id && editingCell.field === 'outputs'}
-                          onEdit={() => setEditingCell({ rowId: row.id, field: 'outputs' })}
-                          onDone={() => setEditingCell(null)}
-                          onChange={(value) => updateRowField(row.id, 'outputs', value)}
-                        />
-                      </td>
-                      <td
-                        css={{
-                          padding: theme.spacing.sm,
-                          verticalAlign: 'top',
-                          borderBottom: `1px solid ${theme.colors.border}`,
-                          '&:hover .judge-alignment-cell-action, &:focus-within .judge-alignment-cell-action': {
-                            opacity: 1,
-                          },
-                        }}
-                      >
-                        {isRowLoading ? (
-                          <span aria-label="Running judge">
-                            <LoadingDots withLeadingSpace={false} />
-                          </span>
-                        ) : (
-                          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                            <ResultTag value={row.llmJudge} />
-                            <span
-                              className="judge-alignment-cell-action"
+                        return (
+                          <tr key={row.id}>
+                            <td
                               css={{
-                                opacity: 0,
-                                transition: 'opacity 120ms ease-in-out',
+                                padding: theme.spacing.sm,
+                                verticalAlign: 'top',
+                                borderBottom: `1px solid ${theme.colors.border}`,
                               }}
                             >
-                              <RationalePopover
-                                title={
+                              <EditableTextCell
+                                value={row.inputs}
+                                isEditing={editingCell?.rowId === row.id && editingCell.field === 'inputs'}
+                                onEdit={() => setEditingCell({ rowId: row.id, field: 'inputs' })}
+                                onDone={() => setEditingCell(null)}
+                                onChange={(value) => updateRowField(row.id, 'inputs', value)}
+                              />
+                            </td>
+                            <td
+                              css={{
+                                padding: theme.spacing.sm,
+                                verticalAlign: 'top',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                              }}
+                            >
+                              <EditableTextCell
+                                value={row.outputs}
+                                isEditing={editingCell?.rowId === row.id && editingCell.field === 'outputs'}
+                                onEdit={() => setEditingCell({ rowId: row.id, field: 'outputs' })}
+                                onDone={() => setEditingCell(null)}
+                                onChange={(value) => updateRowField(row.id, 'outputs', value)}
+                              />
+                            </td>
+                            <td
+                              css={{
+                                padding: theme.spacing.sm,
+                                verticalAlign: 'top',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                '&:hover .judge-alignment-cell-action, &:focus-within .judge-alignment-cell-action': {
+                                  opacity: 1,
+                                },
+                              }}
+                            >
+                              {isRowLoading ? (
+                                <span aria-label="Running judge">
+                                  <LoadingDots withLeadingSpace={false} />
+                                </span>
+                              ) : (
+                                <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                                  <ResultTag value={row.llmJudge} />
+                                  <span
+                                    className="judge-alignment-cell-action"
+                                    css={{
+                                      opacity: 0,
+                                      transition: 'opacity 120ms ease-in-out',
+                                    }}
+                                  >
+                                    <RationalePopover
+                                      title={
+                                        <FormattedMessage
+                                          defaultMessage="LLM rationale"
+                                          description="Title for LLM rationale hover card"
+                                        />
+                                      }
+                                      rationale={row.llmRationale}
+                                    />
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                            <td
+                              css={{
+                                padding: theme.spacing.sm,
+                                verticalAlign: 'top',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                '&:hover .judge-alignment-cell-action, &:focus-within .judge-alignment-cell-action': {
+                                  opacity: 1,
+                                },
+                              }}
+                            >
+                              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                                <ResultTag value={row.humanJudge} />
+                                <span
+                                  className="judge-alignment-cell-action"
+                                  css={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: theme.spacing.xs,
+                                    opacity: 0,
+                                    transition: 'opacity 120ms ease-in-out',
+                                  }}
+                                >
+                                  <Tooltip
+                                    componentId="mlflow.experiment-scorers.judge-alignment-flip-human-tooltip"
+                                    content={
+                                      <FormattedMessage
+                                        defaultMessage="Flip human result"
+                                        description="Tooltip for flip human result button"
+                                      />
+                                    }
+                                  >
+                                    <Button
+                                      componentId="mlflow.experiment-scorers.judge-alignment-flip-human"
+                                      size="small"
+                                      type="tertiary"
+                                      icon={<FlipResultIcon />}
+                                      aria-label="Flip human result"
+                                      onClick={() => flipHumanJudge(row.id)}
+                                    />
+                                  </Tooltip>
+                                  <RationalePopover
+                                    title={
+                                      <FormattedMessage
+                                        defaultMessage="Human rationale"
+                                        description="Title for human rationale hover card"
+                                      />
+                                    }
+                                    rationale={row.humanRationale}
+                                    editable
+                                    onChange={(value) => updateRowField(row.id, 'humanRationale', value)}
+                                  />
+                                </span>
+                              </div>
+                            </td>
+                            <td
+                              css={{
+                                padding: theme.spacing.sm,
+                                verticalAlign: 'top',
+                                textAlign: 'left',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                              }}
+                            >
+                              {isRowLoading ? (
+                                <Typography.Text color="secondary">-</Typography.Text>
+                              ) : (
+                                <span
+                                  css={{
+                                    color: isAligned
+                                      ? theme.isDarkMode
+                                        ? theme.colors.green400
+                                        : theme.colors.green600
+                                      : theme.isDarkMode
+                                        ? theme.colors.red400
+                                        : theme.colors.red600,
+                                    fontWeight: theme.typography.typographyBoldFontWeight,
+                                  }}
+                                >
+                                  {isAligned ? (
+                                    <FormattedMessage defaultMessage="Yes" description="Aligned table cell yes text" />
+                                  ) : (
+                                    <FormattedMessage defaultMessage="No" description="Aligned table cell no text" />
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                            <td
+                              css={{
+                                padding: theme.spacing.sm,
+                                verticalAlign: 'top',
+                                textAlign: 'right',
+                                width: 48,
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                              }}
+                            >
+                              <Tooltip
+                                componentId="mlflow.experiment-scorers.judge-alignment-delete-row-tooltip"
+                                content={
                                   <FormattedMessage
-                                    defaultMessage="LLM rationale"
-                                    description="Title for LLM rationale hover card"
+                                    defaultMessage="Delete example"
+                                    description="Tooltip for delete alignment example button"
                                   />
                                 }
-                                rationale={row.llmRationale}
-                              />
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td
-                        css={{
-                          padding: theme.spacing.sm,
-                          verticalAlign: 'top',
-                          borderBottom: `1px solid ${theme.colors.border}`,
-                          '&:hover .judge-alignment-cell-action, &:focus-within .judge-alignment-cell-action': {
-                            opacity: 1,
-                          },
-                        }}
-                      >
-                        <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                          <ResultTag value={row.humanJudge} />
-                          <span
-                            className="judge-alignment-cell-action"
-                            css={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: theme.spacing.xs,
-                              opacity: 0,
-                              transition: 'opacity 120ms ease-in-out',
-                            }}
-                          >
-                            <Tooltip
-                              componentId="mlflow.experiment-scorers.judge-alignment-flip-human-tooltip"
-                              content={
-                                <FormattedMessage
-                                  defaultMessage="Flip human result"
-                                  description="Tooltip for flip human result button"
+                              >
+                                <Button
+                                  componentId="mlflow.experiment-scorers.judge-alignment-delete-row"
+                                  size="small"
+                                  type="tertiary"
+                                  icon={<TrashIcon />}
+                                  aria-label="Delete example"
+                                  onClick={() => setPendingDeleteRow(row)}
                                 />
-                              }
-                            >
-                              <Button
-                                componentId="mlflow.experiment-scorers.judge-alignment-flip-human"
-                                size="small"
-                                type="tertiary"
-                                icon={<FlipResultIcon />}
-                                aria-label="Flip human result"
-                                onClick={() => flipHumanJudge(row.id)}
-                              />
-                            </Tooltip>
-                            <RationalePopover
-                              title={
-                                <FormattedMessage
-                                  defaultMessage="Human rationale"
-                                  description="Title for human rationale hover card"
-                                />
-                              }
-                              rationale={row.humanRationale}
-                              editable
-                              onChange={(value) => updateRowField(row.id, 'humanRationale', value)}
-                            />
-                          </span>
-                        </div>
-                      </td>
-                      <td
-                        css={{
-                          padding: theme.spacing.sm,
-                          verticalAlign: 'top',
-                          textAlign: 'left',
-                          borderBottom: `1px solid ${theme.colors.border}`,
-                        }}
-                      >
-                        {isRowLoading ? (
-                          <Typography.Text color="secondary">-</Typography.Text>
-                        ) : (
-                          <span
-                            css={{
-                              color: isAligned
-                                ? theme.isDarkMode
-                                  ? theme.colors.green400
-                                  : theme.colors.green600
-                                : theme.isDarkMode
-                                  ? theme.colors.red400
-                                  : theme.colors.red600,
-                              fontWeight: theme.typography.typographyBoldFontWeight,
-                            }}
-                          >
-                            {isAligned ? (
-                              <FormattedMessage defaultMessage="Yes" description="Aligned table cell yes text" />
-                            ) : (
-                              <FormattedMessage defaultMessage="No" description="Aligned table cell no text" />
-                            )}
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        css={{
-                          padding: theme.spacing.sm,
-                          verticalAlign: 'top',
-                          textAlign: 'right',
-                          width: 48,
-                          borderBottom: `1px solid ${theme.colors.border}`,
-                        }}
-                      >
-                        <Tooltip
-                          componentId="mlflow.experiment-scorers.judge-alignment-delete-row-tooltip"
-                          content={
-                            <FormattedMessage
-                              defaultMessage="Delete example"
-                              description="Tooltip for delete alignment example button"
-                            />
-                          }
-                        >
-                          <Button
-                            componentId="mlflow.experiment-scorers.judge-alignment-delete-row"
-                            size="small"
-                            type="tertiary"
-                            icon={<TrashIcon />}
-                            aria-label="Delete example"
-                            onClick={() => setPendingDeleteRow(row)}
-                          />
-                        </Tooltip>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <Button
-              componentId="mlflow.experiment-scorers.judge-alignment-add-row"
-              icon={<PlusIcon />}
-              onClick={addRow}
-            >
-              <FormattedMessage defaultMessage="Add new" description="Add new alignment example button label" />
-            </Button>
+                              </Tooltip>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <Button
+                    componentId="mlflow.experiment-scorers.judge-alignment-add-row"
+                    icon={<PlusIcon />}
+                    onClick={addRow}
+                  >
+                    <FormattedMessage defaultMessage="Add new" description="Add new alignment example button label" />
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1354,7 +1537,7 @@ const JudgeAlignmentPrototypePage = () => {
             <FormattedMessage
               defaultMessage="Create a new version {version} for {judgeName}."
               description="Save judge version confirmation text"
-              values={{ version: `v${nextVersion}`, judgeName: JUDGE_NAME }}
+              values={{ version: `v${nextVersion}`, judgeName }}
             />
           </Typography.Text>
           <Input.TextArea

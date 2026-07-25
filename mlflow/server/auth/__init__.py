@@ -2780,6 +2780,16 @@ TRACE_PARAMETERIZED_BEFORE_REQUEST_VALIDATORS = {
     if "<" in path and "/mlflow/traces/" in path
 }
 
+# Prompt-optimization job object routes carry a <job_id> path parameter
+# (e.g. /mlflow/prompt-optimization/jobs/<job_id>[/cancel]), so the exact-match
+# BEFORE_REQUEST_VALIDATORS lookup misses them when the request path contains a real
+# job ID. Their registered per-experiment validators would otherwise never run.
+PROMPT_OPTIMIZATION_JOB_PARAMETERIZED_BEFORE_REQUEST_VALIDATORS = {
+    (_re_compile_path(path), method): handler
+    for (path, method), handler in BEFORE_REQUEST_VALIDATORS.items()
+    if "<" in path and "/mlflow/prompt-optimization/jobs/" in path
+}
+
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     CreateLoggedModel: validate_can_update_experiment,
     GetLoggedModel: validate_can_read_logged_model,
@@ -2942,6 +2952,23 @@ def _find_validator(req: Request) -> Callable[[], bool] | None:
             (
                 v
                 for (pat, method), v in TRACE_PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items()
+                if pat.fullmatch(req.path) and method == req.method
+            ),
+            None,
+        )
+        return validator if validator is not None else lambda: False
+
+    # Prompt-optimization job object routes with a <job_id> path parameter
+    # (e.g. /mlflow/prompt-optimization/jobs/<job_id>[/cancel]). Unknown paths under
+    # this prefix are denied (fail-closed) rather than skipped.
+    if "/mlflow/prompt-optimization/jobs/" in req.path:
+        validator = next(
+            (
+                v
+                for (
+                    pat,
+                    method,
+                ), v in PROMPT_OPTIMIZATION_JOB_PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items()
                 if pat.fullmatch(req.path) and method == req.method
             ),
             None,
