@@ -4075,6 +4075,10 @@
     "defaultMessage": "Error",
     "description": "A generic error message for error state in MLflow UI"
   },
+  "G0097f": {
+    "defaultMessage": "Traces in the last 7 days",
+    "description": "Summary heading for trace activity over the last 7 days"
+  },
   "G0gYkS": {
     "defaultMessage": "End Time:",
     "description": "Row title for the end time of runs on the experiment compare runs page"
@@ -4738,6 +4742,10 @@
   "J961B2": {
     "defaultMessage": "Filters{numFilters}",
     "description": "Evaluation review > evaluations list > filter dropdown button"
+  },
+  "J9Q+eZ": {
+    "defaultMessage": "Open Dashboard",
+    "description": "Link from overview trace activity chart to the dashboard"
   },
   "JBZ+Q+": {
     "defaultMessage": "Delete saved view",

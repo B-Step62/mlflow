@@ -110,31 +110,14 @@ export const RECENT_ACTIVITY = [
   },
 ];
 
-export const TRACE_ACTIVITY_HOURS = [
-  { label: '12 AM', count: 0 },
-  { label: '1 AM', count: 0 },
-  { label: '2 AM', count: 0 },
-  { label: '3 AM', count: 0 },
-  { label: '4 AM', count: 0 },
-  { label: '5 AM', count: 0 },
-  { label: '6 AM', count: 0 },
-  { label: '7 AM', count: 0 },
-  { label: '8 AM', count: 1 },
-  { label: '9 AM', count: 1 },
-  { label: '10 AM', count: 0 },
-  { label: '11 AM', count: 0 },
-  { label: '12 PM', count: 0 },
-  { label: '1 PM', count: 0 },
-  { label: '2 PM', count: 1 },
-  { label: '3 PM', count: 2 },
-  { label: '4 PM', count: 0 },
-  { label: '5 PM', count: 0 },
-  { label: '6 PM', count: 0 },
-  { label: '7 PM', count: 0 },
-  { label: '8 PM', count: 0 },
-  { label: '9 PM', count: 0 },
-  { label: '10 PM', count: 0 },
-  { label: '11 PM', count: 0 },
+export const TRACE_ACTIVITY_DAYS = [
+  { label: 'Fri 17', count: 2 },
+  { label: 'Sat 18', count: 0 },
+  { label: 'Sun 19', count: 0 },
+  { label: 'Mon 20', count: 0 },
+  { label: 'Tue 21', count: 3 },
+  { label: 'Wed 22', count: 0 },
+  { label: 'Thu 23', count: 0 },
 ];
 
 export const FAILURE_ANALYSIS_SUMMARY = [

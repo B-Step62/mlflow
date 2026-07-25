@@ -89,6 +89,22 @@ describe('ExperimentGenAIOverviewPage suggested actions', () => {
     expect(mockPrefillPrompt).toHaveBeenCalledWith('Detect issues');
   });
 
+  it('shows seven-day trace activity with a dashboard link', () => {
+    mockUseSearchMlflowTraces.mockReturnValue({
+      data: [{ trace_id: 'trace-1' }],
+      isLoading: false,
+      isFetching: false,
+      refetchMlflowTraces: jest.fn(),
+    });
+
+    renderComponent();
+
+    expect(screen.getByText('Traces in the last 7 days')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-activity-chart-data')).toHaveTextContent('2,0,0,0,3,0,0');
+    expect(screen.getByText('Open Dashboard')).toBeInTheDocument();
+    expect(screen.queryByText('Open Traces')).not.toBeInTheDocument();
+  });
+
   it('recommends tracing setup and playground when no traces exist', () => {
     mockUseSearchMlflowTraces.mockReturnValue({
       data: [],
@@ -104,9 +120,7 @@ describe('ExperimentGenAIOverviewPage suggested actions', () => {
     expect(screen.getByText('Connect GitHub')).toBeInTheDocument();
     expect(screen.getByText('No recent activity yet')).toBeInTheDocument();
     expect(screen.getByText('Trace activity will appear here after traces are logged.')).toBeInTheDocument();
-    expect(screen.getByTestId('trace-activity-chart-data')).toHaveTextContent(
-      '0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0',
-    );
+    expect(screen.getByTestId('trace-activity-chart-data')).toHaveTextContent('0,0,0,0,0,0,0');
     expect(screen.getByText('How do I get started with MLflow?')).toBeInTheDocument();
     expect(screen.getByText('How to trace my agent?')).toBeInTheDocument();
     expect(screen.queryByText('Detect issues')).not.toBeInTheDocument();

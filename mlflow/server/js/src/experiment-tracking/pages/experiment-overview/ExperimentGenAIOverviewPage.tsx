@@ -27,13 +27,13 @@ import { recordSubmittedIssueDetectionJob } from '../../components/experiment-pa
 import { useInvokeIssueDetection } from '../../components/experiment-page/components/traces-v3/hooks/useInvokeIssueDetection';
 import Routes from '../../routes';
 import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
-import { OverviewChartContainer, useChartXAxisProps, useChartYAxisProps } from './components/OverviewChartComponents';
+import { useChartXAxisProps, useChartYAxisProps } from './components/OverviewChartComponents';
 import {
   FAILURE_ANALYSIS_CLUSTERS,
   FAILURE_ANALYSIS_TOTAL_CONVERSATIONS,
   MOCK_FAILURE_ANALYSIS_RUN_ID,
   RECENT_ACTIVITY,
-  TRACE_ACTIVITY_HOURS,
+  TRACE_ACTIVITY_DAYS,
 } from './failureAnalysisMock';
 
 type SuggestedAction = {
@@ -137,19 +137,52 @@ const SuggestedActionRow = ({ action, index }: { action: SuggestedAction; index:
   );
 };
 
-const TraceActivityChart = ({ hasTraceActivity }: { hasTraceActivity: boolean }) => {
+const TraceActivityChart = ({
+  hasTraceActivity,
+  dashboardRoute,
+}: {
+  hasTraceActivity: boolean;
+  dashboardRoute: string;
+}) => {
   const { theme } = useDesignSystemTheme();
   const xAxisProps = useChartXAxisProps();
   const yAxisProps = useChartYAxisProps();
   const traceActivityData = useMemo(
-    () => TRACE_ACTIVITY_HOURS.map((hour) => ({ name: hour.label, count: hasTraceActivity ? hour.count : 0 })),
+    () => TRACE_ACTIVITY_DAYS.map((day) => ({ name: day.label, count: hasTraceActivity ? day.count : 0 })),
     [hasTraceActivity],
   );
   return (
-    <OverviewChartContainer
-      componentId="mlflow.genai-overview.trace-activity-chart"
-      css={{ padding: theme.spacing.md }}
+    <section
+      css={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing.lg,
+        padding: `${theme.spacing.md}px 0`,
+      }}
     >
+      <div css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.md, alignItems: 'flex-start' }}>
+        <Typography.Text color="secondary">
+          <FormattedMessage
+            defaultMessage="Traces in the last 7 days"
+            description="Summary heading for trace activity over the last 7 days"
+          />
+        </Typography.Text>
+        <Link
+          componentId="mlflow.genai-overview.trace-activity.open-dashboard"
+          to={dashboardRoute}
+          css={{
+            color: theme.colors.actionPrimaryBackgroundDefault,
+            flexShrink: 0,
+            textDecoration: 'none',
+            ':hover': { textDecoration: 'underline' },
+          }}
+        >
+          <FormattedMessage
+            defaultMessage="Open Dashboard"
+            description="Link from overview trace activity chart to the dashboard"
+          />
+        </Link>
+      </div>
       <div css={{ height: COMPACT_TRACE_CHART_HEIGHT, minWidth: 0, userSelect: 'none' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={traceActivityData} margin={{ top: 4, right: 20, left: 10, bottom: 0 }}>
@@ -164,7 +197,7 @@ const TraceActivityChart = ({ hasTraceActivity }: { hasTraceActivity: boolean })
           </BarChart>
         </ResponsiveContainer>
       </div>
-    </OverviewChartContainer>
+    </section>
   );
 };
 
@@ -325,6 +358,7 @@ const ExperimentGenAIOverviewPage = () => {
 
   const safeExperimentId = experimentId ?? '';
   const tracesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Traces);
+  const dashboardRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Dashboard);
   const evaluationRunsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.EvaluationRuns);
   const playgroundRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Playground);
   const analysisRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, MOCK_FAILURE_ANALYSIS_RUN_ID);
@@ -828,7 +862,7 @@ const ExperimentGenAIOverviewPage = () => {
           </Card>
         )}
 
-        <TraceActivityChart hasTraceActivity={shouldShowTraceActivity} />
+        <TraceActivityChart hasTraceActivity={shouldShowTraceActivity} dashboardRoute={dashboardRoute} />
 
         <section
           css={{
