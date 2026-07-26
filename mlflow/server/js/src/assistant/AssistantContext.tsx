@@ -15,6 +15,7 @@ import {
   type AssistantSelectionPromptOption,
   type ChatMessage,
   type MockEvalSetupRequest,
+  type MockIssueDetectionRequest,
   type MockProductionMonitoringRequest,
   type PermissionRequest,
   type ToolUseInfo,
@@ -39,10 +40,13 @@ import {
   MLFLOW_RUN_TYPE_TAG,
   MLFLOW_RUN_TYPE_VALUE_EVALUATION,
   MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE,
+  SELECTED_ISSUE_ID_PARAM,
 } from '../experiment-tracking/constants';
 import { MlflowService } from '../experiment-tracking/sdk/MlflowService';
 import { COMPARE_TO_RUN_UUID_QUERY_PARAM } from '../experiment-tracking/components/evaluations/hooks/useCompareToRunUuid';
 import { SELECTED_RUN_UUID_QUERY_PARAM } from '../experiment-tracking/components/evaluations/hooks/useSelectedRunUuid';
+import { getEvalLinkedItems } from '../experiment-tracking/mockEvalArtifacts';
+import { MOCK_FAILURE_ANALYSIS_ISSUES } from '../experiment-tracking/pages/experiment-overview/failureAnalysisMock';
 
 const AssistantReactContext = createContext<AssistantAgentContextType | null>(null);
 
@@ -62,13 +66,46 @@ const EMPTY_TOKEN_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, to
 interface PersistedChat {
   messages: ChatMessage[];
   tokenUsage: TokenUsage;
+  mockState?: PersistedMockState;
 }
 
 type MockEvalDatasetChoice = 'new' | 'golden';
+type MockMonitoringAlertChoice = 'enabled' | 'disabled';
+type MockIssueDetectionEvalScope = 'all' | 'subset';
+
+type PendingMockIssueDetectionEvalSetup = {
+  experimentId: string;
+  sourceJobId: string;
+  traceCount: number;
+  issueCount: number;
+};
+
+type PersistedMockState = {
+  activeMockEvalSetup?: ActiveMockEvalSetup;
+  lastMockEvalSetup?: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice };
+  pendingMockIssueDetectionEvalSetup?: PendingMockIssueDetectionEvalSetup;
+  pendingMockJudgeAlignment?: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice };
+  pendingMockAlignedEvaluation?: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice };
+  pendingMockFix?: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice };
+  pendingMockFinalEvaluation?: ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice };
+  pendingMockIssueResolution?: MockEvalSetupRequest;
+  pendingMockProductionMonitoring?: MockProductionMonitoringRequest;
+  pendingMockProductionMonitoringSample?: MockProductionMonitoringRequest;
+  pendingMockProductionMonitoringAlert?: MockProductionMonitoringRequest;
+  pendingMockProductionMonitoringCriteria?: MockProductionMonitoringRequest;
+  pendingMockProductionMonitoringNudge?: MockProductionMonitoringRequest;
+  baselineEvaluationRunId?: string | null;
+  fixedEvaluationRunId?: string | null;
+};
 
 const EVALUATION_RUN_TYPE_VALUES = [MLFLOW_RUN_TYPE_VALUE_GENAI_EVALUATE, MLFLOW_RUN_TYPE_VALUE_EVALUATION];
 const DIRECT_FIX_PROVIDER_IDS = new Set(['claude_code', 'codex']);
 const MOCK_PRODUCTION_MONITORING_SAMPLING_RATIO = 0.05;
+const DEMO_EVAL_RUN_TAGS = {
+  initial: 'mlflow.issueCujDemo.initialEvalRunId',
+  aligned: 'mlflow.issueCujDemo.alignedEvalRunId',
+  fixed: 'mlflow.issueCujDemo.fixedEvalRunId',
+} as const;
 
 const getLatestEvaluationRunIds = async (experimentId: string, maxResults: number): Promise<string[]> => {
   const runIds: string[] = [];
@@ -106,6 +143,29 @@ const getLatestEvaluationRunId = async (experimentId: string): Promise<string | 
   return (await getLatestEvaluationRunIds(experimentId, 1))[0];
 };
 
+const getExperimentTagValue = (
+  experiment: { tags?: Array<{ key?: string; value?: string }> | Record<string, string> } | undefined,
+  tagKey: string,
+): string | undefined => {
+  const tags = experiment?.tags;
+  if (Array.isArray(tags)) {
+    return tags.find((tag) => tag.key === tagKey)?.value;
+  }
+  return tags?.[tagKey];
+};
+
+const getDemoEvaluationRunId = async (
+  experimentId: string,
+  stage: keyof typeof DEMO_EVAL_RUN_TAGS,
+): Promise<string | undefined> => {
+  try {
+    const response = await MlflowService.getExperiment({ experiment_id: experimentId });
+    return getExperimentTagValue(response.experiment, DEMO_EVAL_RUN_TAGS[stage]);
+  } catch {
+    return undefined;
+  }
+};
+
 const getEvaluationRunsResultUrl = (experimentId: string, runUuid: string): string => {
   const route = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.EvaluationRuns);
   const searchParams = new URLSearchParams({ [SELECTED_RUN_UUID_QUERY_PARAM]: runUuid });
@@ -121,8 +181,68 @@ const getEvaluationRunsComparisonUrl = (experimentId: string, selectedRunUuid: s
   return `/#${route}?${searchParams.toString()}`;
 };
 
-const getJudgeAlignmentUrl = (experimentId: string): string => {
-  return `/#${Routes.getExperimentPageTabScorerAlignmentRoute(experimentId)}`;
+const getJudgeAlignmentUrl = ({
+  experimentId,
+  scorerName,
+  evaluationRunId,
+  traceIds,
+}: {
+  experimentId: string;
+  scorerName: string;
+  evaluationRunId?: string | null;
+  traceIds?: string[];
+}): string => {
+  const route = Routes.getExperimentPageTabScorerAlignmentRoute(experimentId, {
+    scorerName,
+    prefill: 'eval',
+  });
+  const [path, existingQuery = ''] = route.split('?');
+  const searchParams = new URLSearchParams(existingQuery);
+  if (evaluationRunId) {
+    searchParams.set('evaluationRunId', evaluationRunId);
+  }
+  if (traceIds?.length) {
+    searchParams.set('traceIds', traceIds.join(','));
+  }
+  const queryString = searchParams.toString();
+  return `/#${path}${queryString ? `?${queryString}` : ''}`;
+};
+
+const getQualityDashboardUrl = (experimentId: string): string => {
+  return `/#/experiments/${experimentId}/dashboard/quality`;
+};
+
+const getIssuesUrl = (experimentId: string): string => {
+  return `/#${Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Issues)}`;
+};
+
+const getSelectedIssueUrl = (experimentId: string, issueId: string): string => {
+  const route = Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Issues);
+  const searchParams = new URLSearchParams({ [SELECTED_ISSUE_ID_PARAM]: issueId });
+  return `/#${route}?${searchParams.toString()}`;
+};
+
+const getMonitoringSamplingRatioFromMessage = (message: string, fallbackRatio: number): number => {
+  if (message.includes('10')) {
+    return 0.1;
+  }
+  if (message.includes('1')) {
+    return 0.01;
+  }
+  if (message.includes('5')) {
+    return 0.05;
+  }
+  return fallbackRatio;
+};
+
+const getMonitoringAlertCriteriaFromMessage = (message: string): string => {
+  if (message.includes('high')) {
+    return 'any high severity failure';
+  }
+  if (message.includes('drop') || message.includes('10 point')) {
+    return 'quality pass rate drops by more than 10 percentage points';
+  }
+  return 'failure rate is above 5% for 15 minutes';
 };
 
 type ActiveMockEvalSetup = {
@@ -160,6 +280,59 @@ const getMockProductionMonitoringRequest = (
   scorerNames: [setup.primaryScorer, setup.secondaryScorer],
   samplingRatio: MOCK_PRODUCTION_MONITORING_SAMPLING_RATIO,
 });
+
+const getMockDetectedIssueEvalSetupRequest = (
+  pendingSetup: PendingMockIssueDetectionEvalSetup,
+  scope: MockIssueDetectionEvalScope,
+): MockEvalSetupRequest => {
+  if (scope === 'all') {
+    return {
+      issueId: 'all-detected-issues',
+      issueName: `${pendingSetup.issueCount} detected failure modes`,
+      sourceJobId: pendingSetup.sourceJobId,
+      experimentId: pendingSetup.experimentId,
+      traceCount: pendingSetup.traceCount,
+      traceIds: MOCK_FAILURE_ANALYSIS_ISSUES.flatMap((issue) => issue.example_trace_ids).slice(0, 6),
+      datasetName: 'detected_failure_modes_regression',
+      scorerNames: ['failure_mode_regression_judge', 'source_groundedness'],
+      goldenDatasetName: 'agent_quality_golden',
+      goldenDatasetRecordCount: 120,
+      appendToCurrentThread: true,
+      postSetupLink: {
+        label: 'Open issues page',
+        href: getIssuesUrl(pendingSetup.experimentId),
+      },
+    };
+  }
+
+  const selectedIssueSeed = MOCK_FAILURE_ANALYSIS_ISSUES[0];
+  const selectedIssue = {
+    issue_id: selectedIssueSeed.issue_id,
+    name: selectedIssueSeed.name,
+    source_run_id: selectedIssueSeed.source_run_id,
+    trace_count: selectedIssueSeed.trace_count,
+    example_trace_ids: [...selectedIssueSeed.example_trace_ids],
+  };
+  const dedicatedEvalLinkedItems = getEvalLinkedItems(selectedIssue, 'new');
+  const goldenEvalLinkedItems = getEvalLinkedItems(selectedIssue, 'golden');
+  return {
+    issueId: selectedIssue.issue_id,
+    issueName: selectedIssue.name,
+    sourceJobId: selectedIssue.source_run_id,
+    experimentId: pendingSetup.experimentId,
+    traceCount: dedicatedEvalLinkedItems.dataset.traceCount,
+    traceIds: [...selectedIssue.example_trace_ids],
+    datasetName: dedicatedEvalLinkedItems.dataset.name,
+    scorerNames: dedicatedEvalLinkedItems.scorers.map((scorer) => scorer.name),
+    goldenDatasetName: goldenEvalLinkedItems.dataset.name,
+    goldenDatasetRecordCount: goldenEvalLinkedItems.dataset.existingRecordCount,
+    appendToCurrentThread: true,
+    postSetupLink: {
+      label: 'Open issue with linked items',
+      href: getSelectedIssueUrl(pendingSetup.experimentId, selectedIssue.issue_id),
+    },
+  };
+};
 
 /** `timestamp` round-trips through JSON as a string; restore it to a Date on load. */
 export const reviveMessages = (messages: ChatMessage[]): ChatMessage[] =>
@@ -283,12 +456,14 @@ type PartsUpdate =
       actionId: string;
       label: string;
       href: string;
+      navigateInline?: boolean;
     }
   | {
       kind: typeof PartsUpdateKind.PromptAction;
       actionId: string;
       label: string;
       prompt: string;
+      href?: string;
     }
   | {
       kind: typeof PartsUpdateKind.CopyAction;
@@ -321,11 +496,26 @@ const reduceParts = (parts: AssistantPart[], update: PartsUpdate): AssistantPart
     case PartsUpdateKind.Text:
       return update.text ? setOpenTextPart(parts, update.text) : parts;
     case PartsUpdateKind.LinkAction:
-      return [...parts, { type: 'linkAction', actionId: update.actionId, label: update.label, href: update.href }];
+      return [
+        ...parts,
+        {
+          type: 'linkAction',
+          actionId: update.actionId,
+          label: update.label,
+          href: update.href,
+          navigateInline: update.navigateInline,
+        },
+      ];
     case PartsUpdateKind.PromptAction:
       return [
         ...parts,
-        { type: 'promptAction', actionId: update.actionId, label: update.label, prompt: update.prompt },
+        {
+          type: 'promptAction',
+          actionId: update.actionId,
+          label: update.label,
+          prompt: update.prompt,
+          href: update.href,
+        },
       ];
     case PartsUpdateKind.CopyAction:
       return [
@@ -431,23 +621,47 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   // Use ref to track active EventSource for cancellation
   const eventSourceRef = useRef<EventSource | null>(null);
   const mockStreamTimeoutsRef = useRef<number[]>([]);
-  const activeMockEvalSetupRef = useRef<ActiveMockEvalSetup | null>(null);
-  const lastMockEvalSetupRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(null);
+  const activeMockEvalSetupRef = useRef<ActiveMockEvalSetup | null>(
+    persistedChat.mockState?.activeMockEvalSetup ?? null,
+  );
+  const lastMockEvalSetupRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
+    persistedChat.mockState?.lastMockEvalSetup ?? null,
+  );
+  const pendingMockIssueDetectionEvalSetupRef = useRef<PendingMockIssueDetectionEvalSetup | null>(
+    persistedChat.mockState?.pendingMockIssueDetectionEvalSetup ?? null,
+  );
   const pendingMockJudgeAlignmentRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
-    null,
+    persistedChat.mockState?.pendingMockJudgeAlignment ?? null,
   );
   const pendingMockAlignedEvaluationRef = useRef<
     (ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null
-  >(null);
-  const pendingMockFixRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(null);
-  const pendingMockFinalEvaluationRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
-    null,
+  >(persistedChat.mockState?.pendingMockAlignedEvaluation ?? null);
+  const pendingMockFixRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
+    persistedChat.mockState?.pendingMockFix ?? null,
   );
-  const pendingMockIssueResolutionRef = useRef<MockEvalSetupRequest | null>(null);
-  const pendingMockProductionMonitoringRef = useRef<MockProductionMonitoringRequest | null>(null);
-  const pendingMockProductionMonitoringNudgeRef = useRef<MockProductionMonitoringRequest | null>(null);
-  const baselineEvaluationRunIdRef = useRef<string | null>(null);
-  const fixedEvaluationRunIdRef = useRef<string | null>(null);
+  const pendingMockFinalEvaluationRef = useRef<(ActiveMockEvalSetup & { datasetChoice: MockEvalDatasetChoice }) | null>(
+    persistedChat.mockState?.pendingMockFinalEvaluation ?? null,
+  );
+  const pendingMockIssueResolutionRef = useRef<MockEvalSetupRequest | null>(
+    persistedChat.mockState?.pendingMockIssueResolution ?? null,
+  );
+  const pendingMockProductionMonitoringRef = useRef<MockProductionMonitoringRequest | null>(
+    persistedChat.mockState?.pendingMockProductionMonitoring ?? null,
+  );
+  const pendingMockProductionMonitoringSampleRef = useRef<MockProductionMonitoringRequest | null>(
+    persistedChat.mockState?.pendingMockProductionMonitoringSample ?? null,
+  );
+  const pendingMockProductionMonitoringAlertRef = useRef<MockProductionMonitoringRequest | null>(
+    persistedChat.mockState?.pendingMockProductionMonitoringAlert ?? null,
+  );
+  const pendingMockProductionMonitoringCriteriaRef = useRef<MockProductionMonitoringRequest | null>(
+    persistedChat.mockState?.pendingMockProductionMonitoringCriteria ?? null,
+  );
+  const pendingMockProductionMonitoringNudgeRef = useRef<MockProductionMonitoringRequest | null>(
+    persistedChat.mockState?.pendingMockProductionMonitoringNudge ?? null,
+  );
+  const baselineEvaluationRunIdRef = useRef<string | null>(persistedChat.mockState?.baselineEvaluationRunId ?? null);
+  const fixedEvaluationRunIdRef = useRef<string | null>(persistedChat.mockState?.fixedEvaluationRunId ?? null);
   const selectedProviderIdRef = useRef<string | null>(null);
 
   // Token identifying the in-flight send; reset/cancel invalidates it so a late POST's
@@ -462,6 +676,56 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       window.clearTimeout(timeoutId);
     }
     mockStreamTimeoutsRef.current = [];
+  }, []);
+
+  const getPersistedMockState = useCallback((): PersistedMockState | undefined => {
+    const mockState: PersistedMockState = {};
+    if (activeMockEvalSetupRef.current) {
+      mockState.activeMockEvalSetup = activeMockEvalSetupRef.current;
+    }
+    if (lastMockEvalSetupRef.current) {
+      mockState.lastMockEvalSetup = lastMockEvalSetupRef.current;
+    }
+    if (pendingMockIssueDetectionEvalSetupRef.current) {
+      mockState.pendingMockIssueDetectionEvalSetup = pendingMockIssueDetectionEvalSetupRef.current;
+    }
+    if (pendingMockJudgeAlignmentRef.current) {
+      mockState.pendingMockJudgeAlignment = pendingMockJudgeAlignmentRef.current;
+    }
+    if (pendingMockAlignedEvaluationRef.current) {
+      mockState.pendingMockAlignedEvaluation = pendingMockAlignedEvaluationRef.current;
+    }
+    if (pendingMockFixRef.current) {
+      mockState.pendingMockFix = pendingMockFixRef.current;
+    }
+    if (pendingMockFinalEvaluationRef.current) {
+      mockState.pendingMockFinalEvaluation = pendingMockFinalEvaluationRef.current;
+    }
+    if (pendingMockIssueResolutionRef.current) {
+      mockState.pendingMockIssueResolution = pendingMockIssueResolutionRef.current;
+    }
+    if (pendingMockProductionMonitoringRef.current) {
+      mockState.pendingMockProductionMonitoring = pendingMockProductionMonitoringRef.current;
+    }
+    if (pendingMockProductionMonitoringSampleRef.current) {
+      mockState.pendingMockProductionMonitoringSample = pendingMockProductionMonitoringSampleRef.current;
+    }
+    if (pendingMockProductionMonitoringAlertRef.current) {
+      mockState.pendingMockProductionMonitoringAlert = pendingMockProductionMonitoringAlertRef.current;
+    }
+    if (pendingMockProductionMonitoringCriteriaRef.current) {
+      mockState.pendingMockProductionMonitoringCriteria = pendingMockProductionMonitoringCriteriaRef.current;
+    }
+    if (pendingMockProductionMonitoringNudgeRef.current) {
+      mockState.pendingMockProductionMonitoringNudge = pendingMockProductionMonitoringNudgeRef.current;
+    }
+    if (baselineEvaluationRunIdRef.current) {
+      mockState.baselineEvaluationRunId = baselineEvaluationRunIdRef.current;
+    }
+    if (fixedEvaluationRunIdRef.current) {
+      mockState.fixedEvaluationRunId = fixedEvaluationRunIdRef.current;
+    }
+    return Object.keys(mockState).length ? mockState : undefined;
   }, []);
 
   // Fold stream updates into the open (streaming) assistant message's parts, keeping
@@ -618,7 +882,17 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const addLinkAction = useCallback(
-    ({ actionId, label, href }: { actionId: string; label: string; href: string }) => {
+    ({
+      actionId,
+      label,
+      href,
+      navigateInline,
+    }: {
+      actionId: string;
+      label: string;
+      href: string;
+      navigateInline?: boolean;
+    }) => {
       if (rafPendingRef.current !== null) {
         cancelAnimationFrame(rafPendingRef.current);
         rafPendingRef.current = null;
@@ -627,14 +901,14 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       openTextBufferRef.current = '';
       applyToOpenParts(
         { kind: PartsUpdateKind.Text, text: buffered },
-        { kind: PartsUpdateKind.LinkAction, actionId, label, href },
+        { kind: PartsUpdateKind.LinkAction, actionId, label, href, navigateInline },
       );
     },
     [applyToOpenParts],
   );
 
   const addPromptAction = useCallback(
-    ({ actionId, label, prompt }: { actionId: string; label: string; prompt: string }) => {
+    ({ actionId, label, prompt, href }: { actionId: string; label: string; prompt: string; href?: string }) => {
       if (rafPendingRef.current !== null) {
         cancelAnimationFrame(rafPendingRef.current);
         rafPendingRef.current = null;
@@ -643,7 +917,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       openTextBufferRef.current = '';
       applyToOpenParts(
         { kind: PartsUpdateKind.Text, text: buffered },
-        { kind: PartsUpdateKind.PromptAction, actionId, label, prompt },
+        { kind: PartsUpdateKind.PromptAction, actionId, label, prompt, href },
       );
     },
     [applyToOpenParts],
@@ -781,8 +1055,8 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     if (isStreaming) {
       return;
     }
-    setPersistedChat({ messages: trimForStorage(messages), tokenUsage });
-  }, [isStreaming, messages, tokenUsage, setPersistedChat]);
+    setPersistedChat({ messages: trimForStorage(messages), tokenUsage, mockState: getPersistedMockState() });
+  }, [getPersistedMockState, isStreaming, messages, tokenUsage, setPersistedChat]);
 
   const failStreamingTurn = useCallback(
     (errorMsg: string) => {
@@ -885,12 +1159,16 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     setContextualSuggestedPrompts([]);
     activeMockEvalSetupRef.current = null;
     lastMockEvalSetupRef.current = null;
+    pendingMockIssueDetectionEvalSetupRef.current = null;
     pendingMockJudgeAlignmentRef.current = null;
     pendingMockAlignedEvaluationRef.current = null;
     pendingMockFixRef.current = null;
     pendingMockFinalEvaluationRef.current = null;
     pendingMockIssueResolutionRef.current = null;
     pendingMockProductionMonitoringRef.current = null;
+    pendingMockProductionMonitoringSampleRef.current = null;
+    pendingMockProductionMonitoringAlertRef.current = null;
+    pendingMockProductionMonitoringCriteriaRef.current = null;
     pendingMockProductionMonitoringNudgeRef.current = null;
     baselineEvaluationRunIdRef.current = null;
     fixedEvaluationRunIdRef.current = null;
@@ -1029,11 +1307,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       activeRequestRef.current = null;
       setup.request.onChoice?.(datasetChoice);
       activeMockEvalSetupRef.current = null;
+      pendingMockIssueDetectionEvalSetupRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
       pendingMockAlignedEvaluationRef.current = null;
       pendingMockFixRef.current = null;
       pendingMockFinalEvaluationRef.current = null;
       pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = null;
 
       const { request, traceCount, traceSummary, primaryScorer, secondaryScorer } = setup;
@@ -1157,6 +1439,13 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         writeStreamedText(
           `\n\nDone. I linked \`${targetDatasetName}\` and the judges back to the issue. Open the linked items in the issue detail to inspect the records and judge criteria.`,
         );
+        if (request.postSetupLink) {
+          addLinkAction({
+            actionId: `mock-open-post-eval-setup-${request.issueId}`,
+            label: request.postSetupLink.label,
+            href: request.postSetupLink.href,
+          });
+        }
       });
       scheduleMockStreamAction(4450, () => {
         request.onComplete?.(datasetChoice);
@@ -1187,6 +1476,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       });
     },
     [
+      addLinkAction,
       addToolCalls,
       addSelectionPrompt,
       clearMockStreamTimers,
@@ -1266,16 +1556,18 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       });
       scheduleMockStreamAction(2250, () => {
         setCurrentStatus('Finding evaluation result');
-        const latestEvaluationRunIdPromise = experimentId
-          ? getLatestEvaluationRunId(experimentId)
+        const evaluationRunIdPromise = experimentId
+          ? getDemoEvaluationRunId(experimentId, 'initial').then(
+              (demoRunId) => demoRunId ?? getLatestEvaluationRunId(experimentId),
+            )
           : Promise.resolve(undefined);
-        void latestEvaluationRunIdPromise.then((latestEvaluationRunId) => {
-          if (experimentId && latestEvaluationRunId) {
-            baselineEvaluationRunIdRef.current = latestEvaluationRunId;
+        void evaluationRunIdPromise.then((evaluationRunId) => {
+          if (experimentId && evaluationRunId) {
+            baselineEvaluationRunIdRef.current = evaluationRunId;
             addLinkAction({
               actionId: `mock-open-eval-result-${request.issueId}`,
               label: 'Open evaluation result',
-              href: getEvaluationRunsResultUrl(experimentId, latestEvaluationRunId),
+              href: getEvaluationRunsResultUrl(experimentId, evaluationRunId),
             });
             addPromptAction({
               actionId: `mock-analyze-eval-result-${request.issueId}`,
@@ -1566,7 +1858,12 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
           addLinkAction({
             actionId: `mock-open-judge-alignment-${request.issueId}`,
             label: 'Open judge alignment console',
-            href: getJudgeAlignmentUrl(experimentId),
+            href: getJudgeAlignmentUrl({
+              experimentId,
+              scorerName: primaryScorer,
+              evaluationRunId: baselineEvaluationRunIdRef.current,
+              traceIds: request.traceIds,
+            }),
           });
         }
         writeStreamedText('\n\nOnce you aligned the judge, tell me to re-run the evaluation.');
@@ -1654,6 +1951,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
       const { request, primaryScorer, secondaryScorer } = setup;
       const targetDatasetName = getMockEvalTargetDatasetName(setup);
+      const experimentId = request.experimentId ?? (getPageContext()['experimentId'] as string | undefined);
 
       setError(null);
       setIsStreaming(true);
@@ -1719,15 +2017,31 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         );
       });
       scheduleMockStreamAction(2200, () => {
-        addMockFixAction(setup);
-        endStreamingTurn();
+        const evaluationRunIdPromise = experimentId
+          ? getDemoEvaluationRunId(experimentId, 'aligned').then(
+              (demoRunId) => demoRunId ?? getLatestEvaluationRunId(experimentId),
+            )
+          : Promise.resolve(undefined);
+        void evaluationRunIdPromise.then((evaluationRunId) => {
+          if (experimentId && evaluationRunId) {
+            addLinkAction({
+              actionId: `mock-open-aligned-eval-result-${request.issueId}`,
+              label: 'Open evaluation result',
+              href: getEvaluationRunsResultUrl(experimentId, evaluationRunId),
+            });
+          }
+          addMockFixAction(setup);
+          endStreamingTurn();
+        });
       });
     },
     [
       addMockFixAction,
+      addLinkAction,
       addToolCalls,
       clearMockStreamTimers,
       endStreamingTurn,
+      getPageContext,
       resolveToolCall,
       scheduleMockStreamAction,
       writeStreamedText,
@@ -1950,10 +2264,16 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       });
       scheduleMockStreamAction(1850, () => {
         setCurrentStatus('Finding evaluation runs');
-        const latestEvaluationRunIdsPromise = experimentId
-          ? getLatestEvaluationRunIds(experimentId, 2)
-          : Promise.resolve([]);
-        void latestEvaluationRunIdsPromise.then((latestEvaluationRunIds) => {
+        const evaluationRunIdsPromise = experimentId
+          ? Promise.all([
+              baselineEvaluationRunIdRef.current
+                ? Promise.resolve(baselineEvaluationRunIdRef.current)
+                : getDemoEvaluationRunId(experimentId, 'initial'),
+              getDemoEvaluationRunId(experimentId, 'fixed'),
+              getLatestEvaluationRunIds(experimentId, 2),
+            ])
+          : Promise.resolve<[undefined, undefined, string[]]>([undefined, undefined, []]);
+        void evaluationRunIdsPromise.then(([demoBaselineRunId, demoFixedRunId, latestEvaluationRunIds]) => {
           addEvalComparisonSummary({
             actionId: `mock-eval-comparison-summary-${request.issueId}`,
             title: 'Evaluation comparison summary',
@@ -1987,13 +2307,24 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
             ],
           });
           const baselineRunId =
+            demoBaselineRunId ??
             baselineEvaluationRunIdRef.current ??
             latestEvaluationRunIds.find((runId) => runId !== fixedEvaluationRunIdRef.current) ??
             null;
           const fixedRunId =
-            latestEvaluationRunIds.find((runId) => runId !== baselineRunId) ?? latestEvaluationRunIds[0] ?? null;
+            demoFixedRunId ??
+            latestEvaluationRunIds.find((runId) => runId !== baselineRunId) ??
+            latestEvaluationRunIds[0] ??
+            null;
           if (fixedRunId) {
             fixedEvaluationRunIdRef.current = fixedRunId;
+          }
+          if (experimentId && fixedRunId) {
+            addLinkAction({
+              actionId: `mock-open-fixed-eval-result-${request.issueId}`,
+              label: 'Open evaluation result',
+              href: getEvaluationRunsResultUrl(experimentId, fixedRunId),
+            });
           }
           if (experimentId && baselineRunId && fixedRunId && baselineRunId !== fixedRunId) {
             addLinkAction({
@@ -2034,6 +2365,251 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     ],
   );
 
+  const startMockIssueDetection = useCallback(
+    (request: MockIssueDetectionRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+
+      activeMockEvalSetupRef.current = null;
+      lastMockEvalSetupRef.current = null;
+      pendingMockIssueDetectionEvalSetupRef.current = {
+        experimentId: request.experimentId,
+        sourceJobId: request.runId,
+        traceCount: request.traceCount,
+        issueCount: request.issueCount,
+      };
+      pendingMockJudgeAlignmentRef.current = null;
+      pendingMockAlignedEvaluationRef.current = null;
+      pendingMockFixRef.current = null;
+      pendingMockFinalEvaluationRef.current = null;
+      pendingMockIssueResolutionRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
+      baselineEvaluationRunIdRef.current = null;
+      fixedEvaluationRunIdRef.current = null;
+      const completionDelayMs = request.completionDelayMs ?? 10000;
+      const summarizeDelayMs = Math.max(2500, Math.floor(completionDelayMs * 0.45));
+      const examplesDelayMs = Math.max(summarizeDelayMs + 1000, Math.floor(completionDelayMs * 0.75));
+
+      request.onStart?.();
+      setIsPanelOpen(true);
+      setSetupComplete(true);
+      setIsLoadingConfig(false);
+      setSessionId(`mock-issue-detection-${request.jobId}`);
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing issue detection');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      const issueDetectionMessages: ChatMessage[] = [
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Find common failure modes',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ];
+      if (request.appendToCurrentThread) {
+        setMessages((prev) => [...prev, ...issueDetectionMessages]);
+      } else {
+        setMessages(issueDetectionMessages);
+      }
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `I'll run issue detection across ${request.traceCount} traces from the last week and group repeated failure patterns.`,
+        );
+      });
+      scheduleMockStreamAction(550, () => {
+        setCurrentStatus('Checking LLM connection');
+        addToolCalls([
+          {
+            id: `mock-check-llm-connection-${request.jobId}`,
+            name: 'check_llm_connection',
+            input: { experiment_id: request.experimentId },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(900, () => {
+        resolveToolCall({
+          toolUseId: `mock-check-llm-connection-${request.jobId}`,
+          content: 'Using the configured demo LLM connection.',
+          isError: false,
+        });
+        writeStreamedText('\n\nThe LLM connection is ready, so I can start the detector.');
+      });
+      scheduleMockStreamAction(1150, () => {
+        setCurrentStatus('Running issue detection');
+        addToolCalls([
+          {
+            id: `mock-run-issue-detection-${request.jobId}`,
+            name: 'run_issue_detection',
+            input: {
+              experiment_id: request.experimentId,
+              job_id: request.jobId,
+              result_run_id: request.runId,
+              trace_count: request.traceCount,
+              window: 'last_7_days',
+            },
+          },
+        ]);
+      });
+      scheduleMockStreamAction(1500, () => {
+        writeStreamedText('\n\nIssue detection is running. I will keep this thread updated as results come in.');
+      });
+      scheduleMockStreamAction(summarizeDelayMs, () => {
+        setCurrentStatus('Clustering failure patterns');
+        writeStreamedText('\n\nI am clustering similar failures and drafting concise issue summaries.');
+      });
+      scheduleMockStreamAction(examplesDelayMs, () => {
+        setCurrentStatus('Selecting representative traces');
+        writeStreamedText('\n\nI am selecting representative traces for each failure mode.');
+      });
+      scheduleMockStreamAction(completionDelayMs, () => {
+        resolveToolCall({
+          toolUseId: `mock-run-issue-detection-${request.jobId}`,
+          content: `Found ${request.issueCount} recurring failure modes across ${request.traceCount} traces.`,
+          isError: false,
+        });
+        setCurrentStatus('Preparing issue results');
+        writeStreamedText(
+          `\n\nDone. I found ${request.issueCount} recurring failure modes across ${request.traceCount} traces.`,
+        );
+        addLinkAction({
+          actionId: `mock-open-issue-results-${request.jobId}`,
+          label: 'View issues',
+          href: getIssuesUrl(request.experimentId),
+          navigateInline: true,
+        });
+        addPromptAction({
+          actionId: `mock-set-up-eval-from-issues-${request.jobId}`,
+          label: 'Set up eval',
+          prompt: 'Set up eval',
+          href: getIssuesUrl(request.experimentId),
+        });
+        request.onComplete?.();
+        endStreamingTurn();
+      });
+    },
+    [
+      addLinkAction,
+      addPromptAction,
+      addToolCalls,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      resolveToolCall,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockIssueDetectionEvalScopePrompt = useCallback(
+    (pendingSetup: PendingMockIssueDetectionEvalSetup) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+
+      pendingMockIssueDetectionEvalSetupRef.current = pendingSetup;
+      setIsPanelOpen(true);
+      setSetupComplete(true);
+      setIsLoadingConfig(false);
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing eval setup options');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Set up eval',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          `I can create eval coverage from the ${pendingSetup.issueCount} detected failure modes. Which issues should I set up evals for?`,
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        addSelectionPrompt({
+          selectionId: `mock-select-issue-detection-eval-scope-${pendingSetup.sourceJobId}`,
+          title: 'Set up eval for which issues?',
+          description: 'Choose whether to create coverage for every detected issue or start from a selected subset.',
+          defaultValue: 'all',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'all',
+              label: 'All issues',
+              description: `Create an eval package across all ${pendingSetup.issueCount} detected issues.`,
+              recommended: true,
+              prompt: 'Set up eval for all issues',
+            },
+            {
+              value: 'subset',
+              label: 'Subset',
+              description: 'Start with the top issue and open the issues page with it selected.',
+              prompt: 'Set up eval for a subset',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [
+      addSelectionPrompt,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
+  );
+
   const beginMockEvalSetup = useCallback(
     (request: MockEvalSetupRequest) => {
       clearMockStreamTimers();
@@ -2064,12 +2640,16 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       request.onStart?.();
       activeMockEvalSetupRef.current = activeSetup;
       lastMockEvalSetupRef.current = null;
+      pendingMockIssueDetectionEvalSetupRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
       pendingMockAlignedEvaluationRef.current = null;
       pendingMockFixRef.current = null;
       pendingMockFinalEvaluationRef.current = null;
       pendingMockIssueResolutionRef.current = null;
       pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = null;
       baselineEvaluationRunIdRef.current = null;
       fixedEvaluationRunIdRef.current = null;
@@ -2153,15 +2733,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
           options: request.goldenDatasetName
             ? [
                 {
-                  value: 'golden',
-                  label: 'Add to existing dataset',
-                  description: `Add ${traceCount || 0} issue records to ${request.goldenDatasetName}.`,
-                },
-                {
                   value: 'new',
                   label: 'Create new dataset',
                   description: `Create ${request.datasetName} for this issue.`,
                   recommended: true,
+                },
+                {
+                  value: 'golden',
+                  label: 'Add to existing dataset',
+                  description: `Add ${traceCount || 0} issue records to ${request.goldenDatasetName}.`,
                 },
               ]
             : [
@@ -2195,6 +2775,9 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       activeRequestRef.current = null;
       pendingMockIssueResolutionRef.current = null;
       pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = null;
 
       setError(null);
@@ -2250,11 +2833,15 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       pendingMockIssueResolutionRef.current = request;
       activeMockEvalSetupRef.current = null;
       lastMockEvalSetupRef.current = null;
+      pendingMockIssueDetectionEvalSetupRef.current = null;
       pendingMockJudgeAlignmentRef.current = null;
       pendingMockAlignedEvaluationRef.current = null;
       pendingMockFixRef.current = null;
       pendingMockFinalEvaluationRef.current = null;
       pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = null;
       baselineEvaluationRunIdRef.current = null;
       fixedEvaluationRunIdRef.current = null;
@@ -2332,6 +2919,9 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       clearMockStreamTimers();
       activeRequestRef.current = null;
       pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = request;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = null;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -2341,10 +2931,6 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         cancelAnimationFrame(rafPendingRef.current);
         rafPendingRef.current = null;
       }
-
-      const samplingPercent = Math.round(request.samplingRatio * 100);
-      const scorerNames = request.scorerNames.length ? request.scorerNames : ['linked_issue_judge'];
-      const scorerList = scorerNames.map((scorerName) => `\`${scorerName}\``).join(', ');
 
       request.onStart?.();
       setIsPanelOpen(true);
@@ -2383,7 +2969,236 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
 
       scheduleMockStreamAction(150, () => {
         writeStreamedText(
-          `I'll turn the linked eval judges into an online monitor for "${request.issueName}" with a ${samplingPercent}% sampling ratio.`,
+          `I'll turn the linked eval judges into an online monitor for "${request.issueName}". First, choose the production trace sample rate.`,
+        );
+      });
+      scheduleMockStreamAction(650, () => {
+        addSelectionPrompt({
+          selectionId: `mock-monitoring-sample-rate-${request.issueId}`,
+          title: 'Choose production trace sample rate',
+          description: 'This controls how much live traffic the linked judges evaluate.',
+          defaultValue: '5',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: '5',
+              label: '5% sample rate',
+              description: 'Balanced coverage for this demo issue.',
+              recommended: true,
+              prompt: 'Use 5% trace sample',
+            },
+            {
+              value: '1',
+              label: '1% sample rate',
+              description: 'Lower judge cost with less coverage.',
+              prompt: 'Use 1% trace sample',
+            },
+            {
+              value: '10',
+              label: '10% sample rate',
+              description: 'Higher coverage for risky launches.',
+              prompt: 'Use 10% trace sample',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [
+      addSelectionPrompt,
+      clearMockStreamTimers,
+      endStreamingTurn,
+      scheduleMockStreamAction,
+      setIsPanelOpen,
+      writeStreamedText,
+    ],
+  );
+
+  const startMockProductionMonitoringAlertPrompt = useCallback(
+    (request: MockProductionMonitoringRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = request;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
+
+      const samplingPercent = Math.round(request.samplingRatio * 100);
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing monitoring alert options');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: `Use ${samplingPercent}% trace sample`,
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(`Got it, I will sample ${samplingPercent}% of production traces. Do you want an alert too?`);
+      });
+      scheduleMockStreamAction(650, () => {
+        addSelectionPrompt({
+          selectionId: `mock-monitoring-alert-${request.issueId}`,
+          title: 'Set up an alert?',
+          description: 'Alerts notify the team when online judge failures exceed the threshold you choose.',
+          defaultValue: 'yes',
+          continueLabel: 'Continue',
+          options: [
+            {
+              value: 'yes',
+              label: 'Yes, add alert',
+              description: 'Ask for alerting criteria before enabling monitoring.',
+              recommended: true,
+              prompt: 'Yes, add alert',
+            },
+            {
+              value: 'no',
+              label: 'No alert',
+              description: 'Only create the online quality dashboard.',
+              prompt: 'No alert',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [addSelectionPrompt, clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockProductionMonitoringCriteriaPrompt = useCallback(
+    (request: MockProductionMonitoringRequest) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = request;
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Preparing alert criteria');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: 'Yes, add alert',
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText('What alerting criteria should I use for this online monitor?');
+      });
+      scheduleMockStreamAction(650, () => {
+        addSelectionPrompt({
+          selectionId: `mock-monitoring-alert-criteria-${request.issueId}`,
+          title: 'Choose alerting criteria',
+          description: 'This threshold can be edited later from the quality dashboard.',
+          defaultValue: 'failure-rate',
+          continueLabel: 'Setup monitoring',
+          options: [
+            {
+              value: 'failure-rate',
+              label: 'Failure rate > 5%',
+              description: 'Alert when the linked judges fail more than 5% of sampled traces for 15 minutes.',
+              recommended: true,
+              prompt: 'Alert when failure rate is above 5% for 15 minutes',
+            },
+            {
+              value: 'high-severity',
+              label: 'Any high severity',
+              description: 'Alert immediately on a high-severity judged failure.',
+              prompt: 'Alert on any high severity failure',
+            },
+            {
+              value: 'quality-drop',
+              label: 'Quality drops 10 pts',
+              description: 'Alert when the pass rate drops by more than 10 percentage points.',
+              prompt: 'Alert when quality drops by more than 10 points',
+            },
+          ],
+        });
+        endStreamingTurn();
+      });
+    },
+    [addSelectionPrompt, clearMockStreamTimers, endStreamingTurn, scheduleMockStreamAction, writeStreamedText],
+  );
+
+  const startMockConfigureProductionMonitoring = useCallback(
+    (request: MockProductionMonitoringRequest, alertChoice: MockMonitoringAlertChoice, alertCriteria?: string) => {
+      clearMockStreamTimers();
+      activeRequestRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
+      pendingMockProductionMonitoringNudgeRef.current = null;
+
+      const samplingPercent = Math.round(request.samplingRatio * 100);
+      const scorerNames = request.scorerNames.length ? request.scorerNames : ['linked_issue_judge'];
+      const scorerList = scorerNames.map((scorerName) => `\`${scorerName}\``).join(', ');
+      const experimentId = request.experimentId ?? (getPageContext()['experimentId'] as string | undefined);
+
+      setError(null);
+      setIsStreaming(true);
+      setCurrentStatus('Configuring online judges');
+      setActiveTools([]);
+      setPendingPermission(null);
+      setContextualSuggestedPrompts([]);
+      openTextBufferRef.current = '';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: 'user',
+          content: alertCriteria ?? (alertChoice === 'enabled' ? 'Set up alert' : 'No alert'),
+          timestamp: new Date(),
+        },
+        {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          parts: [],
+        },
+      ]);
+
+      scheduleMockStreamAction(150, () => {
+        writeStreamedText(
+          alertChoice === 'enabled'
+            ? `I'll enable online monitoring with ${samplingPercent}% sampling and alerting criteria: ${alertCriteria}.`
+            : `I'll enable online monitoring with ${samplingPercent}% sampling and leave alerts disabled.`,
         );
       });
       scheduleMockStreamAction(700, () => {
@@ -2399,6 +3214,8 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
               scorers: scorerNames,
               sampling_ratio: request.samplingRatio,
               source_job: request.sourceJobId,
+              alerting_enabled: alertChoice === 'enabled',
+              alert_criteria: alertCriteria,
             },
           },
         ]);
@@ -2412,24 +3229,34 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
         writeStreamedText(
           `\n\nEnabled ${scorerList} on production traffic at ${samplingPercent}% sampling. New failures will be linked back to this issue's eval package.`,
         );
+        if (alertChoice === 'enabled') {
+          writeStreamedText(` Alerting is enabled for: ${alertCriteria}.`);
+        }
       });
       scheduleMockStreamAction(2100, () => {
         setCurrentStatus('Saving monitor');
         request.onComplete?.();
         writeStreamedText(
-          '\n\nMonitor is ready. You can adjust the sampling ratio later from the online judges configuration.',
+          '\n\nMonitor is ready. You can adjust the sampling ratio and alert policy later from the quality dashboard.',
         );
+        if (experimentId) {
+          addLinkAction({
+            actionId: `mock-go-to-quality-dashboard-${request.issueId}`,
+            label: 'Go to dashboard',
+            href: getQualityDashboardUrl(experimentId),
+          });
+        }
         endStreamingTurn();
       });
     },
     [
+      addLinkAction,
       addToolCalls,
       clearMockStreamTimers,
       endStreamingTurn,
       getPageContext,
       resolveToolCall,
       scheduleMockStreamAction,
-      setIsPanelOpen,
       writeStreamedText,
     ],
   );
@@ -2438,6 +3265,10 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     (request: MockProductionMonitoringRequest) => {
       clearMockStreamTimers();
       activeRequestRef.current = null;
+      pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = null;
 
       setError(null);
@@ -2485,6 +3316,9 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       activeRequestRef.current = null;
       pendingMockProductionMonitoringNudgeRef.current = request;
       pendingMockProductionMonitoringRef.current = null;
+      pendingMockProductionMonitoringSampleRef.current = null;
+      pendingMockProductionMonitoringAlertRef.current = null;
+      pendingMockProductionMonitoringCriteriaRef.current = null;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -2569,6 +3403,21 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     async (message: string) => {
       clearMockStreamTimers();
       const normalizedMessage = message.trim().toLowerCase();
+      const pendingMockIssueDetectionEvalSetup = pendingMockIssueDetectionEvalSetupRef.current;
+      if (pendingMockIssueDetectionEvalSetup) {
+        if (normalizedMessage.includes('subset') || normalizedMessage.includes('selected')) {
+          beginMockEvalSetup(getMockDetectedIssueEvalSetupRequest(pendingMockIssueDetectionEvalSetup, 'subset'));
+          return;
+        }
+        if (normalizedMessage.includes('all')) {
+          beginMockEvalSetup(getMockDetectedIssueEvalSetupRequest(pendingMockIssueDetectionEvalSetup, 'all'));
+          return;
+        }
+        if (normalizedMessage.includes('eval')) {
+          startMockIssueDetectionEvalScopePrompt(pendingMockIssueDetectionEvalSetup);
+          return;
+        }
+      }
       const pendingMockIssueResolution = pendingMockIssueResolutionRef.current;
       const pendingMockProductionMonitoringNudge = pendingMockProductionMonitoringNudgeRef.current;
       if (pendingMockProductionMonitoringNudge) {
@@ -2592,6 +3441,49 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
           });
           return;
         }
+      }
+      const pendingMockProductionMonitoringSample = pendingMockProductionMonitoringSampleRef.current;
+      if (pendingMockProductionMonitoringSample) {
+        const samplingRatio = getMonitoringSamplingRatioFromMessage(
+          normalizedMessage,
+          pendingMockProductionMonitoringSample.samplingRatio,
+        );
+        startMockProductionMonitoringAlertPrompt({
+          ...pendingMockProductionMonitoringSample,
+          samplingRatio,
+          appendToCurrentThread: true,
+        });
+        return;
+      }
+      const pendingMockProductionMonitoringAlert = pendingMockProductionMonitoringAlertRef.current;
+      if (pendingMockProductionMonitoringAlert) {
+        if (
+          normalizedMessage.includes('no') ||
+          normalizedMessage.includes('without') ||
+          normalizedMessage.includes('skip')
+        ) {
+          startMockConfigureProductionMonitoring(
+            { ...pendingMockProductionMonitoringAlert, appendToCurrentThread: true },
+            'disabled',
+          );
+          return;
+        }
+        if (normalizedMessage.includes('yes') || normalizedMessage.includes('alert')) {
+          startMockProductionMonitoringCriteriaPrompt({
+            ...pendingMockProductionMonitoringAlert,
+            appendToCurrentThread: true,
+          });
+          return;
+        }
+      }
+      const pendingMockProductionMonitoringCriteria = pendingMockProductionMonitoringCriteriaRef.current;
+      if (pendingMockProductionMonitoringCriteria) {
+        startMockConfigureProductionMonitoring(
+          { ...pendingMockProductionMonitoringCriteria, appendToCurrentThread: true },
+          'enabled',
+          getMonitoringAlertCriteriaFromMessage(normalizedMessage),
+        );
+        return;
       }
       const pendingMockProductionMonitoring = pendingMockProductionMonitoringRef.current;
       if (
@@ -2776,6 +3668,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       getPageContext,
       streamCallbacks,
       beginMockEvalSetup,
+      startMockIssueDetectionEvalScopePrompt,
       startMockEvalArtifactCreation,
       startMockJudgeAlignment,
       startMockResolveWithoutEval,
@@ -2787,6 +3680,9 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
       startMockRunFixedEvaluation,
       startMockDeferFixedEvaluation,
       startMockProductionMonitoring,
+      startMockProductionMonitoringAlertPrompt,
+      startMockProductionMonitoringCriteriaPrompt,
+      startMockConfigureProductionMonitoring,
       startMockResolveWithoutProductionMonitoring,
       startMockRunEvaluation,
     ],
@@ -2933,6 +3829,7 @@ export const AssistantProvider = ({ children }: { children: ReactNode }) => {
     refreshConfig,
     completeSetup,
     respondToPermission,
+    startMockIssueDetection,
     startMockEvalSetup,
     startMockIssueResolution,
     startMockProductionMonitoring,
@@ -2970,6 +3867,7 @@ const disabledAssistantContext: AssistantAgentContextType = {
   refreshConfig: () => Promise.resolve(),
   completeSetup: () => {},
   respondToPermission: () => {},
+  startMockIssueDetection: () => {},
   startMockEvalSetup: () => {},
   startMockIssueResolution: () => {},
   startMockProductionMonitoring: () => {},

@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, DangerModal, type InputRef, useDesignSystemTheme } from '@databricks/design-system';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, DangerModal, Typography, type InputRef, useDesignSystemTheme } from '@databricks/design-system';
 import { Global } from '@emotion/react';
 import { ResizableBox } from 'react-resizable';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useLocalStorage } from '@databricks/web-shared/hooks';
+import { Link } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
+import Routes from '@mlflow/mlflow/src/experiment-tracking/routes';
+import { ExperimentPageTabName } from '@mlflow/mlflow/src/experiment-tracking/constants';
+import { useHeaderVisibility } from '../../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
 // useNavigationBlock stubbed for OSS — see useDatasetsPageQuery comment in PR2 plan
 import type { Dataset, DatasetRecord } from '../hooks/useDatasetsQueries';
 import { useDeleteDatasetRecordsMutation } from '../hooks/useDatasetsQueries';
@@ -12,8 +16,11 @@ import type { PendingNewRecord } from '../hooks/useRecordCreateState';
 import { useDatasetNotifications } from '../hooks/useDatasetNotifications';
 import { useGuardedTransition } from '../hooks/useGuardedTransition';
 import { useSlashFocusSearch } from '../hooks/useSlashFocusSearch';
-import { DatasetsBreadcrumbs } from './DatasetsBreadcrumbs';
-import { DatasetRecordsToolbar } from './DatasetRecordsToolbar';
+import {
+  DATASET_RECORD_COMPACT_TEXT_CELL_MAX_LINES,
+  DatasetRecordsRowHeightToggle,
+  DatasetRecordsToolbar,
+} from './DatasetRecordsToolbar';
 import { DatasetRecordsTable } from './DatasetRecordsTable';
 import { DatasetRecordsEmptyState, DatasetRecordsNoResultsEmptyState } from './DatasetRecordsEmptyState';
 import { DatasetRecordsLoadingSkeleton } from './DatasetRecordsLoadingSkeleton';
@@ -65,6 +72,14 @@ const SIDE_PANEL_MAX_WIDTH = 1000;
 const SIDE_PANEL_WIDTH_STORAGE_KEY = 'mlflow.eval-datasets-v2.side-panel-width';
 const SIDE_PANEL_WIDTH_STORAGE_VERSION = 1;
 
+const getDatasetDescription = (dataset: Dataset): string | undefined => {
+  const explicitDescription = dataset.description?.trim();
+  if (explicitDescription) return explicitDescription;
+  const fallbackName = dataset.name ?? dataset.dataset_id;
+  if (!fallbackName) return undefined;
+  return `Evaluation dataset for ${fallbackName.replace(/[_-]+/g, ' ')}. Use it to curate examples, expectations, and regression checks.`;
+};
+
 export interface DatasetDetailPageContentProps {
   experimentId: string;
   datasetId: string;
@@ -81,11 +96,64 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
   const { notify, notificationContainer } = useDatasetNotifications();
   const searchInputRef = useRef<InputRef>(null);
   useSlashFocusSearch(searchInputRef);
+  const { setBreadcrumbChild, setTitleOverride, setTitleMetadata, setActionSlot, setHeaderActionsHidden } =
+    useHeaderVisibility();
+  const datasetName = dataset.name ?? dataset.dataset_id;
+  const datasetDescription = useMemo(() => getDatasetDescription(dataset), [dataset]);
+  const [textCellMaxLines, setTextCellMaxLines] = useState(DATASET_RECORD_COMPACT_TEXT_CELL_MAX_LINES);
 
   const { url, records, selectedRecord, bulk, tablePrefs, flags, searchInput, setPageIndex } =
     useDatasetRecordsController({ experimentId, datasetId });
 
   const deleteRecordsMutation = useDeleteDatasetRecordsMutation(datasetId);
+
+  useEffect(() => {
+    setBreadcrumbChild([
+      <Link
+        key="datasets"
+        componentId="mlflow.eval-datasets-v2.header-breadcrumb.datasets"
+        to={Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Datasets)}
+      >
+        <FormattedMessage
+          defaultMessage="Datasets"
+          description="Breadcrumb label for the V2 evaluation datasets list page"
+        />
+      </Link>,
+      <span key="dataset" aria-current="page">
+        {datasetName}
+      </span>,
+    ]);
+    setTitleOverride(datasetName);
+    setTitleMetadata(
+      datasetDescription ? (
+        <Typography.Text color="secondary" size="sm">
+          {datasetDescription}
+        </Typography.Text>
+      ) : undefined,
+    );
+    setActionSlot(<DatasetDetailKebabMenu experimentId={experimentId} dataset={dataset} notify={notify} />);
+    setHeaderActionsHidden(true);
+
+    return () => {
+      setBreadcrumbChild(undefined);
+      setTitleOverride(undefined);
+      setTitleMetadata(undefined);
+      setActionSlot(undefined);
+      setHeaderActionsHidden(false);
+    };
+  }, [
+    dataset,
+    datasetDescription,
+    datasetName,
+    experimentId,
+    notify,
+    setActionSlot,
+    setBreadcrumbChild,
+    setHeaderActionsHidden,
+    setTitleMetadata,
+    setTitleOverride,
+  ]);
+
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   // Snapshot of ids captured when the confirm modal opens. The modal renders `count` and the
   // confirm handler acts on this snapshot — never on the live `bulk.selected` — so a refetch,
@@ -308,9 +376,9 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
         flexDirection: 'column',
         flex: 1,
         minHeight: 0,
-        // Outer wrappers (PageWrapper + ExperimentPageTabs) already contribute spacing
-        // on the right (24px) and bottom (8px); only top and left need padding here.
-        paddingTop: theme.spacing.md,
+        // Outer wrappers (PageWrapper + ExperimentPageTabs) already contribute vertical spacing.
+        // Keep only the left inset so the toolbar aligns with the table body without opening
+        // an extra gap below the shared dataset header.
         paddingLeft: theme.spacing.md,
       }}
     >
@@ -330,12 +398,6 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
             paddingRight: panelOpen ? theme.spacing.lg : 0,
           }}
         >
-          <DatasetsBreadcrumbs
-            experimentId={experimentId}
-            datasetName={dataset.name}
-            rightActions={<DatasetDetailKebabMenu experimentId={experimentId} dataset={dataset} notify={notify} />}
-          />
-
           {records.error instanceof Error && (
             <Alert
               componentId="mlflow.eval-datasets-v2.records.fetch-error"
@@ -374,6 +436,10 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
                         visibleColumns={tablePrefs.visibleColumns}
                         onToggleColumn={tablePrefs.toggleColumn}
                         onResetToDefaults={tablePrefs.resetToDefaults}
+                      />
+                      <DatasetRecordsRowHeightToggle
+                        textCellMaxLines={textCellMaxLines}
+                        setTextCellMaxLines={setTextCellMaxLines}
                       />
                       {records.allRecords.length > 0 && (
                         // 1px nudge on top of the toolbar's `sm` gap to give the count
@@ -435,6 +501,7 @@ export const DatasetDetailPageContent = ({ experimentId, datasetId, dataset }: D
                       dir={url.dir}
                       onSort={url.setSort}
                       pendingNewRecord={pendingNewRecord}
+                      textCellMaxLines={textCellMaxLines}
                     />
                   </div>
                 </div>

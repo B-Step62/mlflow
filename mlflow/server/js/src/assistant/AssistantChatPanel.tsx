@@ -13,9 +13,9 @@ import {
   DesignSystemEventProviderAnalyticsEventTypes,
   DesignSystemEventProviderComponentTypes,
   GearIcon,
+  InfoTooltip,
   NewWindowIcon,
   RefreshIcon,
-  SparkleDoubleIcon,
   SparkleIcon,
   StopIcon,
   Tag,
@@ -38,9 +38,10 @@ import { AssistantSetupWizard } from './setup';
 import { useLogTelemetryEvent } from '../telemetry/hooks/useLogTelemetryEvent';
 import { GenAIMarkdownRenderer } from '../shared/web-shared/genai-markdown-renderer';
 import { useCopyController } from '../shared/web-shared/snippet/hooks/useCopyController';
-import { useAssistantPrompts } from '../common/utils/RoutingUtils';
+import { useAssistantPrompts, useNavigate } from '../common/utils/RoutingUtils';
 import { AssistantWelcomeCarousel } from './AssistantWelcomeCarousel';
 import { CopyButton } from '../shared/building_blocks/CopyButton';
+import { OperatorLogo } from './OperatorLogo';
 
 type CurrentView = 'chat' | 'setup-wizard' | 'settings';
 
@@ -109,8 +110,14 @@ export const groupParts = (parts: AssistantPart[]): MessagePartGroup[] => {
 
 const AssistantLinkAction = ({ action }: { action: Extract<AssistantPart, { type: 'linkAction' }> }) => {
   const { theme } = useDesignSystemTheme();
+  const navigate = useNavigate();
 
   const handleClick = () => {
+    if (action.navigateInline) {
+      const route = action.href.startsWith('/#') ? action.href.slice(2) : action.href;
+      navigate(route);
+      return;
+    }
     window.open(action.href, '_blank', 'noopener,noreferrer');
   };
 
@@ -120,7 +127,7 @@ const AssistantLinkAction = ({ action }: { action: Extract<AssistantPart, { type
         componentId="mlflow.assistant.link_action.open"
         type="primary"
         size="small"
-        endIcon={<NewWindowIcon />}
+        endIcon={action.navigateInline ? undefined : <NewWindowIcon />}
         onClick={handleClick}
       >
         {action.label}
@@ -132,6 +139,14 @@ const AssistantLinkAction = ({ action }: { action: Extract<AssistantPart, { type
 const AssistantPromptAction = ({ action }: { action: Extract<AssistantPart, { type: 'promptAction' }> }) => {
   const { theme } = useDesignSystemTheme();
   const { sendMessage, isStreaming } = useAssistant();
+  const navigate = useNavigate();
+  const handleClick = () => {
+    if (action.href) {
+      const route = action.href.startsWith('/#') ? action.href.slice(2) : action.href;
+      navigate(route);
+    }
+    sendMessage(action.prompt);
+  };
 
   return (
     <div css={{ display: 'flex', marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md }}>
@@ -140,7 +155,7 @@ const AssistantPromptAction = ({ action }: { action: Extract<AssistantPart, { ty
         size="small"
         icon={<SparkleIcon color="ai" />}
         disabled={isStreaming}
-        onClick={() => sendMessage(action.prompt)}
+        onClick={handleClick}
       >
         {action.label}
       </Button>
@@ -314,7 +329,14 @@ const AssistantSelectionPrompt = ({ prompt }: { prompt: Extract<AssistantPart, {
         backgroundColor: theme.colors.backgroundSecondary,
       }}
     >
-      <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing.xs,
+          paddingLeft: 16 + theme.spacing.sm,
+        }}
+      >
         <Typography.Text bold>{prompt.title}</Typography.Text>
         {prompt.description && (
           <Typography.Text color="secondary" size="sm">
@@ -1072,11 +1094,24 @@ export const AssistantChatPanel = () => {
             fontSize: theme.typography.fontSizeMd + 2,
           }}
         >
-          <SparkleDoubleIcon color="ai" css={{ fontSize: 20 }} />
-          <FormattedMessage defaultMessage="MLflow Assistant" description="Title for the global Assistant chat panel" />
-          <Tag componentId="mlflow.assistant.chat_panel.beta" color="turquoise">
-            Beta
-          </Tag>
+          <OperatorLogo width={30} height={20} />
+          <span css={{ display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <FormattedMessage defaultMessage="Operator" description="Title for the global Operator chat panel" />
+            <InfoTooltip
+              componentId="mlflow.assistant.chat_panel.operator_info.tooltip"
+              disableHoverableContent={false}
+              iconTitle={intl.formatMessage({
+                defaultMessage: 'About Operator',
+                description: 'Accessible label for the Operator information tooltip icon',
+              })}
+              content={
+                <FormattedMessage
+                  defaultMessage="Operator is an autonomous agent that does LLMOps jobs for you."
+                  description="Tooltip explaining what Operator is"
+                />
+              }
+            />
+          </span>
         </span>
         <div css={{ display: 'flex', gap: theme.spacing.xs }}>
           {showChatControls && (

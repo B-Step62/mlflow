@@ -47,12 +47,14 @@ export type AssistantPart =
       actionId: string;
       label: string;
       href: string;
+      navigateInline?: boolean;
     }
   | {
       type: 'promptAction';
       actionId: string;
       label: string;
       prompt: string;
+      href?: string;
     }
   | {
       type: 'copyAction';
@@ -144,11 +146,27 @@ export interface MockEvalSetupRequest {
   scorerNames: string[];
   goldenDatasetName?: string;
   goldenDatasetRecordCount?: number;
+  postSetupLink?: {
+    label: string;
+    href: string;
+  };
   appendToCurrentThread?: boolean;
   onStart?: () => void;
   onChoice?: (datasetMode: 'new' | 'golden') => void;
   onComplete?: (datasetMode: 'new' | 'golden') => void;
   onResolve?: () => void;
+}
+
+export interface MockIssueDetectionRequest {
+  experimentId: string;
+  runId: string;
+  jobId: string;
+  traceCount: number;
+  issueCount: number;
+  completionDelayMs?: number;
+  appendToCurrentThread?: boolean;
+  onStart?: () => void;
+  onComplete?: () => void;
 }
 
 export interface MockProductionMonitoringRequest {
@@ -269,6 +287,8 @@ export interface AssistantAgentActions {
   completeSetup: () => void;
   /** Answer the pending tool-call permission prompt */
   respondToPermission: (allow: boolean) => void;
+  /** Start a frontend-only assistant demo stream for detecting common failure modes */
+  startMockIssueDetection: (request: MockIssueDetectionRequest) => void;
   /** Start a frontend-only assistant demo stream for setting up eval artifacts from an issue */
   startMockEvalSetup: (request: MockEvalSetupRequest) => void;
   /** Start a frontend-only assistant demo prompt before resolving an issue */

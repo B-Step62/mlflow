@@ -10,6 +10,8 @@ import {
   Checkbox,
   ParagraphSkeleton,
   Button,
+  ChevronDownIcon,
+  ChevronRightIcon,
   NewWindowIcon,
   SortUnsortedIcon,
   VisibleIcon,
@@ -86,6 +88,8 @@ export const RunNameCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
   const runUuid = row.original.info.runUuid;
   const experimentId = row.original.info.experimentId;
   const tags = row.original.data?.tags ?? [];
+  const canExpand = row.getCanExpand();
+  const isExpanded = row.getIsExpanded();
   const isIssueDetectionRun = tags.some(
     (tag) => tag.key === MLFLOW_RUN_TYPE_TAG && tag.value === MLFLOW_RUN_TYPE_VALUE_ISSUE_DETECTION,
   );
@@ -106,7 +110,13 @@ export const RunNameCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
 
   return (
     <div
-      css={{ overflow: 'hidden', display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}
+      css={{
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing.xs,
+        paddingLeft: row.depth > 0 ? theme.spacing.lg * row.depth : 0,
+      }}
       onClick={handleClick}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -135,6 +145,22 @@ export const RunNameCell: ColumnDef<RunEntityOrGroupData>['cell'] = ({
       >
         {row.original.info.runName}
       </Typography.Link>
+      {canExpand && (
+        <Button
+          componentId="mlflow.eval-runs.nested-run-expand-button"
+          size="small"
+          aria-label={isExpanded ? 'Collapse nested runs' : 'Expand nested runs'}
+          css={{
+            flexShrink: 0,
+            marginLeft: -theme.spacing.xs / 2,
+          }}
+          icon={isExpanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          onClick={(e) => {
+            e.stopPropagation();
+            row.toggleExpanded();
+          }}
+        />
+      )}
       {!shouldEnableImprovedEvalRunsComparison() && (
         <div
           css={{

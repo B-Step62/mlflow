@@ -155,8 +155,8 @@ export const ExperimentViewHeader = React.memo(
         );
       }
 
-      if (activeTabByRoute === ExperimentPageTabName.EvaluationRuns && breadcrumbChild) {
-        items.push(breadcrumbChild);
+      if (breadcrumbChild) {
+        items.push(...React.Children.toArray(breadcrumbChild));
       }
 
       return items;

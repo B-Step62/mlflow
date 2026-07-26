@@ -24,6 +24,7 @@ beforeAll(() => {
 const mockSendMessage = jest.fn();
 const mockCancelSession = jest.fn();
 const mockClearPendingPrompt = jest.fn();
+const mockNavigate = jest.fn();
 let mockSetupComplete = true;
 let mockPendingPrompt: string | null = null;
 
@@ -64,6 +65,7 @@ jest.mock('./AssistantPageContext', () => ({
 
 jest.mock('../common/utils/RoutingUtils', () => ({
   useAssistantPrompts: () => ['Prompt 1', 'Prompt 2'],
+  useNavigate: () => mockNavigate,
 }));
 
 const renderChatPanel = () => {
@@ -81,6 +83,7 @@ describe('AssistantChatPanel', () => {
     mockSendMessage.mockClear();
     mockCancelSession.mockClear();
     mockClearPendingPrompt.mockClear();
+    mockNavigate.mockClear();
     mockSetupComplete = true;
     mockPendingPrompt = null;
     mockLogTelemetryEvent = jest.fn();
@@ -328,6 +331,34 @@ describe('AssistantMessageBody', () => {
     }
   });
 
+  test('renders inline link action parts and navigates in the current app', async () => {
+    const user = userEvent.setup();
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+
+    try {
+      renderBody({
+        ...baseAssistantMessage,
+        parts: [
+          { type: 'text', text: 'Issue detection finished.' },
+          {
+            type: 'linkAction',
+            actionId: 'open-issues',
+            label: 'View issues',
+            href: '/#/experiments/123/issues',
+            navigateInline: true,
+          },
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'View issues' }));
+
+      expect(mockNavigate).toHaveBeenCalledWith('/experiments/123/issues');
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
   test('renders prompt action parts and sends the prompt', async () => {
     const user = userEvent.setup();
     renderBody({
@@ -346,6 +377,28 @@ describe('AssistantMessageBody', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze result' }));
 
     expect(mockSendMessage).toHaveBeenCalledWith('Analyze result');
+  });
+
+  test('renders prompt action parts with href and navigates inline before sending the prompt', async () => {
+    const user = userEvent.setup();
+    renderBody({
+      ...baseAssistantMessage,
+      parts: [
+        { type: 'text', text: 'Issue detection finished.' },
+        {
+          type: 'promptAction',
+          actionId: 'setup-eval-from-issues',
+          label: 'Set up eval',
+          prompt: 'Set up eval',
+          href: '/#/experiments/123/issues',
+        },
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Set up eval' }));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/experiments/123/issues');
+    expect(mockSendMessage).toHaveBeenCalledWith('Set up eval');
   });
 
   test('renders copy action parts and copies the prompt', async () => {

@@ -2,6 +2,7 @@ import type { RunEntity } from '../../types';
 import type { RunsGroupByConfig } from '../../components/experiment-page/utils/experimentPage.group-row-utils';
 import type { RunGroupByGroupingValue } from '../../components/experiment-page/utils/experimentPage.row-types';
 import { RunGroupingMode } from '../../components/experiment-page/utils/experimentPage.row-types';
+import { EXPERIMENT_PARENT_ID_TAG } from '../../components/experiment-page/utils/experimentPage.common-utils';
 
 export type ExperimentEvaluationRunsGroupData = {
   groupKey: string;
@@ -9,7 +10,87 @@ export type ExperimentEvaluationRunsGroupData = {
   subRuns: RunEntity[];
 };
 
-export type RunEntityOrGroupData = RunEntity | ExperimentEvaluationRunsGroupData;
+export type ExperimentEvaluationRunsNestedRunData = RunEntity & {
+  childRuns: ExperimentEvaluationRunsRunData[];
+};
+
+export type ExperimentEvaluationRunsRunData = RunEntity | ExperimentEvaluationRunsNestedRunData;
+
+export type RunEntityOrGroupData = ExperimentEvaluationRunsRunData | ExperimentEvaluationRunsGroupData;
+
+export const getEvaluationRunParentRunId = (run: RunEntity) =>
+  run.data?.tags?.find((tag) => tag.key === EXPERIMENT_PARENT_ID_TAG)?.value;
+
+const getEvaluationRunTrialIndex = (run: RunEntity) => {
+  const trialTagValue = run.data?.tags?.find((tag) => tag.key === 'mlflow.issueCujDemo.trial')?.value;
+  const trialTagNumber = Number(trialTagValue);
+  if (Number.isFinite(trialTagNumber)) {
+    return trialTagNumber;
+  }
+
+  const trialNameMatch = run.info.runName?.match(/^trial-(\d+)$/);
+  const trialNameNumber = Number(trialNameMatch?.[1]);
+  return Number.isFinite(trialNameNumber) ? trialNameNumber : undefined;
+};
+
+const sortNestedEvaluationRuns = (runs: RunEntity[]) =>
+  [...runs].sort((runA, runB) => {
+    const trialIndexA = getEvaluationRunTrialIndex(runA);
+    const trialIndexB = getEvaluationRunTrialIndex(runB);
+
+    if (trialIndexA !== undefined && trialIndexB !== undefined) {
+      return trialIndexA - trialIndexB;
+    }
+    if (trialIndexA !== undefined) {
+      return -1;
+    }
+    if (trialIndexB !== undefined) {
+      return 1;
+    }
+
+    return Number(runB.info.startTime) - Number(runA.info.startTime);
+  });
+
+export const getNestedEvaluationRunsData = (runs: RunEntity[]): RunEntityOrGroupData[] => {
+  const runsByUuid = new Map<string, RunEntity>();
+  const dedupedRuns: RunEntity[] = [];
+
+  for (const run of runs) {
+    if (!runsByUuid.has(run.info.runUuid)) {
+      runsByUuid.set(run.info.runUuid, run);
+      dedupedRuns.push(run);
+    }
+  }
+
+  const childRunsByParentRunId = new Map<string, RunEntity[]>();
+  const childRunIds = new Set<string>();
+
+  for (const run of dedupedRuns) {
+    const parentRunId = getEvaluationRunParentRunId(run);
+    if (!parentRunId || parentRunId === run.info.runUuid || !runsByUuid.has(parentRunId)) {
+      continue;
+    }
+
+    childRunIds.add(run.info.runUuid);
+    const childRuns = childRunsByParentRunId.get(parentRunId) ?? [];
+    childRuns.push(run);
+    childRunsByParentRunId.set(parentRunId, childRuns);
+  }
+
+  const buildNestedRun = (run: RunEntity): RunEntity | ExperimentEvaluationRunsNestedRunData => {
+    const childRuns = childRunsByParentRunId.get(run.info.runUuid);
+    if (!childRuns?.length) {
+      return run;
+    }
+
+    return {
+      ...run,
+      childRuns: sortNestedEvaluationRuns(childRuns).map(buildNestedRun),
+    };
+  };
+
+  return dedupedRuns.filter((run) => !childRunIds.has(run.info.runUuid)).map(buildNestedRun);
+};
 
 // string key for easy access in the map object
 const createGroupKey = (groupData: RunGroupByGroupingValue) => {

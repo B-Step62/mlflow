@@ -3,12 +3,12 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   DesignSystemEventProviderAnalyticsEventTypes,
   DesignSystemEventProviderComponentTypes,
-  SparkleFillIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
 import { useLocalStorage } from '@databricks/web-shared/hooks';
 import { useAssistant } from './AssistantContext';
+import { OperatorLogo } from './OperatorLogo';
 import { useFloatingObstructionWidth } from './useFloatingObstruction';
 import { useLogTelemetryEvent } from '../telemetry/hooks/useLogTelemetryEvent';
 
@@ -103,7 +103,7 @@ export const AssistantFloatingButton = () => {
 
   // Standard DuBois control height, so the bubble stays in step with other UI controls.
   const fabSize = theme.general.heightBase;
-  const iconSize = theme.typography.fontSizeXl;
+  const logoWidth = 28;
   // Keep the page's own surface color and earn prominence from an AI-gradient border +
   // elevation, mirroring the Detect Issues button so the two AI affordances read alike.
   const bubbleBackground = `linear-gradient(${theme.colors.backgroundPrimary}, ${theme.colors.backgroundPrimary}) padding-box, ${theme.gradients.aiBorderGradient} border-box`;
@@ -153,7 +153,7 @@ export const AssistantFloatingButton = () => {
         '&:hover .assistant-fab-label, &:focus-visible .assistant-fab-label': {
           opacity: 1,
           // Balance the icon square's centering with matching space on the label's right edge.
-          marginRight: (fabSize - iconSize) / 2,
+          marginRight: (fabSize - logoWidth) / 2,
         },
       }}
     >
@@ -169,15 +169,12 @@ export const AssistantFloatingButton = () => {
           flexShrink: 0,
         }}
       >
-        {/* The sparkle glyph is geometrically centered, but its diagonal AI gradient
-            (cool top-left → warm bottom-right) makes it read as leaning right. A 1px
-            optical nudge left balances it; transform keeps the flex layout untouched. */}
-        <SparkleFillIcon color="ai" css={{ fontSize: iconSize, transform: 'translateX(-0.5px)' }} />
+        <OperatorLogo width={logoWidth} height={18} />
       </span>
       <span className="assistant-fab-label">
         <FormattedMessage
-          defaultMessage="MLflow Assistant"
-          description="Label revealed when hovering the floating MLflow assistant button"
+          defaultMessage="Operator"
+          description="Label revealed when hovering the floating Operator button"
         />
       </span>
     </button>

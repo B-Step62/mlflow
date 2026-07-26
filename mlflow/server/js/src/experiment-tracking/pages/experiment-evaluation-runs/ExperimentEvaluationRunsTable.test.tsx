@@ -10,7 +10,10 @@ import {
   EVAL_RUNS_TABLE_BASE_SELECTION_STATE,
   EvalRunsTableKeyedColumnPrefix,
 } from './ExperimentEvaluationRunsTable.constants';
-import { createEvalRunsTableKeyedColumnKey } from './ExperimentEvaluationRunsTable.utils';
+import {
+  createEvalRunsTableKeyedColumnKey,
+  isEvalRunsKeyedColumnSelectedByDefault,
+} from './ExperimentEvaluationRunsTable.utils';
 
 // Capture the columns passed to useReactTable
 let capturedTableOptions: TableOptions<any> | undefined;
@@ -28,9 +31,71 @@ jest.mock('@databricks/web-shared/react-table', () => {
   };
 });
 
+describe('evaluation runs table default column selection', () => {
+  test('hides noisy keyed columns by default while keeping them selectable', () => {
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.METRIC, 'rows'),
+      ),
+    ).toBe(false);
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.METRIC, 'trials'),
+      ),
+    ).toBe(false);
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.TAG, 'categories'),
+      ),
+    ).toBe(false);
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.TAG, 'model'),
+      ),
+    ).toBe(false);
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.METRIC, 'total_traces'),
+      ),
+    ).toBe(false);
+
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.METRIC, 'correctness_pass_rate'),
+      ),
+    ).toBe(true);
+    expect(
+      isEvalRunsKeyedColumnSelectedByDefault(
+        createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.PARAM, 'temperature'),
+      ),
+    ).toBe(false);
+  });
+});
+
 const metricColumn = createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.METRIC, 'accuracy');
 const paramColumn = createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.PARAM, 'model');
 const tagColumn = createEvalRunsTableKeyedColumnKey(EvalRunsTableKeyedColumnPrefix.TAG, 'team');
+
+const renderTable = (data: any[] = [], selectedColumns = EVAL_RUNS_TABLE_BASE_SELECTION_STATE) =>
+  render(
+    <IntlProvider locale="en">
+      <DesignSystemProvider>
+        <ExperimentEvaluationRunsRowVisibilityProvider>
+          <ExperimentEvaluationRunsTable
+            data={data}
+            uniqueColumns={[metricColumn, paramColumn, tagColumn]}
+            selectedColumns={selectedColumns}
+            setSelectedRunUuid={jest.fn()}
+            isLoading={false}
+            hasNextPage={false}
+            rowSelection={{}}
+            setRowSelection={jest.fn()}
+            viewMode={ExperimentEvaluationRunsPageMode.TRACES}
+          />
+        </ExperimentEvaluationRunsRowVisibilityProvider>
+      </DesignSystemProvider>
+    </IntlProvider>,
+  );
 
 describe('ExperimentEvaluationRunsTable sorting', () => {
   beforeEach(() => {
@@ -45,25 +110,7 @@ describe('ExperimentEvaluationRunsTable sorting', () => {
       [tagColumn]: true,
     };
 
-    render(
-      <IntlProvider locale="en">
-        <DesignSystemProvider>
-          <ExperimentEvaluationRunsRowVisibilityProvider>
-            <ExperimentEvaluationRunsTable
-              data={[]}
-              uniqueColumns={[metricColumn, paramColumn, tagColumn]}
-              selectedColumns={selectedColumns}
-              setSelectedRunUuid={jest.fn()}
-              isLoading={false}
-              hasNextPage={false}
-              rowSelection={{}}
-              setRowSelection={jest.fn()}
-              viewMode={ExperimentEvaluationRunsPageMode.TRACES}
-            />
-          </ExperimentEvaluationRunsRowVisibilityProvider>
-        </DesignSystemProvider>
-      </IntlProvider>,
-    );
+    renderTable([], selectedColumns);
 
     expect(capturedTableOptions).toBeDefined();
     const columns = capturedTableOptions!.columns;
@@ -71,13 +118,18 @@ describe('ExperimentEvaluationRunsTable sorting', () => {
     const metricCol = columns.find((c) => c.id === metricColumn);
     const paramCol = columns.find((c) => c.id === paramColumn);
     const tagCol = columns.find((c) => c.id === tagColumn);
+    const runNameCol = columns.find((c) => c.id === 'run_name');
 
     expect(metricCol).toBeDefined();
     expect(paramCol).toBeDefined();
     expect(tagCol).toBeDefined();
+    expect(runNameCol).toBeDefined();
 
     expect(metricCol!.sortingFn).toBe('basic');
     expect(paramCol!.sortingFn).toBe('alphanumeric');
     expect(tagCol!.sortingFn).toBe('alphanumeric');
+    expect(
+      (runNameCol as { meta?: { styles?: { minWidth?: number } } })!.meta?.styles?.minWidth,
+    ).toBeGreaterThanOrEqual(240);
   });
 });

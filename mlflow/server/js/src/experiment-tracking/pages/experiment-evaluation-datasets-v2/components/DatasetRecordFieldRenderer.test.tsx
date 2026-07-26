@@ -53,7 +53,7 @@ describe('DatasetRecordFieldRenderer chat mode', () => {
       target: { value: 'new question' },
     });
 
-    expect(JSON.parse(setText.mock.calls[0][0])).toEqual({
+    expect(JSON.parse(setText.mock.calls[0][0] as string)).toEqual({
       messages: [{ role: 'user', content: 'new question' }],
     });
   });
@@ -65,7 +65,7 @@ describe('DatasetRecordFieldRenderer chat mode', () => {
     expect(textarea).toHaveAttribute('placeholder', 'type expected output');
     fireEvent.change(textarea, { target: { value: 'expected answer' } });
 
-    expect(JSON.parse(setText.mock.calls[0][0])).toEqual({
+    expect(JSON.parse(setText.mock.calls[0][0] as string)).toEqual({
       messages: [{ role: 'assistant', content: 'expected answer' }],
     });
   });

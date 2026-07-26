@@ -1,5 +1,5 @@
 import invariant from 'invariant';
-import { Empty, ParagraphSkeleton, TitleSkeleton, Typography, useDesignSystemTheme } from '@databricks/design-system';
+import { Empty, ParagraphSkeleton, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage } from 'react-intl';
 import { Link, useParams } from '@mlflow/mlflow/src/common/utils/RoutingUtils';
 import Routes from '@mlflow/mlflow/src/experiment-tracking/routes';
@@ -7,7 +7,6 @@ import { ExperimentPageTabName } from '@mlflow/mlflow/src/experiment-tracking/co
 import { ExperimentEvaluationDatasetsPageWrapper } from '../experiment-evaluation-datasets/ExperimentEvaluationDatasetsPageWrapper';
 import { useGetDatasetQuery } from './hooks/useDatasetsQueries';
 import { DatasetDetailPageContent } from './components/DatasetDetailPageContent';
-import { DatasetsBreadcrumbs } from './components/DatasetsBreadcrumbs';
 
 const DatasetDetailLoadingSkeleton = () => {
   const { theme } = useDesignSystemTheme();
@@ -18,15 +17,12 @@ const DatasetDetailLoadingSkeleton = () => {
         flexDirection: 'column',
         flex: 1,
         minHeight: 0,
-        // Outer wrappers (PageWrapper + ExperimentPageTabs) already contribute spacing
-        // on the right (24px) and bottom (8px); only top and left need padding here.
-        paddingTop: theme.spacing.md,
+        // Outer wrappers (PageWrapper + ExperimentPageTabs) already contribute vertical spacing.
+        // Keep only the left inset so the skeleton starts where the real toolbar starts.
         paddingLeft: theme.spacing.md,
         gap: theme.spacing.md,
       }}
     >
-      <ParagraphSkeleton seed="dataset-breadcrumbs" style={{ width: 220 }} />
-      <TitleSkeleton seed="dataset-title" style={{ width: 320 }} loadingDescription="DatasetDetailPage" />
       <ParagraphSkeleton seed="dataset-toolbar" style={{ width: '100%' }} />
       {Array.from({ length: 6 }, (_, i) => (
         <ParagraphSkeleton key={`dataset-skeleton-row-${i}`} seed={`dataset-row-${i}`} style={{ width: '100%' }} />
@@ -62,14 +58,12 @@ const ExperimentEvaluationDatasetDetailPageImpl = () => {
           flexDirection: 'column',
           flex: 1,
           minHeight: 0,
-          // Outer wrappers (PageWrapper + ExperimentPageTabs) already contribute spacing
-          // on the right (24px) and bottom (8px); only top and left need padding here.
-          paddingTop: theme.spacing.md,
+          // Outer wrappers (PageWrapper + ExperimentPageTabs) already contribute vertical spacing.
+          // Keep only the left inset so the error state matches the detail body gutter.
           paddingLeft: theme.spacing.md,
           gap: theme.spacing.md,
         }}
       >
-        <DatasetsBreadcrumbs experimentId={experimentId} />
         <div
           css={{
             display: 'flex',

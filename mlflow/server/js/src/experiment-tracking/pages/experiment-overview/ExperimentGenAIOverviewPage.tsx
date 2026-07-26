@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   ArrowRightIcon,
   Button,
-  Card,
-  CheckCircleIcon,
   GavelIcon,
   GitCommitIcon,
   PlayIcon,
@@ -19,22 +17,14 @@ import {
 import { createTraceLocationForExperiment, useSearchMlflowTraces } from '@databricks/web-shared/genai-traces-table';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAssistant } from '../../../assistant/AssistantContext';
-import { Link, useNavigate, useParams } from '../../../common/utils/RoutingUtils';
-import { useEndpointsQuery } from '../../../gateway/hooks/useEndpointsQuery';
+import { Link, useParams } from '../../../common/utils/RoutingUtils';
 import { ExperimentPageTabName } from '../../constants';
-import { ALL_ISSUE_CATEGORIES } from '../../components/experiment-page/components/traces-v3/IssueDetectionCategories';
 import { recordSubmittedIssueDetectionJob } from '../../components/experiment-page/components/traces-v3/IssueDetectionJobNotifications';
-import { useInvokeIssueDetection } from '../../components/experiment-page/components/traces-v3/hooks/useInvokeIssueDetection';
 import Routes from '../../routes';
+import { MlflowService } from '../../sdk/MlflowService';
 import { useHeaderVisibility } from '../experiment-page-tabs/ExperimentPageHeaderVisibilityContext';
 import { useChartXAxisProps, useChartYAxisProps } from './components/OverviewChartComponents';
-import {
-  FAILURE_ANALYSIS_CLUSTERS,
-  FAILURE_ANALYSIS_TOTAL_CONVERSATIONS,
-  MOCK_FAILURE_ANALYSIS_RUN_ID,
-  RECENT_ACTIVITY,
-  TRACE_ACTIVITY_DAYS,
-} from './failureAnalysisMock';
+import { MOCK_FAILURE_ANALYSIS_RUN_ID, RECENT_ACTIVITY, TRACE_ACTIVITY_DAYS } from './failureAnalysisMock';
 
 type SuggestedAction = {
   title: React.ReactNode;
@@ -47,18 +37,31 @@ type SuggestedAction = {
 type SuggestedQuery = {
   componentId: string;
   label: React.ReactNode;
-  prompt: string;
+  prompt?: string;
   icon?: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
 };
 
-const ANALYSIS_DELAY_MS = 1400;
 const COMPACT_TRACE_CHART_HEIGHT = 132;
 const OVERVIEW_PANEL_HEIGHT = 260;
 const RECENT_TRACE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const ISSUE_DETECTION_DEFAULT_PROVIDER = 'openai';
-const ISSUE_DETECTION_DEFAULT_MODEL = 'gpt-5.4';
+const RECENT_TRACE_QUERY_LIMIT = 1000;
+const DEMO_ISSUE_DETECTION_RUN_ID_TAG = 'mlflow.issueCujDemo.issueDetectionRunId';
+const MOCK_ISSUE_DETECTION_JOB_ID = 'mock-issue-cuj-common-failure-modes';
+const MOCK_ISSUE_DETECTION_TRACE_COUNT = 205;
+const MOCK_ISSUE_DETECTION_ISSUE_COUNT = 5;
+const MOCK_ISSUE_DETECTION_COMPLETION_DELAY_MS = 10000;
 
-type AnalysisState = 'idle' | 'preparing' | 'submitted' | 'complete';
+type RecentTraceInfo = {
+  request_time?: string;
+  timestamp_ms?: number | string;
+};
+
+type TraceActivityPoint = {
+  name: string;
+  count: number;
+};
 
 const getRecentTraceTimeRange = () => {
   const endTimeMs = Date.now();
@@ -66,6 +69,74 @@ const getRecentTraceTimeRange = () => {
     startTime: String(endTimeMs - RECENT_TRACE_WINDOW_MS),
     endTime: String(endTimeMs),
   };
+};
+
+const getTraceTimestampMs = (trace: RecentTraceInfo): number | undefined => {
+  if (trace.request_time) {
+    const requestTimeMs = Date.parse(trace.request_time);
+    if (!Number.isNaN(requestTimeMs)) {
+      return requestTimeMs;
+    }
+  }
+  if (trace.timestamp_ms !== undefined) {
+    const timestampMs = Number(trace.timestamp_ms);
+    if (!Number.isNaN(timestampMs)) {
+      return timestampMs;
+    }
+  }
+  return undefined;
+};
+
+const getRecentTraceActivityData = (
+  traces: RecentTraceInfo[] | undefined,
+  timeRange: { startTime: string; endTime: string },
+): TraceActivityPoint[] => {
+  const labels = TRACE_ACTIVITY_DAYS.map((day) => day.label);
+  const counts = labels.map(() => 0);
+  if (!traces?.length) {
+    return labels.map((name, index) => ({ name, count: counts[index] }));
+  }
+
+  const startTimeMs = Number(timeRange.startTime);
+  const endTimeMs = Number(timeRange.endTime);
+  const bucketMs = RECENT_TRACE_WINDOW_MS / labels.length;
+
+  traces.forEach((trace) => {
+    const timestampMs = getTraceTimestampMs(trace);
+    const bucketIndex =
+      timestampMs === undefined
+        ? labels.length - 1
+        : Math.max(
+            0,
+            Math.min(labels.length - 1, Math.floor((timestampMs - startTimeMs) / bucketMs)),
+          );
+
+    if (timestampMs === undefined || (timestampMs >= startTimeMs && timestampMs <= endTimeMs)) {
+      counts[bucketIndex] += 1;
+    }
+  });
+
+  return labels.map((name, index) => ({ name, count: counts[index] }));
+};
+
+const getExperimentTagValue = (
+  experiment: { tags?: Array<{ key?: string; value?: string }> | Record<string, string> } | undefined,
+  tagKey: string,
+): string | undefined => {
+  const tags = experiment?.tags;
+  if (Array.isArray(tags)) {
+    return tags.find((tag) => tag.key === tagKey)?.value;
+  }
+  return tags?.[tagKey];
+};
+
+const getDemoIssueDetectionRunId = async (experimentId: string): Promise<string> => {
+  try {
+    const response = await MlflowService.getExperiment({ experiment_id: experimentId });
+    return getExperimentTagValue(response.experiment, DEMO_ISSUE_DETECTION_RUN_ID_TAG) ?? MOCK_FAILURE_ANALYSIS_RUN_ID;
+  } catch {
+    return MOCK_FAILURE_ANALYSIS_RUN_ID;
+  }
 };
 
 const getActionRowCss = (theme: ReturnType<typeof useDesignSystemTheme>['theme'], index: number) => ({
@@ -138,19 +209,15 @@ const SuggestedActionRow = ({ action, index }: { action: SuggestedAction; index:
 };
 
 const TraceActivityChart = ({
-  hasTraceActivity,
+  traceActivityData,
   dashboardRoute,
 }: {
-  hasTraceActivity: boolean;
+  traceActivityData: TraceActivityPoint[];
   dashboardRoute: string;
 }) => {
   const { theme } = useDesignSystemTheme();
   const xAxisProps = useChartXAxisProps();
   const yAxisProps = useChartYAxisProps();
-  const traceActivityData = useMemo(
-    () => TRACE_ACTIVITY_DAYS.map((day) => ({ name: day.label, count: hasTraceActivity ? day.count : 0 })),
-    [hasTraceActivity],
-  );
   return (
     <section
       css={{
@@ -161,12 +228,14 @@ const TraceActivityChart = ({
       }}
     >
       <div css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.md, alignItems: 'flex-start' }}>
-        <Typography.Text color="secondary">
-          <FormattedMessage
-            defaultMessage="Traces in the last 7 days"
-            description="Summary heading for trace activity over the last 7 days"
-          />
-        </Typography.Text>
+        <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, minWidth: 0 }}>
+          <Typography.Text color="secondary">
+            <FormattedMessage
+              defaultMessage="Traces in the last 7 days"
+              description="Summary heading for trace activity over the last 7 days"
+            />
+          </Typography.Text>
+        </div>
         <Link
           componentId="mlflow.genai-overview.trace-activity.open-dashboard"
           to={dashboardRoute}
@@ -348,28 +417,20 @@ const ExperimentGenAIOverviewPage = () => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const { experimentId } = useParams<{ experimentId: string }>();
-  const navigate = useNavigate();
   const { setHeaderHidden } = useHeaderVisibility();
-  const { closePanel, openPanel, prefillPrompt } = useAssistant();
-  const [analysisState, setAnalysisState] = useState<AnalysisState>('idle');
+  const { closePanel, openPanel, prefillPrompt, startMockIssueDetection } = useAssistant();
   const [isIssueDetectionQueued, setIsIssueDetectionQueued] = useState(false);
-  const [usesMockAnalysis, setUsesMockAnalysis] = useState(false);
-  const [analysisTraceCount, setAnalysisTraceCount] = useState(FAILURE_ANALYSIS_TOTAL_CONVERSATIONS);
 
   const safeExperimentId = experimentId ?? '';
   const tracesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Traces);
   const dashboardRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Dashboard);
   const evaluationRunsRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.EvaluationRuns);
   const playgroundRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Playground);
-  const analysisRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, MOCK_FAILURE_ANALYSIS_RUN_ID);
-  const analysisIssuesRoute = Routes.getExperimentPageTabRoute(safeExperimentId, ExperimentPageTabName.Issues);
-  const [submittedAnalysisRoute, setSubmittedAnalysisRoute] = useState(analysisRoute);
   const recentTraceTimeRange = useMemo(getRecentTraceTimeRange, []);
   const traceSearchLocations = useMemo(
     () => (safeExperimentId ? [createTraceLocationForExperiment(safeExperimentId)] : []),
     [safeExperimentId],
   );
-  const { data: endpoints, isLoading: isLoadingEndpoints } = useEndpointsQuery();
   const {
     data: tracePresence,
     isLoading: isLoadingTracePresence,
@@ -389,16 +450,16 @@ const ExperimentGenAIOverviewPage = () => {
     locations: traceSearchLocations,
     timeRange: recentTraceTimeRange,
     disabled: !safeExperimentId,
+    limit: RECENT_TRACE_QUERY_LIMIT,
     enablePagination: false,
   });
+  const traceActivityData = useMemo(
+    () => getRecentTraceActivityData(recentTraces, recentTraceTimeRange),
+    [recentTraces, recentTraceTimeRange],
+  );
   const hasTraceActivity = Boolean(tracePresence?.length);
   const shouldShowTraceActivity = isLoadingTracePresence || isFetchingTracePresence || hasTraceActivity;
-  const { mutate: invokeIssueDetection, isLoading: isInvokingIssueDetection } = useInvokeIssueDetection();
-  const isAnalysisRunning =
-    analysisState === 'preparing' ||
-    analysisState === 'submitted' ||
-    isIssueDetectionQueued ||
-    isInvokingIssueDetection;
+  const isAnalysisRunning = isIssueDetectionQueued;
 
   useEffect(() => {
     setHeaderHidden(true);
@@ -409,98 +470,38 @@ const ExperimentGenAIOverviewPage = () => {
     closePanel();
   }, [closePanel]);
 
-  useEffect(() => {
-    if (analysisState !== 'preparing' || !usesMockAnalysis) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setAnalysisState('complete');
-    }, ANALYSIS_DELAY_MS);
-
-    return () => window.clearTimeout(timeout);
-  }, [analysisState, usesMockAnalysis]);
-
-  const runMockAnalysis = useCallback(() => {
-    setUsesMockAnalysis(true);
-    setAnalysisTraceCount(FAILURE_ANALYSIS_TOTAL_CONVERSATIONS);
-    setSubmittedAnalysisRoute(analysisIssuesRoute);
-    setAnalysisState('preparing');
-  }, [analysisIssuesRoute]);
-
-  useEffect(() => {
-    if (
-      !isIssueDetectionQueued ||
-      isLoadingEndpoints ||
-      isLoadingRecentTraces ||
-      isFetchingRecentTraces ||
-      isInvokingIssueDetection
-    ) {
-      return;
-    }
-
-    setIsIssueDetectionQueued(false);
-
-    const endpoint = endpoints[0];
-    const traceIds = (recentTraces ?? [])
-      .map((trace) => trace.trace_id)
-      .filter((traceId): traceId is string => Boolean(traceId));
-
-    if (!safeExperimentId || !endpoint || traceIds.length === 0) {
-      runMockAnalysis();
-      return;
-    }
-
-    setUsesMockAnalysis(false);
-    setAnalysisTraceCount(traceIds.length);
-    setAnalysisState('preparing');
-    invokeIssueDetection(
-      {
-        experimentId: safeExperimentId,
-        traceIds,
-        categories: ALL_ISSUE_CATEGORIES,
-        provider: ISSUE_DETECTION_DEFAULT_PROVIDER,
-        model: ISSUE_DETECTION_DEFAULT_MODEL,
-        endpoint_name: endpoint.name,
-      },
-      {
-        onSuccess: (response) => {
-          const runRoute = Routes.getIssueDetectionRunDetailsRoute(safeExperimentId, response.run_id);
-          setSubmittedAnalysisRoute(runRoute);
-          setAnalysisState('submitted');
-          recordSubmittedIssueDetectionJob({
-            experimentId: safeExperimentId,
-            jobId: response.job_id,
-            runId: response.run_id,
-            traceCount: traceIds.length,
-          });
-        },
-        onError: runMockAnalysis,
-      },
-    );
-  }, [
-    endpoints,
-    invokeIssueDetection,
-    isFetchingRecentTraces,
-    isInvokingIssueDetection,
-    isIssueDetectionQueued,
-    isLoadingEndpoints,
-    isLoadingRecentTraces,
-    recentTraces,
-    runMockAnalysis,
-    safeExperimentId,
-  ]);
-
   const runAnalysis = () => {
-    if (isAnalysisRunning) {
+    if (isAnalysisRunning || !safeExperimentId || isLoadingRecentTraces || isFetchingRecentTraces) {
       return;
     }
 
-    setUsesMockAnalysis(false);
-    setSubmittedAnalysisRoute(analysisRoute);
-    setAnalysisState('preparing');
     refetchMlflowTraces?.();
     setIsIssueDetectionQueued(true);
+    const traceCount = hasTraceActivity ? MOCK_ISSUE_DETECTION_TRACE_COUNT : (recentTraces?.length ?? 0);
+    void getDemoIssueDetectionRunId(safeExperimentId).then((runId) => {
+      const jobId = `${MOCK_ISSUE_DETECTION_JOB_ID}-${safeExperimentId}`;
+      recordSubmittedIssueDetectionJob({
+        experimentId: safeExperimentId,
+        jobId,
+        runId,
+        traceCount,
+        mockResult: {
+          issues: MOCK_ISSUE_DETECTION_ISSUE_COUNT,
+          totalTracesAnalyzed: traceCount,
+          completionDelayMs: MOCK_ISSUE_DETECTION_COMPLETION_DELAY_MS,
+        },
+      });
+      startMockIssueDetection({
+        experimentId: safeExperimentId,
+        jobId,
+        runId,
+        traceCount,
+        issueCount: MOCK_ISSUE_DETECTION_ISSUE_COUNT,
+        completionDelayMs: MOCK_ISSUE_DETECTION_COMPLETION_DELAY_MS,
+        onComplete: () => setIsIssueDetectionQueued(false),
+      });
+      window.setTimeout(() => setIsIssueDetectionQueued(false), MOCK_ISSUE_DETECTION_COMPLETION_DELAY_MS);
+    });
   };
 
   const openAssistantWithPrompt = (prompt: string) => {
@@ -511,7 +512,12 @@ const ExperimentGenAIOverviewPage = () => {
   const suggestedActions: SuggestedAction[] = shouldShowTraceActivity
     ? [
         {
-          title: <FormattedMessage defaultMessage="Detect issues" description="GenAI overview detect issues action" />,
+          title: (
+            <FormattedMessage
+              defaultMessage="Find common failure modes"
+              description="GenAI overview detect issues action"
+            />
+          ),
           description: (
             <FormattedMessage
               defaultMessage="Analyze traces from the last 7 days"
@@ -585,12 +591,12 @@ const ExperimentGenAIOverviewPage = () => {
     ? [
         {
           componentId: 'mlflow.genai-overview.detect-issues-query',
-          label: <FormattedMessage defaultMessage="Detect issues" description="GenAI overview suggested query" />,
-          prompt: intl.formatMessage({
-            defaultMessage: 'Detect issues',
-            description: 'GenAI overview suggested query',
-          }),
-          icon: <SparkleIcon color="ai" />,
+          label: (
+            <FormattedMessage defaultMessage="Find common failure modes" description="GenAI overview suggested query" />
+          ),
+          icon: isAnalysisRunning ? <Spinner size="small" /> : <SparkleIcon color="ai" />,
+          onClick: runAnalysis,
+          disabled: isAnalysisRunning,
         },
         {
           componentId: 'mlflow.genai-overview.setup-eval-query',
@@ -756,7 +762,16 @@ const ExperimentGenAIOverviewPage = () => {
                     componentId={query.componentId}
                     size="small"
                     icon={query.icon}
-                    onClick={() => openAssistantWithPrompt(query.prompt)}
+                    disabled={query.disabled}
+                    onClick={() => {
+                      if (query.onClick) {
+                        query.onClick();
+                        return;
+                      }
+                      if (query.prompt) {
+                        openAssistantWithPrompt(query.prompt);
+                      }
+                    }}
                   >
                     {query.label}
                   </Button>
@@ -772,97 +787,7 @@ const ExperimentGenAIOverviewPage = () => {
           </div>
         </section>
 
-        {analysisState !== 'idle' && (
-          <Card
-            componentId="mlflow.genai-overview.analysis-status-card"
-            disableHover
-            css={{ padding: theme.spacing.lg, width: '100%' }}
-          >
-            <div
-              css={{ display: 'flex', justifyContent: 'space-between', gap: theme.spacing.md, alignItems: 'center' }}
-            >
-              <div css={{ display: 'flex', gap: theme.spacing.md, alignItems: 'flex-start' }}>
-                <div
-                  css={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: theme.spacing.xl,
-                    height: theme.spacing.xl,
-                    borderRadius: theme.borders.borderRadiusMd,
-                    backgroundColor: theme.colors.actionDefaultBackgroundHover,
-                    color: theme.colors.actionPrimaryBackgroundDefault,
-                    flexShrink: 0,
-                  }}
-                >
-                  {analysisState === 'complete' ? <CheckCircleIcon /> : <Spinner size="small" />}
-                </div>
-                <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-                  <Typography.Text bold>
-                    {analysisState === 'preparing' ? (
-                      <FormattedMessage
-                        defaultMessage="Starting issue detection"
-                        description="GenAI overview issue detection starting status"
-                      />
-                    ) : analysisState === 'submitted' ? (
-                      <FormattedMessage
-                        defaultMessage="Issue detection is running"
-                        description="GenAI overview issue detection submitted status"
-                      />
-                    ) : (
-                      <FormattedMessage
-                        defaultMessage="Failure analysis completed"
-                        description="GenAI overview analysis complete status"
-                      />
-                    )}
-                  </Typography.Text>
-                  <Typography.Text color="secondary">
-                    {analysisState === 'preparing' ? (
-                      <FormattedMessage
-                        defaultMessage="MLflow is collecting trace IDs from the last 7 days and starting a background job."
-                        description="GenAI overview issue detection starting description"
-                      />
-                    ) : analysisState === 'submitted' ? (
-                      <FormattedMessage
-                        defaultMessage="MLflow is analyzing {traces} recent traces. We'll notify you here when it finishes."
-                        description="GenAI overview issue detection submitted description"
-                        values={{ traces: analysisTraceCount.toLocaleString() }}
-                      />
-                    ) : (
-                      <FormattedMessage
-                        defaultMessage="{clusters} candidate clusters found across {traces} recent conversations."
-                        description="GenAI overview analysis complete description"
-                        values={{
-                          clusters: FAILURE_ANALYSIS_CLUSTERS.length,
-                          traces: FAILURE_ANALYSIS_TOTAL_CONVERSATIONS.toLocaleString(),
-                        }}
-                      />
-                    )}
-                  </Typography.Text>
-                </div>
-              </div>
-              {(analysisState === 'submitted' || analysisState === 'complete') && (
-                <Button
-                  componentId="mlflow.genai-overview.open-analysis-result"
-                  type="primary"
-                  endIcon={<ArrowRightIcon />}
-                  onClick={() => navigate(submittedAnalysisRoute)}
-                >
-                  {analysisState === 'submitted' ? (
-                    <FormattedMessage
-                      defaultMessage="View progress"
-                      description="View issue detection progress button"
-                    />
-                  ) : (
-                    <FormattedMessage defaultMessage="View 3 issues" description="Open detected issues button" />
-                  )}
-                </Button>
-              )}
-            </div>
-          </Card>
-        )}
-
-        <TraceActivityChart hasTraceActivity={shouldShowTraceActivity} dashboardRoute={dashboardRoute} />
+        <TraceActivityChart traceActivityData={traceActivityData} dashboardRoute={dashboardRoute} />
 
         <section
           css={{

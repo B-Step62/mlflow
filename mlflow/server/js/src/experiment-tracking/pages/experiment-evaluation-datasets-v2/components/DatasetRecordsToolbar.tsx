@@ -5,10 +5,109 @@ import {
   type InputRef,
   PlusIcon,
   SearchIcon,
+  SegmentedControlButton,
+  SegmentedControlGroup,
   TrashIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
+
+export const DATASET_RECORD_COMPACT_TEXT_CELL_MAX_LINES = 1;
+export const DATASET_RECORD_EXPANDED_TEXT_CELL_MAX_LINES = 5;
+
+const ROW_HEIGHT_COMPACT = 'compact';
+const ROW_HEIGHT_EXPANDED = 'expanded';
+const ROW_HEIGHT_ICON_STROKE_WIDTH = 1.25;
+
+const CompactRowsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+    <path d="M4 3H12" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path d="M4 13H12" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path d="M8 5V8.5" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path
+      d="M5.5 6.5L8 9L10.5 6.5"
+      stroke="currentColor"
+      strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH}
+      strokeLinecap="round"
+    />
+    <path d="M8 11V7.5" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path
+      d="M5.5 9.5L8 7L10.5 9.5"
+      stroke="currentColor"
+      strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH}
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const ExpandedRowsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+    <path d="M4 3H12" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path d="M4 13H12" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path d="M8 8V4.5" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path
+      d="M5.5 6.5L8 4L10.5 6.5"
+      stroke="currentColor"
+      strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH}
+      strokeLinecap="round"
+    />
+    <path d="M8 8V11.5" stroke="currentColor" strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH} strokeLinecap="round" />
+    <path
+      d="M5.5 9.5L8 12L10.5 9.5"
+      stroke="currentColor"
+      strokeWidth={ROW_HEIGHT_ICON_STROKE_WIDTH}
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+export const DatasetRecordsRowHeightToggle = ({
+  textCellMaxLines,
+  setTextCellMaxLines,
+}: {
+  textCellMaxLines: number;
+  setTextCellMaxLines: (maxLines: number) => void;
+}) => {
+  const intl = useIntl();
+  const value =
+    textCellMaxLines > DATASET_RECORD_COMPACT_TEXT_CELL_MAX_LINES ? ROW_HEIGHT_EXPANDED : ROW_HEIGHT_COMPACT;
+  const compactRowsLabel = intl.formatMessage({
+    defaultMessage: 'Compact rows',
+    description: 'Aria label for compact row height in the V2 dataset records table',
+  });
+  const expandedRowsLabel = intl.formatMessage({
+    defaultMessage: 'Expanded rows',
+    description: 'Aria label for expanded row height in the V2 dataset records table',
+  });
+
+  return (
+    <SegmentedControlGroup
+      name="mlflow-dataset-records-row-height"
+      componentId="mlflow.eval-datasets-v2.records.row-height-toggle"
+      value={value}
+      onChange={(event) => {
+        setTextCellMaxLines(
+          event.target.value === ROW_HEIGHT_EXPANDED
+            ? DATASET_RECORD_EXPANDED_TEXT_CELL_MAX_LINES
+            : DATASET_RECORD_COMPACT_TEXT_CELL_MAX_LINES,
+        );
+      }}
+    >
+      <SegmentedControlButton
+        value={ROW_HEIGHT_COMPACT}
+        icon={<CompactRowsIcon />}
+        title={compactRowsLabel}
+        aria-label={compactRowsLabel}
+      />
+      <SegmentedControlButton
+        value={ROW_HEIGHT_EXPANDED}
+        icon={<ExpandedRowsIcon />}
+        title={expandedRowsLabel}
+        aria-label={expandedRowsLabel}
+      />
+    </SegmentedControlGroup>
+  );
+};
 
 export interface DatasetRecordsToolbarProps {
   /** Local search input value. Owned by the controller's `useDebouncedSearchInput`. */

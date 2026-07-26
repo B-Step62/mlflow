@@ -151,7 +151,7 @@ describe('useDatasetRecordEditorState', () => {
     const { result, rerender } = renderHook(
       ({ format }: { format: 'json' | 'yaml' }) =>
         useDatasetRecordEditorState({ recordId: 'r1', initialValue: { foo: 'bar' }, format }),
-      { initialProps: { format: 'json' as const } },
+      { initialProps: { format: 'json' as 'json' | 'yaml' } },
     );
     rerender({ format: 'yaml' as const });
     act(() => result.current.setText('foo: bar\n'));

@@ -18,7 +18,7 @@ import type { ColumnDef, ColumnSizingState, OnChangeFn } from '@tanstack/react-t
 import {
   CreatedByCell,
   CreateTimeCell,
-  truncateCss,
+  previewTextCss,
   JsonPreviewCell,
   LastUpdatedByCell,
   LastUpdatedCell,
@@ -80,6 +80,8 @@ interface DatasetRecordsTableProps {
    * pretty-printed source collapses to compact JSON.
    */
   pendingNewRecord?: PendingNewRecord | null;
+  /** Number of preview lines shown for text-heavy input / expectation cells. */
+  textCellMaxLines?: number;
 }
 
 const SORTABLE_COLUMN_SET = new Set<RecordColumnId>(SORTABLE_RECORD_COLUMNS);
@@ -206,6 +208,7 @@ export const DatasetRecordsTable = ({
   dir,
   onSort,
   pendingNewRecord,
+  textCellMaxLines = 1,
 }: DatasetRecordsTableProps) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -493,9 +496,7 @@ export const DatasetRecordsTable = ({
                         <FormattedMessage defaultMessage="(empty)" description="Placeholder for an empty JSON cell" />
                       </Typography.Text>
                     ) : (
-                      <span css={[truncateCss, { fontSize: theme.typography.fontSizeSm, display: 'block' }]}>
-                        {display}
-                      </span>
+                      <span css={previewTextCss(theme, textCellMaxLines)}>{display}</span>
                     )}
                   </TableCell>
                 );
@@ -617,6 +618,7 @@ export const DatasetRecordsTable = ({
                       }
                       onActivate={openDrawer}
                       accessibleLabel={inputsLabel}
+                      maxLines={textCellMaxLines}
                     />
                   </TableCell>
                 )}
@@ -629,6 +631,7 @@ export const DatasetRecordsTable = ({
                       }
                       onActivate={openDrawer}
                       accessibleLabel={expectationsLabel}
+                      maxLines={textCellMaxLines}
                     />
                   </TableCell>
                 )}

@@ -156,7 +156,7 @@ export const getExperimentEvalRunsDefaultColumns = (
       enableResizing: true,
       meta: {
         styles: {
-          minWidth: 100,
+          minWidth: 240,
         },
       },
     },

@@ -19,6 +19,18 @@ export const parseEvalRunsTableKeyedColumnKey = (
   };
 };
 
+const EVAL_RUNS_KEYED_COLUMNS_HIDDEN_BY_DEFAULT = new Set(['categories', 'model', 'rows', 'totaltraces', 'trials']);
+
+const normalizeColumnKeyForDefaultSelection = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+export const isEvalRunsKeyedColumnSelectedByDefault = (columnId: string) => {
+  const parsedColumn = parseEvalRunsTableKeyedColumnKey(columnId);
+  if (!parsedColumn || parsedColumn.columnType === EvalRunsTableKeyedColumnPrefix.PARAM) {
+    return false;
+  }
+  return !EVAL_RUNS_KEYED_COLUMNS_HIDDEN_BY_DEFAULT.has(normalizeColumnKeyForDefaultSelection(parsedColumn.key));
+};
+
 export const getEvalRunCellValueBasedOnColumn = (columnId: string, rowData: RunEntity): string | number | undefined => {
   const { columnType, key: rowDataKey } = parseEvalRunsTableKeyedColumnKey(columnId) ?? {};
   if (!rowDataKey) {

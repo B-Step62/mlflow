@@ -16,11 +16,12 @@ import Routes from '../../routes';
 interface ScorerCardContainerProps {
   scorer: ScheduledScorer;
   experimentId: string;
+  defaultExpanded?: boolean;
 }
 
-const ScorerCardContainer: React.FC<ScorerCardContainerProps> = ({ scorer, experimentId }) => {
+const ScorerCardContainer: React.FC<ScorerCardContainerProps> = ({ scorer, experimentId, defaultExpanded = false }) => {
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [activeModal, setActiveModal] = useState<'delete' | 'edit' | null>(null);
 
   // Register scorer context when card is expanded
@@ -40,6 +41,12 @@ const ScorerCardContainer: React.FC<ScorerCardContainerProps> = ({ scorer, exper
   useEffect(() => {
     syncFormWithScorer(scorer, reset);
   }, [scorer, reset]);
+
+  useEffect(() => {
+    if (defaultExpanded) {
+      setIsExpanded(true);
+    }
+  }, [defaultExpanded]);
 
   const handleCardClick = useCallback(() => {
     setIsExpanded(!isExpanded);

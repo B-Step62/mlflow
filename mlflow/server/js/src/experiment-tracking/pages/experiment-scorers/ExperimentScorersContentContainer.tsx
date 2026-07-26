@@ -242,7 +242,12 @@ const ExperimentScorersContentContainer: React.FC<ExperimentScorersContentContai
           }}
         >
           {scorers.map((scorer) => (
-            <ScorerCardContainer key={scorer.name} scorer={scorer} experimentId={experimentId} />
+            <ScorerCardContainer
+              key={scorer.name}
+              scorer={scorer}
+              experimentId={experimentId}
+              defaultExpanded={scorer.name === selectedScorerName}
+            />
           ))}
         </div>
       </div>

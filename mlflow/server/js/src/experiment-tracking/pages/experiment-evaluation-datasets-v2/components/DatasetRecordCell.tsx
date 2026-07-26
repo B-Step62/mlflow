@@ -187,10 +187,22 @@ export const truncateCss: CSSObject = {
   verticalAlign: 'middle',
 };
 
-const previewTextCss = (theme: Theme): CSSObject => ({
-  ...truncateCss,
-  fontSize: theme.typography.fontSizeSm,
-});
+export const previewTextCss = (theme: Theme, maxLines = 1): CSSObject =>
+  maxLines <= 1
+    ? {
+        ...truncateCss,
+        fontSize: theme.typography.fontSizeSm,
+      }
+    : {
+        display: '-webkit-box',
+        WebkitBoxOrient: 'vertical',
+        WebkitLineClamp: maxLines,
+        overflow: 'hidden',
+        whiteSpace: 'normal',
+        maxWidth: '100%',
+        verticalAlign: 'middle',
+        fontSize: theme.typography.fontSizeSm,
+      };
 
 // Shared "tabbable inline activator" styles: a span the user can Tab to and activate with
 // Enter/Space. Stripped of default button visuals; the cell visuals come from inner content
@@ -268,13 +280,21 @@ interface JsonPreviewCellProps {
   onActivate: () => void;
   /** Localized spoken label, e.g. "Open record rec-123 — inputs". */
   accessibleLabel: string;
+  /** Number of preview lines to show before clamping. */
+  maxLines?: number;
 }
 
 /**
  * Compact one-line readable preview for inputs/expectations cells. Tooltip shows the
  * structurally-truncated JSON on hover or keyboard focus.
  */
-export const JsonPreviewCell = ({ value, emptyLabel, onActivate, accessibleLabel }: JsonPreviewCellProps) => {
+export const JsonPreviewCell = ({
+  value,
+  emptyLabel,
+  onActivate,
+  accessibleLabel,
+  maxLines = 1,
+}: JsonPreviewCellProps) => {
   const { theme } = useDesignSystemTheme();
   // `truncateJsonForTooltip` and `renderJsonNode` recursively walk the JSON, and
   // `getJsonColors` returns a new object identity per call. Memoizing all three keeps a
@@ -350,7 +370,7 @@ export const JsonPreviewCell = ({ value, emptyLabel, onActivate, accessibleLabel
         accessibleLabel={accessibleLabel}
         css={{ display: 'block', width: '100%', maxWidth: '100%' }}
       >
-        <span css={previewTextCss(theme)}>{preview}</span>
+        <span css={previewTextCss(theme, maxLines)}>{preview}</span>
       </CellActivator>
     </Tooltip>
   );

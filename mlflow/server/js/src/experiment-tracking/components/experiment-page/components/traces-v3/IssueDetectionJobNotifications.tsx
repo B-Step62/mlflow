@@ -14,6 +14,11 @@ export interface SubmittedIssueDetectionJob {
   runId: string;
   traceCount: number;
   submittedAtMs: number;
+  mockResult?: {
+    issues: number;
+    totalTracesAnalyzed: number;
+    completionDelayMs?: number;
+  };
 }
 
 type StoredSubmittedIssueDetectionJob = Omit<SubmittedIssueDetectionJob, 'experimentId'>;
@@ -23,6 +28,7 @@ const ISSUE_DETECTION_TRACKED_EXPERIMENTS_STORAGE_KEY = 'mlflow.issueDetection.t
 const ISSUE_DETECTION_JOB_STORAGE_COMPONENT = 'IssueDetectionJobWatcher';
 const ISSUE_DETECTION_JOB_SUBMITTED_EVENT = 'mlflow.issueDetection.jobSubmitted';
 const ISSUE_DETECTION_JOB_TTL_MS = 60 * 60 * 1000;
+const MOCK_ISSUE_DETECTION_COMPLETION_DELAY_MS = 10000;
 
 const getSubmittedJobStore = (experimentId: string) =>
   LocalStorageUtils.getSessionScopedStoreForComponent(ISSUE_DETECTION_JOB_STORAGE_COMPONENT, experimentId);
@@ -40,7 +46,14 @@ const isStoredSubmittedIssueDetectionJob = (value: unknown): value is StoredSubm
     typeof candidate.jobId === 'string' &&
     typeof candidate.runId === 'string' &&
     typeof candidate.traceCount === 'number' &&
-    typeof candidate.submittedAtMs === 'number'
+    typeof candidate.submittedAtMs === 'number' &&
+    (candidate.mockResult === undefined ||
+      (typeof candidate.mockResult === 'object' &&
+        candidate.mockResult !== null &&
+        typeof candidate.mockResult.issues === 'number' &&
+        typeof candidate.mockResult.totalTracesAnalyzed === 'number' &&
+        (candidate.mockResult.completionDelayMs === undefined ||
+          typeof candidate.mockResult.completionDelayMs === 'number')))
   );
 };
 
@@ -87,12 +100,15 @@ const setTrackedExperimentIds = (experimentIds: string[]) => {
 };
 
 const setSubmittedIssueDetectionJobsForExperiment = (experimentId: string, jobs: SubmittedIssueDetectionJob[]) => {
-  const storedJobs = jobs.map<StoredSubmittedIssueDetectionJob>(({ jobId, runId, traceCount, submittedAtMs }) => ({
-    jobId,
-    runId,
-    traceCount,
-    submittedAtMs,
-  }));
+  const storedJobs = jobs.map<StoredSubmittedIssueDetectionJob>(
+    ({ jobId, runId, traceCount, submittedAtMs, mockResult }) => ({
+      jobId,
+      runId,
+      traceCount,
+      submittedAtMs,
+      mockResult,
+    }),
+  );
   getSubmittedJobStore(experimentId).setItem(ISSUE_DETECTION_SUBMITTED_JOBS_STORAGE_KEY, JSON.stringify(storedJobs));
 
   const trackedExperimentIds = getTrackedExperimentIds();
@@ -187,8 +203,22 @@ const TrackedIssueDetectionJobNotification = ({
 }) => {
   const { status, result } = useFetchJobStatus({
     jobId: job.jobId,
-    enabled: true,
+    enabled: !job.mockResult,
   });
+
+  useEffect(() => {
+    if (!job.mockResult) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      onTerminalStatus(job, JobStatus.SUCCEEDED, {
+        issues: job.mockResult?.issues,
+        total_traces_analyzed: job.mockResult?.totalTracesAnalyzed,
+      });
+    }, job.mockResult.completionDelayMs ?? MOCK_ISSUE_DETECTION_COMPLETION_DELAY_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [job, onTerminalStatus]);
 
   useEffect(() => {
     if (isSubmittedIssueDetectionJobExpired(job)) {

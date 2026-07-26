@@ -44,7 +44,7 @@ jest.mock('../gateway/api', () => ({
 }));
 
 jest.mock('../experiment-tracking/sdk/MlflowService', () => ({
-  MlflowService: { searchRuns: jest.fn() },
+  MlflowService: { searchRuns: jest.fn(), getExperiment: jest.fn() },
 }));
 
 jest.mock('./AssistantPageContext', () => ({
@@ -55,6 +55,7 @@ const mockSendMessageStream = jest.mocked(AssistantService.sendMessageStream);
 const mockGetConfig = jest.mocked(AssistantService.getConfig);
 const mockListEndpoints = jest.mocked(GatewayApi.listEndpoints);
 const mockSearchRuns = jest.mocked(MlflowService.searchRuns);
+const mockGetExperiment = jest.mocked(MlflowService.getExperiment);
 
 // A fake EventSource — the real one is created inside sendMessageStream, which we mock,
 // so the context only ever calls .close() on what we hand back here.
@@ -81,6 +82,7 @@ beforeEach(() => {
     return { eventSource: fakeEventSource as unknown as EventSource };
   });
   mockSearchRuns.mockResolvedValue({ runs: [] });
+  mockGetExperiment.mockRejectedValue(new Error('No demo tags'));
   // Control rAF so a scheduled flush stays pending until we assert on it.
   jest.spyOn(window, 'requestAnimationFrame').mockReturnValue(777 as unknown as number);
   jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
@@ -310,6 +312,119 @@ describe('AssistantContext — mock evaluation flow', () => {
     });
   };
 
+  it('streams mocked issue detection progress and links to the issues tab', async () => {
+    jest.useFakeTimers();
+    const onComplete = jest.fn();
+
+    const { result } = await renderAssistant();
+
+    act(() => {
+      result.current.startMockIssueDetection({
+        experimentId: 'experiment-123',
+        jobId: 'job-1',
+        runId: 'run-1',
+        traceCount: 205,
+        issueCount: 5,
+        onComplete,
+      });
+    });
+
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.setupComplete).toBe(true);
+    expect(mockSendMessageStream).not.toHaveBeenCalled();
+
+    await advanceMockStream(10000);
+
+    const latestMessage = result.current.messages[result.current.messages.length - 1];
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(latestMessage.content).toContain('run issue detection across 205 traces');
+    expect(latestMessage.content).toContain('keep this thread updated');
+    expect(latestMessage.content).toContain('found 5 recurring failure modes');
+    expect(latestMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'toolCall',
+        name: 'check_llm_connection',
+        status: 'done',
+      }),
+    );
+    expect(latestMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'toolCall',
+        name: 'run_issue_detection',
+        status: 'done',
+      }),
+    );
+    expect(latestMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'linkAction',
+        label: 'View issues',
+        href: '/#/experiments/experiment-123/issues',
+        navigateInline: true,
+      }),
+    );
+    expect(latestMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'promptAction',
+        label: 'Set up eval',
+        prompt: 'Set up eval',
+        href: '/#/experiments/experiment-123/issues',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Set up eval');
+    });
+
+    await advanceMockStream(650);
+
+    const scopeMessage = result.current.messages[result.current.messages.length - 1];
+    expect(scopeMessage.content).toContain('Which issues should I set up evals for');
+    expect(scopeMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Set up eval for which issues?',
+        options: expect.arrayContaining([
+          expect.objectContaining({ value: 'all', label: 'All issues' }),
+          expect.objectContaining({ value: 'subset', label: 'Subset' }),
+        ]),
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Set up eval for a subset');
+    });
+
+    await advanceMockStream(1750);
+
+    expect(result.current.messages[result.current.messages.length - 1].parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Where should I put these examples?',
+      }),
+    );
+
+    act(() => {
+      result.current.sendMessage('Create new dataset');
+    });
+
+    await advanceMockStream(4450);
+
+    const createdEvalMessage = result.current.messages[result.current.messages.length - 1];
+    expect(createdEvalMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'linkAction',
+        label: 'Open issue with linked items',
+        href: '/#/experiments/experiment-123/issues?selectedIssueId=iss-wrong-asset-class',
+      }),
+    );
+    expect(createdEvalMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Do you want to run evaluation now?',
+      }),
+    );
+  });
+
   it('links to the latest evaluation run returned by searchRuns', async () => {
     jest.useFakeTimers();
     mockSearchRuns.mockResolvedValue({
@@ -425,6 +540,9 @@ describe('AssistantContext — mock evaluation flow', () => {
         defaultValue: 'new',
       }),
     );
+    expect(selectionPrompt?.options[0]).toEqual(
+      expect.objectContaining({ value: 'new', label: 'Create new dataset', recommended: true }),
+    );
     expect(newDatasetOption).toEqual(
       expect.objectContaining({ value: 'new', label: 'Create new dataset', recommended: true }),
     );
@@ -440,24 +558,15 @@ describe('AssistantContext — mock evaluation flow', () => {
         ReturnType<typeof AssistantService.getConfig>
       >,
     );
-    mockSearchRuns
-      .mockResolvedValueOnce({
-        runs: [
-          {
-            info: { runUuid: 'baseline-evaluation-run' },
-          },
+    mockGetExperiment.mockResolvedValue({
+      experiment: {
+        tags: [
+          { key: 'mlflow.issueCujDemo.initialEvalRunId', value: 'baseline-evaluation-run' },
+          { key: 'mlflow.issueCujDemo.alignedEvalRunId', value: 'aligned-evaluation-run' },
+          { key: 'mlflow.issueCujDemo.fixedEvalRunId', value: 'fixed-evaluation-run' },
         ],
-      } as any)
-      .mockResolvedValueOnce({
-        runs: [
-          {
-            info: { runUuid: 'fixed-evaluation-run' },
-          },
-          {
-            info: { runUuid: 'baseline-evaluation-run' },
-          },
-        ],
-      } as any);
+      },
+    } as any);
 
     const { result } = await renderAssistant();
 
@@ -505,7 +614,9 @@ describe('AssistantContext — mock evaluation flow', () => {
       expect.objectContaining({
         type: 'linkAction',
         label: 'Open judge alignment console',
-        href: '/#/experiments/experiment-123/judges/alignment',
+        href: expect.stringContaining(
+          '/#/experiments/experiment-123/judges/alignment?scorerName=groundedness_judge&prefill=eval',
+        ),
       }),
     );
     expect(alignmentMessage.parts).toContainEqual(
@@ -582,6 +693,24 @@ describe('AssistantContext — mock evaluation flow', () => {
       result.current.sendMessage('Setup production monitoring');
     });
 
+    await advanceMockStream(650);
+
+    act(() => {
+      result.current.sendMessage('Use 5% trace sample');
+    });
+
+    await advanceMockStream(650);
+
+    act(() => {
+      result.current.sendMessage('Yes, add alert');
+    });
+
+    await advanceMockStream(650);
+
+    act(() => {
+      result.current.sendMessage('Alert when failure rate is above 5% for 15 minutes');
+    });
+
     await advanceMockStream(2100);
 
     const monitoringMessage = result.current.messages[result.current.messages.length - 1];
@@ -591,6 +720,60 @@ describe('AssistantContext — mock evaluation flow', () => {
         type: 'toolCall',
         name: 'configure_online_judges',
         status: 'done',
+      }),
+    );
+  });
+
+  it('continues a persisted mock eval conversation without contacting the backend', async () => {
+    jest.useFakeTimers();
+    localStorage.setItem(
+      CHAT_STORAGE_KEY,
+      JSON.stringify({
+        messages: [
+          makeMessage({
+            id: 'restored-assistant-message',
+            role: 'assistant',
+            content: 'Open evaluation result',
+          }),
+        ],
+        tokenUsage: EMPTY_TOKEN_USAGE,
+        mockState: {
+          lastMockEvalSetup: {
+            request: {
+              issueId: 'issue-persisted',
+              issueName: 'Cites the wrong asset class',
+              experimentId: 'experiment-123',
+              traceCount: 3,
+              traceIds: ['trace-1', 'trace-2', 'trace-3'],
+              datasetName: 'wrong_asset_class_regression',
+              scorerNames: ['asset_class_consistency', 'retrieval_answer_alignment'],
+            },
+            traceCount: 3,
+            traceSummary: '3 traces',
+            primaryScorer: 'asset_class_consistency',
+            secondaryScorer: 'retrieval_answer_alignment',
+            datasetChoice: 'new',
+          },
+        },
+      }),
+    );
+
+    const { result } = await renderAssistant();
+
+    act(() => {
+      result.current.sendMessage('Analyze result');
+    });
+
+    await advanceMockStream(1900);
+
+    expect(mockSendMessageStream).not.toHaveBeenCalled();
+    const analysisMessage = result.current.messages[result.current.messages.length - 1];
+    expect(analysisMessage.content).toContain('asset_class_consistency');
+    expect(analysisMessage.content).toContain('too permissive');
+    expect(analysisMessage.parts).toContainEqual(
+      expect.objectContaining({
+        type: 'selectionPrompt',
+        title: 'Do you want me to fine-tune the judge so it aligns with human judgement?',
       }),
     );
   });
@@ -632,12 +815,47 @@ describe('AssistantContext — mock evaluation flow', () => {
       result.current.sendMessage('Setup production monitoring');
     });
 
+    await advanceMockStream(650);
+
+    expect(result.current.messages[result.current.messages.length - 1].content).toContain(
+      'choose the production trace sample rate',
+    );
+
+    act(() => {
+      result.current.sendMessage('Use 5% trace sample');
+    });
+
+    await advanceMockStream(650);
+
+    expect(result.current.messages[result.current.messages.length - 1].content).toContain('Do you want an alert too?');
+
+    act(() => {
+      result.current.sendMessage('Yes, add alert');
+    });
+
+    await advanceMockStream(650);
+
+    expect(result.current.messages[result.current.messages.length - 1].content).toContain(
+      'What alerting criteria should I use',
+    );
+
+    act(() => {
+      result.current.sendMessage('Alert when failure rate is above 5% for 15 minutes');
+    });
+
     await advanceMockStream(2100);
 
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onResolve).toHaveBeenCalledTimes(1);
     expect(result.current.messages[result.current.messages.length - 1].content).toContain('Monitor is ready');
+    expect(result.current.messages[result.current.messages.length - 1].parts).toContainEqual(
+      expect.objectContaining({
+        type: 'linkAction',
+        label: 'Go to dashboard',
+        href: '/#/experiments/experiment-123/dashboard/quality',
+      }),
+    );
   });
 });
 

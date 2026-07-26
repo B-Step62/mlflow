@@ -51,7 +51,7 @@ const MOCK_EVAL_ARTIFACTS_BY_ISSUE_ID = {
     issueName: 'Cites the wrong asset class',
     sourceJobId: 'job_7d3f9a21c',
     traceIds: ['trace-a17', 'trace-b42', 'trace-c09'],
-    dataset: { datasetId: 'wrong_asset_class_regression', name: 'wrong_asset_class_regression', traceCount: 38 },
+    dataset: { datasetId: 'wrong_asset_class_regression', name: 'wrong_asset_class_regression', traceCount: 42 },
     goldenDataset: {
       datasetId: 'investment_advisor_golden',
       name: 'investment_advisor_golden',
@@ -226,8 +226,15 @@ const createFallbackBundle = (datasetId: string): MockEvalArtifactBundle => {
   };
 };
 
-const getPredefinedEvalArtifactBundle = (issueId: string): MockEvalArtifactBundle | undefined =>
-  (MOCK_EVAL_ARTIFACTS_BY_ISSUE_ID as Partial<Record<string, MockEvalArtifactBundle>>)[issueId];
+const getPredefinedEvalArtifactBundle = (issue: IssueLike): MockEvalArtifactBundle | undefined => {
+  const predefinedById = (MOCK_EVAL_ARTIFACTS_BY_ISSUE_ID as Partial<Record<string, MockEvalArtifactBundle>>)[
+    issue.issue_id
+  ];
+  if (predefinedById) {
+    return predefinedById;
+  }
+  return Object.values(MOCK_EVAL_ARTIFACTS_BY_ISSUE_ID).find((bundle) => bundle.issueName === issue.name);
+};
 
 const getGoldenLinkedItems = (bundle: MockEvalArtifactBundle): MockEvalLinkedItems => ({
   dataset: {
@@ -240,7 +247,7 @@ const getGoldenLinkedItems = (bundle: MockEvalArtifactBundle): MockEvalLinkedIte
 });
 
 export const getEvalLinkedItems = (issue: IssueLike, datasetMode: MockEvalDatasetMode = 'new'): MockEvalLinkedItems => {
-  const predefinedItems = getPredefinedEvalArtifactBundle(issue.issue_id);
+  const predefinedItems = getPredefinedEvalArtifactBundle(issue);
   if (predefinedItems) {
     if (datasetMode === 'golden') {
       return getGoldenLinkedItems(predefinedItems);

@@ -2,6 +2,48 @@ import { useInfiniteQuery } from '@databricks/web-shared/query-client';
 import type { SearchRunsApiResponse } from '@mlflow/mlflow/src/experiment-tracking/types';
 import { MlflowService } from '../../../sdk/MlflowService';
 import { useMemo } from 'react';
+import { EXPERIMENT_PARENT_ID_TAG } from '../utils/experimentPage.common-utils';
+
+const getMissingParentRunIds = (runs: NonNullable<SearchRunsApiResponse['runs']>) => {
+  const runUuids = new Set(runs.map((run) => run.info.runUuid));
+  const parentRunIds = new Set<string>();
+
+  for (const run of runs) {
+    const parentRunId = run.data?.tags?.find((tag) => tag.key === EXPERIMENT_PARENT_ID_TAG)?.value;
+    if (parentRunId && !runUuids.has(parentRunId)) {
+      parentRunIds.add(parentRunId);
+    }
+  }
+
+  return Array.from(parentRunIds);
+};
+
+const fetchMissingParentRuns = async (response: SearchRunsApiResponse, experimentId: string) => {
+  const runs = response.runs ?? [];
+  const missingParentRunIds = getMissingParentRunIds(runs);
+
+  if (!missingParentRunIds.length) {
+    return response;
+  }
+
+  const parentRuns = (
+    await Promise.all(
+      missingParentRunIds.map(async (parentRunId) => {
+        const parentRunResponse = await MlflowService.searchRuns({
+          experiment_ids: [experimentId],
+          filter: `run_id = '${parentRunId}'`,
+          max_results: 1,
+        });
+        return parentRunResponse.runs?.[0];
+      }),
+    )
+  ).filter((run): run is NonNullable<typeof run> => Boolean(run));
+
+  return {
+    ...response,
+    runs: [...runs, ...parentRuns],
+  };
+};
 
 export const useExperimentEvaluationRunsData = ({
   experimentId,
@@ -27,7 +69,8 @@ export const useExperimentEvaluationRunsData = ({
         page_token: pageParam,
       };
 
-      return MlflowService.searchRuns(requestBody);
+      const response = await MlflowService.searchRuns(requestBody);
+      return fetchMissingParentRuns(response, experimentId);
     },
     cacheTime: 0,
     refetchOnWindowFocus: false,
@@ -40,7 +83,8 @@ export const useExperimentEvaluationRunsData = ({
     if (!data?.pages) {
       return { evaluationRuns: [], trainingRuns: [] };
     }
-    const allRuns = data.pages.flatMap((page) => page.runs || []);
+    const runsByUuid = new Map(data.pages.flatMap((page) => page.runs || []).map((run) => [run.info.runUuid, run]));
+    const allRuns = Array.from(runsByUuid.values());
     return allRuns.reduce(
       (acc, run) => {
         const isTrainingRun = run.outputs?.modelOutputs?.length ?? 0;

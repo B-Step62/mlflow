@@ -625,31 +625,41 @@ export const IssueDetailsPanel = ({
               <FormattedMessage defaultMessage="Next steps" description="Issue details next steps inline label" />
             </Typography.Text>
             <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-              {nextSteps.map((step) => (
-                <Button
-                  key={step.key}
-                  componentId={step.componentId}
-                  size="small"
-                  icon={step.icon}
-                  onClick={step.onClick}
-                  loading={step.loading}
-                  disabled={step.disabled}
-                  css={
-                    step.success
-                      ? {
-                          borderColor: theme.colors.textValidationSuccess,
-                          color: theme.colors.textValidationSuccess,
-                          ':hover': {
-                            borderColor: theme.colors.textValidationSuccess,
-                            color: theme.colors.textValidationSuccess,
-                          },
-                        }
-                      : undefined
-                  }
-                >
-                  {step.title}
-                </Button>
-              ))}
+              {nextSteps.map((step) =>
+                step.onClick ? (
+                  <Button
+                    key={step.key}
+                    componentId={step.componentId}
+                    size="small"
+                    icon={step.icon}
+                    onClick={step.onClick}
+                    loading={step.loading}
+                    disabled={step.disabled}
+                  >
+                    {step.title}
+                  </Button>
+                ) : (
+                  <div
+                    key={step.key}
+                    css={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      minHeight: 28,
+                      padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+                      border: `1px solid ${theme.colors.textValidationSuccess}`,
+                      borderRadius: theme.borders.borderRadiusMd,
+                      color: theme.colors.textValidationSuccess,
+                      backgroundColor: theme.colors.backgroundPrimary,
+                      fontSize: theme.typography.fontSizeSm,
+                      fontWeight: theme.typography.typographyBoldFontWeight,
+                    }}
+                  >
+                    {step.icon}
+                    <span>{step.title}</span>
+                  </div>
+                ),
+              )}
             </div>
           </div>
         </div>

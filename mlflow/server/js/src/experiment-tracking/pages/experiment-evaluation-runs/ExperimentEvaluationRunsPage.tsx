@@ -30,7 +30,7 @@ import { EvalRunsEmptyStateCard } from './EvalRunsEmptyStateCard';
 import { isUserFacingTag } from '../../../common/utils/TagUtils';
 import {
   createEvalRunsTableKeyedColumnKey,
-  parseEvalRunsTableKeyedColumnKey,
+  isEvalRunsKeyedColumnSelectedByDefault,
 } from './ExperimentEvaluationRunsTable.utils';
 import { ExperimentEvaluationRunsPageMode } from './hooks/useExperimentEvaluationRunsPageMode';
 import { ExperimentEvaluationRunsRowVisibilityProvider } from './hooks/useExperimentEvaluationRunsRowVisibility';
@@ -46,6 +46,7 @@ import { formatCostUSD } from '@databricks/web-shared/model-trace-explorer';
 import { getEvaluationDatasetId } from '../../utils/DatasetUtils';
 import Routes from '../../routes';
 import { ExperimentPageTabName } from '../../constants';
+import { getNestedEvaluationRunsData } from './ExperimentEvaluationRunsPage.utils';
 
 const getLearnMoreLink = () => {
   return 'https://mlflow.org/docs/latest/genai/eval-monitor/quickstart/';
@@ -469,6 +470,14 @@ const ExperimentEvaluationRunsPageImpl = () => {
     if (hasInitializedFromUrl.current || !runs?.length) {
       return;
     }
+
+    if (selectedRunUuid && !runUuids.includes(selectedRunUuid)) {
+      return;
+    }
+    if (compareToRunUuid && !runUuids.includes(compareToRunUuid)) {
+      return;
+    }
+
     hasInitializedFromUrl.current = true;
 
     // If URL has selectedRunUuid, initialize rowSelection
@@ -563,14 +572,13 @@ const ExperimentEvaluationRunsPageImpl = () => {
   if (columnDifference.length > 0) {
     setSelectedColumns({
       ...EVAL_RUNS_TABLE_BASE_SELECTION_STATE,
-      ...mapValues(
-        keyBy(uniqueColumns),
-        (_, column) => parseEvalRunsTableKeyedColumnKey(column)?.columnType !== EvalRunsTableKeyedColumnPrefix.PARAM,
-      ),
+      ...mapValues(keyBy(uniqueColumns), (_, column) => isEvalRunsKeyedColumnSelectedByDefault(column)),
     });
   }
 
   const isEmpty = runUuids.length === 0 && !searchFilter && !isLoading;
+  const tableRuns = useMemo(() => getNestedEvaluationRunsData(runs ?? []), [runs]);
+  const hasNestedRuns = useMemo(() => tableRuns.some((run) => 'childRuns' in run), [tableRuns]);
 
   const handleCompare = useCallback(
     (runUuidsToCompare: string[]) => {
@@ -592,6 +600,23 @@ const ExperimentEvaluationRunsPageImpl = () => {
     [setSearchParams],
   );
 
+  const selectSingleRun = useCallback(
+    (runUuid: string) => {
+      // Update both params atomically to avoid race conditions
+      // where separate setSearchParams calls overwrite each other
+      setSearchParams(
+        (params) => {
+          params.set(SELECTED_RUN_UUID_QUERY_PARAM, runUuid);
+          params.delete(COMPARE_TO_RUN_UUID_QUERY_PARAM);
+          return params;
+        },
+        { replace: true },
+      );
+      setIsComparisonMode(false);
+    },
+    [setSearchParams],
+  );
+
   const renderActiveTab = (selectedRunUuid: string) => {
     const selectedRun = runs?.find((run) => run.info.runUuid === selectedRunUuid);
     // Keyed by tag key so RunViewEvaluationsTab can detect regression-test runs
@@ -603,7 +628,7 @@ const ExperimentEvaluationRunsPageImpl = () => {
         runUuid={selectedRunUuid}
         runTags={selectedRunTags}
         runDisplayName={Utils.getRunDisplayName(selectedRun?.info, selectedRunUuid)}
-        setCurrentRunUuid={setSelectedRunUuid}
+        setCurrentRunUuid={selectSingleRun}
         hideCompareSelector
       />
     );
@@ -645,23 +670,11 @@ const ExperimentEvaluationRunsPageImpl = () => {
 
   const renderTable = () => (
     <ExperimentEvaluationRunsTable
-      data={runs ?? []}
+      data={tableRuns}
       uniqueColumns={uniqueColumns}
       selectedColumns={selectedColumns}
       selectedRunUuid={selectedRunUuid}
-      setSelectedRunUuid={(runUuid: string) => {
-        // Update both params atomically to avoid race conditions
-        // where separate setSearchParams calls overwrite each other
-        setSearchParams(
-          (params) => {
-            params.set(SELECTED_RUN_UUID_QUERY_PARAM, runUuid);
-            params.delete(COMPARE_TO_RUN_UUID_QUERY_PARAM);
-            return params;
-          },
-          { replace: true },
-        );
-        setIsComparisonMode(false);
-      }}
+      setSelectedRunUuid={selectSingleRun}
       isLoading={isLoading}
       hasNextPage={hasNextPage ?? false}
       rowSelection={rowSelection}
@@ -669,7 +682,7 @@ const ExperimentEvaluationRunsPageImpl = () => {
       viewMode={ExperimentEvaluationRunsPageMode.TRACES}
       onScroll={(e) => fetchMoreOnBottomReached(e.currentTarget)}
       ref={tableContainerRef}
-      isGrouped={false}
+      isGrouped={hasNestedRuns}
       enableImprovedComparison={false}
     />
   );

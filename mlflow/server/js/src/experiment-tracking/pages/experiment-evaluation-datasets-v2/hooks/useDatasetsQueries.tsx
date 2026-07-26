@@ -26,6 +26,7 @@ export interface Dataset {
   last_updated_by?: string;
   digest?: string;
   name?: string;
+  description?: string;
   schema?: string;
   profile?: string;
   source?: string;
@@ -55,6 +56,7 @@ export interface DatasetRecord {
 interface OssDataset {
   dataset_id: string;
   name?: string;
+  description?: string;
   tags?: string;
   schema?: string;
   profile?: string;
@@ -109,6 +111,7 @@ const orEmpty = (value: { [key: string]: any } | undefined): { [key: string]: an
 const ossDatasetToUniverse = (raw: OssDataset): Dataset => ({
   dataset_id: raw.dataset_id,
   name: raw.name,
+  description: raw.description,
   digest: raw.digest,
   schema: raw.schema,
   profile: raw.profile,

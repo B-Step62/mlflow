@@ -220,7 +220,6 @@ describe('ExperimentEvaluationRunsPage', () => {
     });
     expect(screen.getByTestId('header-title-adjacent')).toBeEmptyDOMElement();
     expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('support_qa_smoke');
-    expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('Safety');
     expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('Total cost');
     expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('$0.01234');
     expect(screen.getByTestId('header-title-metadata')).toHaveTextContent('Tokens');

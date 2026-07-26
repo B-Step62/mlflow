@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 import {
   ApplyDesignSystemContextOverrides,
+  Button,
   ChevronDownIcon,
   ChevronRightIcon,
   DesignSystemEventProviderAnalyticsEventTypes,
@@ -10,6 +11,7 @@ import {
   FormUI,
   Input,
   Modal,
+  SparkleIcon,
   TableSkeleton,
   Typography,
   useDesignSystemEventComponentCallbacks,
@@ -22,10 +24,12 @@ import {
   LabelSchemaFormModal,
   useListLabelSchemasQuery,
 } from '../../components/label-schemas';
+import type { LabelSchema } from '../../components/label-schemas/types';
 import { QuestionChecklistCombobox } from './QuestionChecklistCombobox';
 import { MAX_ASSIGNED_USERS, ReviewerChecklistCombobox } from './ReviewerChecklistCombobox';
 import { useIsAuthAvailable } from '../../../account/hooks';
 import Utils from '../../../common/utils/Utils';
+import { getAiGradientBorderStyle } from '../../../shared/web-shared/design-system/aiGradientBorderStyle';
 import { useAssignableUsersQuery } from './hooks/useAssignableUsersQuery';
 import { useCreateReviewQueueMutation } from './hooks/useCreateReviewQueueMutation';
 import { useIsReviewerResolved, useReviewer } from './hooks/useReviewer';
@@ -33,6 +37,11 @@ import { sameUser } from './queuePermissions';
 import type { ReviewQueue } from './types';
 
 const CID = 'mlflow.experiment-review-queue.create-queue';
+
+export type ReviewQueueAiConfigureContext = {
+  defaultName?: string;
+  judgeQuestion?: string;
+};
 
 /**
  * Create form for a CUSTOM review queue: a name, the subset of the experiment's
@@ -46,10 +55,12 @@ export const CreateReviewQueueModal = ({
   experimentId,
   onClose,
   onCreated,
+  aiConfigureContext,
 }: {
   experimentId: string;
   onClose: () => void;
   onCreated?: (queue: ReviewQueue) => void;
+  aiConfigureContext?: ReviewQueueAiConfigureContext;
 }) => {
   const { theme } = useDesignSystemTheme();
   const intl = useIntl();
@@ -89,6 +100,7 @@ export const CreateReviewQueueModal = ({
   const [createQuestionOpen, setCreateQuestionOpen] = useState(false);
   // Which question previews are expanded (collapsed by default).
   const [expandedPreview, setExpandedPreview] = useState<Set<string>>(new Set());
+  const [aiGeneratedSchemas, setAiGeneratedSchemas] = useState<LabelSchema[]>([]);
   const togglePreview = (schemaId: string) =>
     setExpandedPreview((prev) => {
       const next = new Set(prev);
@@ -101,9 +113,16 @@ export const CreateReviewQueueModal = ({
     });
 
   const checkedIds = selectedIds;
+  const availableLabelSchemas = useMemo(
+    () => [
+      ...aiGeneratedSchemas,
+      ...labelSchemas.filter((s) => !aiGeneratedSchemas.some((ai) => ai.schema_id === s.schema_id)),
+    ],
+    [aiGeneratedSchemas, labelSchemas],
+  );
   const selectedSchemas = useMemo(
-    () => labelSchemas.filter((s) => checkedIds.has(s.schema_id)),
-    [labelSchemas, checkedIds],
+    () => availableLabelSchemas.filter((s) => checkedIds.has(s.schema_id)),
+    [availableLabelSchemas, checkedIds],
   );
   // The dropdown trigger shows a count, not the list of names. DialogCombobox
   // joins `value` entries, so collapse to a single summary string; item checked
@@ -132,6 +151,53 @@ export const CreateReviewQueueModal = ({
       next.delete(schemaId);
     }
     setSelectedIds(next);
+  };
+
+  const handleConfigureWithAi = () => {
+    const judgeQuestion =
+      aiConfigureContext?.judgeQuestion ||
+      intl.formatMessage({
+        defaultMessage: 'Answer the same question asked to the LLM judge.',
+        description: 'Fallback AI configured judge question',
+      });
+    const generatedSchemas: LabelSchema[] = [
+      {
+        schema_id: 'ai-configured-judge-question',
+        experiment_id: experimentId,
+        name: judgeQuestion,
+        type: 'FEEDBACK',
+        instruction: intl.formatMessage({
+          defaultMessage: 'Answer the same question used by the LLM judge.',
+          description: 'AI configured judge question instruction',
+        }),
+        enable_comment: true,
+        input: { pass_fail: { positive_label: 'Pass', negative_label: 'Fail' } },
+      },
+      {
+        schema_id: 'ai-configured-free-form-feedback',
+        experiment_id: experimentId,
+        name: intl.formatMessage({
+          defaultMessage: 'Free-form feedback',
+          description: 'AI configured free-form question name',
+        }),
+        type: 'FEEDBACK',
+        instruction: intl.formatMessage({
+          defaultMessage: 'Add rationale, edge cases, or rubric notes.',
+          description: 'AI configured free-form question instruction',
+        }),
+        input: { text: {} },
+      },
+    ];
+    setName(
+      aiConfigureContext?.defaultName ||
+        intl.formatMessage({
+          defaultMessage: 'Judge feedback queue',
+          description: 'Default AI configured review queue name',
+        }),
+    );
+    setAiGeneratedSchemas(generatedSchemas);
+    setSelectedIds(new Set(generatedSchemas.map((schema) => schema.schema_id)));
+    setExpandedPreview(new Set(generatedSchemas.map((schema) => schema.schema_id)));
   };
 
   const usernames = useMemo(
@@ -223,7 +289,22 @@ export const CreateReviewQueueModal = ({
         // Relative to the (drawer-doubled) base so it clears a trace-detail drawer
         // when launched from the flag-for-review picker, like ExportTracesToDatasetModal.
         zIndex={theme.options.zIndexBase + 10}
-        title={<FormattedMessage defaultMessage="New review queue" description="Create review queue modal title" />}
+        title={
+          <div css={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md }}>
+            <FormattedMessage defaultMessage="New review queue" description="Create review queue modal title" />
+            <Button
+              componentId={`${CID}.configure-with-ai`}
+              icon={<SparkleIcon color="ai" />}
+              onClick={handleConfigureWithAi}
+              css={getAiGradientBorderStyle(theme)}
+            >
+              <FormattedMessage
+                defaultMessage="Configure with AI"
+                description="Create review queue: AI configure button"
+              />
+            </Button>
+          </div>
+        }
         okText={<FormattedMessage defaultMessage="Create" description="Create review queue: confirm button" />}
         okButtonProps={{ disabled: !canSubmit, loading: isCreatingQueue }}
         cancelText={null}
@@ -292,7 +373,7 @@ export const CreateReviewQueueModal = ({
               </FormUI.Hint>
               {isLoading ? (
                 <TableSkeleton lines={3} />
-              ) : labelSchemas.length === 0 ? (
+              ) : availableLabelSchemas.length === 0 ? (
                 <Empty
                   description={
                     <FormattedMessage
@@ -305,7 +386,7 @@ export const CreateReviewQueueModal = ({
                 <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
                   <QuestionChecklistCombobox
                     componentId={`${CID}.questions`}
-                    schemas={labelSchemas}
+                    schemas={availableLabelSchemas}
                     checkedIds={checkedIds}
                     onToggle={(schemaId) => toggle(schemaId, !checkedIds.has(schemaId))}
                     onCreateQuestion={() => setCreateQuestionOpen(true)}

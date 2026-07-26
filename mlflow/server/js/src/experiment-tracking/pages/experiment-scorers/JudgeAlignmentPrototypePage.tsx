@@ -1,30 +1,31 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import { keyframes } from '@emotion/react';
 import {
   ArrowDownIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
   ArrowUpIcon,
   Button,
   CloseIcon,
+  GearIcon,
   Input,
   Modal,
   PencilIcon,
   PlayIcon,
   PlusIcon,
   Popover,
+  RefreshIcon,
   SaveIcon,
   SimpleSelect,
   SimpleSelectOption,
   SparkleDoubleIcon,
   SparkleIcon,
   SpeechBubbleIcon,
+  SpeechBubblePlusIcon,
   Tag,
   TextBoxIcon,
   Tooltip,
-  TrashIcon,
   Typography,
+  VisibleOffIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from '@databricks/i18n';
@@ -35,6 +36,7 @@ import { Link, useNavigate, useParams, useSearchParams } from '../../../common/u
 import { diffLines } from '../prompts/diff';
 import { ExperimentPageTabName } from '../../constants';
 import Routes from '../../routes';
+import { CreateReviewQueueModal } from '../experiment-review-queue/CreateReviewQueueModal';
 
 const JUDGE_NAME = 'response_quality';
 const JUDGE_OPTIONS = [JUDGE_NAME, 'groundedness', 'safety', 'answer_relevance'];
@@ -71,10 +73,19 @@ type AlignmentRow = {
   inputs: string;
   outputs: string;
   llmJudge: JudgeResult;
-  humanJudge: JudgeResult;
+  humanJudge?: JudgeResult;
   llmRationale: string;
   humanRationale: string;
 };
+
+const hasMissingFeedback = (rows: AlignmentRow[]) => rows.some((row) => !row.humanJudge);
+
+const withoutHumanFeedback = (rows: AlignmentRow[]) =>
+  rows.map((row) => ({
+    ...row,
+    humanJudge: undefined,
+    humanRationale: '',
+  }));
 
 const dotPulse = keyframes`
   0%, 80%, 100% {
@@ -206,21 +217,83 @@ const INITIAL_ROWS: AlignmentRow[] = [
     inputs: 'Who can change the billing owner?',
     outputs: 'Only workspace admins can transfer billing ownership from billing settings.',
     llmJudge: 'FAIL',
-    humanJudge: 'FAIL',
+    humanJudge: undefined,
     llmRationale: 'The answer omits account-owner approval details.',
-    humanRationale: 'The final answer is incomplete because account-owner approval is required.',
+    humanRationale: '',
   },
 ];
 
-const DATASET_SAMPLE_ROWS = INITIAL_ROWS.slice(0, 5);
+const DATASET_SAMPLE_ROWS = withoutHumanFeedback(INITIAL_ROWS.slice(0, 5));
 const TRACE_SAMPLE_ROWS = INITIAL_ROWS.slice(5, 10);
 const EVALUATION_PREFILL_ROWS = INITIAL_ROWS;
 
+const ASSET_CLASS_EVALUATION_ROWS: AlignmentRow[] = [
+  {
+    id: 'asset-class-eval-1',
+    inputs: 'Can I keep this emergency reserve in short-term bonds without taking equity risk?',
+    outputs: 'A broad equity index fund is appropriate because stocks provide long-term upside.',
+    llmJudge: 'PASS',
+    humanJudge: 'FAIL',
+    llmRationale: 'The answer gives a concrete investment recommendation.',
+    humanRationale: 'The response substitutes equities for a bond/cash-equivalent question.',
+  },
+  {
+    id: 'asset-class-eval-2',
+    inputs: 'Which bond fund option is least sensitive to rate changes?',
+    outputs: 'Large-cap equities are usually less volatile than small-cap growth.',
+    llmJudge: 'PASS',
+    humanJudge: 'FAIL',
+    llmRationale: 'The response discusses relative volatility.',
+    humanRationale: 'The answer ignores bond duration and changes the asset class to equities.',
+  },
+  {
+    id: 'asset-class-eval-3',
+    inputs: 'Is a cash sweep account better than a municipal bond ladder for taxes?',
+    outputs: 'Dividend-paying stocks can improve tax efficiency for taxable accounts.',
+    llmJudge: 'PASS',
+    humanJudge: 'FAIL',
+    llmRationale: 'The answer discusses taxable-account efficiency.',
+    humanRationale: 'The answer is unsupported by the retrieved cash sweep and municipal bond context.',
+  },
+  {
+    id: 'asset-class-eval-4',
+    inputs: 'Can I use T-bills as a low-risk parking place for cash?',
+    outputs: 'Yes. T-bills are cash equivalents and avoid equity-market exposure.',
+    llmJudge: 'FAIL',
+    humanJudge: 'PASS',
+    llmRationale: 'The answer is short and lacks a portfolio allocation.',
+    humanRationale: 'The answer preserves the requested asset class and avoids equity recommendations.',
+  },
+];
+
 const cloneAlignmentRows = (rows: AlignmentRow[]) => rows.map((row) => ({ ...row }));
 
-const getRowsForPrefillSource = (prefillSource: string | null): AlignmentRow[] => {
+const applyTraceIdsToRows = (rows: AlignmentRow[], traceIdsParam: string | null): AlignmentRow[] => {
+  const traceIds =
+    traceIdsParam
+      ?.split(',')
+      .map((traceId) => traceId.trim())
+      .filter(Boolean) ?? [];
+  if (!traceIds.length) {
+    return rows;
+  }
+  return rows.map((row, index) => ({
+    ...row,
+    id: traceIds[index] ?? row.id,
+  }));
+};
+
+const getRowsForPrefillSource = (
+  prefillSource: string | null,
+  judgeName?: string,
+  traceIdsParam?: string | null,
+): AlignmentRow[] => {
   if (prefillSource === 'eval' || prefillSource === 'evaluation') {
-    return cloneAlignmentRows(EVALUATION_PREFILL_ROWS);
+    const rows =
+      judgeName === 'asset_class_consistency' || judgeName === 'retrieval_answer_alignment'
+        ? ASSET_CLASS_EVALUATION_ROWS
+        : EVALUATION_PREFILL_ROWS;
+    return applyTraceIdsToRows(cloneAlignmentRows(rows), traceIdsParam ?? null);
   }
   if (prefillSource === 'dataset') {
     return cloneAlignmentRows(DATASET_SAMPLE_ROWS);
@@ -229,6 +302,31 @@ const getRowsForPrefillSource = (prefillSource: string | null): AlignmentRow[] =
     return cloneAlignmentRows(TRACE_SAMPLE_ROWS);
   }
   return [];
+};
+
+const getInstructionForPrefill = (judgeName: string, prefillSource: string | null): string => {
+  if (judgeName === 'asset_class_consistency') {
+    return `Evaluate whether {{ outputs }} preserves the asset class requested in {{ inputs }}.
+
+Return true only when the answer stays in the requested bond, cash-equivalent, or municipal-bond context.
+Return false if the answer substitutes equities, stocks, dividends, or unrelated investment categories.
+Use retrieved evidence and expectations as the source of truth when deciding whether the answer changed asset class.`;
+  }
+  if (judgeName === 'retrieval_answer_alignment') {
+    return `Evaluate whether {{ outputs }} is supported by the retrieved evidence for {{ inputs }}.
+
+Return true only when the answer's investment recommendation is grounded in the retrieved passages.
+Return false if the answer introduces recommendations that are absent from, or contradicted by, retrieved evidence.
+Pay special attention to answers that switch from cash or bond context to equity recommendations.`;
+  }
+  if (prefillSource === 'eval' || prefillSource === 'evaluation') {
+    return `Evaluate whether {{ outputs }} should pass for the selected evaluation run.
+
+Return true when the answer satisfies the human expectation for the trace.
+Return false when the answer repeats the failure pattern identified by the evaluation result.
+Use reviewed trace examples and human rationale as the deciding evidence.`;
+  }
+  return INITIAL_INSTRUCTION;
 };
 
 const ResultTag = ({ value }: { value: JudgeResult }) => (
@@ -240,6 +338,77 @@ const ResultTag = ({ value }: { value: JudgeResult }) => (
     {value}
   </Tag>
 );
+
+const HumanResultTag = ({ value, onFlip }: { value: JudgeResult; onFlip: () => void }) => {
+  const { theme } = useDesignSystemTheme();
+  const flipIconColor =
+    value === 'PASS'
+      ? theme.isDarkMode
+        ? theme.colors.green400
+        : theme.colors.green600
+      : theme.isDarkMode
+        ? theme.colors.red400
+        : theme.colors.red600;
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onFlip();
+    }
+  };
+
+  return (
+    <Tooltip
+      componentId="mlflow.experiment-scorers.judge-alignment-flip-human-tooltip"
+      content={
+        <FormattedMessage defaultMessage="Flip human result" description="Tooltip for flip human result button" />
+      }
+    >
+      <Tag
+        componentId="mlflow.experiment-scorers.judge-alignment-human-result"
+        color={value === 'PASS' ? 'turquoise' : 'coral'}
+        role="button"
+        tabIndex={0}
+        aria-label="Flip human result"
+        onClick={onFlip}
+        onKeyDown={handleKeyDown}
+        css={{
+          margin: 0,
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+          userSelect: 'none',
+          '&:hover .judge-alignment-human-flip-icon, &:focus .judge-alignment-human-flip-icon': {
+            opacity: 1,
+          },
+        }}
+      >
+        <span>{value}</span>
+        <span
+          className="judge-alignment-human-flip-icon"
+          aria-hidden
+          css={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 16,
+            height: 16,
+            color: flipIconColor,
+            opacity: 0,
+            transition: 'opacity 120ms ease-in-out',
+            svg: {
+              width: 10,
+              height: 10,
+            },
+          }}
+        >
+          <RefreshIcon />
+        </span>
+      </Tag>
+    </Tooltip>
+  );
+};
 
 const LoadingDots = ({ withLeadingSpace = true }: { withLeadingSpace?: boolean }) => {
   const { theme } = useDesignSystemTheme();
@@ -267,27 +436,6 @@ const LoadingDots = ({ withLeadingSpace = true }: { withLeadingSpace?: boolean }
           }}
         />
       ))}
-    </span>
-  );
-};
-
-const FlipResultIcon = () => {
-  const { theme } = useDesignSystemTheme();
-
-  return (
-    <span
-      css={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 1,
-        svg: {
-          width: theme.typography.fontSizeSm,
-          height: theme.typography.fontSizeSm,
-        },
-      }}
-    >
-      <ArrowLeftIcon />
-      <ArrowRightIcon />
     </span>
   );
 };
@@ -707,22 +855,32 @@ const JudgeAlignmentPrototypePage = () => {
   const hasSelectedJudge = Boolean(selectedJudgeName);
   const judgeName = selectedJudgeName || JUDGE_NAME;
   const prefillSource = searchParams.get('prefill');
+  const prefillTraceIds = searchParams.get('traceIds');
+  const initialInstruction = useMemo(
+    () => getInstructionForPrefill(selectedJudgeName, prefillSource),
+    [prefillSource, selectedJudgeName],
+  );
 
-  const [savedInstruction, setSavedInstruction] = useState(INITIAL_INSTRUCTION);
-  const [instruction, setInstruction] = useState(INITIAL_INSTRUCTION);
+  const [savedInstruction, setSavedInstruction] = useState(initialInstruction);
+  const [instruction, setInstruction] = useState(initialInstruction);
   const [savedModel, setSavedModel] = useState(MODEL_OPTIONS[0]);
   const [model, setModel] = useState(MODEL_OPTIONS[0]);
   const [savedVersion, setSavedVersion] = useState(5);
-  const [rows, setRows] = useState<AlignmentRow[]>(() => getRowsForPrefillSource(prefillSource));
+  const [rows, setRows] = useState<AlignmentRow[]>(() =>
+    getRowsForPrefillSource(prefillSource, selectedJudgeName, prefillTraceIds),
+  );
   const [loadingRowIds, setLoadingRowIds] = useState<Set<string>>(new Set());
   const [isJudgeRunning, setIsJudgeRunning] = useState(false);
   const [alignmentPhase, setAlignmentPhase] = useState<AlignmentPhase>('idle');
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(() =>
+    hasMissingFeedback(getRowsForPrefillSource(prefillSource, selectedJudgeName, prefillTraceIds)),
+  );
   const [editingCell, setEditingCell] = useState<EditableCell>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showReviewQueueModal, setShowReviewQueueModal] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
-  const [pendingDeleteRow, setPendingDeleteRow] = useState<AlignmentRow | null>(null);
+  const [mutedRowIds, setMutedRowIds] = useState<Set<string>>(new Set());
   const judgeRunTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const alignmentTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
@@ -748,15 +906,17 @@ const JudgeAlignmentPrototypePage = () => {
   );
 
   useEffect(() => {
-    setRows(getRowsForPrefillSource(prefillSource));
+    const nextRows = getRowsForPrefillSource(prefillSource, selectedJudgeName, prefillTraceIds);
+    setRows(nextRows);
     setLoadingRowIds(new Set());
-    setShowSuggestions(false);
+    setMutedRowIds(new Set());
+    setShowSuggestions(hasMissingFeedback(nextRows));
     setEditingCell(null);
-  }, [prefillSource]);
+  }, [prefillSource, prefillTraceIds, selectedJudgeName]);
 
   useEffect(() => {
-    setSavedInstruction(INITIAL_INSTRUCTION);
-    setInstruction(INITIAL_INSTRUCTION);
+    setSavedInstruction(initialInstruction);
+    setInstruction(initialInstruction);
     setSavedModel(MODEL_OPTIONS[0]);
     setModel(MODEL_OPTIONS[0]);
     setSavedVersion(5);
@@ -764,10 +924,12 @@ const JudgeAlignmentPrototypePage = () => {
     setShowSaveModal(false);
     setShowDiff(false);
     setCommitMessage('');
-  }, [selectedJudgeName]);
+  }, [initialInstruction, selectedJudgeName]);
 
   const isDraft = hasSelectedJudge && (instruction !== savedInstruction || model !== savedModel);
   const nextVersion = savedVersion + 1;
+  const hasMissingHumanFeedback = hasMissingFeedback(rows);
+  const allRowsMuted = rows.length > 0 && rows.every((row) => mutedRowIds.has(row.id));
   const judgeLinkRoute = experimentId
     ? Routes.getExperimentPageTabRoute(experimentId, ExperimentPageTabName.Judges)
     : undefined;
@@ -806,7 +968,7 @@ const JudgeAlignmentPrototypePage = () => {
     judgeRunTimeouts.current.forEach(clearTimeout);
     judgeRunTimeouts.current = [];
 
-    const rowsToRun = [...rows];
+    const rowsToRun = rows.filter((row) => !mutedRowIds.has(row.id));
     if (rowsToRun.length === 0) {
       setIsJudgeRunning(false);
       setLoadingRowIds(new Set());
@@ -832,17 +994,18 @@ const JudgeAlignmentPrototypePage = () => {
 
             const initialRow = INITIAL_ROWS.find(({ id }) => id === row.id);
             const hasAlignedInstruction = instructionSnapshot.includes('Alignment guidance:');
+            const humanJudge = existingRow.humanJudge ?? initialRow?.humanJudge ?? 'PASS';
             let nextResult: JudgeResult;
             if (hasAlignedInstruction) {
               if (Math.random() > 0.15) {
-                nextResult = existingRow.humanJudge;
+                nextResult = humanJudge;
               } else {
-                nextResult = existingRow.humanJudge === 'PASS' ? 'FAIL' : 'PASS';
+                nextResult = humanJudge === 'PASS' ? 'FAIL' : 'PASS';
               }
             } else if (Math.random() > 0.25) {
               nextResult = initialRow?.llmJudge ?? (Math.random() > 0.5 ? 'PASS' : 'FAIL');
             } else {
-              nextResult = existingRow.humanJudge;
+              nextResult = humanJudge;
             }
 
             return {
@@ -905,17 +1068,24 @@ const JudgeAlignmentPrototypePage = () => {
     }));
   };
 
-  const deleteRow = (rowId: string) => {
-    setRows((existingRows) => existingRows.filter((row) => row.id !== rowId));
-    setLoadingRowIds((existingIds) => {
+  const setHumanJudge = (rowId: string, value: JudgeResult) => {
+    updateRow(rowId, (row) => ({ ...row, humanJudge: value }));
+  };
+
+  const toggleRowMuted = (rowId: string) => {
+    setMutedRowIds((existingIds) => {
       const nextIds = new Set(existingIds);
-      nextIds.delete(rowId);
+      if (nextIds.has(rowId)) {
+        nextIds.delete(rowId);
+      } else {
+        nextIds.add(rowId);
+      }
       return nextIds;
     });
-    if (editingCell?.rowId === rowId) {
-      setEditingCell(null);
-    }
-    setPendingDeleteRow(null);
+  };
+
+  const toggleAllRowsMuted = () => {
+    setMutedRowIds(allRowsMuted ? new Set() : new Set(rows.map((row) => row.id)));
   };
 
   const addRow = () => {
@@ -937,7 +1107,8 @@ const JudgeAlignmentPrototypePage = () => {
   const loadExampleRows = (nextRows: AlignmentRow[]) => {
     setRows(cloneAlignmentRows(nextRows));
     setLoadingRowIds(new Set());
-    setShowSuggestions(false);
+    setMutedRowIds(new Set());
+    setShowSuggestions(hasMissingFeedback(nextRows));
     window.requestAnimationFrame(() => {
       scrollToSection(tableSectionRef.current);
     });
@@ -1086,20 +1257,25 @@ const JudgeAlignmentPrototypePage = () => {
                 <Typography.Text color="secondary">
                   <FormattedMessage defaultMessage="Model" description="Judge config label for model" />
                 </Typography.Text>
-                <SimpleSelect
-                  id="mlflow.experiment-scorers.judge-alignment-model"
-                  componentId="mlflow.experiment-scorers.judge-alignment-model"
-                  value={model}
-                  css={{ width: 300 }}
-                  disabled={!hasSelectedJudge}
-                  onChange={(event) => setModel(event.target.value)}
+                <Typography.Text>{model}</Typography.Text>
+                <Tooltip
+                  componentId="mlflow.experiment-scorers.judge-alignment-model-settings-tooltip"
+                  content={
+                    <FormattedMessage
+                      defaultMessage="Model settings"
+                      description="Tooltip for judge alignment model settings"
+                    />
+                  }
                 >
-                  {MODEL_OPTIONS.map((option) => (
-                    <SimpleSelectOption key={option} value={option}>
-                      {option}
-                    </SimpleSelectOption>
-                  ))}
-                </SimpleSelect>
+                  <Button
+                    componentId="mlflow.experiment-scorers.judge-alignment-model-settings"
+                    size="small"
+                    type="tertiary"
+                    icon={<GearIcon />}
+                    aria-label="Model settings"
+                    disabled={!hasSelectedJudge}
+                  />
+                </Tooltip>
               </div>
             </div>
             {alignmentPhase === 'optimizing' ? (
@@ -1248,21 +1424,48 @@ const JudgeAlignmentPrototypePage = () => {
                   onClick={() => setShowSuggestions(false)}
                 />
               </div>
-              <ul
-                css={{
-                  margin: 0,
-                  paddingLeft: theme.spacing.lg,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: theme.spacing.xs,
-                }}
-              >
-                {ALIGNMENT_SUGGESTIONS.map((suggestion) => (
-                  <li key={suggestion}>
-                    <Typography.Text>{suggestion}</Typography.Text>
-                  </li>
-                ))}
-              </ul>
+              {hasMissingHumanFeedback ? (
+                <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+                  <Typography.Text>
+                    <FormattedMessage
+                      defaultMessage="Human feedback is missing in some judge. Manually fill in the table below or use"
+                      description="Judge alignment suggestion when human feedback is missing"
+                    />
+                  </Typography.Text>
+                  <Button
+                    componentId="mlflow.experiment-scorers.judge-alignment-open-review-queue"
+                    type="link"
+                    size="small"
+                    icon={<SpeechBubblePlusIcon />}
+                    onClick={() => setShowReviewQueueModal(true)}
+                    css={{ padding: 0 }}
+                  >
+                    <FormattedMessage defaultMessage="review queue" description="Review queue link in suggestions" />
+                  </Button>
+                  <Typography.Text>
+                    <FormattedMessage
+                      defaultMessage="to request annotation from experts."
+                      description="Judge alignment suggestion suffix when human feedback is missing"
+                    />
+                  </Typography.Text>
+                </div>
+              ) : (
+                <ul
+                  css={{
+                    margin: 0,
+                    paddingLeft: theme.spacing.lg,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  {ALIGNMENT_SUGGESTIONS.map((suggestion) => (
+                    <li key={suggestion}>
+                      <Typography.Text>{suggestion}</Typography.Text>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
 
@@ -1301,7 +1504,7 @@ const JudgeAlignmentPrototypePage = () => {
                     </colgroup>
                     <thead>
                       <tr css={{ backgroundColor: theme.colors.backgroundSecondary }}>
-                        {['Inputs', 'Outputs', 'LLM judge', 'Human', 'Aligned?', ''].map((header) => (
+                        {['Inputs', 'Outputs', 'LLM judge', 'Human', 'Aligned?'].map((header) => (
                           <th
                             key={header}
                             css={{
@@ -1313,15 +1516,62 @@ const JudgeAlignmentPrototypePage = () => {
                             <Typography.Text bold>{header}</Typography.Text>
                           </th>
                         ))}
+                        <th
+                          css={{
+                            textAlign: 'right',
+                            padding: theme.spacing.sm,
+                            borderBottom: `1px solid ${theme.colors.border}`,
+                          }}
+                        >
+                          <Tooltip
+                            componentId="mlflow.experiment-scorers.judge-alignment-mute-all-tooltip"
+                            content={
+                              allRowsMuted ? (
+                                <FormattedMessage
+                                  defaultMessage="Unmute all examples so they run again."
+                                  description="Tooltip for unmute all alignment examples button"
+                                />
+                              ) : (
+                                <FormattedMessage
+                                  defaultMessage="Keep all judge records in this table, but skip execution for muted judges."
+                                  description="Tooltip for mute all alignment examples button"
+                                />
+                              )
+                            }
+                          >
+                            <Button
+                              componentId="mlflow.experiment-scorers.judge-alignment-mute-all"
+                              size="small"
+                              type="tertiary"
+                              icon={<VisibleOffIcon />}
+                              aria-label={allRowsMuted ? 'Unmute all examples' : 'Mute all examples'}
+                              disabled={rows.length === 0}
+                              onClick={toggleAllRowsMuted}
+                            />
+                          </Tooltip>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((row) => {
                         const isRowLoading = loadingRowIds.has(row.id);
-                        const isAligned = row.llmJudge === row.humanJudge;
+                        const isMuted = mutedRowIds.has(row.id);
+                        const isAligned = row.humanJudge ? row.llmJudge === row.humanJudge : false;
 
                         return (
-                          <tr key={row.id}>
+                          <tr
+                            key={row.id}
+                            css={{
+                              backgroundColor: isMuted
+                                ? theme.isDarkMode
+                                  ? theme.colors.backgroundSecondary
+                                  : theme.colors.grey100
+                                : undefined,
+                              '&:hover .judge-alignment-row-mute, &:focus-within .judge-alignment-row-mute': {
+                                opacity: 1,
+                              },
+                            }}
+                          >
                             <td
                               css={{
                                 padding: theme.spacing.sm,
@@ -1399,48 +1649,75 @@ const JudgeAlignmentPrototypePage = () => {
                                 },
                               }}
                             >
-                              <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-                                <ResultTag value={row.humanJudge} />
-                                <span
-                                  className="judge-alignment-cell-action"
-                                  css={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: theme.spacing.xs,
-                                    opacity: 0,
-                                    transition: 'opacity 120ms ease-in-out',
-                                  }}
-                                >
-                                  <Tooltip
-                                    componentId="mlflow.experiment-scorers.judge-alignment-flip-human-tooltip"
-                                    content={
-                                      <FormattedMessage
-                                        defaultMessage="Flip human result"
-                                        description="Tooltip for flip human result button"
+                              <div
+                                css={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: theme.spacing.xs,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                {row.humanJudge ? (
+                                  <>
+                                    <HumanResultTag value={row.humanJudge} onFlip={() => flipHumanJudge(row.id)} />
+                                    <span
+                                      className="judge-alignment-cell-action"
+                                      css={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: theme.spacing.xs,
+                                        opacity: 0,
+                                        transition: 'opacity 120ms ease-in-out',
+                                      }}
+                                    >
+                                      <RationalePopover
+                                        title={
+                                          <FormattedMessage
+                                            defaultMessage="Human rationale"
+                                            description="Title for human rationale hover card"
+                                          />
+                                        }
+                                        rationale={row.humanRationale}
+                                        editable
+                                        onChange={(value) => updateRowField(row.id, 'humanRationale', value)}
                                       />
-                                    }
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span
+                                    className="judge-alignment-cell-action"
+                                    css={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: theme.spacing.xs,
+                                      opacity: 0,
+                                      transition: 'opacity 120ms ease-in-out',
+                                    }}
                                   >
                                     <Button
-                                      componentId="mlflow.experiment-scorers.judge-alignment-flip-human"
+                                      componentId="mlflow.experiment-scorers.judge-alignment-set-human-pass"
                                       size="small"
                                       type="tertiary"
-                                      icon={<FlipResultIcon />}
-                                      aria-label="Flip human result"
-                                      onClick={() => flipHumanJudge(row.id)}
-                                    />
-                                  </Tooltip>
-                                  <RationalePopover
-                                    title={
+                                      onClick={() => setHumanJudge(row.id, 'PASS')}
+                                    >
                                       <FormattedMessage
-                                        defaultMessage="Human rationale"
-                                        description="Title for human rationale hover card"
+                                        defaultMessage="Pass"
+                                        description="Set missing human result to pass"
                                       />
-                                    }
-                                    rationale={row.humanRationale}
-                                    editable
-                                    onChange={(value) => updateRowField(row.id, 'humanRationale', value)}
-                                  />
-                                </span>
+                                    </Button>
+                                    <Button
+                                      componentId="mlflow.experiment-scorers.judge-alignment-set-human-fail"
+                                      size="small"
+                                      type="tertiary"
+                                      onClick={() => setHumanJudge(row.id, 'FAIL')}
+                                    >
+                                      <FormattedMessage
+                                        defaultMessage="Fail"
+                                        description="Set missing human result to fail"
+                                      />
+                                    </Button>
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td
@@ -1453,7 +1730,7 @@ const JudgeAlignmentPrototypePage = () => {
                             >
                               {isRowLoading ? (
                                 <Typography.Text color="secondary">-</Typography.Text>
-                              ) : (
+                              ) : row.humanJudge ? (
                                 <span
                                   css={{
                                     color: isAligned
@@ -1472,6 +1749,8 @@ const JudgeAlignmentPrototypePage = () => {
                                     <FormattedMessage defaultMessage="No" description="Aligned table cell no text" />
                                   )}
                                 </span>
+                              ) : (
+                                ''
                               )}
                             </td>
                             <td
@@ -1484,21 +1763,30 @@ const JudgeAlignmentPrototypePage = () => {
                               }}
                             >
                               <Tooltip
-                                componentId="mlflow.experiment-scorers.judge-alignment-delete-row-tooltip"
+                                componentId="mlflow.experiment-scorers.judge-alignment-mute-row-tooltip"
                                 content={
-                                  <FormattedMessage
-                                    defaultMessage="Delete example"
-                                    description="Tooltip for delete alignment example button"
-                                  />
+                                  isMuted ? (
+                                    <FormattedMessage
+                                      defaultMessage="Run this judge record again."
+                                      description="Tooltip for unmute alignment example button"
+                                    />
+                                  ) : (
+                                    <FormattedMessage
+                                      defaultMessage="Keep this judge record, but skip it during execution."
+                                      description="Tooltip for mute alignment example button"
+                                    />
+                                  )
                                 }
                               >
                                 <Button
-                                  componentId="mlflow.experiment-scorers.judge-alignment-delete-row"
+                                  componentId="mlflow.experiment-scorers.judge-alignment-mute-row"
+                                  className="judge-alignment-row-mute"
                                   size="small"
                                   type="tertiary"
-                                  icon={<TrashIcon />}
-                                  aria-label="Delete example"
-                                  onClick={() => setPendingDeleteRow(row)}
+                                  icon={<VisibleOffIcon />}
+                                  aria-label={isMuted ? 'Unmute example' : 'Mute example'}
+                                  onClick={() => toggleRowMuted(row.id)}
+                                  css={{ opacity: 0, transition: 'opacity 120ms ease-in-out' }}
                                 />
                               </Tooltip>
                             </td>
@@ -1580,31 +1868,16 @@ const JudgeAlignmentPrototypePage = () => {
         </div>
       </Modal>
 
-      <Modal
-        componentId="mlflow.experiment-scorers.judge-alignment-delete-row-modal"
-        visible={Boolean(pendingDeleteRow)}
-        title={<FormattedMessage defaultMessage="Delete example?" description="Delete alignment example modal title" />}
-        okText={
-          <FormattedMessage defaultMessage="Delete" description="Confirm delete alignment example button label" />
-        }
-        okButtonProps={{ danger: true }}
-        cancelText={
-          <FormattedMessage defaultMessage="Cancel" description="Cancel delete alignment example button label" />
-        }
-        onOk={() => {
-          if (pendingDeleteRow) {
-            deleteRow(pendingDeleteRow.id);
-          }
-        }}
-        onCancel={() => setPendingDeleteRow(null)}
-      >
-        <Typography.Text>
-          <FormattedMessage
-            defaultMessage="Delete this alignment example from the table?"
-            description="Delete alignment example modal body text"
-          />
-        </Typography.Text>
-      </Modal>
+      {showReviewQueueModal && experimentId && (
+        <CreateReviewQueueModal
+          experimentId={experimentId}
+          onClose={() => setShowReviewQueueModal(false)}
+          aiConfigureContext={{
+            defaultName: `Judge feedback for ${judgeName}`,
+            judgeQuestion: instruction.trim().split('\n')[0] || `Review feedback for ${judgeName}`,
+          }}
+        />
+      )}
     </>
   );
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Button, CloseIcon, Typography, useDesignSystemTheme } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { DatasetRecord } from '../hooks/useDatasetsQueries';
@@ -221,7 +221,7 @@ export const DatasetRecordSidePanel = ({
   // prompt appears when dirty.
   useEffect(() => {
     if (!open) return undefined;
-    const handler = (event: KeyboardEvent) => {
+    const handler = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented) {
         onClose();
       }
@@ -247,7 +247,7 @@ export const DatasetRecordSidePanel = ({
 
   const showRecordDetail = mode === 'edit' && record !== undefined;
 
-  const handleBodyKeyDown = (event: KeyboardEvent) => {
+  const handleBodyKeyDown = (event: ReactKeyboardEvent) => {
     active.onContainerKeyDown(event);
     if (event.defaultPrevented || mode !== 'edit' || !onNavigateRecord || isEditableKeyboardTarget(event.target)) {
       return;

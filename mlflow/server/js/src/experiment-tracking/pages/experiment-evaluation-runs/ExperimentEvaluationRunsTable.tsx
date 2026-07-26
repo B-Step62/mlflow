@@ -113,6 +113,9 @@ export const ExperimentEvaluationRunsTable = forwardRef<HTMLDivElement, Experime
           if ('subRuns' in row) {
             return row.subRuns;
           }
+          if ('childRuns' in row) {
+            return row.childRuns;
+          }
           return undefined;
         },
         getRowCanExpand: (row) => Boolean(row.subRows?.length),
