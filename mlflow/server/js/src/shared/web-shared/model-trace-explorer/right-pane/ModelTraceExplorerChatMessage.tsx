@@ -27,7 +27,11 @@ import {
   getDisplayLength,
   truncatePreservingImages,
 } from './ModelTraceExplorerChatRenderer.utils';
-import { ModelTraceExplorerToolCallMessage } from './ModelTraceExplorerToolCallMessage';
+import {
+  ModelTraceExplorerToolCallIdLink,
+  ModelTraceExplorerToolCallMessage,
+  ModelTraceExplorerToolIcon,
+} from './ModelTraceExplorerToolCallMessage';
 import { CodeSnippetRenderMode, type ModelTraceChatMessage, type ModelTraceInputAudio } from '../ModelTrace.types';
 import { MARKDOWN_RENDER_SIZE_LIMIT } from '../constants';
 import { ModelTraceExplorerCodeSnippetBody } from '../ModelTraceExplorerCodeSnippetBody';
@@ -314,9 +318,11 @@ function ModelTraceExplorerAudioPlayer({ audioParts }: { audioParts: ModelTraceI
 export function ModelTraceExplorerChatMessage({
   message,
   className,
+  toolCallName,
 }: {
   message: ModelTraceChatMessage;
   className?: string;
+  toolCallName?: string;
 }) {
   const { theme } = useDesignSystemTheme();
   const [expanded, setExpanded] = useState(false);
@@ -334,6 +340,74 @@ export function ModelTraceExplorerChatMessage({
   const isExpandable = !shouldDisplayCodeSnippet && getDisplayLength(content) > effectiveLimit;
 
   const displayedContent = isExpandable && !expanded ? truncatePreservingImages(content, effectiveLimit) : content;
+  const toolCallId = message.tool_call_id;
+  const isToolResponse = (message.role === 'tool' || message.role === 'function') && toolCallId;
+
+  if (isToolResponse && toolCallId) {
+    const displayName = toolCallName ?? message.name ?? (message.role === 'function' ? 'Function' : 'Tool');
+
+    return (
+      <div
+        css={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+          backgroundColor: theme.colors.backgroundPrimary,
+          overflow: 'hidden',
+        }}
+        className={className}
+      >
+        <div
+          css={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            padding: theme.spacing.sm,
+            minWidth: 0,
+          }}
+        >
+          <ModelTraceExplorerToolIcon />
+          <Typography.Text bold css={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {displayName}
+          </Typography.Text>
+          <ModelTraceExplorerToolCallIdLink toolCallId={toolCallId} />
+          {displayedContent && (
+            <Typography.Text color="secondary" css={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', minWidth: 0 }}>
+              {displayedContent}
+            </Typography.Text>
+          )}
+        </div>
+        {isExpandable && (
+          <Typography.Link
+            componentId={
+              expanded
+                ? 'shared.model-trace-explorer.chat-message-see-less'
+                : 'shared.model-trace-explorer.chat-message-see-more'
+            }
+            onClick={() => setExpanded(!expanded)}
+            css={{
+              padding: theme.spacing.sm,
+              paddingTop: 0,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {expanded ? (
+              <FormattedMessage
+                defaultMessage="See less"
+                description="A button label in a message renderer that truncates long content when clicked."
+              />
+            ) : (
+              <FormattedMessage
+                defaultMessage="See more"
+                description="A button label in a message renderer that expands truncated content when clicked."
+              />
+            )}
+          </Typography.Link>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -354,10 +428,27 @@ export function ModelTraceExplorerChatMessage({
       />
       <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
         {message.reasoning && <ModelTraceExplorerReasoningSection reasoning={message.reasoning} />}
-        {!isNil(message.tool_calls) &&
-          message.tool_calls.map((toolCall) => (
-            <ModelTraceExplorerToolCallMessage key={toolCall.id} toolCall={toolCall} />
-          ))}
+        {message.tool_calls && message.tool_calls.length > 0 && (
+          <div
+            css={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.md,
+              paddingLeft: theme.spacing.lg,
+              paddingRight: theme.spacing.sm,
+            }}
+          >
+            <Typography.Text color="secondary" size="sm" css={{ paddingLeft: theme.spacing.sm + theme.spacing.xs }}>
+              <FormattedMessage
+                defaultMessage="Tool calls"
+                description="Small label for the group of tool calls inside an assistant chat message"
+              />
+            </Typography.Text>
+            {message.tool_calls.map((toolCall) => (
+              <ModelTraceExplorerToolCallMessage key={toolCall.id} toolCall={toolCall} />
+            ))}
+          </div>
+        )}
         {/* Text content renders before audio parts. The markdown renderer and audio
             player are separate rendering paths, so original part interleaving is not
             preserved. Text-first matches the typical pattern where prompts precede

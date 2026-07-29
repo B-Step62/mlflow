@@ -75,10 +75,9 @@ describe('ModelTraceExplorerRightPane', () => {
 
     // check that the tool calls render
     expect(screen.queryByText('Assistant')).toBeInTheDocument();
-    expect(screen.queryAllByText('tell_joke')).toHaveLength(2); // one in input, one in tool definition
+    expect(screen.queryAllByText('tell_joke')).toHaveLength(3); // assistant tool call, tool result, and tool definition
 
     // check that the tool result render
-    expect(screen.queryByText('Tool')).toBeInTheDocument();
     expect(
       screen.queryByText('Why did the scarecrow win an award? Because he was outstanding in his field!'),
     ).toBeInTheDocument();

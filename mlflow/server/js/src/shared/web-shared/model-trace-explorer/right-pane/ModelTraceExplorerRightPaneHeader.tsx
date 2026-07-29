@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 
 import {
-  ClockIcon,
   HoverCard,
   ListIcon,
   ModelsIcon,
@@ -23,13 +22,11 @@ import {
   getSpanExceptionCount,
   isV3ModelTraceInfo,
 } from '../ModelTraceExplorer.utils';
-import { useModelTraceExplorerViewState } from '../ModelTraceExplorerViewStateContext';
 import { useModelTraceExplorerContext } from '../ModelTraceExplorerContext';
 import { isTraceCostType, type TraceCost } from '../ModelTraceExplorerCostHoverCard';
 import { isTokenUsageType, type TokenUsage } from '../ModelTraceExplorerTokenUsageHoverCard';
 import { SESSION_ID_METADATA_KEY } from '../constants';
 import { isUserFacingTag, truncateToFirstLineWithMaxLength } from '../TagUtils';
-import { spanTimeFormatter } from '../timeline-tree/TimelineTree.utils';
 import { AssessmentPaneToggle } from '../assessments-pane/AssessmentPaneToggle';
 
 const MAX_SESSION_ID_DISPLAY_LENGTH = 16;
@@ -268,18 +265,10 @@ export const ModelTraceExplorerRightPaneHeader = ({
 }) => {
   const { theme } = useDesignSystemTheme();
   const { rightPaneHeaderActions } = useModelTraceExplorerContext();
-  const { rootNode } = useModelTraceExplorerViewState();
   const activeSpanTitle = typeof activeSpan.title === 'string' ? activeSpan.title : undefined;
   const hasException = getSpanExceptionCount(activeSpan) > 0;
   const isRootSpan = !activeSpan.parentId;
   const modelName = !isRootSpan && activeSpan.modelName ? activeSpan.modelName : undefined;
-
-  const latency = useMemo(() => {
-    const start = isRootSpan && rootNode ? rootNode.start : activeSpan.start;
-    const end = isRootSpan && rootNode ? rootNode.end : activeSpan.end;
-
-    return spanTimeFormatter(end - start);
-  }, [activeSpan.end, activeSpan.start, isRootSpan, rootNode]);
 
   const tokenUsage = useMemo<Partial<TokenUsage> | undefined>(() => {
     if (!isRootSpan || !isV3ModelTraceInfo(modelTraceInfo)) {
@@ -306,7 +295,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
   );
 
   const hasMetadata =
-    latency || modelName || isTokenUsageType(tokenUsage) || isTraceCostType(cost) || sessionId || tags.length > 0;
+    modelName || isTokenUsageType(tokenUsage) || isTraceCostType(cost) || sessionId || tags.length > 0;
 
   return (
     <div
@@ -395,28 +384,6 @@ export const ModelTraceExplorerRightPaneHeader = ({
             boxSizing: 'border-box',
           }}
         >
-          {latency && (
-            <MetadataItem
-              tooltip={
-                isRootSpan ? (
-                  <FormattedMessage
-                    defaultMessage="Trace latency"
-                    description="Tooltip for trace latency metadata item"
-                  />
-                ) : (
-                  <FormattedMessage
-                    defaultMessage="Span latency"
-                    description="Tooltip for span latency metadata item"
-                  />
-                )
-              }
-            >
-              <ClockIcon />
-              <Typography.Text color="secondary" size="md">
-                {latency}
-              </Typography.Text>
-            </MetadataItem>
-          )}
           {modelName && (
             <MetadataItem
               tooltip={<FormattedMessage defaultMessage="Model" description="Tooltip for span model metadata item" />}
