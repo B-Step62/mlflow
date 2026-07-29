@@ -37,7 +37,12 @@ export function ModelTraceExplorerEventsTab({
   }
 
   return (
-    <div>
+    <div
+      css={{
+        paddingLeft: theme.spacing.md + theme.spacing.xs,
+        paddingRight: theme.spacing.md + theme.spacing.xs,
+      }}
+    >
       {events.map((event, index) => {
         const attributes = event.attributes;
         const title =

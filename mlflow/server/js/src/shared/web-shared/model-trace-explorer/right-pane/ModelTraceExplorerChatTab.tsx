@@ -14,6 +14,9 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
     <div
       css={{
         overflowY: 'auto',
+        paddingLeft: theme.spacing.md + theme.spacing.xs,
+        paddingRight: theme.spacing.md + theme.spacing.xs,
+        paddingTop: theme.spacing.sm,
       }}
       data-testid="model-trace-explorer-chat-tab"
     >
@@ -21,6 +24,8 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
         <ModelTraceExplorerCollapsibleSection
           withBorder
           css={{ marginBottom: theme.spacing.sm }}
+          headerPadding={`${theme.spacing.xs}px 0`}
+          contentPadding={`${theme.spacing.xs}px 0 ${theme.spacing.xs}px ${theme.spacing.sm + theme.spacing.xs}px`}
           title={
             <FormattedMessage
               defaultMessage="Tools"
@@ -29,7 +34,7 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
           }
           sectionKey="messages"
         >
-          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, paddingLeft: theme.spacing.md }}>
+          <div css={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
             {chatTools.map((tool) => (
               <ModelTraceExplorerChatTool key={tool.function.name} tool={tool} />
             ))}
@@ -46,10 +51,10 @@ export function ModelTraceExplorerChatTab({ activeSpan }: { activeSpan: ModelTra
         }
         sectionKey="messages"
         withBorder
+        headerPadding={`${theme.spacing.xs}px 0`}
+        contentPadding={`${theme.spacing.xs}px 0 ${theme.spacing.xs}px ${theme.spacing.sm + theme.spacing.xs}px`}
       >
-        <div css={{ paddingLeft: theme.spacing.md }}>
-          <ModelTraceExplorerConversation messages={chatMessages ?? []} />
-        </div>
+        <ModelTraceExplorerConversation messages={chatMessages ?? []} />
       </ModelTraceExplorerCollapsibleSection>
     </div>
   );

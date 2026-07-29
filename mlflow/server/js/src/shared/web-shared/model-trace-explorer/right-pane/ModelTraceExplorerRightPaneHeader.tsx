@@ -24,12 +24,16 @@ import {
 } from '../ModelTraceExplorer.utils';
 import { useModelTraceExplorerContext } from '../ModelTraceExplorerContext';
 import { isTraceCostType, type TraceCost } from '../ModelTraceExplorerCostHoverCard';
-import { isTokenUsageType, type TokenUsage } from '../ModelTraceExplorerTokenUsageHoverCard';
+import { type TokenUsage } from '../ModelTraceExplorerTokenUsageHoverCard';
 import { SESSION_ID_METADATA_KEY } from '../constants';
 import { isUserFacingTag, truncateToFirstLineWithMaxLength } from '../TagUtils';
 import { AssessmentPaneToggle } from '../assessments-pane/AssessmentPaneToggle';
 
 const MAX_SESSION_ID_DISPLAY_LENGTH = 16;
+const MAX_TOKEN_USAGE_SEARCH_DEPTH = 6;
+
+type HeaderTokenUsage = Partial<TokenUsage> & Pick<TokenUsage, 'total_tokens'>;
+type TokenUsageSearchValue = Record<string, unknown> | unknown[];
 
 const getUserFacingTags = (tags: ModelTrace['info']['tags']): Array<[string, unknown]> => {
   if (Array.isArray(tags)) {
@@ -38,6 +42,93 @@ const getUserFacingTags = (tags: ModelTrace['info']['tags']): Array<[string, unk
 
   return Object.entries(tags ?? {}).filter(([key]) => isUserFacingTag(key));
 };
+
+const getNumberField = (value: Record<string, unknown>, field: string): number | undefined => {
+  const fieldValue = value[field];
+
+  return typeof fieldValue === 'number' && Number.isFinite(fieldValue) ? fieldValue : undefined;
+};
+
+const normalizeTokenUsage = (value: unknown): HeaderTokenUsage | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const totalTokens = getNumberField(record, 'total_tokens') ?? getNumberField(record, 'total_token_count');
+
+  let inputTokens =
+    getNumberField(record, 'input_tokens') ??
+    getNumberField(record, 'prompt_tokens') ??
+    getNumberField(record, 'prompt_token_count');
+  let outputTokens =
+    getNumberField(record, 'output_tokens') ??
+    getNumberField(record, 'completion_tokens') ??
+    getNumberField(record, 'candidates_token_count');
+  const reasoningTokens = getNumberField(record, 'thoughts_token_count');
+
+  if (outputTokens !== undefined && reasoningTokens !== undefined) {
+    outputTokens += reasoningTokens;
+  }
+
+  const inferredTotalTokens =
+    totalTokens ?? (inputTokens !== undefined && outputTokens !== undefined ? inputTokens + outputTokens : undefined);
+
+  if (inferredTotalTokens === undefined) {
+    return undefined;
+  }
+
+  if (inputTokens === undefined && outputTokens !== undefined) {
+    inputTokens = Math.max(inferredTotalTokens - outputTokens, 0);
+  }
+  if (outputTokens === undefined && inputTokens !== undefined) {
+    outputTokens = Math.max(inferredTotalTokens - inputTokens, 0);
+  }
+
+  const cacheReadInputTokens = getNumberField(record, 'cache_read_input_tokens');
+  const cacheCreationInputTokens = getNumberField(record, 'cache_creation_input_tokens');
+
+  return {
+    total_tokens: inferredTotalTokens,
+    ...(inputTokens !== undefined ? { input_tokens: inputTokens } : {}),
+    ...(outputTokens !== undefined ? { output_tokens: outputTokens } : {}),
+    ...(cacheReadInputTokens !== undefined ? { cache_read_input_tokens: cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined ? { cache_creation_input_tokens: cacheCreationInputTokens } : {}),
+  };
+};
+
+const getNestedTokenUsage = (
+  value: unknown,
+  depth = 0,
+  seen: WeakSet<TokenUsageSearchValue> = new WeakSet(),
+): HeaderTokenUsage | undefined => {
+  if (!value || typeof value !== 'object' || depth > MAX_TOKEN_USAGE_SEARCH_DEPTH) {
+    return undefined;
+  }
+
+  const searchValue = value as TokenUsageSearchValue;
+  if (seen.has(searchValue)) {
+    return undefined;
+  }
+  seen.add(searchValue);
+
+  const tokenUsage = normalizeTokenUsage(value);
+  if (tokenUsage) {
+    return tokenUsage;
+  }
+
+  for (const childValue of Object.values(value)) {
+    const nestedTokenUsage = getNestedTokenUsage(childValue, depth + 1, seen);
+    if (nestedTokenUsage) {
+      return nestedTokenUsage;
+    }
+  }
+
+  return undefined;
+};
+
+const getSpanTokenUsage = (span: ModelTraceSpanNode): HeaderTokenUsage | undefined =>
+  getNestedTokenUsage(span.outputs) ?? getNestedTokenUsage(span.inputs) ?? getNestedTokenUsage(span.attributes);
 
 const MetadataItem = ({ children, tooltip }: { children: ReactNode; tooltip: ReactNode }) => {
   const { theme } = useDesignSystemTheme();
@@ -83,7 +174,7 @@ const BreakdownRow = ({ label, value, bold = false }: { label: ReactNode; value:
   );
 };
 
-const TokenUsageMetadataItem = ({ tokenUsage }: { tokenUsage: TokenUsage }) => {
+const TokenUsageMetadataItem = ({ tokenUsage }: { tokenUsage: HeaderTokenUsage }) => {
   const { theme } = useDesignSystemTheme();
   const cacheReadTokens = tokenUsage.cache_read_input_tokens ?? null;
   const cacheCreationTokens = tokenUsage.cache_creation_input_tokens ?? null;
@@ -121,7 +212,7 @@ const TokenUsageMetadataItem = ({ tokenUsage }: { tokenUsage: TokenUsage }) => {
           </Typography.Title>
           <BreakdownRow
             label={<FormattedMessage defaultMessage="Input tokens" description="Label for input token usage" />}
-            value={tokenUsage.input_tokens}
+            value={tokenUsage.input_tokens ?? 'n/a'}
           />
           <BreakdownRow
             label={
@@ -137,7 +228,7 @@ const TokenUsageMetadataItem = ({ tokenUsage }: { tokenUsage: TokenUsage }) => {
           />
           <BreakdownRow
             label={<FormattedMessage defaultMessage="Output tokens" description="Label for output token usage" />}
-            value={tokenUsage.output_tokens}
+            value={tokenUsage.output_tokens ?? 'n/a'}
           />
           <div css={{ borderTop: `1px solid ${theme.colors.borderDecorative}`, paddingTop: theme.spacing.sm }}>
             <BreakdownRow
@@ -270,12 +361,12 @@ export const ModelTraceExplorerRightPaneHeader = ({
   const isRootSpan = !activeSpan.parentId;
   const modelName = !isRootSpan && activeSpan.modelName ? activeSpan.modelName : undefined;
 
-  const tokenUsage = useMemo<Partial<TokenUsage> | undefined>(() => {
-    if (!isRootSpan || !isV3ModelTraceInfo(modelTraceInfo)) {
-      return undefined;
+  const tokenUsage = useMemo<HeaderTokenUsage | undefined>(() => {
+    if (isRootSpan && isV3ModelTraceInfo(modelTraceInfo)) {
+      return normalizeTokenUsage(getTraceTokenUsage(modelTraceInfo as ModelTraceInfoV3));
     }
-    return getTraceTokenUsage(modelTraceInfo as ModelTraceInfoV3) as Partial<TokenUsage> | undefined;
-  }, [isRootSpan, modelTraceInfo]);
+    return getSpanTokenUsage(activeSpan);
+  }, [activeSpan, isRootSpan, modelTraceInfo]);
 
   const traceCost = useMemo<Partial<TraceCost> | undefined>(() => {
     if (!isRootSpan || !isV3ModelTraceInfo(modelTraceInfo)) {
@@ -294,8 +385,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
     [isRootSpan, modelTraceInfo.tags],
   );
 
-  const hasMetadata =
-    modelName || isTokenUsageType(tokenUsage) || isTraceCostType(cost) || sessionId || tags.length > 0;
+  const hasMetadata = modelName || tokenUsage || isTraceCostType(cost) || sessionId || tags.length > 0;
 
   return (
     <div
@@ -304,6 +394,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
         flexDirection: 'column',
         borderTop: `2px solid ${theme.colors.border}`,
         boxSizing: 'border-box',
+        padding: `${theme.spacing.md}px ${theme.spacing.md + theme.spacing.xs}px`,
       }}
     >
       <div
@@ -314,7 +405,6 @@ export const ModelTraceExplorerRightPaneHeader = ({
           gap: theme.spacing.sm,
           minWidth: 0,
           minHeight: theme.spacing.xl + 2 * theme.spacing.sm,
-          padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
           boxSizing: 'border-box',
         }}
       >
@@ -380,7 +470,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
             overflow: 'hidden',
             flexWrap: 'wrap',
             rowGap: theme.spacing.sm,
-            padding: `${theme.spacing.sm}px ${theme.spacing.md}px ${theme.spacing.md}px`,
+            paddingTop: theme.spacing.sm,
             boxSizing: 'border-box',
           }}
         >
@@ -404,7 +494,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
               </Typography.Text>
             </MetadataItem>
           )}
-          {isTokenUsageType(tokenUsage) && <TokenUsageMetadataItem tokenUsage={tokenUsage} />}
+          {tokenUsage && <TokenUsageMetadataItem tokenUsage={tokenUsage} />}
           {isTraceCostType(cost) && <CostMetadataItem cost={cost} />}
           {sessionId && (
             <MetadataItem

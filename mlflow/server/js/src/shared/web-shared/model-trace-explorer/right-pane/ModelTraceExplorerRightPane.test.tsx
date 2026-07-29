@@ -7,6 +7,7 @@ import { IntlProvider } from '@databricks/i18n';
 
 import { ModelTraceExplorerChatTab } from './ModelTraceExplorerChatTab';
 import { ModelTraceExplorerContentTab } from './ModelTraceExplorerContentTab';
+import { ModelTraceExplorerRightPaneHeader } from './ModelTraceExplorerRightPaneHeader';
 import type { ModelTraceSpan, ModelTraceSpanNode } from '../ModelTrace.types';
 import {
   mockSpans,
@@ -14,6 +15,7 @@ import {
   MOCK_CHAT_SPAN,
   MOCK_CHAT_MESSAGES,
   MOCK_CHAT_TOOLS,
+  MOCK_TRACE_INFO_V3,
 } from '../ModelTraceExplorer.test-utils';
 import { ModelTraceExplorerPreferencesProvider } from '../ModelTraceExplorerPreferencesContext';
 
@@ -101,5 +103,20 @@ describe('ModelTraceExplorerRightPane', () => {
     expect(screen.queryByText('generations')).toBeInTheDocument();
     expect(screen.queryByText('llm_output')).toBeInTheDocument();
     expect(screen.queryAllByText('See more').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows token usage for selected non-root spans', () => {
+    render(
+      <ModelTraceExplorerRightPaneHeader
+        activeSpan={{ ...MOCK_CHAT_SPAN, parentId: 'root' }}
+        modelTraceInfo={MOCK_TRACE_INFO_V3}
+        showAssessmentsToggle={false}
+      />,
+      {
+        wrapper: Wrapper,
+      },
+    );
+
+    expect(screen.getByText('173 tokens')).toBeInTheDocument();
   });
 });

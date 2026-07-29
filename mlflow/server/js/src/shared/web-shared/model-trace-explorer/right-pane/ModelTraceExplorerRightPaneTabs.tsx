@@ -47,6 +47,7 @@ function ModelTraceExplorerRightPaneTabsImpl({
     readOnly: displayReadOnlyAssessments,
   } = useModelTraceExplorerViewState();
   const [paneWidth, setPaneWidth] = useState(500);
+  const rightPaneHorizontalPadding = theme.spacing.md + theme.spacing.xs;
   const contentStyle: Interpolation<Theme> = { flex: 1, marginTop: -theme.spacing.md, overflowY: 'auto' };
 
   // Get only the trace-level assessments (exclude session-level assessments)
@@ -92,8 +93,8 @@ function ModelTraceExplorerRightPaneTabsImpl({
       <Tabs.List
         css={{
           padding: 0,
-          paddingLeft: theme.spacing.md,
-          paddingRight: theme.spacing.md,
+          paddingLeft: rightPaneHorizontalPadding,
+          paddingRight: rightPaneHorizontalPadding,
           boxSizing: 'border-box',
           width: '100%',
         }}

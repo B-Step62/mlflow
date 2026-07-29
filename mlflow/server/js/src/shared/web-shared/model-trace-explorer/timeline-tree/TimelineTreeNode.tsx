@@ -9,11 +9,10 @@ import {
   LinkIcon,
   Tooltip,
   TokenIcon,
-  ClockIcon,
 } from '@databricks/design-system';
 
 import type { HierarchyBar } from './TimelineTree.types';
-import { getActiveChildIndex, spanTimeFormatter, TimelineTreeZIndex } from './TimelineTree.utils';
+import { getActiveChildIndex, spanTimeFormatter, SPAN_ROW_HEIGHT, TimelineTreeZIndex } from './TimelineTree.utils';
 import { TimelineTreeHierarchyBars } from './TimelineTreeHierarchyBars';
 import { TimelineTreeSpanTooltip } from './TimelineTreeSpanTooltip';
 import { type ModelTraceSpanNode } from '../ModelTrace.types';
@@ -44,7 +43,7 @@ const formatCompactCostUSD = (cost: number): string => {
   }).format(truncatedCost);
 };
 
-const ROW_HEIGHT = 48;
+const ROW_HEIGHT = SPAN_ROW_HEIGHT + 4;
 const ROW_HEIGHT_WITH_METADATA = 56;
 const METADATA_TEXT_COLOR = '#718493';
 
@@ -168,7 +167,9 @@ export const TimelineTreeNode = ({
   const latency = spanTimeFormatter(node.end - node.start);
   const totalTokens =
     getNestedTotalTokens(node.outputs) ?? getNestedTotalTokens(node.inputs) ?? getNestedTotalTokens(node.attributes);
-  const hasMetadata = Boolean(node.cost || totalTokens !== undefined);
+  const hasTokenMetadata = totalTokens !== undefined;
+  const showInlineLatency = !hasTokenMetadata;
+  const hasMetadata = Boolean(node.cost || hasTokenMetadata);
   const rowHeight = hasMetadata ? ROW_HEIGHT_WITH_METADATA : ROW_HEIGHT;
   const rowTopPadding = 4;
 
@@ -275,7 +276,7 @@ export const TimelineTreeNode = ({
                   boxSizing: 'border-box',
                   justifyContent: 'flex-start',
                   paddingTop: theme.spacing.xs,
-                  paddingBottom: hasMetadata ? theme.spacing.xs : theme.spacing.sm,
+                  paddingBottom: theme.spacing.xs,
                 }}
               >
                 <div
@@ -299,18 +300,32 @@ export const TimelineTreeNode = ({
                   >
                     {node.icon}
                   </span>
-                  <Typography.Text
-                    color={hasException ? 'error' : 'primary'}
+                  <div
                     css={{
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
+                      display: 'flex',
+                      alignItems: 'center',
                       flex: 1,
                       minWidth: 0,
                     }}
                   >
-                    {node.title}
-                  </Typography.Text>
+                    <Typography.Text
+                      color={hasException ? 'error' : 'primary'}
+                      css={{
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                        flex: '0 1 auto',
+                        minWidth: 0,
+                      }}
+                    >
+                      {node.title}
+                    </Typography.Text>
+                    {showInlineLatency && (
+                      <span css={{ flexShrink: 0, marginLeft: theme.spacing.xs }}>
+                        <MetadataItem title={`Latency: ${latency}`}>{latency}</MetadataItem>
+                      </span>
+                    )}
+                  </div>
                   {gatewayTraceHref && (
                     <Tooltip
                       content="View linked gateway trace"
@@ -354,33 +369,35 @@ export const TimelineTreeNode = ({
                     </Tag>
                   )}
                 </div>
-                <div
-                  css={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    flexWrap: 'nowrap',
-                    minWidth: 0,
-                    marginTop: 1,
-                    paddingLeft: theme.spacing.xl + theme.spacing.xs,
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <MetadataItem title={`Latency: ${latency}`} icon={<ClockIcon />}>
-                    {latency}
-                  </MetadataItem>
-                  {totalTokens !== undefined && (
-                    <MetadataItem title={`${totalTokens} tokens`} icon={<TokenIcon />}>
-                      {formatCompactNumber(totalTokens)} tokens
-                    </MetadataItem>
-                  )}
-                  {node.cost && (
-                    <MetadataItem title={`Cost: ${formatCostUSD(node.cost.total_cost)}`}>
-                      {formatCompactCostUSD(node.cost.total_cost)}
-                    </MetadataItem>
-                  )}
-                </div>
+                {hasMetadata && (
+                  <div
+                    css={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      flexWrap: 'nowrap',
+                      minWidth: 0,
+                      marginTop: 1,
+                      paddingLeft: theme.spacing.xl + theme.spacing.xs,
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {hasTokenMetadata && (
+                      <>
+                        <MetadataItem title={`Latency: ${latency}`}>{latency}</MetadataItem>
+                        <MetadataItem title={`${totalTokens} tokens`} icon={<TokenIcon />}>
+                          {formatCompactNumber(totalTokens)}
+                        </MetadataItem>
+                      </>
+                    )}
+                    {node.cost && (
+                      <MetadataItem title={`Cost: ${formatCostUSD(node.cost.total_cost)}`}>
+                        {formatCompactCostUSD(node.cost.total_cost)}
+                      </MetadataItem>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

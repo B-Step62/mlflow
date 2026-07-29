@@ -25,7 +25,7 @@ export const ModelTraceExplorerIcon = ({
   isInTooltip = false,
   hasException = false,
   isRootSpan = false,
-  // render the icon in the default gray styling, skipping the per-type accent color
+  // render the icon in the default styling, skipping the per-type accent color
   neutral = false,
 }: {
   type?: ModelIconType;
@@ -66,9 +66,9 @@ export const ModelTraceExplorerIcon = ({
   // these are not official props on the
   // icon components, so they must be set
   // via the `css` prop on the parent
-  let color: string = theme.colors.actionDefaultIconDefault;
+  let color: string = theme.isDarkMode ? theme.colors.grey300 : theme.colors.grey650;
   let tooltipColor: string = theme.colors.actionPrimaryIcon;
-  let backgroundColor: string = theme.colors.backgroundSecondary;
+  let backgroundColor: string = theme.isDarkMode ? theme.colors.grey700 : theme.colors.grey100;
   switch (neutral ? undefined : type) {
     case ModelIconType.SEARCH:
       color = theme.colors.textValidationSuccess;
@@ -76,8 +76,13 @@ export const ModelTraceExplorerIcon = ({
       backgroundColor = theme.isDarkMode ? theme.colors.green800 : theme.colors.green100;
       break;
     case ModelIconType.MODELS:
-      color = theme.isDarkMode ? theme.colors.blue500 : theme.colors.turquoise;
-      tooltipColor = theme.isDarkMode ? theme.colors.turquoise : theme.colors.blue500;
+      color = theme.colors.indigo;
+      tooltipColor = theme.colors.indigo;
+      backgroundColor = theme.isDarkMode ? `${theme.colors.indigo}40` : `${theme.colors.indigo}24`;
+      break;
+    case ModelIconType.CHAIN:
+      color = theme.isDarkMode ? theme.colors.blue300 : theme.colors.blue700;
+      tooltipColor = theme.isDarkMode ? theme.colors.blue300 : theme.colors.blue500;
       backgroundColor = theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue100;
       break;
     case ModelIconType.WRENCH:

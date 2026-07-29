@@ -3,8 +3,8 @@ import { useState } from 'react';
 import {
   Button,
   ChevronDownIcon,
-  ColumnsIcon,
   DropdownMenu,
+  LayerIcon,
   PlusIcon,
   useDesignSystemTheme,
 } from '@databricks/design-system';
@@ -18,7 +18,7 @@ const DUMMY_CUSTOM_VIEWS = ['Default view', 'Errors only', 'Latency deep-dive'];
  * Dummy selector for switching between custom trace views stored on the
  * experiment, or creating a new one. Not yet wired up to any backend.
  */
-export const ModelTraceExplorerCustomViewSelector = () => {
+export const ModelTraceExplorerCustomViewSelector = ({ size }: { size?: 'small' }) => {
   const { theme } = useDesignSystemTheme();
   const [selectedView, setSelectedView] = useState(DUMMY_CUSTOM_VIEWS[0]);
 
@@ -27,8 +27,9 @@ export const ModelTraceExplorerCustomViewSelector = () => {
       <DropdownMenu.Trigger asChild>
         <Button
           componentId="mlflow.evaluations_review.modal.custom_view_selector"
-          icon={<ColumnsIcon />}
+          icon={<LayerIcon />}
           endIcon={<ChevronDownIcon />}
+          size={size}
           css={{ flexShrink: 0 }}
         >
           {selectedView}

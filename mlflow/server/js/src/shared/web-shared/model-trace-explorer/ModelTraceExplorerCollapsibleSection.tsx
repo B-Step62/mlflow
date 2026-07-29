@@ -9,6 +9,8 @@ export const ModelTraceExplorerCollapsibleSection = ({
   withBorder = false,
   isExceptionSection = false,
   className,
+  headerPadding,
+  contentPadding,
 }: {
   sectionKey: string;
   title: React.ReactNode;
@@ -16,6 +18,8 @@ export const ModelTraceExplorerCollapsibleSection = ({
   withBorder?: boolean;
   isExceptionSection?: boolean;
   className?: string;
+  headerPadding?: number | string;
+  contentPadding?: number | string;
 }) => {
   const [expanded, setExpanded] = useState(true);
   const { theme } = useDesignSystemTheme();
@@ -40,7 +44,7 @@ export const ModelTraceExplorerCollapsibleSection = ({
           display: 'flex',
           flexDirection: 'row',
           gap: theme.spacing.xs,
-          padding: withBorder ? theme.spacing.sm : 0,
+          padding: withBorder ? (headerPadding ?? theme.spacing.sm) : 0,
           // Only exception sections get a header background + border (for danger
           // emphasis); normal section headers stay borderless and transparent.
           background: withBorder && isExceptionSection ? headerBackground : undefined,
@@ -62,7 +66,7 @@ export const ModelTraceExplorerCollapsibleSection = ({
       {expanded && (
         <div
           css={{
-            padding: withBorder ? theme.spacing.sm : 0,
+            padding: withBorder ? (contentPadding ?? theme.spacing.sm) : 0,
             background: contentBackground,
           }}
         >

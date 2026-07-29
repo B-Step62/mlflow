@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   ApplyDesignSystemContextOverrides,
   ArrowDownIcon,
   ArrowUpIcon,
   Button,
+  ChevronDoubleRightIcon,
   DatabaseIcon,
   FlagPointerIcon,
   FullscreenExitIcon,
@@ -18,7 +19,7 @@ import {
   useDesignSystemTheme,
 } from '@databricks/design-system';
 import { FormattedMessage } from '@databricks/i18n';
-import { Global } from '@emotion/react';
+import { Global, keyframes } from '@emotion/react';
 import { useAssistant } from '@mlflow/mlflow/src/assistant';
 
 import { ModelTraceExplorerCustomViewSelector } from './ModelTraceExplorerCustomViewSelector';
@@ -39,6 +40,16 @@ const FLAG_FOR_REVIEW_GUIDANCE_STORAGE_KEY = 'mlflow.flagForReview.guidanceShown
 // internal attribute the animation silently stops — no functional breakage.
 const RADIX_POPPER_WRAPPER_SELECTOR = '[data-radix-popper-content-wrapper]:has([data-flag-guidance])';
 const FLAG_FOR_REVIEW_GUIDANCE_STORAGE_VERSION = 1;
+const DRAWER_CLOSE_ANIMATION_MS = 180;
+
+const drawerSlideOutAnimation = keyframes({
+  '0%': {
+    transform: 'translate(0, 0)',
+  },
+  '100%': {
+    transform: 'translate(100%, 0)',
+  },
+});
 
 export interface ModelTraceExplorerDrawerProps {
   children: React.ReactNode;
@@ -69,10 +80,13 @@ export const ModelTraceExplorerDrawer = ({
   const [showDatasetModal, setShowDatasetModal] = useState(false);
   const [showCopiedNotification, setShowCopiedNotification] = useState(false);
   const [showCopyError, setShowCopyError] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSearchVisible, setSearchVisible] = useState(false);
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [isAssistantPromptFocused, setAssistantPromptFocused] = useState(false);
+  const closeTimerRef = useRef<number | undefined>(undefined);
+  const isClosingRef = useRef(false);
   const {
     renderExportTracesToDatasetsModal,
     renderAddToReviewQueueDropdown,
@@ -89,6 +103,36 @@ export const ModelTraceExplorerDrawer = ({
   const [isDrawerAnimationDone, setIsDrawerAnimationDone] = useState(false);
 
   const showFlagForReviewButton = Boolean(renderAddToReviewQueueDropdown && experimentId && traceInfo);
+
+  const finishClose = useCallback(() => {
+    if (!isClosingRef.current) {
+      return;
+    }
+    isClosingRef.current = false;
+    if (closeTimerRef.current !== undefined) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = undefined;
+    }
+    handleClose();
+  }, [handleClose]);
+
+  const beginClose = useCallback(() => {
+    if (isClosingRef.current) {
+      return;
+    }
+    isClosingRef.current = true;
+    setIsDrawerOpen(false);
+    closeTimerRef.current = window.setTimeout(finishClose, DRAWER_CLOSE_ANIMATION_MS);
+  }, [finishClose]);
+
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current !== undefined) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!showFlagForReviewButton || hasSeenFlagGuidance) {
@@ -199,9 +243,9 @@ export const ModelTraceExplorerDrawer = ({
         })
       : null;
 
-  const hasRightPaneHeaderActions = showAddToDatasetButton || showFlagForReviewButton;
-  const rightPaneHeaderActions = hasRightPaneHeaderActions ? (
+  const rightPaneHeaderActions = (
     <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexShrink: 0 }}>
+      <ModelTraceExplorerCustomViewSelector size="small" />
       {showAddToDatasetButton && (
         <Tooltip
           componentId="mlflow.evaluations_review.modal.add_to_dataset.tooltip"
@@ -261,14 +305,17 @@ export const ModelTraceExplorerDrawer = ({
         </>
       )}
     </div>
-  ) : null;
+  );
 
   return (
     <DrawerComponent.Root
-      open
+      modal
+      open={isDrawerOpen}
       onOpenChange={(open) => {
         if (!open) {
-          handleClose();
+          beginClose();
+        } else {
+          setIsDrawerOpen(true);
         }
       }}
     >
@@ -292,8 +339,25 @@ export const ModelTraceExplorerDrawer = ({
       <DrawerComponent.Content
         componentId="mlflow.evaluations_review.modal"
         width={isFullscreen ? '100vw' : drawerWidth}
+        hideClose
         title={
           <div css={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
+            <Tooltip
+              componentId="mlflow.evaluations_review.modal.close-tooltip"
+              content={
+                <FormattedMessage
+                  defaultMessage="Close trace panel"
+                  description="Tooltip for closing the trace drawer"
+                />
+              }
+            >
+              <Button
+                componentId="mlflow.evaluations_review.modal.close"
+                aria-label="Close trace panel"
+                icon={<ChevronDoubleRightIcon />}
+                onClick={beginClose}
+              />
+            </Tooltip>
             <Tooltip
               componentId="mlflow.evaluations_review.modal.fullscreen-tooltip"
               content={
@@ -331,7 +395,6 @@ export const ModelTraceExplorerDrawer = ({
               disabled={!isNextAvailable}
               onClick={() => selectNextEval()}
             />
-            <ModelTraceExplorerCustomViewSelector />
             <div
               css={{
                 width: 1,
@@ -467,6 +530,11 @@ export const ModelTraceExplorerDrawer = ({
               paddingBottom: 1,
               '&>button': {
                 flexShrink: 0,
+              },
+            },
+            '@media (prefers-reduced-motion: no-preference)': {
+              '&[data-state="closed"]': {
+                animation: `${drawerSlideOutAnimation} ${DRAWER_CLOSE_ANIMATION_MS}ms ease-in forwards`,
               },
             },
           },

@@ -24,6 +24,7 @@ export function ModelTraceExplorerDefaultSpanView({
 }) {
   const { theme } = useDesignSystemTheme();
   const [fieldRenderModes, setFieldRenderModes] = useState<Record<string, ModelTraceExplorerRenderMode>>({});
+  const [openFieldRenderModeDropdown, setOpenFieldRenderModeDropdown] = useState<string | null>(null);
   const inputList = useMemo(() => createListFromObject(activeSpan?.inputs), [activeSpan]);
   const outputList = useMemo(() => createListFromObject(activeSpan?.outputs), [activeSpan]);
 
@@ -37,16 +38,22 @@ export function ModelTraceExplorerDefaultSpanView({
   const isActiveMatchSpan = !isNil(activeMatch) && activeMatch.span.key === activeSpan.key;
 
   const renderModeDropdown = (
+    fieldId: string,
     renderMode: ModelTraceExplorerRenderMode,
     setRenderMode: (mode: ModelTraceExplorerRenderMode) => void,
   ) => (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root
+      open={openFieldRenderModeDropdown === fieldId}
+      onOpenChange={(open) => setOpenFieldRenderModeDropdown(open ? fieldId : null)}
+    >
       <DropdownMenu.Trigger asChild>
         <Button
           size="small"
           componentId="shared.model-trace-explorer.default-span-view.render-mode"
           type="tertiary"
           endIcon={<ChevronDownIcon />}
+          data-field-render-mode-trigger
+          data-field-render-mode-open={openFieldRenderModeDropdown === fieldId ? 'true' : undefined}
         >
           {renderMode === 'default' ? (
             <FormattedMessage
@@ -107,30 +114,57 @@ export function ModelTraceExplorerDefaultSpanView({
         const renderMode = getFieldRenderMode(fieldId);
 
         return (
-          <ModelTraceExplorerFieldRenderer
+          <div
             key={key || index}
-            title={key}
-            data={value}
-            renderMode={renderMode}
-            assessments={activeSpan?.assessments}
-            searchFilter={searchFilter}
-            activeMatch={activeMatch}
-            containsActiveMatch={isActiveMatchSpan && activeMatch.section === section && activeMatch.key === key}
-            titleSuffix={renderModeDropdown(renderMode, (mode) =>
-              setFieldRenderModes((current) => ({ ...current, [fieldId]: mode })),
-            )}
-          />
+            css={{
+              '[data-field-render-mode-trigger]': {
+                opacity: 0,
+                pointerEvents: 'none',
+                transition: 'opacity 120ms ease-in-out',
+              },
+              '&:hover [data-field-render-mode-trigger], &:focus-within [data-field-render-mode-trigger]': {
+                opacity: 1,
+                pointerEvents: 'auto',
+              },
+              '[data-field-render-mode-open="true"]': {
+                opacity: 1,
+                pointerEvents: 'auto',
+              },
+            }}
+          >
+            <ModelTraceExplorerFieldRenderer
+              title={key}
+              data={value}
+              renderMode={renderMode}
+              assessments={activeSpan?.assessments}
+              searchFilter={searchFilter}
+              activeMatch={activeMatch}
+              containsActiveMatch={isActiveMatchSpan && activeMatch.section === section && activeMatch.key === key}
+              titleSuffix={renderModeDropdown(fieldId, renderMode, (mode) =>
+                setFieldRenderModes((current) => ({ ...current, [fieldId]: mode })),
+              )}
+            />
+          </div>
         );
       })}
     </div>
   );
 
   return (
-    <div data-testid="model-trace-explorer-default-span-view">
+    <div
+      css={{
+        paddingLeft: theme.spacing.md + theme.spacing.xs,
+        paddingRight: theme.spacing.md + theme.spacing.xs,
+        paddingTop: theme.spacing.sm,
+      }}
+      data-testid="model-trace-explorer-default-span-view"
+    >
       {containsInputs && (
         <ModelTraceExplorerCollapsibleSection
           withBorder
           css={{ marginBottom: theme.spacing.sm }}
+          headerPadding={`${theme.spacing.xs}px 0`}
+          contentPadding={`${theme.spacing.xs}px 0 ${theme.spacing.xs}px ${theme.spacing.sm + theme.spacing.xs}px`}
           sectionKey="input"
           title={
             <div
@@ -155,6 +189,8 @@ export function ModelTraceExplorerDefaultSpanView({
       {containsOutputs && (
         <ModelTraceExplorerCollapsibleSection
           withBorder
+          headerPadding={`${theme.spacing.xs}px 0`}
+          contentPadding={`${theme.spacing.xs}px 0 ${theme.spacing.xs}px ${theme.spacing.sm + theme.spacing.xs}px`}
           sectionKey="output"
           title={
             <div css={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>

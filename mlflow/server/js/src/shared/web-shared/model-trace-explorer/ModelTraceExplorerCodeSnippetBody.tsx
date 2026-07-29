@@ -12,7 +12,7 @@ import { GenAIMarkdownRenderer } from '../genai-markdown-renderer/GenAIMarkdownR
 import { CodeSnippet } from '../snippet/CodeSnippet';
 import { SnippetCopyAction } from '../snippet/actions/SnippetCopyAction';
 
-const MAX_LINES_FOR_PREVIEW = 4;
+const MAX_LINES_FOR_PREVIEW = 10;
 // the `isContentLong` check does not work for
 // markdown rendering, since the content is wrapped
 const MAX_CHARS_FOR_PREVIEW = 300;

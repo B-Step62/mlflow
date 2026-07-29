@@ -142,7 +142,7 @@ export const SimplifiedAssessmentView = ({
         css={{
           display: 'flex',
           flexDirection: 'column',
-          padding: theme.spacing.md,
+          padding: `${theme.spacing.md}px ${theme.spacing.md + theme.spacing.xs}px`,
           minWidth: SIMPLIFIED_ASSESSMENT_VIEW_MIN_WIDTH,
           height: '100%',
           borderLeft: `1px solid ${theme.colors.border}`,
@@ -164,7 +164,7 @@ export const SimplifiedAssessmentView = ({
       css={{
         display: 'flex',
         flexDirection: 'column',
-        padding: theme.spacing.md,
+        padding: `${theme.spacing.md}px ${theme.spacing.md + theme.spacing.xs}px`,
         paddingTop: theme.spacing.sm,
         gap: theme.spacing.md,
         minWidth: SIMPLIFIED_ASSESSMENT_VIEW_MIN_WIDTH,
