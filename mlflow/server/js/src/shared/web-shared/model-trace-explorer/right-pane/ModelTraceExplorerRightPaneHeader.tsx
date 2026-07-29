@@ -414,6 +414,9 @@ export const ModelTraceExplorerRightPaneHeader = ({
             alignItems: 'center',
             gap: theme.spacing.xs,
             minWidth: 0,
+            position: 'relative',
+            top: -theme.spacing.xs,
+            left: -theme.spacing.xs,
           }}
         >
           <span
@@ -447,7 +450,16 @@ export const ModelTraceExplorerRightPaneHeader = ({
           </Typography.Text>
         </div>
         {(rightPaneHeaderActions || showAssessmentsToggle) && (
-          <div css={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, flexShrink: 0 }}>
+          <div
+            css={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              flexShrink: 0,
+              alignSelf: 'flex-start',
+              marginTop: theme.spacing.xs,
+            }}
+          >
             {rightPaneHeaderActions}
             {showAssessmentsToggle && (
               <AssessmentPaneToggle assessmentCount={activeSpan.assessments.length}>
