@@ -394,7 +394,7 @@ export const ModelTraceExplorerRightPaneHeader = ({
         flexDirection: 'column',
         borderTop: `2px solid ${theme.colors.border}`,
         boxSizing: 'border-box',
-        padding: `${theme.spacing.md}px ${theme.spacing.md + theme.spacing.xs}px`,
+        padding: `${theme.spacing.sm}px ${theme.spacing.md + theme.spacing.xs}px ${theme.spacing.md}px`,
       }}
     >
       <div
@@ -414,9 +414,6 @@ export const ModelTraceExplorerRightPaneHeader = ({
             alignItems: 'center',
             gap: theme.spacing.xs,
             minWidth: 0,
-            position: 'relative',
-            top: -theme.spacing.xs,
-            left: -theme.spacing.xs,
           }}
         >
           <span
@@ -456,8 +453,6 @@ export const ModelTraceExplorerRightPaneHeader = ({
               alignItems: 'center',
               gap: theme.spacing.xs,
               flexShrink: 0,
-              alignSelf: 'flex-start',
-              marginTop: theme.spacing.xs,
             }}
           >
             {rightPaneHeaderActions}
