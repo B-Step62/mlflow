@@ -1,3 +1,4 @@
+# ruff: noqa: T201
 """Phase 0 parity harness for the Flask -> FastAPI server migration.
 
 Standalone, runnable script (NOT wired into pytest). It stands up two in-process
@@ -122,8 +123,7 @@ def _substitute_path_params(path: str) -> str:
     """Replace Flask-style <param> / <path:param> placeholders with dummy values."""
     # <path:foo> -> dummy/segment ; <foo> -> dummy
     path = re.sub(r"<path:[^>]+>", "dummy/segment", path)
-    path = re.sub(r"<[^>]+>", "dummy", path)
-    return path
+    return re.sub(r"<[^>]+>", "dummy", path)
 
 
 def _build_cases(endpoints) -> list[Case]:

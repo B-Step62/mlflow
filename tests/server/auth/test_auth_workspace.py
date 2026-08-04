@@ -932,11 +932,11 @@ def test_experiment_artifact_proxy_resolves_experiment_id_under_workspace_prefix
     store.create_experiment_permission("1", username, EDIT.name)
 
     prefixed_path = "workspaces/team-a/1/run-1/artifacts/plots/x.png"
-    with auth_module.app.test_request_context(
+    with mock_request_context(
         f"/ajax-api/2.0/mlflow-artifacts/artifacts/{prefixed_path}",
         method="GET",
     ):
-        request.view_args = {"artifact_path": prefixed_path}
+        get_request().view_args = {"artifact_path": prefixed_path}
         # EDIT on the experiment resolves through the workspace prefix -> reads and
         # writes are allowed even though the workspace-tier grant is only USE.
         assert auth_module.validate_can_read_experiment_artifact_proxy()
@@ -1060,14 +1060,14 @@ def test_create_model_version_source_read_blocks_cross_workspace(
     )
     monkeypatch.setattr(auth_module, "_get_tracking_store", lambda: tracking_store)
 
-    with auth_module.app.test_request_context(
+    with mock_request_context(
         "/api/2.0/mlflow/model-versions/create",
         method="POST",
         json={"name": "model-xyz", "source": "s3://bucket/x", "run_id": "run-b"},
     ):
         assert not auth_module.validate_can_create_model_version()
 
-    with auth_module.app.test_request_context(
+    with mock_request_context(
         "/api/2.0/mlflow/model-versions/create",
         method="POST",
         json={"name": "model-xyz", "source": "s3://bucket/x", "model_id": "model-b"},
@@ -1075,7 +1075,7 @@ def test_create_model_version_source_read_blocks_cross_workspace(
         assert not auth_module.validate_can_create_model_version()
 
     # Same-workspace source (team-a) is allowed.
-    with auth_module.app.test_request_context(
+    with mock_request_context(
         "/api/2.0/mlflow/model-versions/create",
         method="POST",
         json={"name": "model-xyz", "source": "s3://bucket/x", "run_id": "run-a"},
@@ -1088,7 +1088,7 @@ def test_create_model_version_source_read_blocks_cross_workspace(
     monkeypatch.setattr(
         auth_module, "_validate_can_update_registered_model_or_prompt", lambda: True
     )
-    with auth_module.app.test_request_context(
+    with mock_request_context(
         "/api/2.0/mlflow/model-versions/create",
         method="POST",
         json=[1],

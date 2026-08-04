@@ -3,6 +3,9 @@
 
 from mlflow.environment_variables import MLFLOW_BASIC_AUTH_FAIL_CLOSED
 from mlflow.server import auth as a
+from mlflow.server.request_context import Authorization, clear_g
+
+from tests.server.conftest import mock_request_context
 
 
 class _Req:
@@ -62,33 +65,35 @@ def test_public_routes_recognized_under_static_prefix(monkeypatch):
 
 
 def _fake_basic_auth():
-    from werkzeug.datastructures import Authorization
-
-    return Authorization("basic", {"username": "u"})
+    return Authorization(username="u")
 
 
 def test_before_request_returns_403_for_ungated_route_when_fail_closed(monkeypatch):
-    import flask
-
     monkeypatch.setenv("MLFLOW_BASIC_AUTH_FAIL_CLOSED", "true")
     monkeypatch.setattr(a, "authenticate_request", _fake_basic_auth)
     monkeypatch.setattr(a, "sender_is_admin", lambda: False)
 
-    app = flask.Flask(__name__)
-    with app.test_request_context("/api/3.0/mlflow/brand-new-feature/do-thing", method="POST"):
-        resp = a._before_request()
+    try:
+        with mock_request_context(
+            "/api/3.0/mlflow/brand-new-feature/do-thing", method="POST"
+        ):
+            resp = a._before_request()
+    finally:
+        clear_g()
     assert resp is not None
     assert resp.status_code == 403
 
 
 def test_before_request_allows_ungated_route_when_flag_off(monkeypatch):
-    import flask
-
     monkeypatch.setenv("MLFLOW_BASIC_AUTH_FAIL_CLOSED", "false")
     monkeypatch.setattr(a, "authenticate_request", _fake_basic_auth)
     monkeypatch.setattr(a, "sender_is_admin", lambda: False)
 
-    app = flask.Flask(__name__)
-    with app.test_request_context("/api/3.0/mlflow/brand-new-feature/do-thing", method="POST"):
-        resp = a._before_request()
+    try:
+        with mock_request_context(
+            "/api/3.0/mlflow/brand-new-feature/do-thing", method="POST"
+        ):
+            resp = a._before_request()
+    finally:
+        clear_g()
     assert resp is None

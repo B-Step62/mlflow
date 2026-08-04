@@ -44,14 +44,14 @@ def get_tracing_context_headers_for_http_request() -> dict[str, str]:
     .. code-block:: python
 
         import mlflow
-        from flask import Flask, request
+        from fastapi import FastAPI, Request
         from mlflow.tracing import set_tracing_context_from_http_request_headers
 
-        app = Flask(__name__)
+        app = FastAPI()
 
 
         @app.post("/agent-handler")
-        def handle():
+        async def handle(request: Request):
             headers = dict(request.headers)
             with set_tracing_context_from_http_request_headers(headers):
                 with mlflow.start_span("server-handler") as span:
@@ -117,14 +117,14 @@ def set_tracing_context_from_http_request_headers(headers: dict[str, str]):
     .. code-block:: python
 
         import mlflow
-        from flask import Flask, request
+        from fastapi import FastAPI, Request
         from mlflow.tracing import set_tracing_context_from_http_request_headers
 
-        app = Flask(__name__)
+        app = FastAPI()
 
 
         @app.post("/agent-handler")
-        def handle():
+        async def handle(request: Request):
             headers = dict(request.headers)
             with set_tracing_context_from_http_request_headers(headers):
                 with mlflow.start_span("server-handler") as span:
@@ -144,9 +144,8 @@ def set_tracing_context_from_http_request_headers(headers: dict[str, str]):
         headers = dict(headers)
 
         if "Traceparent" in headers:
-            # Note: Some http server framework (e.g. flask) converts http header key
-            # first letter to upper case, but `TraceContextTextMapPropagator` can't
-            # recognize the key 'Traceparent', so that convert it to lower case.
+            # Note: Some HTTP server frameworks capitalize header keys, but
+            # `TraceContextTextMapPropagator` only recognizes `traceparent`.
             traceparent = headers.pop("Traceparent")
             headers["traceparent"] = traceparent
 

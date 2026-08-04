@@ -50,7 +50,6 @@ def client(tmp_path):
             MLFLOW_FLASK_SERVER_SECRET_KEY.name: "my-secret-key",
             MLFLOW_AUTH_CONFIG_PATH.name: str(auth_config_path),
         },
-        server_type="flask",
     ) as url:
         yield AuthServiceClient(url)
 

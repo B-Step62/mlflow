@@ -414,6 +414,7 @@ from mlflow.utils import workspace_context
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 from mlflow.utils.search_utils import SearchUtils
+from mlflow.utils.workspace_context import ServerWorkspaceContext
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 _logger = logging.getLogger(__name__)
@@ -3226,6 +3227,8 @@ BEFORE_REQUEST_VALIDATORS.update({
     if handler in ISSUE_EXACT_BEFORE_REQUEST_HANDLERS.values()
 })
 
+_AJAX_API_PATH_PREFIX = "/ajax-api/2.0"
+
 _ALL_PARAMETERIZED_PATH_PATTERNS: list[re.Pattern] = list({
     pat
     for patterns in (
@@ -3540,8 +3543,8 @@ def _before_request():
 
     authorization = authenticate_request()
     # Custom auth functions return either an Authorization-like object (with a
-    # username attribute) or an HTTP response (e.g. 401). Accept both our own
-    # Authorization and werkzeug's via duck typing.
+    # username attribute) or an HTTP response (e.g. 401). Accept authorization
+    # objects via duck typing so integrations do not need this concrete class.
     if not hasattr(authorization, "username"):
         return authorization
 
@@ -5614,10 +5617,30 @@ def _apply_fastapi_response_filter(
 
 
 async def _run_generic_fastapi_permission_checks(request, call_next, path):
+    try:
+        workspace = resolve_workspace_for_request_if_enabled(
+            path,
+            request.headers.get(WORKSPACE_HEADER_NAME),
+        )
+    except MlflowException as e:
+        return JSONResponse(
+            status_code=e.get_http_status_code(),
+            content=json.loads(e.serialize_as_json()),
+        )
+
+    with ServerWorkspaceContext(workspace.name if workspace else None):
+        return await _run_generic_fastapi_permission_checks_in_workspace(
+            request, call_next, path
+        )
+
+
+async def _run_generic_fastapi_permission_checks_in_workspace(request, call_next, path):
     """Authorize handler routes through the framework-agnostic request shim."""
     shim = await from_starlette_request(request)
     if _is_proxy_artifact_path(path):
         shim.view_args = _extract_artifact_view_args(path)
+    elif extracted := _extract_parameterized_view_args(path):
+        shim.view_args = extracted
     set_request(shim)
     try:
         result = _before_request()
@@ -5692,7 +5715,6 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
                 f"is supported. Please use '{DEFAULT_AUTHORIZATION_FUNCTION}'.",
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
-
         user = _authenticate_fastapi_request(request)
         if user is None:
             return PlainTextResponse(
@@ -5702,7 +5724,6 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
                 status_code=HTTPStatus.UNAUTHORIZED,
                 headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
             )
-
         # Store user info in request state for downstream handlers (e.g., gateway tracing)
         request.state.username = user.username
         request.state.user_id = user.id

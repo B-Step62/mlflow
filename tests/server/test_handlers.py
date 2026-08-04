@@ -52,7 +52,7 @@ from mlflow.entities.trace_metrics import (
     MetricDataPoint,
     MetricViewType,
 )
-from mlflow.environment_variables import MLFLOW_ENABLE_WORKSPACES
+from mlflow.environment_variables import MLFLOW_ENABLE_WORKSPACES, MLFLOW_MODEL_CATALOG_URI
 from mlflow.exceptions import (
     MlflowException,
     MlflowNotImplementedException,
@@ -152,7 +152,6 @@ from mlflow.server import (
 )
 from mlflow.server.fastapi_app import create_fastapi_app
 from mlflow.server.handlers import (
-    ARTIFACT_STREAM_CHUNK_SIZE,
     STATIC_PREFIX_ENV_VAR,
     ModelRegistryStoreRegistryWrapper,
     TrackingStoreRegistryWrapper,
@@ -2342,8 +2341,11 @@ def test_local_file_read_write_by_pass_vulnerability(uri):
     ],
 )
 def test_get_trace_artifact_repo(location, expected_class, expected_uri, monkeypatch):
+    if expected_class is AzureBlobArtifactRepository:
+        pytest.importorskip("azure.storage.blob")
     monkeypatch.setenv(SERVE_ARTIFACTS_ENV_VAR, "true")
     monkeypatch.setenv(ARTIFACTS_DESTINATION_ENV_VAR, "s3://bucket")
+    monkeypatch.setenv("AZURE_STORAGE_ACCESS_KEY", "test")
     trace_info = TraceInfo(
         trace_id="123",
         trace_location=EntityTraceLocation.from_experiment_id("0"),
@@ -4246,7 +4248,8 @@ def test_list_providers_with_allowed_filter(monkeypatch):
         assert "bedrock" not in data["providers"]
 
 
-def test_list_models():
+def test_list_models(monkeypatch):
+    monkeypatch.setenv(MLFLOW_MODEL_CATALOG_URI.name, "")
     with app.test_client() as c:
         response = c.get("/ajax-api/3.0/mlflow/gateway/supported-models?provider=openai")
         assert response.status_code == 200
@@ -4256,7 +4259,8 @@ def test_list_models():
         assert len(data["models"]) > 0
 
 
-def test_list_models_all_providers():
+def test_list_models_all_providers(monkeypatch):
+    monkeypatch.setenv(MLFLOW_MODEL_CATALOG_URI.name, "")
     with app.test_client() as c:
         response = c.get("/ajax-api/3.0/mlflow/gateway/supported-models")
         assert response.status_code == 200
@@ -5210,9 +5214,8 @@ def test_upload_artifact_falls_back_to_log_artifact_without_mixin(enable_serve_a
     assert response.status_code == 200
 
 
-def test_download_artifact_streams_in_chunks(enable_serve_artifacts, tmp_path):
-    # Create a test file with binary data larger than the chunk size (2MB + 1000 bytes)
-    test_file_size = ARTIFACT_STREAM_CHUNK_SIZE * 2 + 1000
+def test_download_artifact_serves_downloaded_file(enable_serve_artifacts, tmp_path):
+    test_file_size = 2 * 1024 * 1024 + 1000
     test_data = b"x" * test_file_size
 
     artifact_path = "test_model/model.pkl"
@@ -5234,25 +5237,22 @@ def test_download_artifact_streams_in_chunks(enable_serve_artifacts, tmp_path):
         mock_artifact_repo.download_artifacts.return_value = str(test_file)
         mock_repo.return_value = mock_artifact_repo
 
-        # Call the function and capture the response
         response = _download_artifact(artifact_path)
 
-        # Extract chunks from the response by iterating over its data
-        response_chunks = list(response.response)
+        test_app = FastAPI()
 
-        # Verify that data was streamed in chunks, not line by line
-        # For a 2MB+ binary file, line-by-line would produce many small chunks
-        # Chunk-based streaming should produce exactly 3 chunks (2*1MB + 1000 bytes)
-        assert len(response_chunks) == 3, f"Expected 3 chunks, got {len(response_chunks)}"
+        @test_app.get("/")
+        def serve_artifact():
+            return response
 
-        # Verify chunk sizes
-        assert len(response_chunks[0]) == ARTIFACT_STREAM_CHUNK_SIZE
-        assert len(response_chunks[1]) == ARTIFACT_STREAM_CHUNK_SIZE
-        assert len(response_chunks[2]) == 1000
+        with _TestClient(test_app) as client:
+            streamed_response = client.get("/")
 
-        # Verify that all data is correctly streamed
-        streamed_data = b"".join(response_chunks)
-        assert streamed_data == test_data
+        assert streamed_response.content == test_data
+        assert streamed_response.headers["Content-Disposition"] == (
+            "attachment; filename=model.pkl"
+        )
+        mock_tmp_dir_instance.cleanup.assert_called_once()
         mock_artifact_repo.get_local_path.assert_called_once_with(artifact_path)
         mock_artifact_repo.download_artifacts.assert_called_once_with(artifact_path, str(tmp_path))
 
@@ -5345,7 +5345,7 @@ def test_response_with_file_attachment_headers_encodes_non_ascii_filename(
         ("my model;a.txt", 'attachment; filename="my model;a.txt"'),
     ],
 )
-def test_response_with_file_attachment_headers_ascii_filename_preserves_werkzeug_quoting(
+def test_response_with_file_attachment_headers_ascii_filename_preserves_quoted_filename(
     filename, expected_header
 ):
     with mock_request_context():

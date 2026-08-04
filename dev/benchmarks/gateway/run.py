@@ -149,7 +149,7 @@ def _start_mlflow(
     auth: bool = False,
 ) -> Generator[None, None, None]:
     prefix = _uv_prefix()
-    # basic-auth requires the `auth` extra (Flask-WTF) at runtime.
+    # basic-auth requires the `auth` extra at runtime.
     if auth and prefix:
         prefix = [*prefix, "--extra", "auth"]
     # psycopg2-binary lives in the `db` extra.

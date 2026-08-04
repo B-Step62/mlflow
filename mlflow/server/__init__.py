@@ -40,6 +40,7 @@ from mlflow.utils.process import _exec_cmd
 
 REL_STATIC_DIR = "js/build"
 
+
 def _find_app(app_name: str) -> str:
     apps = get_entry_points("mlflow.app")
     for app in apps:

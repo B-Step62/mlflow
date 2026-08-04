@@ -3,9 +3,9 @@
 import json
 from types import SimpleNamespace
 
-import flask
-
 import mlflow.server.auth as a
+
+from tests.server.conftest import mock_request_context
 
 
 def _run(monkeypatch, validator, body, *, can_update=False, can_read=False):
@@ -15,8 +15,7 @@ def _run(monkeypatch, validator, body, *, can_update=False, can_read=False):
         "_get_experiment_permission",
         lambda eid, user: SimpleNamespace(can_update=can_update, can_read=can_read),
     )
-    app = flask.Flask(__name__)
-    with app.test_request_context(data=body, content_type="application/json"):
+    with mock_request_context(data=body, content_type="application/json"):
         return validator()
 
 

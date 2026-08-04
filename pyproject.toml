@@ -201,10 +201,12 @@ pytest = [
   "pytest-repeat",
   "pytest-cov",
   "pytest-timeout",
+  "httpx2",
 ]
 test = [
   { include-group = "pytest" },
   "psutil",
+  "PyJWT",
   "pyspark",
   "texttable",
   "opentelemetry-exporter-otlp-proto-grpc",

@@ -106,48 +106,33 @@ def test_gateway_endpoints_pass_through_when_enabled():
         "_get_secrets_config",
     ],
 )
-def test_flask_gateway_handlers_return_501_when_disabled(monkeypatch, handler_name):
+def test_gateway_handlers_return_501_when_disabled(monkeypatch, handler_name):
     monkeypatch.setenv("MLFLOW_ENABLE_AI_GATEWAY", "false")
-
-    from flask import Flask
 
     from mlflow.server import handlers
 
     handler = getattr(handlers, handler_name)
-    flask_app = Flask(__name__)
-
-    with flask_app.app_context():
-        response = handler()
-        assert response.status_code == 501
-        assert response.get_json()["error_code"] == "NOT_IMPLEMENTED"
-        assert response.get_json()["message"] == GATEWAY_DISABLED_MESSAGE
+    response = handler()
+    assert response.status_code == 501
+    assert response.get_json()["error_code"] == "NOT_IMPLEMENTED"
+    assert response.get_json()["message"] == GATEWAY_DISABLED_MESSAGE
 
 
 def test_server_info_includes_features_enabled(monkeypatch):
     monkeypatch.setenv("MLFLOW_ENABLE_AI_GATEWAY", "false")
 
-    from flask import Flask
-
     from mlflow.server.handlers import _get_server_info
 
-    flask_app = Flask(__name__)
-
-    with flask_app.app_context():
-        response = _get_server_info()
-        data = response.get_json()
-        assert "features_enabled" in data
-        assert data["features_enabled"]["gateway"] is False
+    response = _get_server_info()
+    data = response.get_json()
+    assert "features_enabled" in data
+    assert data["features_enabled"]["gateway"] is False
 
 
 def test_server_info_gateway_enabled_by_default():
-    from flask import Flask
-
     from mlflow.server.handlers import _get_server_info
 
-    flask_app = Flask(__name__)
-
-    with flask_app.app_context():
-        response = _get_server_info()
-        data = response.get_json()
-        assert "features_enabled" in data
-        assert data["features_enabled"]["gateway"] is True
+    response = _get_server_info()
+    data = response.get_json()
+    assert "features_enabled" in data
+    assert data["features_enabled"]["gateway"] is True

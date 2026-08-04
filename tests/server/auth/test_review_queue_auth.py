@@ -11,13 +11,17 @@ from mlflow.exceptions import MlflowException
 from mlflow.genai.review_queues import ReviewQueueType
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, ErrorCode
 from mlflow.protos.review_queues_pb2 import ListReviewQueues
-from mlflow.utils.proto_json_utils import message_to_json, parse_dict
-
-# flask-wtf (the auth extra) is required to import the auth app.
-pytest.importorskip("flask_wtf")
-
 from mlflow.server import auth
 from mlflow.server.auth.permissions import get_permission
+from mlflow.server.request_context import RequestShim, clear_request, set_request
+from mlflow.utils.proto_json_utils import message_to_json, parse_dict
+
+
+@pytest.fixture(autouse=True)
+def clear_request_context():
+    clear_request()
+    yield
+    clear_request()
 
 
 def _setup(
@@ -52,11 +56,7 @@ def _setup(
     )
     monkeypatch.setattr(auth, "_get_experiment_permission", lambda _exp, _user: perm)
     monkeypatch.setattr(auth, "_get_tracking_store", lambda: store)
-    # The owner-reassignment gate parses the live request body; stub it so the
-    # real `_update_review_queue_reassigns_owner` detection runs against it.
-    monkeypatch.setattr(
-        auth, "request", SimpleNamespace(get_json=lambda silent=False: dict(update_body or {}))
-    )
+    set_request(RequestShim(json_body=dict(update_body or {})))
 
 
 def test_review_queue_has_member_normalizes_incoming_username():
@@ -299,11 +299,7 @@ def _route_for(validator):
 
 def _patch_request(monkeypatch, validator, body):
     path, method = _route_for(validator)
-    monkeypatch.setattr(
-        auth,
-        "request",
-        SimpleNamespace(path=path, method=method, get_json=lambda silent=False: dict(body)),
-    )
+    set_request(RequestShim(path=path, method=method, json_body=dict(body)))
 
 
 def test_admin_create_shadowing_username_is_blocked(monkeypatch):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from typing import Any
 
 import anyio
@@ -56,7 +57,12 @@ class _CompatFileResponse(FileResponse):
         self.background = None
         try:
             if self.stat_result is None:
-                self.stat_result = await anyio.to_thread.run_sync(os.stat, self.path)
+                try:
+                    self.stat_result = await anyio.to_thread.run_sync(os.stat, self.path)
+                except FileNotFoundError:
+                    raise RuntimeError(f"File at path {self.path} does not exist.")
+                if not stat.S_ISREG(self.stat_result.st_mode):
+                    raise RuntimeError(f"File at path {self.path} is not a file.")
                 self.set_stat_headers(self.stat_result)
 
             request_headers = Headers(scope=scope)

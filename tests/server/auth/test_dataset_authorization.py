@@ -2,9 +2,9 @@
 
 from types import SimpleNamespace
 
-import flask
-
 import mlflow.server.auth as a
+
+from tests.server.conftest import mock_request_context
 
 
 class _Req:
@@ -82,7 +82,7 @@ def _run_add(monkeypatch, current, added, perms):
         lambda: SimpleNamespace(get_dataset_experiment_ids=lambda did: current),
     )
     monkeypatch.setattr(a, "_get_experiment_permission", lambda eid, user: perms[eid])
-    with flask.Flask(__name__).test_request_context(json={"experiment_ids": added}):
+    with mock_request_context(json={"experiment_ids": added}):
         return a.validate_can_add_dataset_to_experiments()
 
 
