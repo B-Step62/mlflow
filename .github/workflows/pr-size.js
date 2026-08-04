@@ -10,7 +10,7 @@ const GENERATED = [
 const THRESHOLDS = {
   XS: 9,
   S: 49,
-  M: 199,
+  M: 400,
   L: 499,
   XL: Infinity,
 };
