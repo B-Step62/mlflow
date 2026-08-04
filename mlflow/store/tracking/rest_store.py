@@ -158,6 +158,7 @@ from mlflow.store.entities.paged_list import PagedList
 from mlflow.store.tracking import MAX_RESULTS_QUERY_TRACE_METRICS, SEARCH_TRACES_DEFAULT_MAX_RESULTS
 from mlflow.store.tracking.abstract_store import AbstractStore
 from mlflow.store.tracking.gateway.rest_mixin import RestGatewayStoreMixin
+from mlflow.store.tracking.mcp_server_registry.rest_mixin import RestMCPServerRegistryMixin
 from mlflow.store.workspace_rest_store_mixin import WorkspaceRestStoreMixin
 from mlflow.tracing.analysis import TraceFilterCorrelationResult
 from mlflow.tracing.utils.otlp import (
@@ -194,7 +195,9 @@ _logger = logging.getLogger(__name__)
 # RestGatewayStoreMixin provides concrete implementations of those methods. For Python's MRO
 # to correctly resolve the Gateway methods to RestGatewayStoreMixin's implementations,
 # RestGatewayStoreMixin must appear first in the parent class list.
-class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
+class RestStore(
+    WorkspaceRestStoreMixin, RestGatewayStoreMixin, RestMCPServerRegistryMixin, AbstractStore
+):
     """
     Client for a remote tracking server accessed via REST API calls
 
@@ -1169,12 +1172,16 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
         )
         return ReviewQueue.from_proto(response_proto.review_queue)
 
-    def list_review_queues(self, experiment_id, *, user=None, max_results=None, page_token=None):
+    def list_review_queues(
+        self, experiment_id, *, user=None, item_id=None, max_results=None, page_token=None
+    ):
         from mlflow.genai.review_queues import ReviewQueue
 
         req = ListReviewQueues(experiment_id=str(experiment_id))
         if user is not None:
             req.user = user
+        if item_id is not None:
+            req.item_id = item_id
         if max_results is not None:
             req.max_results = max_results
         if page_token is not None:
@@ -1187,10 +1194,16 @@ class RestStore(WorkspaceRestStoreMixin, RestGatewayStoreMixin, AbstractStore):
         queues = [ReviewQueue.from_proto(q) for q in response_proto.review_queues]
         return PagedList(queues, response_proto.next_page_token or None)
 
-    def update_review_queue(self, queue_id, *, users=None, schema_ids=None):
+    def update_review_queue(
+        self, queue_id, *, name=None, new_owner=None, users=None, schema_ids=None
+    ):
         from mlflow.genai.review_queues import ReviewQueue
 
         req = UpdateReviewQueue(queue_id=queue_id)
+        if name is not None:
+            req.name = name
+        if new_owner is not None:
+            req.new_owner = new_owner
         if users is not None:
             req.update_users = True
             req.users.extend(users)

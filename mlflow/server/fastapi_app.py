@@ -6,6 +6,7 @@ middleware populates a ``contextvars.ContextVar`` so that sync handler code can
 read the current HTTP request without importing Flask.
 """
 
+import inspect
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import textwrap
 import time
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
@@ -20,11 +22,19 @@ from starlette.staticfiles import StaticFiles
 from mlflow.exceptions import MlflowException
 from mlflow.gateway.constants import MLFLOW_GATEWAY_DURATION_HEADER, MLFLOW_GATEWAY_OVERHEAD_HEADER
 from mlflow.gateway.providers.utils import provider_call_duration_ms
+from mlflow.server.artifact_router import artifact_router
 from mlflow.server.asgi_utils import get_routed_asgi_path
 from mlflow.server.assistant.api import assistant_router
 from mlflow.server.fastapi_security import init_fastapi_security
 from mlflow.server.gateway_api import gateway_router
 from mlflow.server.job_api import job_api_router
+from mlflow.server.mcp_server_api import (
+    _mlflow_error_response,
+    _request_validation_error_response,
+    get_mcp_server_api_route_prefixes,
+    is_mcp_server_api_path,
+    mcp_server_router,
+)
 from mlflow.server.otel_api import otel_router
 from mlflow.server.request_context import (
     clear_g,
@@ -109,6 +119,36 @@ def add_gateway_timing_middleware(fastapi_app: FastAPI) -> None:
         return response
 
     fastapi_app.state.gateway_timing_middleware_added = True
+
+
+def add_mcp_exception_handlers(fastapi_app: FastAPI) -> None:
+    if getattr(fastapi_app.state, "mcp_exception_handlers_added", False):
+        return
+
+    original_mlflow_exception_handler = fastapi_app.exception_handlers.get(MlflowException)
+
+    # These handlers are registered on the shared FastAPI app, so keep them
+    # scoped to MCP routes to avoid changing response behavior for other APIs.
+    @fastapi_app.exception_handler(MlflowException)
+    async def mcp_mlflow_exception_handler(request: Request, exc: MlflowException):
+        path = get_routed_asgi_path(request)
+        if is_mcp_server_api_path(path):
+            return _mlflow_error_response(exc)
+        if original_mlflow_exception_handler is not None:
+            response = original_mlflow_exception_handler(request, exc)
+            if inspect.isawaitable(response):
+                return await response
+            return response
+        return _mlflow_error_response(exc)
+
+    @fastapi_app.exception_handler(RequestValidationError)
+    async def mcp_request_validation_error_handler(request: Request, exc: RequestValidationError):
+        path = get_routed_asgi_path(request)
+        if is_mcp_server_api_path(path):
+            return _request_validation_error_response(exc)
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+    fastapi_app.state.mcp_exception_handlers_added = True
 
 
 def add_request_shim_middleware(fastapi_app: FastAPI) -> None:
@@ -235,7 +275,9 @@ def _register_handler_endpoints(fastapi_app: FastAPI) -> None:
 
 def _mount_static_files(fastapi_app: FastAPI) -> None:
     """Mount the React build static files directory."""
-    static_prefix = os.environ.get("STATIC_PREFIX_ENV_VAR", "")
+    from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+    static_prefix = os.environ.get(STATIC_PREFIX_ENV_VAR, "")
 
     if os.path.isdir(REL_STATIC_DIR):
         fastapi_app.mount(
@@ -251,6 +293,8 @@ def create_fastapi_app():
         title="MLflow Tracking Server",
         description="MLflow Tracking Server API",
         version=VERSION,
+        # Docs/OpenAPI remain disabled intentionally even though several native
+        # FastAPI routers are mounted (otel, jobs, gateway, assistant, artifacts).
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -270,6 +314,14 @@ def create_fastapi_app():
     fastapi_app.include_router(job_api_router)
     fastapi_app.include_router(gateway_router)
     fastapi_app.include_router(assistant_router)
+
+    # Include native artifact upload/download router for ASGI streaming
+    # This provides /api/2.0/mlflow-artifacts/artifacts/* and /ajax-api/2.0/... routes
+    fastapi_app.include_router(artifact_router)
+
+    add_mcp_exception_handlers(fastapi_app)
+    for route_prefix in get_mcp_server_api_route_prefixes():
+        fastapi_app.include_router(mcp_server_router, prefix=route_prefix)
 
     # Register all handler endpoints as native FastAPI routes
     _register_handler_endpoints(fastapi_app)

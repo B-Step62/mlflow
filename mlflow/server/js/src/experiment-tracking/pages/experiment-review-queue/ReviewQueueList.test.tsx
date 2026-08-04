@@ -1,5 +1,6 @@
 import { describe, jest, it, expect } from '@jest/globals';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { DesignSystemProvider } from '@databricks/design-system';
@@ -46,6 +47,34 @@ describe('ReviewQueueList', () => {
     expect(screen.getByText('Date added')).toBeInTheDocument();
   });
 
+  it('shows minute/second-fidelity relative time for the date added', () => {
+    // Regression: a freshly-added trace used to render "1h ago" because the
+    // formatter clamped its smallest unit to 1 hour.
+    const items = [
+      item('tr-just-now', 'PENDING', undefined, NOW - 10_000),
+      item('tr-min', 'PENDING', undefined, NOW - 5 * 60_000),
+      item('tr-hr', 'PENDING', undefined, NOW - 2 * 60 * 60_000),
+      item('tr-day', 'PENDING', undefined, NOW - 3 * 24 * 60 * 60_000),
+    ];
+    renderWithProviders(<ReviewQueueList items={items} onOpen={jest.fn()} nowMs={NOW} />);
+    expect(screen.getByText('just now')).toBeInTheDocument();
+    expect(screen.getByText('5m ago')).toBeInTheDocument();
+    expect(screen.getByText('2h ago')).toBeInTheDocument();
+    expect(screen.getByText('3d ago')).toBeInTheDocument();
+  });
+
+  it('floors each tier so a near-boundary age never rounds up to the next unit', () => {
+    // 59.5 min and 23.5h must read "59m ago" / "23h ago", not round up to
+    // "1h ago" / "1d ago" (which would reintroduce the clamping bug a level down).
+    const items = [
+      item('tr-min-boundary', 'PENDING', undefined, NOW - (59 * 60 + 30) * 1000),
+      item('tr-hr-boundary', 'PENDING', undefined, NOW - (23 * 60 + 30) * 60 * 1000),
+    ];
+    renderWithProviders(<ReviewQueueList items={items} onOpen={jest.fn()} nowMs={NOW} />);
+    expect(screen.getByText('59m ago')).toBeInTheDocument();
+    expect(screen.getByText('23h ago')).toBeInTheDocument();
+  });
+
   it('renders status tags for all items in a flat list', () => {
     renderWithProviders(
       <ReviewQueueList
@@ -55,7 +84,7 @@ describe('ReviewQueueList', () => {
       />,
     );
     expect(screen.getByText('Needs review')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getByText('Reviewed')).toBeInTheDocument();
   });
 
   it('renders request and response previews from trace data', () => {
@@ -69,7 +98,19 @@ describe('ReviewQueueList', () => {
 
   it('renders an empty state when there are no traces', () => {
     renderWithProviders(<ReviewQueueList items={[]} onOpen={jest.fn()} nowMs={NOW} />);
-    expect(screen.getByText('No traces in this queue yet.')).toBeInTheDocument();
+    expect(screen.getByText('No traces in this queue yet')).toBeInTheDocument();
+  });
+
+  it('shows an "Add traces" CTA in the empty state that calls onGoToTraces', () => {
+    const onGoToTraces = jest.fn();
+    renderWithProviders(<ReviewQueueList items={[]} onOpen={jest.fn()} nowMs={NOW} onGoToTraces={onGoToTraces} />);
+    fireEvent.click(screen.getByText('Add traces'));
+    expect(onGoToTraces).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the "Add traces" CTA when onGoToTraces is not provided', () => {
+    renderWithProviders(<ReviewQueueList items={[]} onOpen={jest.fn()} nowMs={NOW} />);
+    expect(screen.queryByText('Add traces')).not.toBeInTheDocument();
   });
 
   it('calls onOpen when a row is clicked', () => {
@@ -94,10 +135,10 @@ describe('ReviewQueueList', () => {
       />,
     );
     expect(screen.getByText('Needs review')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getByText('Reviewed')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Needs review (1)'));
     expect(screen.getByText('Needs review')).toBeInTheDocument();
-    expect(screen.queryByText('Complete')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reviewed')).not.toBeInTheDocument();
   });
 
   it('filters to only completed items when Completed is clicked', () => {
@@ -110,7 +151,7 @@ describe('ReviewQueueList', () => {
     );
     fireEvent.click(screen.getByText('Completed (1)'));
     expect(screen.queryByText('Needs review')).not.toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getByText('Reviewed')).toBeInTheDocument();
   });
 
   it('sorts by Date added when the column header is clicked', () => {
@@ -173,15 +214,116 @@ describe('ReviewQueueList', () => {
         items={[item('tr-1', 'PENDING'), item('tr-2', 'COMPLETE', 'bob')]}
         onOpen={jest.fn()}
         nowMs={NOW}
-        onRemoveItems={jest.fn()}
+        onRemoveItems={jest.fn<(ids: string[]) => Promise<void>>().mockResolvedValue(undefined)}
       />,
     );
     // checkboxes[0] is select-all; [1] is the first row.
     const checkboxes = screen.getAllByRole('checkbox');
     fireEvent.click(checkboxes[1]);
-    expect(screen.getByRole('button', { name: /1 trace/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Unassign' })).toBeInTheDocument();
     // Switching filters resets the selection so hidden rows can't be deleted.
     fireEvent.click(screen.getByText('Completed (1)'));
-    expect(screen.queryByRole('button', { name: /trace/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unassign' })).not.toBeInTheDocument();
+  });
+
+  it('clears the selection only after a successful removal', async () => {
+    const onRemoveItems = jest.fn<(ids: string[]) => Promise<void>>().mockResolvedValue(undefined);
+    renderWithProviders(
+      <ReviewQueueList
+        items={[item('tr-1', 'PENDING')]}
+        onOpen={jest.fn()}
+        nowMs={NOW}
+        onRemoveItems={onRemoveItems}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Unassign' }));
+    await waitFor(() => expect(onRemoveItems).toHaveBeenCalledTimes(1));
+    expect(onRemoveItems).toHaveBeenCalledWith(['tr-1']);
+    // The Unassign button only shows with a selection, so its absence proves the
+    // selection was cleared once the removal landed.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Unassign' })).not.toBeInTheDocument());
+  });
+
+  it('keeps the selection when the removal fails, so the reviewer can retry', async () => {
+    const onRemoveItems = jest.fn<(ids: string[]) => Promise<void>>().mockRejectedValue(new Error('boom'));
+    renderWithProviders(
+      <ReviewQueueList
+        items={[item('tr-1', 'PENDING')]}
+        onOpen={jest.fn()}
+        nowMs={NOW}
+        onRemoveItems={onRemoveItems}
+      />,
+    );
+    const firstRow = screen.getAllByRole('checkbox')[1];
+    fireEvent.click(firstRow);
+    fireEvent.click(screen.getByRole('button', { name: 'Unassign' }));
+    await waitFor(() => expect(onRemoveItems).toHaveBeenCalledTimes(1));
+    expect(onRemoveItems).toHaveBeenCalledWith(['tr-1']);
+    // The rejection is swallowed in handleDelete's no-op catch (no state update),
+    // so the row stays checked and its Unassign button persists. waitFor lets the
+    // rejected promise settle before asserting, mirroring the success test.
+    await waitFor(() => {
+      expect(firstRow).toBeChecked();
+      expect(screen.getByRole('button', { name: 'Unassign' })).toBeInTheDocument();
+    });
+  });
+
+  it('clears only the removed ids, preserving rows selected mid-removal', async () => {
+    // Row checkboxes stay enabled during an in-flight removal, so a reviewer can
+    // select more rows before it lands. Clearing the whole selection on success
+    // would wipe those; only the submitted ids should be dropped.
+    let resolveRemoval!: () => void;
+    const onRemoveItems = jest
+      .fn<(ids: string[]) => Promise<void>>()
+      .mockReturnValue(new Promise<void>((resolve) => (resolveRemoval = resolve)));
+    renderWithProviders(
+      <ReviewQueueList
+        items={[item('tr-1', 'PENDING'), item('tr-2', 'PENDING')]}
+        onOpen={jest.fn()}
+        nowMs={NOW}
+        onRemoveItems={onRemoveItems}
+      />,
+    );
+    const [, row1, row2] = screen.getAllByRole('checkbox'); // [0] is select-all
+    fireEvent.click(row1);
+    fireEvent.click(screen.getByRole('button', { name: 'Unassign' }));
+    await waitFor(() => expect(onRemoveItems).toHaveBeenCalledWith(['tr-1']));
+    // Select another row while the removal is still in flight.
+    fireEvent.click(row2);
+    expect(row2).toBeChecked();
+    // The removal lands: only tr-1 is dropped; the mid-flight tr-2 selection survives.
+    resolveRemoval();
+    await waitFor(() => expect(row1).not.toBeChecked());
+    expect(row2).toBeChecked();
+  });
+
+  it('offers copy-link menu items in the share dropdown', async () => {
+    const onCopyLink = jest.fn();
+    renderWithProviders(
+      <ReviewQueueList
+        items={[item('tr-1', 'PENDING')]}
+        title="My queue"
+        onOpen={jest.fn()}
+        nowMs={NOW}
+        onCopyLink={onCopyLink}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Queue settings' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Share queue' }));
+    await userEvent.click(screen.getByText('Share queue link'));
+    expect(onCopyLink).toHaveBeenCalledWith({ startReview: false });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Share queue' }));
+    await userEvent.click(screen.getByText('Share review link'));
+    expect(onCopyLink).toHaveBeenCalledWith({ startReview: true });
+  });
+
+  it('hides the gear menu when no actions are available', () => {
+    renderWithProviders(
+      <ReviewQueueList items={[item('tr-1', 'PENDING')]} title="My queue" onOpen={jest.fn()} nowMs={NOW} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Queue settings' })).not.toBeInTheDocument();
   });
 });

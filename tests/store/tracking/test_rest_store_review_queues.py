@@ -95,6 +95,17 @@ def test_update_review_queue_empty_list_still_flags():
     assert captured["body"].get("schema_ids", []) == []
 
 
+def test_update_review_queue_sends_name_and_new_owner():
+    resp = pb.UpdateReviewQueue.Response(
+        review_queue=pb.ReviewQueue(queue_id="rq-1", queue_type=pb.CUSTOM)
+    )
+    patcher, captured = _capture(resp)
+    with patcher:
+        _store().update_review_queue("rq-1", name="Renamed", new_owner="bob")
+    assert captured["body"]["name"] == "Renamed"
+    assert captured["body"]["new_owner"] == "bob"
+
+
 def test_add_items_sends_item_type_and_ids():
     resp = pb.AddItemsToReviewQueue.Response(
         items=[
@@ -164,6 +175,19 @@ def test_list_review_queues_parses_paged_response():
     assert captured["body"]["user"] == "alice"
     # empty next_page_token -> None
     assert page.token is None
+    assert page[0].queue_id == "rq-1"
+
+
+def test_list_review_queues_sends_item_filter():
+    resp = pb.ListReviewQueues.Response(
+        review_queues=[pb.ReviewQueue(queue_id="rq-1", name="q", queue_type=pb.CUSTOM)],
+        next_page_token="",
+    )
+    patcher, captured = _capture(resp)
+    with patcher:
+        page = _store().list_review_queues("1", item_id="tr-1")
+    assert captured["endpoint"] == "/api/3.0/mlflow/review-queues/list"
+    assert captured["body"]["item_id"] == "tr-1"
     assert page[0].queue_id == "rq-1"
 
 

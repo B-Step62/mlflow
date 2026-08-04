@@ -70,6 +70,7 @@ from mlflow.tracing.utils.artifact_utils import get_artifact_uri_for_trace
 from mlflow.tracking._tracking_service.utils import _get_store, _resolve_tracking_uri
 from mlflow.utils import is_uuid
 from mlflow.utils.mlflow_tags import IMMUTABLE_TAGS
+from mlflow.utils.thread_utils import map_with_context
 from mlflow.utils.uri import add_databricks_profile_info_to_artifact_uri, is_databricks_uri
 
 _logger = logging.getLogger(__name__)
@@ -435,7 +436,7 @@ class TracingClient:
 
         batch_size = _MLFLOW_SEARCH_TRACES_MAX_BATCH_SIZE.get()
         batches = [trace_ids[i : i + batch_size] for i in range(0, len(trace_ids), batch_size)]
-        for minibatch_traces in executor.map(_fetch_minibatch, batches):
+        for minibatch_traces in map_with_context(executor, _fetch_minibatch, batches):
             traces.extend(minibatch_traces)
         return traces
 
@@ -449,7 +450,8 @@ class TracingClient:
             if location == SpansLocation.ARTIFACT_REPO:
                 traces.extend(
                     tr
-                    for tr in executor.map(
+                    for tr in map_with_context(
+                        executor,
                         self._download_spans_from_artifact_repo,
                         location_trace_infos,
                     )
@@ -992,8 +994,7 @@ class TracingClient:
         users: list[str] | None = None,
         schema_ids: list[str] | None = None,
     ) -> "ReviewQueue":
-        # `created_by` (the owner) is set server-side from the authenticated
-        # user, never by the client.
+        # `created_by` (the owner) is stamped server-side, never by the client.
         return self.store.create_review_queue(
             experiment_id,
             name=name,
@@ -1027,10 +1028,14 @@ class TracingClient:
         self,
         queue_id: str,
         *,
+        name: str | None = None,
+        new_owner: str | None = None,
         users: list[str] | None = None,
         schema_ids: list[str] | None = None,
     ) -> "ReviewQueue":
-        return self.store.update_review_queue(queue_id, users=users, schema_ids=schema_ids)
+        return self.store.update_review_queue(
+            queue_id, name=name, new_owner=new_owner, users=users, schema_ids=schema_ids
+        )
 
     def _delete_review_queue(self, queue_id: str) -> None:
         return self.store.delete_review_queue(queue_id)
