@@ -196,10 +196,12 @@ pytest = [
   "pytest-repeat",
   "pytest-cov",
   "pytest-timeout",
+  "httpx2",
 ]
 test = [
   { include-group = "pytest" },
   "psutil",
+  "PyJWT",
   "pyspark",
   "opentelemetry-exporter-otlp-proto-grpc",
   "opentelemetry-exporter-otlp-proto-http",

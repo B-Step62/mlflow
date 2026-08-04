@@ -13,7 +13,6 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-import flask
 import pandas as pd
 import pytest
 import requests
@@ -62,6 +61,7 @@ from mlflow.entities.trace_state import TraceState
 from mlflow.entities.trace_status import TraceStatus
 from mlflow.environment_variables import (
     _MLFLOW_GO_STORE_TESTING,
+    MLFLOW_MODEL_CATALOG_URI,
     MLFLOW_SERVER_GRAPHQL_MAX_ALIASES,
     MLFLOW_SERVER_GRAPHQL_MAX_ROOT_FIELDS,
     MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT,
@@ -78,6 +78,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server import handlers
 from mlflow.server.fastapi_app import app
 from mlflow.server.handlers import initialize_backend_stores
+from mlflow.server.request_context import RequestShim, clear_request, set_request
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
 from mlflow.tracing.analysis import TraceFilterCorrelationResult
 from mlflow.tracing.client import TracingClient
@@ -1170,8 +1171,6 @@ def test_get_metric_history_bulk_calls_optimized_impl_when_expected(tmp_path):
     uri = ("sqlite://" if sys.platform == "win32" else "sqlite:////") + path[len("file://") :]
     mock_store = mock.Mock(wraps=SqlAlchemyStore(uri, str(tmp_path)))
 
-    flask_app = flask.Flask("test_flask_app")
-
     class MockRequestArgs:
         def __init__(self, args_dict):
             self.args_dict = args_dict
@@ -1187,15 +1186,21 @@ def test_get_metric_history_bulk_calls_optimized_impl_when_expected(tmp_path):
 
     with (
         mock.patch("mlflow.server.handlers._get_tracking_store", return_value=mock_store),
-        flask_app.test_request_context() as mock_context,
     ):
         run_ids = [str(i) for i in range(10)]
-        mock_context.request.args = MockRequestArgs({
-            "run_id": run_ids,
-            "metric_key": "mock_key",
-        })
-
-        get_metric_history_bulk_handler()
+        request = RequestShim(
+            method="GET",
+            path="/ajax-api/2.0/mlflow/metrics/get-history-bulk",
+            args=MockRequestArgs({
+                "run_id": run_ids,
+                "metric_key": "mock_key",
+            }),
+        )
+        set_request(request)
+        try:
+            get_metric_history_bulk_handler()
+        finally:
+            clear_request()
 
         mock_store.get_metric_history_bulk.assert_called_once_with(
             run_ids=run_ids,
@@ -2283,7 +2288,6 @@ def test_gateway_proxy_handler_rejects_invalid_requests(mlflow_client):
         backend_uri=mlflow_client.tracking_uri,
         root_artifact_uri=mlflow_client.tracking_uri,
         extra_env={"MLFLOW_DEPLOYMENTS_TARGET": "http://localhost:5001"},
-        server_type="flask",
     ) as url:
         patched_client = MlflowClient(url)
 
@@ -5010,9 +5014,10 @@ def test_list_providers(mlflow_client_with_secrets):
     assert "openai" in data["providers"]
 
 
-def test_list_models(mlflow_client_with_secrets):
+def test_list_models(mlflow_client_with_secrets, monkeypatch):
     import requests
 
+    monkeypatch.setenv(MLFLOW_MODEL_CATALOG_URI.name, "")
     base_url = mlflow_client_with_secrets._tracking_client.tracking_uri
     response = requests.get(f"{base_url}/ajax-api/3.0/mlflow/gateway/supported-models")
     assert response.status_code == 200

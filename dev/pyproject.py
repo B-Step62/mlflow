@@ -62,7 +62,7 @@ Additional dependencies can be installed to leverage the full feature set of MLf
 
 - To use the `mlflow.sklearn` component of MLflow Models, install `scikit-learn`, `numpy` and `pandas`.
 - To use SQL-based metadata storage, install `sqlalchemy`, `alembic`, and `sqlparse`.
-- To use serving-based features, install `flask` and `pandas`.
+- To use serving-based features, install `pandas`.
 
 **Note:** When using `mlflow-skinny`, set the tracking URI to your remote MLflow server:
 
@@ -343,9 +343,6 @@ def build(package_type: PackageType) -> None:
                     # Required by the mlflow.projects module, when running projects against
                     # a remote Kubernetes cluster
                     "kubernetes",
-                    # Required for exporting metrics from the MLflow server to Prometheus
-                    # as part of the MLflow server monitoring add-on
-                    "prometheus-flask-exporter",
                 ],
                 "db": [
                     # Required to use MySQL, PostgreSQL, or SQL Server as the backend store
@@ -375,7 +372,7 @@ def build(package_type: PackageType) -> None:
                 "jfrog": ["mlflow-jfrog-plugin"],
                 "kubernetes": ["kubernetes"],
                 "langchain": langchain_requirements,
-                "auth": ["Flask-WTF<2"],
+                "auth": [],
             }
             # Tracing SDK does not support extras
             if package_type != PackageType.TRACING

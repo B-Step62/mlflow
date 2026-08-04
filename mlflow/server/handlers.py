@@ -1939,7 +1939,7 @@ def search_runs_impl(request_message):
         if auth.auth_config:
             experiment_ids = auth.filter_experiment_ids(experiment_ids)
     except ImportError:
-        # Auth module not available (Flask-WTF not installed), skip filtering
+        # Auth module not available, skip filtering.
         pass
 
     order_by = request_message.order_by
@@ -3764,9 +3764,7 @@ def _create_presigned_download_url():
     response_message.headers.update(presigned.headers)
     if presigned.file_size is not None:
         response_message.file_size = presigned.file_size
-    resp = Response(mimetype="application/json")
-    resp.set_data(message_to_json(response_message))
-    return resp
+    return json_response(message_to_json(response_message))
 
 
 @catch_mlflow_exception
@@ -6859,6 +6857,8 @@ def _get_paths(base_path, version=2):
     We should register paths like /api/2.0/mlflow/experiment and
     /ajax-api/2.0/mlflow/experiment in the Flask router.
     """
+    if not base_path.startswith("/"):
+        base_path = f"/{base_path}"
     base_path = _convert_path_parameter_to_flask_format(base_path)
     return [_get_rest_path(base_path, version), _get_ajax_path(base_path, version)]
 

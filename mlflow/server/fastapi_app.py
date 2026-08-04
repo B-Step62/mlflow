@@ -46,10 +46,7 @@ from mlflow.server.workspace_helpers import (
     WORKSPACE_HEADER_NAME,
     resolve_workspace_for_request_if_enabled,
 )
-from mlflow.utils.workspace_context import (
-    clear_server_request_workspace,
-    set_server_request_workspace,
-)
+from mlflow.utils.workspace_context import ServerWorkspaceContext
 from mlflow.version import VERSION
 
 _FLASK_PATH_PARAM = re.compile(r"<(?:(int|float|path|string|uuid):)?([^>]+)>")
@@ -69,6 +66,32 @@ def _flask_to_fastapi_path(flask_path: str) -> str:
     return _FLASK_PATH_PARAM.sub(_replace, flask_path)
 
 
+def _fastapi_route_sort_key(endpoint) -> tuple[int, int, int, int]:
+    fastapi_path = _flask_to_fastapi_path(endpoint[0])
+    return (
+        fastapi_path.count("{"),
+        fastapi_path.count(":path}"),
+        -fastapi_path.count("/"),
+        -len(fastapi_path),
+    )
+
+
+def add_merge_slashes_middleware(fastapi_app: FastAPI) -> None:
+    if getattr(fastapi_app.state, "merge_slashes_middleware_added", False):
+        return
+
+    @fastapi_app.middleware("http")
+    async def merge_slashes_middleware(request: Request, call_next):
+        path = request.scope.get("path")
+        if isinstance(path, str) and "//" in path:
+            normalized_path = re.sub(r"/{2,}", "/", path)
+            request.scope["path"] = normalized_path
+            request.scope["raw_path"] = normalized_path.encode()
+        return await call_next(request)
+
+    fastapi_app.state.merge_slashes_middleware_added = True
+
+
 def add_fastapi_workspace_middleware(fastapi_app: FastAPI) -> None:
     if getattr(fastapi_app.state, "workspace_middleware_added", False):
         return
@@ -86,12 +109,8 @@ def add_fastapi_workspace_middleware(fastapi_app: FastAPI) -> None:
                 content=json.loads(e.serialize_as_json()),
             )
 
-        set_server_request_workspace(workspace.name if workspace else None)
-        try:
-            response = await call_next(request)
-        finally:
-            clear_server_request_workspace()
-        return response
+        with ServerWorkspaceContext(workspace.name if workspace else None):
+            return await call_next(request)
 
     fastapi_app.state.workspace_middleware_added = True
 
@@ -175,15 +194,6 @@ def _register_handler_endpoints(fastapi_app: FastAPI) -> None:
     from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
 
     static_prefix = os.environ.get(STATIC_PREFIX_ENV_VAR, "")
-
-    for http_path, handler, methods in handlers.get_endpoints():
-        fastapi_path = _flask_to_fastapi_path(http_path)
-        fastapi_app.add_api_route(
-            fastapi_path,
-            handler,
-            methods=methods,
-            response_class=Response,
-        )
 
     # Additional routes previously defined on the Flask app in __init__.py
     @fastapi_app.get(static_prefix + "/health")
@@ -272,6 +282,17 @@ def _register_handler_endpoints(fastapi_app: FastAPI) -> None:
         )
         return PlainTextResponse(text)
 
+    for http_path, handler, methods in sorted(
+        handlers.get_endpoints(), key=_fastapi_route_sort_key
+    ):
+        fastapi_path = _flask_to_fastapi_path(http_path)
+        fastapi_app.add_api_route(
+            fastapi_path,
+            handler,
+            methods=methods,
+            response_class=Response,
+        )
+
 
 def _mount_static_files(fastapi_app: FastAPI) -> None:
     """Mount the React build static files directory."""
@@ -308,6 +329,7 @@ def create_fastapi_app():
     add_fastapi_workspace_middleware(fastapi_app)
     add_gateway_timing_middleware(fastapi_app)
     add_request_shim_middleware(fastapi_app)
+    add_merge_slashes_middleware(fastapi_app)
 
     # Include existing native FastAPI routers
     fastapi_app.include_router(otel_router)

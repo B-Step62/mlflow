@@ -8,7 +8,7 @@ import time
 import types
 from subprocess import Popen
 from threading import Thread
-from typing import Any, Generator, Literal
+from typing import Any, Generator
 
 import requests
 import uvicorn
@@ -23,7 +23,7 @@ _logger = logging.getLogger(__name__)
 
 
 def _await_server_up_or_die(port: int, timeout: int = 30) -> None:
-    """Waits until the local flask server is listening on the given port."""
+    """Waits until the local tracking server is listening on the given port."""
     _logger.info(f"Awaiting server to be up on {LOCALHOST}:{port}")
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -44,7 +44,6 @@ def _init_server(
     root_artifact_uri: str,
     extra_env: dict[str, Any] | None = None,
     app: str | None = None,
-    server_type: Literal["flask", "fastapi"] = "fastapi",
 ) -> Generator[str, None, None]:
     """
     Launch a new REST server using the tracking store specified by backend_uri and root artifact
@@ -54,8 +53,7 @@ def _init_server(
         backend_uri: Backend store URI for the server
         root_artifact_uri: Root artifact URI for the server
         extra_env: Additional environment variables
-        app: Application module path (defaults based on server_type if None)
-        server_type: Server type to use - "fastapi" (default) or "flask"
+        app: ASGI application module path. Defaults to the MLflow FastAPI app.
 
     Yields:
         The string URL of the server.
@@ -63,42 +61,26 @@ def _init_server(
     mlflow.set_tracking_uri(None)
     server_port = get_safe_port()
 
-    if server_type == "fastapi":
-        # Use uvicorn for FastAPI
-        app_path = app or "mlflow.server.fastapi_app:app"
-        cmd = [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            app_path,
-            "--host",
-            LOCALHOST,
-            "--port",
-            str(server_port),
-        ]
-        if ":" in app_path:
-            module, obj_name = app_path.rsplit(":", 1)
-            try:
-                mod = importlib.import_module(module)
-                obj = getattr(mod, obj_name)
-                if isinstance(obj, types.FunctionType):
-                    cmd.append("--factory")
-            except Exception:
-                pass
-    else:
-        # Default to Flask
-        cmd = [
-            sys.executable,
-            "-m",
-            "flask",
-            "--app",
-            app or "mlflow.server:app",
-            "run",
-            "--host",
-            LOCALHOST,
-            "--port",
-            str(server_port),
-        ]
+    app_path = app or "mlflow.server.fastapi_app:app"
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        app_path,
+        "--host",
+        LOCALHOST,
+        "--port",
+        str(server_port),
+    ]
+    if ":" in app_path:
+        module, obj_name = app_path.rsplit(":", 1)
+        try:
+            mod = importlib.import_module(module)
+            obj = getattr(mod, obj_name)
+            if isinstance(obj, types.FunctionType):
+                cmd.append("--factory")
+        except Exception:
+            pass
 
     with Popen(
         cmd,

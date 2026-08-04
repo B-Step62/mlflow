@@ -375,6 +375,7 @@ from mlflow.utils import workspace_context
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 from mlflow.utils.search_utils import SearchUtils
+from mlflow.utils.workspace_context import ServerWorkspaceContext
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 _logger = logging.getLogger(__name__)
@@ -1271,7 +1272,7 @@ def validate_can_create_model_version():
     # on the source run/model to keep create-time access consistent with artifact-read gating.
     if not _validate_can_update_registered_model_or_prompt():
         return False
-    body = request.get_json(force=True, silent=True)
+    body = get_request().get_json(force=True, silent=True)
     body = body if isinstance(body, dict) else {}
     # Presence of run_id/model_id means the version is anchored to that source, so require
     # READ on it. Guard on presence (not truthiness): an explicitly-supplied empty id is
@@ -1341,7 +1342,7 @@ def validate_can_manage_scorer_permission():
 
 
 def validate_can_update_online_scoring_config():
-    body = request.get_json(silent=True) or {}
+    body = get_request().get_json(silent=True) or {}
     experiment_id = body.get("experiment_id")
     if not experiment_id:
         return False
@@ -1355,7 +1356,7 @@ def validate_can_read_online_scoring_configs():
     # Omit _assert_required: an absent scorer_ids falls through to allow here and
     # is handled by the handler's own validation, rather than raising in the gate.
     request_json = _get_validated_flask_request_json(
-        request, schema={"scorer_ids": [_assert_array, _assert_item_type_string]}
+        get_request(), schema={"scorer_ids": [_assert_array, _assert_item_type_string]}
     )
     scorer_ids = request_json.get("scorer_ids") or []
     if not scorer_ids:
@@ -2399,7 +2400,7 @@ def _parse_update_review_queue_request() -> UpdateReviewQueue:
     JSON's camelCase aliases (e.g. ``newOwner``) are detected the same way the
     handler reads them; a raw-key scan would miss the camelCase form.
     """
-    body = request.get_json(silent=True)
+    body = get_request().get_json(silent=True)
     message = UpdateReviewQueue()
     parse_dict(body if isinstance(body, dict) else {}, message)
     return message
@@ -2426,7 +2427,7 @@ def _reject_create_review_queue_shadowing_user():
     """Reject creating a CUSTOM queue whose name is a registered username."""
     from mlflow.genai.review_queues import ReviewQueueType
 
-    body = request.get_json(silent=True)
+    body = get_request().get_json(silent=True)
     message = CreateReviewQueue()
     parse_dict(body if isinstance(body, dict) else {}, message)
     # Only CUSTOM queues choose an arbitrary name; a USER queue *is* its username.
@@ -2496,7 +2497,7 @@ def enforce_review_queue_name_not_username():
     """
     # Resolve via the dispatcher (not a raw path lookup) so this stays correct if
     # these routes ever gain a path parameter, matching how non-admins are routed.
-    validator = _find_validator(request)
+    validator = _find_validator(get_request())
     if validator is validate_can_create_review_queue:
         _reject_create_review_queue_shadowing_user()
     elif validator is validate_can_update_review_queue:
@@ -3127,8 +3128,8 @@ def _before_request():
 
     authorization = authenticate_request()
     # Custom auth functions return either an Authorization-like object (with a
-    # username attribute) or an HTTP response (e.g. 401). Accept compatible
-    # Authorization objects via duck typing.
+    # username attribute) or an HTTP response (e.g. 401). Accept authorization
+    # objects via duck typing so integrations do not need this concrete class.
     if not hasattr(authorization, "username"):
         return authorization
 
@@ -5094,161 +5095,150 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
 
     @app.middleware("http")
     async def fastapi_permission_middleware(request, call_next):
-        from starlette.responses import Response
-
         path = get_routed_asgi_path(request)
-
-        if is_unprotected_route(path):
-            return await call_next(request)
-
-        # Routes with dedicated async validators (gateway, otel, jobs,
-        # assistant, native artifacts, MCP).
-        validator = _find_fastapi_validator(path, request.method)
-        if validator is not None:
-            if auth_config.authorization_function != DEFAULT_AUTHORIZATION_FUNCTION:
-                return PlainTextResponse(
-                    f"Custom authorization_function '{auth_config.authorization_function}' is not "
-                    f"supported for native FastAPI routes. Only the default Basic Auth function "
-                    f"is supported. Please use '{DEFAULT_AUTHORIZATION_FUNCTION}'.",
-                    status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
-
-            user = _authenticate_fastapi_request(request)
-            if user is None:
-                return PlainTextResponse(
-                    "You are not authenticated. Please see "
-                    "https://www.mlflow.org/docs/latest/auth/index.html#authenticating-to-mlflow "
-                    "on how to authenticate.",
-                    status_code=HTTPStatus.UNAUTHORIZED,
-                    headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
-                )
-
-            request.state.username = user.username
-            request.state.user_id = user.id
-
-            try:
-                workspace = resolve_workspace_for_request_if_enabled(
-                    path, request.headers.get(WORKSPACE_HEADER_NAME)
-                )
-            except MlflowException as e:
-                return JSONResponse(
-                    status_code=e.get_http_status_code(),
-                    content=json.loads(e.serialize_as_json()),
-                )
-            workspace_context.set_server_request_workspace(workspace.name if workspace else None)
-
-            after_handler = _find_fastapi_after_request_handler(path, request.method)
-            if after_handler is not None:
-                request.state.raw_body = await request.body()
-
-            if not user.is_admin:
-                try:
-                    if not await validator(user.username, request):
-                        return PlainTextResponse(
-                            "Permission denied",
-                            status_code=HTTPStatus.FORBIDDEN,
-                        )
-                except MlflowException as e:
-                    return PlainTextResponse(
-                        e.message,
-                        status_code=e.get_http_status_code(),
-                    )
-                finally:
-                    workspace_context.clear_server_request_workspace()
-            else:
-                workspace_context.clear_server_request_workspace()
-
-            response = await call_next(request)
-
-            if after_handler is not None and response.status_code < 400:
-                workspace_context.set_server_request_workspace(workspace.name if workspace else None)
-                try:
-                    after_handler(user.username, request)
-                except Exception:
-                    _logger.exception(
-                        "after-request handler failed for %s %s", request.method, path
-                    )
-                finally:
-                    workspace_context.clear_server_request_workspace()
-
-            if not user.is_admin:
-                response_filter = _find_fastapi_response_filter(request, request.method)
-                if response_filter is not None and response.status_code < 400:
-                    body = bytearray()
-                    async for chunk in response.body_iterator:
-                        body.extend(chunk)
-                    workspace_context.set_server_request_workspace(
-                        workspace.name if workspace else None
-                    )
-                    try:
-                        return _apply_fastapi_response_filter(
-                            response_filter=response_filter,
-                            username=user.username,
-                            body=bytes(body),
-                            request=request,
-                            response=response,
-                            path=path,
-                        )
-                    finally:
-                        workspace_context.clear_server_request_workspace()
-
-            return response
-
-        # All other routes: populate the request shim and run _before_request
-        # (auth + permission check) and _after_request (auto-grant on create).
-        shim = await from_starlette_request(request)
-        # Middleware runs before routing, so path params aren't available
-        # on the Starlette request yet. Extract them from the URL for
-        # routes whose validators depend on view_args.
-        if _is_proxy_artifact_path(path):
-            shim.view_args = _extract_artifact_view_args(path)
-        elif extracted := _extract_parameterized_view_args(path):
-            shim.view_args = extracted
-        set_request(shim)
         try:
-            result = _before_request()
-            if result is not None:
-                return result
-
-            response = await call_next(request)
-
-            # Run _after_request for routes that auto-grant permissions (e.g.
-            # CreateExperiment, CreateRegisteredModel). We need the response
-            # body, so buffer it. The inner request-shim middleware already
-            # cleared the contextvar, so re-set it briefly.
-            method = request.method
-            has_after = (path, method) in AFTER_REQUEST_HANDLERS or (
-                "/workspaces/" in path
-                and any(
-                    m == method and p.fullmatch(path)
-                    for (p, m) in WORKSPACE_PARAMETERIZED_AFTER_REQUEST_HANDLERS
-                )
+            workspace = resolve_workspace_for_request_if_enabled(
+                path,
+                request.headers.get(WORKSPACE_HEADER_NAME),
+            )
+        except MlflowException as e:
+            return JSONResponse(
+                status_code=e.get_http_status_code(),
+                content=json.loads(e.serialize_as_json()),
             )
 
-            if has_after and response.status_code < 400:
-                body = b""
-                async for chunk in response.body_iterator:
-                    body += chunk
-                set_request(shim)
-                compat = _CompatResponse(
-                    content=body,
-                    status_code=response.status_code,
-                    media_type=response.media_type,
-                )
-                _after_request(compat)
-                resp_headers = dict(response.headers)
-                resp_headers["content-length"] = str(len(compat.body))
-                return Response(
-                    content=compat.body,
-                    status_code=compat.status_code,
-                    headers=resp_headers,
-                    media_type=compat.media_type,
+        with ServerWorkspaceContext(workspace.name if workspace else None):
+            return await _run_fastapi_permission_checks(request, call_next, path)
+
+
+async def _run_fastapi_permission_checks(request, call_next, path):
+    from starlette.responses import Response
+
+    if is_unprotected_route(path):
+        return await call_next(request)
+
+    # Routes with dedicated async validators (gateway, otel, jobs,
+    # assistant, native artifacts, MCP).
+    validator = _find_fastapi_validator(path, request.method)
+    if validator is not None:
+        if auth_config.authorization_function != DEFAULT_AUTHORIZATION_FUNCTION:
+            return PlainTextResponse(
+                f"Custom authorization_function '{auth_config.authorization_function}' is not "
+                f"supported for native FastAPI routes. Only the default Basic Auth function "
+                f"is supported. Please use '{DEFAULT_AUTHORIZATION_FUNCTION}'.",
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+        user = _authenticate_fastapi_request(request)
+        if user is None:
+            return PlainTextResponse(
+                "You are not authenticated. Please see "
+                "https://www.mlflow.org/docs/latest/auth/index.html#authenticating-to-mlflow "
+                "on how to authenticate.",
+                status_code=HTTPStatus.UNAUTHORIZED,
+                headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
+            )
+
+        request.state.username = user.username
+        request.state.user_id = user.id
+
+        after_handler = _find_fastapi_after_request_handler(path, request.method)
+        if after_handler is not None:
+            request.state.raw_body = await request.body()
+
+        if not user.is_admin:
+            try:
+                if not await validator(user.username, request):
+                    return PlainTextResponse(
+                        "Permission denied",
+                        status_code=HTTPStatus.FORBIDDEN,
+                    )
+            except MlflowException as e:
+                return PlainTextResponse(
+                    e.message,
+                    status_code=e.get_http_status_code(),
                 )
 
-            return response
-        finally:
-            clear_request()
-            clear_g()
+        response = await call_next(request)
+
+        if after_handler is not None and response.status_code < 400:
+            try:
+                after_handler(user.username, request)
+            except Exception:
+                _logger.exception("after-request handler failed for %s %s", request.method, path)
+
+        if not user.is_admin:
+            response_filter = _find_fastapi_response_filter(request, request.method)
+            if response_filter is not None and response.status_code < 400:
+                body = bytearray()
+                async for chunk in response.body_iterator:
+                    body.extend(chunk)
+                return _apply_fastapi_response_filter(
+                    response_filter=response_filter,
+                    username=user.username,
+                    body=bytes(body),
+                    request=request,
+                    response=response,
+                    path=path,
+                )
+
+        return response
+
+    # All other routes: populate the request shim and run _before_request
+    # (auth + permission check) and _after_request (auto-grant on create).
+    shim = await from_starlette_request(request)
+    # Middleware runs before routing, so path params aren't available
+    # on the Starlette request yet.  Extract them from the URL for
+    # routes whose validators depend on view_args.
+    if _is_proxy_artifact_path(path):
+        shim.view_args = _extract_artifact_view_args(path)
+    elif extracted := _extract_parameterized_view_args(path):
+        shim.view_args = extracted
+    set_request(shim)
+    try:
+        result = _before_request()
+        if result is not None:
+            return result
+
+        response = await call_next(request)
+
+        # Run _after_request for routes that auto-grant permissions (e.g.
+        # CreateExperiment, CreateRegisteredModel).  We need the response
+        # body, so buffer it.  The inner request-shim middleware already
+        # cleared the contextvar, so re-set it briefly.
+        method = request.method
+        has_after = (path, method) in AFTER_REQUEST_HANDLERS or (
+            "/workspaces/" in path
+            and any(
+                m == method and p.fullmatch(path)
+                for (p, m) in WORKSPACE_PARAMETERIZED_AFTER_REQUEST_HANDLERS
+            )
+        )
+
+        if has_after and response.status_code < 400:
+            body = b""
+            async for chunk in response.body_iterator:
+                body += chunk
+            set_request(shim)
+            compat = _CompatResponse(
+                content=body,
+                status_code=response.status_code,
+                media_type=response.media_type,
+            )
+            _after_request(compat)
+            resp_headers = dict(response.headers)
+            resp_headers["content-length"] = str(len(compat.body))
+            return Response(
+                content=compat.body,
+                status_code=compat.status_code,
+                headers=resp_headers,
+                media_type=compat.media_type,
+            )
+
+        return response
+    finally:
+        clear_request()
+        clear_g()
 
 
 # Role management routes (RBAC). Each route is exposed at both the REST path (Python

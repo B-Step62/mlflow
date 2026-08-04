@@ -54,7 +54,6 @@ def workspace_client(tmp_path):
             # Force seeding on so tests don't depend on the caller's shell env.
             MLFLOW_RBAC_SEED_DEFAULT_ROLES.name: "true",
         },
-        server_type="flask",
     ) as url:
         yield AuthServiceClient(url), url
 

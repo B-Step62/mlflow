@@ -9,6 +9,7 @@ pytest-xdist
 # Used by the `serve_wheel` fixture to build the dev wheel once across xdist workers
 filelock
 httpx
+httpx2
 moto>=4.2.0,<5,!=4.2.5
 azure-storage-blob>=12.0.0
 azure-storage-file-datalake>=12.9.1
@@ -30,12 +31,11 @@ tqdm[notebook]
 openai
 # Required for showing pytest stats
 psutil
+PyJWT
 pyspark<4.1.0
 # Required for testing the opentelemetry exporter of tracing
 opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-exporter-otlp-proto-http
-# Required for testing mlflow.server.auth
-Flask-WTF<2
 # required for testing polars dataset integration
 polars>=1
 # required for testing mlflow.genai.optimize_prompt

@@ -456,9 +456,10 @@ def test_create_provider_from_endpoint_name_litellm(store: SqlAlchemyStore):
         ],
     )
 
-    provider, _ = _create_provider_from_endpoint_name(
-        store, endpoint.name, EndpointType.LLM_V1_CHAT
-    )
+    with patch("mlflow.gateway.providers.litellm.importlib.util.find_spec", return_value=object()):
+        provider, _ = _create_provider_from_endpoint_name(
+            store, endpoint.name, EndpointType.LLM_V1_CHAT
+        )
 
     assert isinstance(provider, LiteLLMProvider)
     assert isinstance(provider.config.model.config, LiteLLMConfig)
@@ -492,9 +493,10 @@ def test_create_provider_from_endpoint_name_litellm_with_api_base(store: SqlAlch
         ],
     )
 
-    provider, _ = _create_provider_from_endpoint_name(
-        store, endpoint.name, EndpointType.LLM_V1_CHAT
-    )
+    with patch("mlflow.gateway.providers.litellm.importlib.util.find_spec", return_value=object()):
+        provider, _ = _create_provider_from_endpoint_name(
+            store, endpoint.name, EndpointType.LLM_V1_CHAT
+        )
 
     assert isinstance(provider, LiteLLMProvider)
     assert isinstance(provider.config.model.config, LiteLLMConfig)
