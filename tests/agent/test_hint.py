@@ -9,9 +9,6 @@ import pytest
 from mlflow.agent import hint
 from mlflow.agent.agents import AGENTS
 
-# Captured before the autouse fixture stubs it out.
-_REAL_BUNDLED_LOOKUP = hint._bundled_skill_manifest
-
 
 @pytest.fixture
 def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -40,19 +37,16 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def bundled_skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Stand in for the skill copy that released MLflow packages ship."""
     skills = tmp_path / "bundled"
-    manifest = skills / hint.TRACING_SKILL / "SKILL.md"
-    manifest.parent.mkdir(parents=True)
-    manifest.write_text("---\nname: tracing\n---\n")
+    skills.mkdir()
     (skills / "README.md").write_text("# MLflow skills\n")
-    monkeypatch.setattr(hint, "_bundled_skill_manifest", lambda: manifest)
     monkeypatch.setattr(hint.resources, "files", lambda _package: skills)
-    return manifest
+    return skills
 
 
 def hint_message() -> str | None:
     """Run the hint, returning the logged message or None when it stayed silent."""
     with mock.patch.object(hint._logger, "info") as info:
-        hint.maybe_hint_tracing_skill()
+        hint.maybe_hint_mlflow_skills()
     return info.call_args[0][0] if info.call_args else None
 
 
@@ -70,12 +64,16 @@ def test_hints_under_each_supported_agent(
     monkeypatch.setenv(marker, "1")
     message = hint_message()
     assert message is not None
-    # The hint points at the skill rather than restating its contents.
-    assert hint.TRACING_SKILL in message
-    assert "before writing any tracing" in message
+    assert "Before continuing with any MLflow task" in message
+    assert "MUST read" in message
+    assert "load the skills relevant to your task" in message
+    assert "Follow the skills' instructions before using MLflow APIs" in message
+    assert "instrumenting-with-mlflow-tracing" not in message
+    assert "MLFLOW_DISABLE_AGENT_HINT" not in message
+    assert "http" not in message
     # One line, so any `| tail -N` or `| head -N` an agent appends keeps all of it.
     assert len(message.splitlines()) == 1
-    assert str(bundled_skill) in message
+    assert str(bundled_skill / "README.md") in message
 
 
 def test_empty_marker_is_not_a_detection(clean_env: Path, monkeypatch: pytest.MonkeyPatch):
@@ -93,32 +91,100 @@ def test_hints_even_when_the_skill_is_installed(clean_env: Path, monkeypatch: py
     # Installation is deliberately not probed: skills end up in too many places
     # for the check to be accurate, and the pointer stays useful either way.
     monkeypatch.setenv("CLAUDECODE", "1")
-    (clean_env / ".claude" / "skills" / hint.TRACING_SKILL).mkdir(parents=True)
+    (clean_env / ".claude" / "skills" / "instrumenting-with-mlflow-tracing").mkdir(parents=True)
     assert hint_message() is not None
 
 
-def test_points_at_the_bundled_skill_rather_than_the_network(
+def test_points_at_the_bundled_skills_index_rather_than_the_network(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, bundled_skill: Path
 ):
     monkeypatch.setenv("CLAUDECODE", "1")
     message = hint_message()
-    assert str(bundled_skill) in message
+    assert str(bundled_skill / "README.md") in message
     assert "github.com" not in message
     assert "http" not in message
 
 
-def test_silent_when_the_install_ships_no_skill(clean_env: Path, monkeypatch: pytest.MonkeyPatch):
+def test_silent_when_the_install_ships_no_skills_index(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, bundled_skill: Path
+):
     monkeypatch.setenv("CLAUDECODE", "1")
-    monkeypatch.setattr(hint, "_bundled_skill_manifest", lambda: None)
+    (bundled_skill / "README.md").unlink()
     # Nothing local to point at, so say nothing rather than send the agent elsewhere.
+    assert hint_message() is None
+    (bundled_skill / "README.md").write_text("# MLflow skills\n")
+    assert hint_message() is not None
+
+
+@pytest.mark.parametrize("error", [ModuleNotFoundError("no skills"), OSError("unavailable")])
+def test_skills_hint_survives_resource_errors(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setattr(hint.resources, "files", mock.Mock(side_effect=error))
     assert hint_message() is None
 
 
-def test_bundled_lookup_survives_a_missing_skills_package(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        hint.resources, "files", mock.Mock(side_effect=ModuleNotFoundError("no skills"))
-    )
-    assert _REAL_BUNDLED_LOOKUP() is None
+def test_skills_hint_survives_logging_errors(clean_env: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with mock.patch.object(hint._logger, "info", side_effect=RuntimeError("handler failed")):
+        hint.maybe_hint_mlflow_skills()
+
+
+@pytest.mark.parametrize("state", ["human", "disabled", "emitted"])
+def test_skills_hint_fast_paths_skip_resource_lookup(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, state: str
+):
+    if state != "human":
+        monkeypatch.setenv("CLAUDECODE", "1")
+    if state == "disabled":
+        monkeypatch.setenv("MLFLOW_DISABLE_AGENT_HINT", "1")
+    if state == "emitted":
+        hint._EMITTED_HINTS.add("skills-discovery")
+
+    with mock.patch.object(hint.resources, "files") as files:
+        assert hint_message() is None
+    files.assert_not_called()
+
+
+def test_skills_hint_is_emitted_once(clean_env: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert hint_message() is not None
+    assert hint_message() is None
+
+
+def test_skills_hint_is_emitted_once_across_threads(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, bundled_skill: Path
+):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    barrier = threading.Barrier(2)
+
+    def find_skills(_package):
+        barrier.wait()
+        return bundled_skill
+
+    monkeypatch.setattr(hint.resources, "files", find_skills)
+    with mock.patch.object(hint._logger, "info") as info:
+        threads = [
+            threading.Thread(target=hint.maybe_hint_mlflow_skills, name=f"skills-hint-test-{index}")
+            for index in range(2)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    info.assert_called_once()
+
+
+def test_skills_discovery_does_not_consume_antipattern_warning(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert hint_message() is not None
+    with mock.patch.object(hint._logger, "warning") as warning:
+        hint.maybe_warn_agent("missing-inputs", "A tool span has no inputs.")
+    warning.assert_called_once()
+    assert hint_message() is None
 
 
 @pytest.mark.parametrize(("name", "value"), sorted(hint._AGENT_ENV_VALUES.items()))
@@ -129,6 +195,7 @@ def test_hints_for_value_specific_markers(
     assert hint_message() is not None
     # A different value for the same variable is an ordinary human environment.
     monkeypatch.setenv(name, "something-else")
+    hint._EMITTED_HINTS.clear()
     hint._is_agent_driving.cache_clear()
     assert hint_message() is None
 
@@ -142,6 +209,7 @@ def test_tty_gated_markers_only_count_off_a_terminal(
     assert hint_message() is not None
     # The same variable in a human's terminal is not a detection.
     monkeypatch.setattr(hint.sys.stdout, "isatty", lambda: True, raising=False)
+    hint._EMITTED_HINTS.clear()
     hint._is_agent_driving.cache_clear()
     assert hint_message() is None
 
@@ -177,7 +245,7 @@ def test_antipattern_warning_is_emitted_once_across_threads(
 
     def find_skills(_package):
         barrier.wait()
-        return bundled_skill.parent.parent
+        return bundled_skill
 
     monkeypatch.setattr(hint.resources, "files", find_skills)
     with mock.patch.object(hint._logger, "warning") as warning:
@@ -211,7 +279,7 @@ def test_append_agent_hint_augments_existing_message_once(
     repeated = hint.maybe_append_agent_hint("deprecated-api", "Existing warning.")
 
     assert augmented.startswith("Existing warning.")
-    assert str(bundled_skill.parent.parent) in augmented
+    assert str(bundled_skill) in augmented
     assert repeated == "Existing warning."
 
 

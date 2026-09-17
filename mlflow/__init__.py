@@ -453,10 +453,10 @@ from mlflow.telemetry import set_telemetry_client
 
 set_telemetry_client()
 
-# Point coding agents at the MLflow tracing skill. No-op unless a coding agent is
+# Point coding agents at the bundled MLflow skills. No-op unless a coding agent is
 # driving this process. `mlflow.agent` does not ship in the mlflow-tracing package.
 if not IS_TRACING_SDK_ONLY:
     with contextlib.suppress(Exception):
-        from mlflow.agent.hint import maybe_hint_tracing_skill
+        from mlflow.agent.hint import maybe_hint_mlflow_skills
 
-        maybe_hint_tracing_skill()
+        maybe_hint_mlflow_skills()
