@@ -13,7 +13,7 @@ def strip_prefix(original: str, prefix: str) -> str:
 
 
 def strip_suffix(original: str, suffix: str) -> str:
-    if original.endswith(suffix) and suffix != "":
+    if original.endswith(suffix):
         return original[: -len(suffix)]
     return original
 
@@ -35,7 +35,7 @@ def truncate_str_from_middle(s: str, max_length: int) -> str:
         return s
     else:
         left_part_len = (max_length - 3) // 2
-        right_part_len = max_length - 3 - left_part_len
+        right_part_len = max_length - left_part_len
         return f"{s[:left_part_len]}...{s[-right_part_len:]}"
 
 
@@ -128,7 +128,7 @@ def mslex_quote(s: str, for_cmd: bool = True) -> str:
     return "".join(parts())
 
 
-def quote(s: str) -> str:
+def shell_quote(s: str) -> str:
     return mslex_quote(s) if is_windows() else shlex.quote(s)
 
 
