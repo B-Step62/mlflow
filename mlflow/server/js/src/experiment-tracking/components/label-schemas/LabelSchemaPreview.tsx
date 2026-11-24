@@ -43,7 +43,7 @@ export const LabelSchemaPreview = ({ formData }: LabelSchemaPreviewProps) => {
     <div
       css={{
         padding: 'var(--db-space-2) var(--db-space-4)',
-        backgroundColor: 'var(--db-surface-subtle)',
+        backgroundColor: 'var(--db-accent-surface-subtle)',
         borderBottom: '1px solid var(--db-border-base)',
         display: 'flex',
         alignItems: 'center',

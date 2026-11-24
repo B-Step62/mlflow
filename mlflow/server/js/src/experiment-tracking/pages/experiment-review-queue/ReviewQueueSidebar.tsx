@@ -125,7 +125,7 @@ const QueueRow = ({
         opacity: inspectable ? 1 : 0.5,
         backgroundColor: selected ? theme.colors.actionDefaultBackgroundPress : undefined,
         '&:hover': inspectable
-          ? { backgroundColor: selected ? undefined : theme.colors.actionDefaultBackgroundHover }
+          ? { backgroundColor: selected ? undefined : 'var(--db-accent-surface-subtle)' }
           : undefined,
       }}
     >

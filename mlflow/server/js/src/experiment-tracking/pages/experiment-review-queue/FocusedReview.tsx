@@ -63,7 +63,6 @@ const tryParseJson = (raw: string): { text: string; isJson: boolean } => {
  * 3. Everything else → markdown via GenAIMarkdownRenderer
  */
 const TraceContentBubble = ({ content, variant }: { content: string; variant: 'input' | 'output' }) => {
-  const { theme } = useDesignSystemTheme();
   const { text, isJson } = tryParseJson(content);
 
   const isInput = variant === 'input';
@@ -71,7 +70,7 @@ const TraceContentBubble = ({ content, variant }: { content: string; variant: 'i
     ? {
         maxWidth: '50%',
         padding: 'var(--db-space-2)',
-        backgroundColor: theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue200,
+        backgroundColor: 'var(--db-accent-surface-subtle)',
         borderRadius: 'var(--db-shape-container-small)',
         fontSize: 'var(--db-font-size-sm)',
         wordBreak: 'break-word' as const,
@@ -79,7 +78,7 @@ const TraceContentBubble = ({ content, variant }: { content: string; variant: 'i
       }
     : {
         padding: 'var(--db-space-4)',
-        backgroundColor: theme.isDarkMode ? theme.colors.backgroundSecondary : theme.colors.white,
+        backgroundColor: 'var(--db-surface-base)',
         borderRadius: 'var(--db-shape-container-small)',
         fontSize: 'var(--db-font-size-sm)',
         lineHeight: 1.6,
@@ -112,7 +111,7 @@ const TraceContentBubble = ({ content, variant }: { content: string; variant: 'i
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             fontSize: 'var(--db-font-size-sm)',
-            fontFamily: 'monospace',
+            fontFamily: 'var(--db-mono-font-family)',
           }}
         >
           {text}
@@ -288,8 +287,8 @@ export const FocusedReview = ({
   const percentage = totalCount > 0 ? Math.round((reviewedCount / totalCount) * 100) : 0;
   // One segment per trace (capped at 100, then proportional), filled blue up to
   // the reviewed count — ported from the universe review app's progress bar.
-  const filledColor = theme.colors.blue600;
-  const remainingColor = theme.isDarkMode ? theme.colors.blue800 : theme.colors.blue200;
+  const filledColor = 'var(--db-accent-surface)';
+  const remainingColor = 'var(--db-accent-surface-subtle)';
   const maxSegments = 100;
   const segmentCount = Math.min(totalCount, maxSegments);
   const progressBarItems = Array.from({ length: segmentCount }, (_, index) => {
@@ -424,7 +423,7 @@ export const FocusedReview = ({
             values={{ reviewed: reviewedCount, total: totalCount, percentage }}
           />
         </Typography.Text>
-        <SegmentedProgressBar items={progressBarItems} css={{ width: 240, height: theme.typography.fontSizeSm }} />
+        <SegmentedProgressBar items={progressBarItems} css={{ width: 240, height: 'var(--db-size-3)' }} />
         <Button
           componentId={`${CID}.prev`}
           icon={<ChevronLeftIcon />}
@@ -568,7 +567,7 @@ export const FocusedReview = ({
             backgroundColor: 'var(--db-surface-base)',
             border: '1px solid var(--db-border-base)',
             borderRadius: 'var(--db-shape-container-small)',
-            boxShadow: theme.shadows.lg,
+            boxShadow: 'var(--db-elevation-low)',
             overflow: 'hidden',
           }}
         >
@@ -602,10 +601,11 @@ export const FocusedReview = ({
                     <span
                       css={{
                         display: 'inline-block',
-                        width: 8,
-                        height: 8,
+                        width: 'var(--db-size-2)',
+                        height: 'var(--db-size-2)',
+                        // A round dot at any size, so the radius stays a percentage.
                         borderRadius: '50%',
-                        backgroundColor: answered ? theme.colors.green600 : theme.colors.yellow600,
+                        backgroundColor: answered ? 'var(--db-positive-text)' : 'var(--db-caution-text)',
                         flexShrink: 0,
                         marginTop: 6,
                       }}

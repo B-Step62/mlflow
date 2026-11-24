@@ -37,15 +37,17 @@ const STATUS_META: Record<ReviewStatus, { color: 'turquoise' | 'lime' | 'charcoa
 };
 
 const PendingDot = () => {
-  const { theme } = useDesignSystemTheme();
   return (
     <span
       css={{
         display: 'inline-block',
-        width: 8,
-        height: 8,
+        width: 'var(--db-size-2)',
+        height: 'var(--db-size-2)',
+        // A round dot at any size, so the radius stays a percentage.
         borderRadius: '50%',
-        backgroundColor: theme.colors.yellow600,
+        // The dot is the tag's icon, so it takes the caution foreground color. The strong caution
+        // surface is too light to stand out against the lemon tag fill.
+        backgroundColor: 'var(--db-caution-text)',
         flexShrink: 0,
       }}
     />
@@ -298,7 +300,7 @@ export const ReviewQueueList = ({
       <TableRow
         key={item.item_id}
         onClick={() => onOpen(item)}
-        css={{ cursor: 'pointer', '&:hover': { backgroundColor: theme.colors.actionDefaultBackgroundHover } }}
+        css={{ cursor: 'pointer', '&:hover': { backgroundColor: 'var(--db-accent-surface-subtle)' } }}
       >
         {selectable && (
           <TableCell css={{ flex: '0 0 36px' }} onClick={(e) => e.stopPropagation()}>

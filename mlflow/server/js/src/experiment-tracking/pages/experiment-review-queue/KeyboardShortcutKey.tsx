@@ -1,20 +1,16 @@
-import { useDesignSystemTheme } from '@databricks/design-system';
-
 export const KeyboardShortcutKey = ({ children }: { children: string }) => {
-  const { theme } = useDesignSystemTheme();
-
   return (
     <kbd
       aria-hidden="true"
       css={{
-        minWidth: 20,
-        height: 20,
+        minWidth: 'var(--db-size-5)',
+        height: 'var(--db-size-5)',
         padding: '0 var(--db-space-1)',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.borders.borderRadiusSm,
+        border: '1px solid var(--db-border-base)',
+        borderRadius: 'var(--db-shape-control)',
         backgroundColor: 'var(--db-surface-subtle)',
         color: 'var(--db-text-subtle)',
         fontFamily: 'inherit',

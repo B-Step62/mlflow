@@ -1,16 +1,6 @@
 import { useState } from 'react';
 
-import {
-  Empty,
-  Modal,
-  PlusIcon,
-  TableSkeleton,
-  Tag,
-  TrashIcon,
-  Button,
-  Typography,
-  useDesignSystemTheme,
-} from '@databricks/design-system';
+import { Empty, Modal, PlusIcon, TableSkeleton, Tag, TrashIcon, Button, Typography } from '@databricks/design-system';
 import { FormattedMessage, useIntl } from 'react-intl';
 
 import {
@@ -32,7 +22,6 @@ const CID = 'mlflow.experiment-review-queue.manage-questions';
  * list, delete, and — via the authoring drawer — create and edit them.
  */
 export const ManageQuestionsModal = ({ experimentId, onClose }: { experimentId: string; onClose: () => void }) => {
-  const { theme } = useDesignSystemTheme();
   const intl = useIntl();
   const { labelSchemas, isLoading } = useListLabelSchemasQuery({ experimentId });
   const { deleteLabelSchemaAsync, isDeleting } = useDeleteLabelSchemaMutation();
@@ -155,7 +144,7 @@ export const ManageQuestionsModal = ({ experimentId, onClose }: { experimentId: 
                     border: '1px solid var(--db-border-base)',
                     borderRadius: 'var(--db-shape-container-small)',
                     cursor: isDefault ? 'default' : 'pointer',
-                    ...(isDefault ? {} : { '&:hover': { backgroundColor: theme.colors.actionDefaultBackgroundHover } }),
+                    ...(isDefault ? {} : { '&:hover': { backgroundColor: 'var(--db-accent-surface-subtle)' } }),
                   }}
                 >
                   <Typography.Text bold css={{ flex: 1 }}>

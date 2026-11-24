@@ -376,7 +376,7 @@ export const QueueSettingsModal = ({
                   display: 'grid',
                   gridTemplateRows: selectedSchemas.length > 0 ? '1fr' : '0fr',
                   transition: 'grid-template-rows 200ms ease-out',
-                  marginTop: selectedSchemas.length > 0 ? theme.spacing.sm : 0,
+                  marginTop: selectedSchemas.length > 0 ? 'var(--db-space-2)' : 0,
                 }}
               >
                 <div css={{ overflow: 'hidden' }}>

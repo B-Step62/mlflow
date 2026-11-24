@@ -360,8 +360,8 @@ const DraggableOptionChip = ({
             top: 0,
             bottom: 0,
             width: 2,
-            borderRadius: 1,
-            backgroundColor: theme.colors.actionPrimaryBackgroundDefault,
+            borderRadius: 'var(--db-shape-pill)',
+            backgroundColor: 'var(--db-accent-surface)',
           }}
         />
       )}
@@ -370,7 +370,7 @@ const DraggableOptionChip = ({
         closable
         onClose={onRemove}
         // Pull the close button toward the text (the Tag leaves a wide default gap).
-        closeButtonProps={{ style: { marginLeft: -theme.spacing.xs } }}
+        closeButtonProps={{ style: { marginLeft: 'calc(var(--db-space-1) * -1)' } }}
         css={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -395,8 +395,8 @@ const DraggableOptionChip = ({
             // Pull the grip toward the chip's left edge (the Tag has intrinsic
             // content padding we can't reach from the wrapper css). The
             // grip<->text gap is half the text<->X gap.
-            marginLeft: -theme.spacing.xs,
-            marginRight: theme.spacing.xs / 2,
+            marginLeft: 'calc(var(--db-space-1) * -1)',
+            marginRight: 'var(--db-space-0-5)',
             color: 'var(--db-text-subtle)',
             fontSize: 'var(--db-font-size-sm)',
             cursor: 'grab',

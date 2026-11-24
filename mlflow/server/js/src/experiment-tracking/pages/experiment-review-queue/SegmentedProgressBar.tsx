@@ -1,5 +1,3 @@
-import { useDesignSystemTheme } from '@databricks/design-system';
-
 export type ProgressBarItem = {
   color: string;
 };
@@ -12,8 +10,7 @@ export type ProgressBarItem = {
  * caller via `className` (emotion `css`).
  */
 export const SegmentedProgressBar = ({ items, className }: { items: ProgressBarItem[]; className?: string }) => {
-  const { theme } = useDesignSystemTheme();
-  const radius = theme.borders.borderRadiusMd;
+  const radius = 'var(--db-shape-container-small)';
 
   if (items.length === 0) {
     return null;
@@ -25,7 +22,7 @@ export const SegmentedProgressBar = ({ items, className }: { items: ProgressBarI
     // share the row equally. This keeps the total width at exactly 100% — unlike
     // width% + right margin, which sums past 100% and can overflow.
     <div
-      css={{ display: 'flex', alignItems: 'center', height: '100%', gap: theme.spacing.xs / 2 }}
+      css={{ display: 'flex', alignItems: 'center', height: '100%', gap: 'var(--db-space-0-5)' }}
       className={className}
     >
       {items.map((item, index) => (
